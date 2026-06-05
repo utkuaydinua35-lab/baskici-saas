@@ -1,0 +1,455 @@
+import { useEffect, useState } from 'react'
+import { api } from '../lib/api'
+
+export default function StoresPage() {
+  const [stores, setStores] = useState([])
+  const [platforms, setPlatforms] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [testingId, setTestingId] = useState(null)
+  const [testResult, setTestResult] = useState({})  // { storeId: {success, message} }
+  const [oauthBanner, setOauthBanner] = useState(null)
+
+  // OAuth callback'inden dönen ?oauth=success|error query'sini yakala
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauth = params.get('oauth')
+    if (oauth === 'success') {
+      setOauthBanner({ ok: true, text: 'Mağaza OAuth ile başarıyla bağlandı.' })
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (oauth === 'error') {
+      const reason = params.get('reason') || 'bilinmeyen hata'
+      setOauthBanner({ ok: false, text: `OAuth başarısız: ${reason}` })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const [s, p] = await Promise.all([
+        api.get('/api/stores'),
+        api.get('/api/stores/_meta/platforms'),
+      ])
+      setStores(s)
+      setPlatforms(p)
+    } catch (e) {
+      setError(e.detail || 'Yükleme başarısız')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  const handleTest = async (storeId) => {
+    setTestingId(storeId)
+    try {
+      const r = await api.post(`/api/stores/${storeId}/test`, {})
+      setTestResult(prev => ({ ...prev, [storeId]: r }))
+    } catch (e) {
+      setTestResult(prev => ({
+        ...prev,
+        [storeId]: { success: false, message: e.detail || 'Hata' },
+      }))
+    } finally {
+      setTestingId(null)
+    }
+  }
+
+  const handleDelete = async (store) => {
+    if (!confirm(`"${store.name}" mağazasını silmek istiyor musun?\n\nBu işlem geri alınamaz.`)) return
+    try {
+      await api.del(`/api/stores/${store.id}`)
+      loadData()
+    } catch (e) {
+      alert(`Silme başarısız: ${e.detail || e.message}`)
+    }
+  }
+
+  return (
+    <div className="max-w-4xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-100">Mağazalar</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Shopify ve İkas mağazalarını bağla
+          </p>
+        </div>
+        <button onClick={() => setShowAddDialog(true)} className="btn-primary">
+          + Yeni Mağaza
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-4">
+          {error}
+        </div>
+      )}
+      {oauthBanner && (
+        <div className={`text-sm rounded-lg px-3 py-2 mb-4 border ${
+          oauthBanner.ok
+            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+            : 'bg-red-500/10 border-red-500/20 text-red-400'
+        }`}>{oauthBanner.ok ? '✓ ' : '✗ '}{oauthBanner.text}</div>
+      )}
+
+      {loading && <div className="text-gray-500 text-sm">Yükleniyor...</div>}
+
+      {!loading && stores.length === 0 && (
+        <div className="card text-center py-12">
+          <div className="text-4xl mb-3">🏪</div>
+          <h3 className="text-gray-300 font-medium mb-1">Henüz mağaza yok</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            İlk mağazanı ekleyerek başla. Shopify ya da İkas seçebilirsin.
+          </p>
+          <button onClick={() => setShowAddDialog(true)} className="btn-primary">
+            İlk Mağazayı Ekle
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {stores.map(store => {
+          const result = testResult[store.id]
+          return (
+            <div key={store.id} className="card">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-gray-100">{store.name}</span>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-brand-input text-gray-400">
+                      {store.platform}
+                    </span>
+                    {!store.is_active && (
+                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">
+                        pasif
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-500 font-mono">{store.slug}</div>
+
+                  {/* Config preview (maskelenmiş) */}
+                  <div className="mt-3 space-y-1">
+                    {Object.entries(store.config || {}).map(([k, v]) => (
+                      <div key={k} className="text-xs flex gap-2">
+                        <span className="text-gray-500 w-32 shrink-0">{k}:</span>
+                        <span className="text-gray-300 font-mono truncate">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Test sonucu */}
+                  {result && (
+                    <div className={`mt-3 text-xs rounded-lg px-3 py-2 ${
+                      result.success
+                        ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                        : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                    }`}>
+                      {result.success ? '✓ ' : '✗ '}{result.message}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleTest(store.id)}
+                    disabled={testingId === store.id}
+                    className="btn-secondary !text-xs !py-1 !px-2 disabled:opacity-50"
+                  >
+                    {testingId === store.id ? 'Test...' : '🔌 Bağlantı'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(store)}
+                    className="text-xs px-2 py-1 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    Sil
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {showAddDialog && (
+        <AddStoreDialog
+          platforms={platforms}
+          onClose={() => setShowAddDialog(false)}
+          onSaved={() => { setShowAddDialog(false); loadData() }}
+        />
+      )}
+    </div>
+  )
+}
+
+
+function AddStoreDialog({ platforms, onClose, onSaved }) {
+  const [platform, setPlatform] = useState(platforms[0]?.id || 'shopify')
+  const [name, setName] = useState('')
+  const [slug, setSlug] = useState('')
+  const [config, setConfig] = useState({})
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Shopify için: 'token' (custom app) | 'oauth' (Client ID/Secret + handshake)
+  const [shopifyAuthMode, setShopifyAuthMode] = useState('token')
+  const platformMeta = platforms.find(p => p.id === platform)
+  const isShopify = platform === 'shopify'
+  const isOAuth = isShopify && shopifyAuthMode === 'oauth'
+
+  const handleOAuthStart = async () => {
+    setError('')
+    if (!name.trim() || !slug.trim()) {
+      setError('Görünen ad ve slug zorunlu')
+      return
+    }
+    if (!config.store_url?.trim() || !config.client_id?.trim() || !config.client_secret?.trim()) {
+      setError('Mağaza URL, Client ID ve Client Secret zorunlu')
+      return
+    }
+    setSaving(true)
+    try {
+      const r = await api.post('/api/stores/oauth/start', {
+        store_url: config.store_url.trim(),
+        client_id: config.client_id.trim(),
+        client_secret: config.client_secret.trim(),
+        name: name.trim(),
+        slug: slug.trim(),
+      })
+      if (r?.install_url) {
+        window.location.href = r.install_url
+      } else {
+        setError('install_url alınamadı')
+        setSaving(false)
+      }
+    } catch (err) {
+      setError(typeof err?.detail === 'string' ? err.detail : 'OAuth başlatılamadı')
+      setSaving(false)
+    }
+  }
+
+  // Otomatik slug üret name'den
+  const handleNameChange = (v) => {
+    setName(v)
+    if (!slug || slug === slugify(name)) {
+      setSlug(slugify(v))
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (isOAuth) {
+      return handleOAuthStart()
+    }
+
+    // Token mode (eski mantık)
+    for (const f of platformMeta?.fields || []) {
+      if (f.required && !config[f.key]?.trim()) {
+        setError(`"${f.label}" zorunlu`)
+        return
+      }
+    }
+
+    setSaving(true)
+    try {
+      await api.post('/api/stores', { name, slug, platform, config })
+      onSaved()
+    } catch (err) {
+      setError(err.detail || 'Kaydetme başarısız')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+         onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl p-5 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <h2 className="text-lg font-semibold text-gray-100 mb-4">Yeni Mağaza Ekle</h2>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Platform */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Platform</label>
+            <div className="grid grid-cols-2 gap-2">
+              {platforms.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setPlatform(p.id); setConfig({}) }}
+                  className={`px-3 py-2 rounded-lg text-sm border transition-colors ${
+                    platform === p.id
+                      ? 'bg-accent/15 border-accent/50 text-accent'
+                      : 'bg-brand-input border-brand-border text-gray-300 hover:border-gray-600'
+                  }`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Görünen ad</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={e => handleNameChange(e.target.value)}
+              className="input w-full"
+              placeholder="Örn: BERNZ Company"
+            />
+          </div>
+
+          {/* Slug */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">Slug (kısa kod)</label>
+            <input
+              type="text"
+              required
+              pattern="[a-z0-9-]+"
+              value={slug}
+              onChange={e => setSlug(e.target.value.toLowerCase())}
+              className="input w-full font-mono"
+              placeholder="bernz"
+            />
+            <p className="text-[10px] text-gray-600 mt-1">Sadece küçük harf, rakam, tire</p>
+          </div>
+
+          {/* Shopify için: OAuth / Token toggle */}
+          {isShopify && (
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Bağlanma Yöntemi</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShopifyAuthMode('token'); setConfig({}) }}
+                  className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                    shopifyAuthMode === 'token'
+                      ? 'bg-accent/15 border-accent/50 text-accent'
+                      : 'bg-brand-input border-brand-border text-gray-400 hover:border-gray-600'
+                  }`}
+                >
+                  🔑 Custom App<br/><span className="text-[10px] opacity-70">(eski, access_token ile)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShopifyAuthMode('oauth'); setConfig({}) }}
+                  className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                    shopifyAuthMode === 'oauth'
+                      ? 'bg-accent/15 border-accent/50 text-accent'
+                      : 'bg-brand-input border-brand-border text-gray-400 hover:border-gray-600'
+                  }`}
+                >
+                  🔐 OAuth<br/><span className="text-[10px] opacity-70">(2026+, Client ID/Secret)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Shopify OAuth alanları */}
+          {isOAuth && (
+            <>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  Mağaza URL <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={config.store_url || ''}
+                  onChange={e => setConfig(prev => ({ ...prev, store_url: e.target.value }))}
+                  className="input w-full"
+                  placeholder="lunera.myshopify.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  Client ID <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={config.client_id || ''}
+                  onChange={e => setConfig(prev => ({ ...prev, client_id: e.target.value }))}
+                  className="input w-full font-mono"
+                  placeholder="Shopify Partner Dashboard'dan alın"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">
+                  Client Secret <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={config.client_secret || ''}
+                  onChange={e => setConfig(prev => ({ ...prev, client_secret: e.target.value }))}
+                  className="input w-full font-mono"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className="text-[11px] text-gray-500 bg-brand-input/40 rounded-lg p-2 border border-brand-border/50">
+                <div className="text-amber-400 mb-1">⚠ Shopify Partner Dashboard'da yapılması gerekenler:</div>
+                <ul className="space-y-0.5 list-disc list-inside opacity-90">
+                  <li>App URL: <span className="font-mono">https://baskici.bernzcompany.com</span></li>
+                  <li>Allowed redirection URL: <span className="font-mono break-all">https://baskici.bernzcompany.com/api/stores/oauth/callback</span></li>
+                  <li>API access scopes: read/write_orders, read_products, read/write_fulfillments, read_customers</li>
+                </ul>
+              </div>
+            </>
+          )}
+
+          {/* Token mode veya non-Shopify platform-specific fields */}
+          {!isOAuth && platformMeta?.fields.map(f => (
+            <div key={f.key}>
+              <label className="text-xs text-gray-400 block mb-1">
+                {f.label} {f.required && <span className="text-red-400">*</span>}
+              </label>
+              <input
+                type={f.type === 'password' ? 'password' : 'text'}
+                value={config[f.key] || ''}
+                onChange={e => setConfig(prev => ({ ...prev, [f.key]: e.target.value }))}
+                className="input w-full"
+                placeholder={f.placeholder || f.default || ''}
+                defaultValue={f.default}
+              />
+            </div>
+          ))}
+
+          {error && (
+            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">
+              İptal
+            </button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
+              {saving
+                ? (isOAuth ? 'Shopify\'a yönlendiriliyor...' : 'Kaydediliyor...')
+                : (isOAuth ? '🔐 Shopify\'a Bağlan' : 'Kaydet')
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+
+// Helpers
+const TR_MAP = {ç:'c',ğ:'g',ı:'i',ö:'o',ş:'s',ü:'u',Ç:'c',Ğ:'g',İ:'i',Ö:'o',Ş:'s',Ü:'u'}
+function slugify(text) {
+  return (text || '')
+    .split('').map(c => TR_MAP[c] || c).join('')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+}

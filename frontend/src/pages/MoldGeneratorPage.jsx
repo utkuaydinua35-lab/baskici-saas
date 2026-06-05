@@ -1,0 +1,375 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../lib/api'
+import DeleteMoldDialog from '../components/DeleteMoldDialog'
+import SlotAssignDialog from '../components/SlotAssignDialog'
+
+const VAR_COLORS = {
+  'SİYAH': 'bg-gray-700 text-gray-100 border-gray-600',
+  'BEYAZ': 'bg-gray-100 text-gray-800 border-gray-300',
+  'ŞEFFAF': 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+  'PARLAK': 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  'MAGSAFE': 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+}
+const REASON_LABELS = {
+  urun_tasarima_baglanmamis: 'Ürün tasarıma bağlanmamış',
+  kisiye_ozel_tasarim_eksik: 'Kişiye özel tasarımı eksik',
+  model_belirsiz: 'Telefon modeli belirsiz',
+  model_taninmadi: 'Model tanınmadı',
+}
+
+export default function MoldGeneratorPage() {
+  const navigate = useNavigate()
+  const [stores, setStores] = useState([])
+  const [storeId, setStoreId] = useState('')
+  const [plan, setPlan] = useState(null)
+  const [molds, setMolds] = useState([])
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [assignTarget, setAssignTarget] = useState(null)  // { mold, kalip_kodu }
+  const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState('')
+  const [msg, setMsg] = useState(null)
+  const [tab, setTab] = useState('plan')
+  const [skipMissing, setSkipMissing] = useState(false)
+
+  useEffect(() => {
+    api.get('/api/stores').then(s => {
+      const list = Array.isArray(s) ? s : []
+      setStores(list)
+      // Varsayılan: 'Tüm Mağazalar' (storeId="") — multi-store birleşik plan
+    }).catch(() => {})
+  }, [])
+
+  const loadPlan = async (sid = storeId) => {
+    setLoading(true); setError(''); setMsg(null)
+    try {
+      const url = sid ? `/api/molds/plan?store_id=${sid}` : `/api/molds/plan`
+      const r = await api.get(url)
+      setPlan(r)
+    } catch (e) {
+      setError(typeof e?.detail === 'string' ? e.detail : 'Plan hesaplanamadı')
+    } finally { setLoading(false) }
+  }
+  const loadExisting = async (sid = storeId) => {
+    try {
+      const url = sid ? `/api/molds?store_id=${sid}` : `/api/molds`
+      const r = await api.get(url)
+      setMolds(r.items || [])
+    } catch { setMolds([]) }
+  }
+  useEffect(() => { loadPlan(storeId); loadExisting(storeId) }, [storeId])
+
+  const handleCreate = async () => {
+    const canGo = plan?.can_create || (skipMissing && plan?.mold_count > 0)
+    if (!canGo) return
+    const cm = (skipMissing && plan.eksik_count > 0)
+      ? `${plan.eksik_count} eksik kalem ATLANACAK. Sadece çözülen ${plan.mold_count} kalıp (${plan.total_units} kılıf) oluşturulacak. Onaylıyor musun?`
+      : `${plan.mold_count} kalıp oluşturulacak (${plan.total_units} kılıf). Onaylıyor musun?`
+    if (!confirm(cm)) return
+    setCreating(true); setError(''); setMsg(null)
+    try {
+      const url = storeId
+        ? `/api/molds/create?store_id=${storeId}&skip_missing=${skipMissing}`
+        : `/api/molds/create?skip_missing=${skipMissing}`
+      const r = await api.post(url, {})
+      if (r.success) {
+        setMsg({ ok: true, text: r.message })
+        loadPlan(storeId); loadExisting(storeId)
+        setTab('existing')
+      } else {
+        setMsg({ ok: false, text: r.message })
+      }
+    } catch (e) {
+      setError(typeof e?.detail === 'string' ? e.detail : 'Oluşturma hatası')
+    } finally { setCreating(false) }
+  }
+
+  // SlotAssignDialog için uygun mold objesi (id + kod + variation + kalip_kodlari)
+  const assignMoldObj = assignTarget ? {
+    id: assignTarget.mold.id,
+    kod: assignTarget.mold.kod,
+    variation: assignTarget.mold.variation,
+    kalip_kodlari: assignTarget.mold.kalip_kodlari || [],
+  } : null
+
+  return (
+    <div className="max-w-6xl">
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-100">🎯 Kalıp Oluşturucu</h1>
+          <p className="text-sm text-gray-500 mt-1">Bekleyen siparişleri otomatik kalıplara böler</p>
+        </div>
+        <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[200px]">
+          <option value="">Tüm Mağazalar</option>
+          {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </div>
+
+      <div className="flex gap-1 bg-brand-card border border-brand-border rounded-lg p-1 mb-4 w-fit">
+        <TabBtn active={tab === 'plan'} onClick={() => setTab('plan')}>Yeni Plan</TabBtn>
+        <TabBtn active={tab === 'existing'} onClick={() => setTab('existing')}>Oluşturulan Kalıplar ({molds.length})</TabBtn>
+      </div>
+
+      {error && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3">{error}</div>}
+      {msg && <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>{msg.ok ? '✓ ' : '⚠ '}{msg.text}</div>}
+
+      {tab === 'plan' && (
+        <>
+          {loading && <div className="text-gray-500 text-sm text-center py-10">Plan hesaplanıyor...</div>}
+          {!loading && plan && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <Kpi label="OLUŞACAK KALIP" value={plan.mold_count} color="accent" />
+                <Kpi label="TOPLAM KILIF" value={plan.total_units} />
+                <Kpi label="EKSİK KALEM" value={plan.eksik_count} color={plan.eksik_count ? 'red' : 'emerald'} />
+                <div className="bg-brand-card border border-brand-border rounded-lg p-3 flex flex-col justify-center gap-2">
+                  <button onClick={handleCreate}
+                    disabled={creating || !(plan.can_create || (skipMissing && plan.mold_count > 0))}
+                    className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed">
+                    {creating ? 'Oluşturuluyor...' : '🎯 Kalıpları Oluştur'}
+                  </button>
+                  {plan.eksik_count > 0 && (
+                    <label className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer">
+                      <input type="checkbox" checked={skipMissing} onChange={e => setSkipMissing(e.target.checked)} className="accent-accent" />
+                      Eksikleri atla, çözülenleri oluştur
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {plan.eksik_count > 0 && (
+                <div className="card mb-4 border-amber-500/30 bg-amber-500/5">
+                  <h2 className="text-sm font-medium text-amber-300 mb-2">
+                    ⚠ {plan.eksik_count} kalem için tasarım eksik — kalıp oluşturmadan önce tamamlanmalı
+                  </h2>
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {plan.eksikler.slice(0, 50).map((e, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-brand-input/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">
+                          {REASON_LABELS[e.reason] || e.reason}
+                        </span>
+                        <span className="text-gray-300 truncate flex-1">{e.title || '(başlıksız)'}</span>
+                        {e.model && <span className="text-gray-500 shrink-0">{e.model}</span>}
+                        <span className="text-gray-600 shrink-0">×{e.count}</span>
+                      </div>
+                    ))}
+                    {plan.eksikler.length > 50 && <div className="text-[11px] text-gray-500 px-2">+{plan.eksikler.length - 50} daha...</div>}
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-2">
+                    Tasarıma bağlanmamış ürünleri <a href="/designs" className="text-accent hover:underline">Tasarımlar</a> sayfasından,
+                    kişiye özelleri <a href="/kisiye-ozel" className="text-accent hover:underline">Kişiye Özel</a> sayfasından tamamla.
+                  </p>
+                </div>
+              )}
+
+              {plan.molds.length > 0 && (
+                <div className="space-y-3">
+                  <h2 className="text-sm font-medium text-gray-300">Kalıp Önizlemesi ({plan.mold_count})</h2>
+                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview />)}
+                </div>
+              )}
+
+              {plan.mold_count === 0 && plan.eksik_count === 0 && (
+                <div className="card text-center py-12 text-gray-500">
+                  <div className="text-3xl mb-2">✓</div>
+                  Bekleyen kalıp yok — tüm siparişler kalıba eklenmiş.
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {tab === 'existing' && (
+        <div className="space-y-3">
+          {molds.length === 0 ? (
+            <div className="card text-center py-12 text-gray-500">
+              <div className="text-3xl mb-2">🧩</div>
+              Henüz kalıp oluşturulmamış.
+            </div>
+          ) : molds.map(m => (
+            <MoldCard
+              key={m.id}
+              mold={{
+                sira: m.kod, variation: m.variation, kodlar: m.kalip_kodlari,
+                count: m.kilif_sayisi, rows_used: m.rows_used,
+                is_multi_store: m.is_multi_store,
+                kod_counts: m.items.reduce((a, it) => { a[it.kalip_kodu] = (a[it.kalip_kodu] || 0) + 1; return a }, {}),
+                items: m.items.map(it => ({ kod: it.kalip_kodu, design_code: it.design_code, model: it.model, order_number: it.order_number, variation: m.variation, thumbnail_url: it.thumbnail_url, birincil_renk: it.birincil_renk, kalip_tipi: it.kalip_tipi })),
+              }}
+              status={m.status}
+              kod={m.kod}
+              onClick={() => navigate(`/kalip/${m.id}`)}
+              onDelete={() => setDeleteTarget({ id: m.id, kod: m.kod })}
+              onAssignSlot={(kod) => setAssignTarget({ mold: m, kalip_kodu: kod })}
+            />
+          ))}
+        </div>
+      )}
+
+      <DeleteMoldDialog
+        open={!!deleteTarget}
+        mold={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => { setDeleteTarget(null); loadExisting(); loadPlan() }}
+      />
+
+      <SlotAssignDialog
+        open={!!assignTarget}
+        mold={assignMoldObj}
+        kalipKodu={assignTarget?.kalip_kodu}
+        onClose={() => setAssignTarget(null)}
+        onAssigned={() => { setAssignTarget(null); loadExisting(); loadPlan() }}
+      />
+    </div>
+  )
+}
+
+function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot }) {
+  const vc = VAR_COLORS[mold.variation] || 'bg-gray-700 text-gray-200 border-gray-600'
+  return (
+    <div className={`card ${onClick ? 'cursor-pointer hover:border-accent/40 transition-colors' : ''}`} onClick={onClick}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-100">
+            {kod ? kod : (mold.kodlar && mold.kodlar.length ? mold.kodlar.join('-') : `Kalıp ${mold.sira}`)}
+          </span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${vc}`}>{mold.variation}</span>
+          {mold.is_multi_store && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-300 border-blue-500/30" title="Birden çok mağazadan kalemler">
+              🏪 Çoklu Mağaza
+            </span>
+          )}
+          {onDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete() }}
+              className="ml-auto text-xs text-red-400/80 hover:text-red-300 hover:bg-red-500/10 rounded px-2 py-1 border border-red-500/20 hover:border-red-500/40 flex items-center gap-1"
+              title="Kalıbı sil"
+              aria-label="Kalıbı sil">
+              🗑 Kalıbı Sil
+            </button>
+          )}
+          {status && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{status}</span>}
+          {preview && <span className="text-[10px] text-gray-500">önizleme</span>}
+        </div>
+        <div className="text-xs text-gray-500">
+          {mold.count}/27 kılıf · {mold.rows_used} satır · kodlar: {mold.kodlar.join(', ')}
+        </div>
+      </div>
+      <MoldGrid items={mold.items} onAssignSlot={onAssignSlot} />
+    </div>
+  )
+}
+
+function shortModel(m) {
+  if (!m) return ''
+  return m.replace(/i\s*phone/i, '').replace(/apple/i, '').replace(/galaxy/i, '').replace(/samsung/i, '').trim().toUpperCase()
+}
+function kilifLabel(it) {
+  if (it.birincil_renk) return `Kılıf: ${it.birincil_renk.toUpperCase()}`
+  if (it.kalip_tipi) return it.kalip_tipi.toUpperCase()
+  return it.variation || ''
+}
+
+function MoldGrid({ items, onAssignSlot }) {
+  const order = []
+  const byKod = {}
+  for (const it of items) {
+    if (!byKod[it.kod]) { byKod[it.kod] = []; order.push(it.kod) }
+    byKod[it.kod].push(it)
+  }
+  const rows = []
+  const rowKods = []
+  for (const kod of order) {
+    const g = byKod[kod]
+    for (let i = 0; i < g.length; i += 9) {
+      rows.push(g.slice(i, i + 9))
+      rowKods.push(kod)
+    }
+  }
+  while (rows.length < 3) { rows.push([]); rowKods.push(null) }
+  return (
+    <div className="space-y-1.5">
+      {rows.map((row, ri) => {
+        const padded = [...Array(Math.max(0, 9 - row.length)).fill(null), ...row].slice(0, 9)
+        const rowKod = rowKods[ri]
+        return (
+          <div key={ri} className="grid grid-cols-9 gap-1.5">
+            {padded.map((cell, ci) => {
+              const slotNo = 27 - (ri * 9 + ci)
+              const canAssign = !cell && rowKod && onAssignSlot
+              return <Slot
+                key={ci}
+                item={cell}
+                no={slotNo}
+                onAssign={canAssign ? (e) => { e.stopPropagation(); onAssignSlot(rowKod) } : null}
+                assignKod={canAssign ? rowKod : null}
+              />
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function Slot({ item, no, onAssign, assignKod }) {
+  if (!item) {
+    if (onAssign) {
+      return (
+        <button
+          onClick={onAssign}
+          title={`${assignKod} satırına slot ata`}
+          className="aspect-[9/16] rounded-lg border border-dashed border-accent/40 hover:border-accent hover:bg-accent/10 flex flex-col items-center justify-center text-gray-500 hover:text-accent transition-colors group">
+          <span className="text-2xl leading-none group-hover:scale-110 transition-transform">+</span>
+          <span className="text-[9px] mt-0.5 font-mono opacity-60">{assignKod}</span>
+          <span className="text-[8px] mt-0.5">#{no}</span>
+        </button>
+      )
+    }
+    return (
+      <div className="aspect-[9/16] rounded-lg border border-dashed border-brand-border/40 flex flex-col items-center justify-center text-gray-700">
+        <span className="text-xs font-medium">{no}</span>
+        <span className="text-[8px]">Boş</span>
+      </div>
+    )
+  }
+  return (
+    <div className="aspect-[9/16] rounded-lg border border-accent/40 overflow-hidden relative bg-brand-input"
+      title={`${item.kod} · ${item.design_code || ''} · ${item.model || ''} · #${item.order_number}`}>
+      {item.thumbnail_url && (
+        <img src={item.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-55"
+          onError={e => { e.target.style.display = 'none' }} />
+      )}
+      <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
+      <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[7px]">✓</div>
+      <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{item.kod}</div>
+      <div className="relative z-10 h-full flex flex-col justify-end p-1 text-center gap-0.5">
+        <div className="text-[9px] font-semibold text-white leading-none truncate drop-shadow">{item.design_code || ''}</div>
+        <div className="text-[8px] text-gray-200 leading-none drop-shadow">{shortModel(item.model)}</div>
+        <div className="text-[7px] text-amber-200 leading-none drop-shadow truncate">{kilifLabel(item)}</div>
+        <div className="text-[7px] text-gray-400 leading-none">#{no}</div>
+      </div>
+    </div>
+  )
+}
+
+function Kpi({ label, value, color = 'gray' }) {
+  const colors = { gray: 'text-gray-100', accent: 'text-accent', red: 'text-red-400', emerald: 'text-emerald-400' }
+  return (
+    <div className="bg-brand-card border border-brand-border rounded-lg p-3">
+      <div className="text-[10px] uppercase text-gray-500">{label}</div>
+      <div className={`text-2xl font-semibold ${colors[color]}`}>{value}</div>
+    </div>
+  )
+}
+
+function TabBtn({ active, onClick, children }) {
+  return (
+    <button onClick={onClick}
+      className={`px-3 py-1.5 rounded-md text-sm transition-colors ${active ? 'bg-accent/15 text-accent' : 'text-gray-400 hover:text-gray-200'}`}>
+      {children}
+    </button>
+  )
+}

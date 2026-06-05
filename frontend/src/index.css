@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    @apply h-full;
+  }
+  body {
+    @apply bg-brand-bg text-gray-200 font-sans antialiased;
+  }
+}
+
+@layer components {
+  /* Yardımcı bileşen sınıfları */
+  .input {
+    @apply bg-brand-input border border-brand-border rounded-lg px-3 py-2 text-sm text-gray-100
+           focus:outline-none focus:border-accent/50 placeholder:text-gray-600 transition-colors;
+  }
+  .btn-primary {
+    @apply bg-accent hover:bg-accent/90 text-white rounded-lg px-4 py-2 text-sm font-medium
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-brand-input hover:bg-brand-card border border-brand-border text-gray-300
+           rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  }
+  .card {
+    @apply bg-brand-card border border-brand-border rounded-xl p-5;
+  }
+}
+
+/* ─── Kalıp aşama animasyonları (Paket 16) ─── */
+@keyframes heartbeat {
+  0%   { transform: scale(1); }
+  14%  { transform: scale(1.18); }
+  28%  { transform: scale(1); }
+  42%  { transform: scale(1.12); }
+  70%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.9);  opacity: 0.9; }
+  70%  { transform: scale(2.1);  opacity: 0; }
+  100% { transform: scale(2.1);  opacity: 0; }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(124, 92, 255, 0.6); }
+  50%      { box-shadow: 0 0 16px 5px rgba(124, 92, 255, 0.9); }
+}
+
+.stage-active-beat { animation: heartbeat 1.6s ease-in-out infinite; }
+.stage-glow { animation: glow-pulse 1.8s ease-in-out infinite; }
+.stage-ring {
+  position: absolute; inset: -4px; border-radius: 9999px;
+  border: 4px solid rgba(124, 92, 255, 0.9);
+  box-shadow: 0 0 12px 2px rgba(124, 92, 255, 0.5);
+  animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+}
+.stage-ring-2 {
+  position: absolute; inset: -4px; border-radius: 9999px;
+  border: 3px solid rgba(124, 92, 255, 0.7);
+  animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation-delay: 0.5s;
+  pointer-events: none;
+}
+.stage-fade-in { animation: fade-in-up 0.4s ease-out both; }

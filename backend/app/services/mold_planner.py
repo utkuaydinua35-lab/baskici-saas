@@ -1,0 +1,247 @@
+"""
+Kalıp planlayıcı — bekleyen sipariş kalemlerini otomatik kalıplara böler.
+
+Multi-store (Paket 20): store_id None ise tenant'taki TÜM aktif mağazaların
+siparişlerini birleştirir. Bir kalıp satırında (örn A1) birden çok mağazadan
+kalem karışabilir; baskı üretiminde mağaza farkı yok, kargo etiketi aşamasında
+her slot'un kendi store_id'si üzerinden ayrılır.
+"""
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store
+from app.services import placement_rules as pr, storage
+
+
+def extract_phone_model(line_item: LineItem) -> str | None:
+    """properties içinde adı ' Model' ile biten kaydın değeri = telefon modeli.
+    device_model_override öncelikli."""
+    if getattr(line_item, "device_model_override", None):
+        return line_item.device_model_override
+    for p in (line_item.properties or []):
+        if isinstance(p, dict):
+            name = (p.get("name") or "")
+            if name.endswith("Model") and not name.startswith("_"):
+                val = (p.get("value") or "").strip()
+                if val:
+                    return val
+    return None
+
+
+def plan_molds(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    store_id: uuid.UUID | None = None,
+    kodlari: pr.KalipKodlari | None = None,
+) -> dict:
+    """Kalıp planını hesapla.
+
+    store_id verilirse o mağaza; None ise tenant'ın TÜM aktif mağazaları birleşik.
+    """
+    k = kodlari or pr.DEFAULT_KODLARI
+
+    # Kişiye özel ürün id'leri (store_id, pid) ikilisi olarak
+    kop_q = (
+        select(KisiyeOzelProduct.store_id, KisiyeOzelProduct.product_id)
+        .join(Store, Store.id == KisiyeOzelProduct.store_id)
+        .where(
+            Store.tenant_id == tenant_id,
+            KisiyeOzelProduct.product_id.isnot(None),
+        )
+    )
+    if store_id:
+        kop_q = kop_q.where(KisiyeOzelProduct.store_id == store_id)
+    kop_keys: set[tuple[uuid.UUID, str]] = {
+        (s_id, str(pid)) for (s_id, pid) in db.execute(kop_q).all()
+    }
+
+    # (store_id, product_id) -> Design
+    design_q = (
+        select(Design)
+        .join(Store, Store.id == Design.store_id)
+        .where(
+            Store.tenant_id == tenant_id,
+            Design.product_id.isnot(None),
+        )
+    )
+    if store_id:
+        design_q = design_q.where(Design.store_id == store_id)
+    designs = db.scalars(design_q).all()
+    design_by_key: dict[tuple[uuid.UUID, str], Design] = {
+        (d.store_id, str(d.product_id)): d for d in designs
+    }
+
+    # Bekleyen siparişler
+    orders_q = (
+        select(Order)
+        .where(
+            Order.tenant_id == tenant_id,
+            Order.is_iptal == False,  # noqa: E712
+        )
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+    )
+    if store_id:
+        orders_q = orders_q.where(Order.store_id == store_id)
+    orders = db.scalars(orders_q).all()
+
+    units: list[dict] = []
+    eksikler: list[dict] = []
+    eksik_keys: set = set()
+
+    def add_eksik(reason, li, order, model):
+        key = (str(li.product_id), reason)
+        if key in eksik_keys:
+            for e in eksikler:
+                if e["product_id"] == str(li.product_id) and e["reason"] == reason:
+                    e["count"] += li.quantity or 1
+                    return
+        eksik_keys.add(key)
+        eksikler.append({
+            "reason": reason,
+            "product_id": str(li.product_id) if li.product_id else None,
+            "title": li.title,
+            "model": model,
+            "order_number": order.order_number,
+            "store_id": str(order.store_id),
+            "count": li.quantity or 1,
+        })
+
+    for order in orders:
+        order_store_id = order.store_id
+        for li in (order.line_items or []):
+            if li.is_kaliba_eklendi:
+                continue
+            pid = str(li.product_id) if li.product_id else None
+            model = extract_phone_model(li)
+            is_ko = (order_store_id, pid) in kop_keys if pid else False
+
+            design = None
+            if is_ko:
+                if li.assigned_design_id and li.assigned_design:
+                    design = li.assigned_design
+                else:
+                    add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
+                    continue
+            else:
+                design = design_by_key.get((order_store_id, pid)) if pid else None
+                if design is None:
+                    add_eksik("urun_tasarima_baglanmamis", li, order, model)
+                    continue
+
+            if not model:
+                add_eksik("model_belirsiz", li, order, model)
+                continue
+
+            variation = pr.normalize_variation(design.kalip_tipi)
+            kod = pr.resolve_kalip_kodu(model, variation, k)
+            if not kod:
+                add_eksik("model_taninmadi", li, order, model)
+                continue
+
+            qty = li.quantity or 1
+            for _ in range(qty):
+                units.append({
+                    "line_item_id": str(li.id),
+                    "order_id": str(order.id),
+                    "order_number": order.order_number,
+                    "store_id": str(order_store_id),
+                    "model": model,
+                    "product_id": pid,
+                    "design_id": str(design.id),
+                    "design_code": design.code,
+                    "variation": variation,
+                    "kod": kod,
+                    "is_kisiye_ozel": is_ko,
+                    "title": li.title,
+                    "thumbnail_url": (
+                        storage.get_thumbnail_url(design.file_path, design.file_format)
+                        if design else None
+                    ),
+                    "birincil_renk": getattr(design, "birincil_renk", None),
+                    "kalip_tipi": getattr(design, "kalip_tipi", None),
+                })
+
+    # (kod, variation) grupla, 27 üstü parçala
+    groups: dict[tuple, list[dict]] = {}
+    for u in units:
+        groups.setdefault((u["kod"], u["variation"]), []).append(u)
+
+    queue: list[dict] = []
+    for (kod, variation), items in groups.items():
+        for i in range(0, len(items), pr.KALIP_MAX_BOXES):
+            chunk = items[i:i + pr.KALIP_MAX_BOXES]
+            queue.append({
+                "items": chunk,
+                "count": len(chunk),
+                "variation": variation,
+                "kodlar": [kod],
+                "is_merged": False,
+            })
+
+    packed = pr.bin_pack_by_variation(queue)
+
+    def sort_key(b):
+        var_idx = pr.VARIATIONS.index(b["variation"]) if b["variation"] in pr.VARIATIONS else 99
+        first_kod = sorted(b["kodlar"], key=lambda c: pr.kod_to_group_priority(c, k))[0]
+        return (var_idx, pr.kod_to_group_priority(first_kod, k))
+
+    packed.sort(key=sort_key)
+
+    molds = []
+    for idx, b in enumerate(packed, 1):
+        kod_counts: dict[str, int] = {}
+        line_item_ids: set = set()
+        store_ids_in_mold: set = set()
+        for it in b["items"]:
+            kod_counts[it["kod"]] = kod_counts.get(it["kod"], 0) + 1
+            line_item_ids.add(it["line_item_id"])
+            if it.get("store_id"):
+                store_ids_in_mold.add(it["store_id"])
+        molds.append({
+            "sira": idx,
+            "variation": b["variation"],
+            "kodlar": sorted(b["kodlar"], key=lambda c: pr.kod_to_group_priority(c, k)),
+            "kod_counts": kod_counts,
+            "count": b["count"],
+            "rows_used": pr._count_rows(b["items"]),
+            "is_merged": b["is_merged"],
+            "is_multi_store": len(store_ids_in_mold) > 1,
+            "store_ids": sorted(store_ids_in_mold),
+            "line_item_ids": sorted(line_item_ids),
+            "items": [
+                {
+                    "kod": it["kod"],
+                    "design_code": it["design_code"],
+                    "model": it["model"],
+                    "order_number": it["order_number"],
+                    "variation": it["variation"],
+                    "is_kisiye_ozel": it["is_kisiye_ozel"],
+                    "line_item_id": it["line_item_id"],
+                    "design_id": it["design_id"],
+                    "store_id": it.get("store_id"),
+                    "thumbnail_url": it.get("thumbnail_url"),
+                    "birincil_renk": it.get("birincil_renk"),
+                    "kalip_tipi": it.get("kalip_tipi"),
+                }
+                for it in b["items"]
+            ],
+        })
+
+    return {
+        "molds": molds,
+        "mold_count": len(molds),
+        "total_units": len(units),
+        "eksikler": eksikler,
+        "eksik_count": sum(e["count"] for e in eksikler),
+        "can_create": len(eksikler) == 0 and len(molds) > 0,
+        "stats": {
+            "kalip_sayisi": len(molds),
+            "toplam_kilif": len(units),
+            "eksik_kalem": sum(e["count"] for e in eksikler),
+        },
+    }

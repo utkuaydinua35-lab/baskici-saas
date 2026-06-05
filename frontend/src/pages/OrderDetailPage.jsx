@@ -1,0 +1,871 @@
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { api } from '../lib/api'
+
+
+/** Line item'tan telefon modelini çıkar.
+ * Öncelik: device_model_override > properties (Marka + Model birlikte) > variant_title.
+ * Properties pattern: [{name: 'Marka', value: 'Samsung'}, {name: 'Samsung Model', value: 'Galaxy A21S'}]
+ */
+function resolveDeviceModel(item) {
+  if (item.device_model_override) return item.device_model_override
+  const props = item.properties || []
+  // 1) Direkt 'Model' / 'Telefon Modeli' property'si
+  const direct = props.find(p => {
+    const n = (p?.name || '').toLowerCase()
+    return n === 'model' || n === 'telefon modeli' || n === 'cihaz modeli'
+  })
+  if (direct?.value) return direct.value
+  // 2) Marka + '{Marka} Model' kombinasyonu
+  const marka = props.find(p => (p?.name || '').toLowerCase() === 'marka')?.value
+  if (marka) {
+    const markaModel = props.find(p => {
+      const n = (p?.name || '').toLowerCase()
+      return n === `${marka.toLowerCase()} model` || n.endsWith(' model')
+    })?.value
+    if (markaModel) return `${marka} ${markaModel}`
+  }
+  // 3) Variant title (örn 'iPhone 13 / Siyah')
+  if (item.variant_title) {
+    const part = item.variant_title.split('/')[0].trim()
+    if (part) return part
+  }
+  return null
+}
+
+export default function OrderDetailPage() {
+  const { orderId } = useParams()
+  const navigate = useNavigate()
+
+  const [detail, setDetail] = useState(null)
+  const [stages, setStages] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [rightTab, setRightTab] = useState('musteri')
+  const [lightbox, setLightbox] = useState(null)  // büyütülen görsel url
+
+  const load = async () => {
+    try {
+      const [d, st] = await Promise.all([
+        api.get(`/api/orders/${orderId}/detail`),
+        api.get('/api/orders/_meta/stages'),
+      ])
+      setDetail(d)
+      setStages(st.stages || [])
+    } catch (e) {
+      setError(errMsg(e, 'Sipariş yüklenemedi'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [orderId])
+
+  const patchStage = async (body) => {
+    try {
+      const d = await api.patch(`/api/orders/${orderId}/stage`, body)
+      setDetail(d)
+    } catch (e) {
+      alert(errMsg(e, 'Durum güncellenemedi'))
+    }
+  }
+
+  const patchFlags = async (body) => {
+    try {
+      const d = await api.patch(`/api/orders/${orderId}/flags`, body)
+      setDetail(d)
+    } catch (e) {
+      alert(errMsg(e, 'Güncellenemedi'))
+    }
+  }
+
+  const patchLineItem = async (liId, body) => {
+    try {
+      await api.patch(`/api/orders/${orderId}/line-items/${liId}`, body)
+      load()
+    } catch (e) {
+      alert(errMsg(e, 'Güncellenemedi'))
+    }
+  }
+
+  const handleDuplicate = async () => {
+    if (!confirm('Bu siparişi yeni bir sipariş olarak çoğalt?')) return
+    try {
+      const r = await api.post(`/api/orders/${orderId}/duplicate`, {})
+      navigate(`/orders/${r.id}`)
+    } catch (e) {
+      alert(errMsg(e, 'Kopyalanamadı'))
+    }
+  }
+
+  if (loading) {
+    return <div className="text-gray-500 text-sm text-center py-16">Yükleniyor...</div>
+  }
+  if (error) {
+    return (
+      <div className="max-w-2xl">
+        <button onClick={() => navigate('/orders')} className="text-accent text-sm hover:underline mb-3">← Siparişler</button>
+        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
+      </div>
+    )
+  }
+  if (!detail) return null
+
+  const f = detail.financial || {}
+  const cur = f.currency || 'TRY'
+
+  return (
+    <div className="max-w-[1400px]">
+      {/* Üst bar */}
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
+        <div className="flex items-start gap-3">
+          <button onClick={() => navigate('/orders')} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
+              {detail.is_acil && <Badge color="red">⚠ ACİL</Badge>}
+              {detail.is_iptal && <Badge color="gray">İPTAL</Badge>}
+              {detail.is_hatali_gonderildi && <Badge color="amber">HATALI GÖNDERİLDİ</Badge>}
+              {detail.is_tedarik_bekleme && <Badge color="purple">⏸ TEDARİK BEKLİYOR</Badge>}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">{formatDate(detail.created_at_platform)}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <TedarikToggle
+            value={detail.is_tedarik_bekleme}
+            onChange={v => patchFlags({ is_tedarik_bekleme: v })}
+          />
+          <IsaretleDropdown detail={detail} onFlag={patchFlags} onStage={patchStage} />
+          <StatusDropdown
+            stages={stages}
+            current={detail.current_stage}
+            isIptal={detail.is_iptal}
+            onSelect={patchStage}
+          />
+          <IslemlerDropdown detail={detail} onFlag={patchFlags} onDuplicate={handleDuplicate} />
+        </div>
+      </div>
+
+      {/* KPI kartları */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <KpiCard label="TOPLAM" value={fmtMoney(f.total, cur)} icon="🛍" color="gray" />
+        <KpiCard label="ÖDEME" value={paymentLabel(f.payment_status)} icon="💳" color="emerald" small />
+        <KpiCard label="İNDİRİM" value={f.total_discount ? `-${fmtMoney(f.total_discount, cur)}` : '—'} icon="%" color="emerald" />
+        <KpiCard label="KARGO" value={fmtMoney(f.shipping, cur)} icon="🚚" color="accent" />
+      </div>
+
+      {/* Pipeline */}
+      <div className="card mb-5">
+        <StagePipeline stages={stages} current={detail.current_stage} progress={detail.progress_percent} isIptal={detail.is_iptal} />
+        {detail.barkod_kodu ? (
+          <div className="mt-3 text-xs text-gray-400 flex items-center gap-2">
+            <span>🏷</span> BK Barkod: <span className="font-mono text-gray-200">{detail.barkod_kodu}</span>
+          </div>
+        ) : (
+          <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
+            <span>🏷</span> Henüz BK kargo barkodu oluşturulmadı.
+          </div>
+        )}
+      </div>
+
+      {/* İki kolon */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Sol: ürünler */}
+        <div className="lg:col-span-2 space-y-5">
+          <KalipOzeti lineItems={detail.line_items} />
+
+          <div className="card">
+            <h2 className="text-sm font-medium text-gray-200 mb-3 flex items-center gap-2">
+              <span>📦</span> Ürünler <span className="text-gray-500">({detail.line_items.length})</span>
+            </h2>
+            <div className="space-y-2">
+              {detail.line_items.map(li => (
+                <ProductRow
+                  key={li.id}
+                  item={li}
+                  onPatch={body => patchLineItem(li.id, body)}
+                  onZoom={setLightbox}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Sağ: panel */}
+        <div className="space-y-3">
+          <div className="flex gap-1 bg-brand-card border border-brand-border rounded-lg p-1">
+            <RightTab active={rightTab === 'musteri'} onClick={() => setRightTab('musteri')}>👤 Müşteri</RightTab>
+            <RightTab active={rightTab === 'finansal'} onClick={() => setRightTab('finansal')}>💳 Finansal</RightTab>
+            <RightTab active={rightTab === 'kargo'} onClick={() => setRightTab('kargo')}>🚚 Kargo</RightTab>
+            <RightTab active={rightTab === 'diger'} onClick={() => setRightTab('diger')}>💬 Diğer</RightTab>
+          </div>
+
+          {rightTab === 'musteri' && <MusteriTab detail={detail} />}
+          {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
+          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} />}
+          {rightTab === 'diger' && <DigerTab detail={detail} />}
+        </div>
+      </div>
+
+      {lightbox && <Lightbox url={lightbox} onClose={() => setLightbox(null)} />}
+    </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Pipeline timeline
+// ═══════════════════════════════════════════════════════════
+
+function StagePipeline({ stages, current, progress, isIptal }) {
+  const icons = {
+    inbox: '📥', loader: '🔄', barcode: '|||', layers: '🧩',
+    printer: '🖨', 'printer-check': '🖨', package: '📦', truck: '🚚', 'check-circle': '✓',
+  }
+  const currentStage = stages.find(s => s.no === current)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-accent/15 flex items-center justify-center text-xl">
+            {currentStage ? icons[currentStage.icon] || '•' : '•'}
+          </div>
+          <div>
+            <div className="text-[10px] uppercase text-gray-500">Şu Anki Aşama</div>
+            <div className="text-base font-semibold text-gray-100">
+              {isIptal ? 'İptal Edildi' : (currentStage?.label || '?')}
+              {!isIptal && <span className="text-gray-500 text-sm ml-1">({current}/{stages.length})</span>}
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] text-gray-500">{current - 1}/{stages.length} aşama bitti</div>
+          <div className="text-sm font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded mt-0.5">%{progress}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 overflow-x-auto pb-2">
+        {stages.map((s, i) => {
+          const done = s.no < current
+          const active = s.no === current
+          return (
+            <div key={s.no} className="flex items-center shrink-0">
+              <div className="flex flex-col items-center gap-1 w-[72px]">
+                <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm border-2 relative ${
+                  active ? 'bg-accent border-accent text-white'
+                  : done ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                  : 'bg-brand-input border-brand-border text-gray-600'
+                }`}>
+                  {icons[s.icon] || '•'}
+                  <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full text-[8px] flex items-center justify-center ${
+                    active ? 'bg-white text-accent' : done ? 'bg-emerald-500 text-white' : 'bg-brand-border text-gray-500'
+                  }`}>{s.no}</span>
+                </div>
+                <div className={`text-[9px] text-center leading-tight ${
+                  active ? 'text-accent font-medium' : done ? 'text-emerald-300' : 'text-gray-600'
+                }`}>{s.label}</div>
+              </div>
+              {i < stages.length - 1 && (
+                <div className={`h-0.5 w-4 ${done ? 'bg-emerald-500/50' : 'bg-brand-border'}`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Durumu Güncelle dropdown
+// ═══════════════════════════════════════════════════════════
+
+function StatusDropdown({ stages, current, isIptal, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className="btn-secondary !text-sm flex items-center gap-1.5">
+        Durumu Güncelle <span className="text-xs">⌄</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-52 bg-brand-card border border-brand-border rounded-lg shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
+          {stages.map(s => (
+            <button
+              key={s.no}
+              onClick={() => { onSelect({ stage: s.no }); setOpen(false) }}
+              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-brand-input ${
+                s.no === current && !isIptal ? 'text-accent font-medium' : 'text-gray-300'
+              }`}
+            >
+              <span className="w-5 text-center text-gray-500 text-xs">{s.no}</span>
+              {s.label}
+              {s.no === current && !isIptal && <span className="ml-auto">✓</span>}
+            </button>
+          ))}
+          <div className="border-t border-brand-border my-1" />
+          <button
+            onClick={() => { onSelect({ is_iptal: !isIptal }); setOpen(false) }}
+            className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-500/10 ${
+              isIptal ? 'text-amber-400' : 'text-red-400'
+            }`}
+          >
+            <span className="w-5 text-center">⊘</span>
+            {isIptal ? 'İptali Geri Al' : 'İptal Et'}
+            {isIptal && <span className="ml-auto">✓</span>}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function MenuShell({ label, children, width = 'w-64' }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className="btn-secondary !text-sm flex items-center gap-1.5">
+        {label} <span className="text-xs">⌄</span>
+      </button>
+      {open && (
+        <div className={`absolute right-0 mt-1 ${width} bg-brand-card border border-brand-border rounded-lg shadow-2xl z-50 py-1 max-h-[70vh] overflow-y-auto`}
+             onClick={() => setOpen(false)}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MenuLabel({ children }) {
+  return <div className="text-[9px] uppercase tracking-wider text-gray-600 px-3 pt-2 pb-1">{children}</div>
+}
+
+function MenuItem({ icon, children, onClick, active, danger }) {
+  return (
+    <button onClick={onClick}
+      className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-brand-input ${
+        danger ? 'text-red-400 hover:bg-red-500/10' : active ? 'text-accent' : 'text-gray-300'
+      }`}>
+      <span className="w-5 text-center">{icon}</span>
+      <span className="flex-1">{children}</span>
+      {active && <span>✓</span>}
+    </button>
+  )
+}
+
+function IsaretleDropdown({ detail, onFlag, onStage }) {
+  const lists = detail.internal_lists || []
+  const has = k => lists.includes(k)
+  const toggleList = k => onFlag(has(k) ? { remove_from_list: k } : { add_to_list: k })
+  return (
+    <MenuShell label="🔖 İşaretle">
+      <MenuLabel>Acil</MenuLabel>
+      <MenuItem icon="⚠" active={detail.is_acil} onClick={() => onFlag({ is_acil: !detail.is_acil })}>
+        Acil Olarak İşaretle
+      </MenuItem>
+      <MenuLabel>Listeler</MenuLabel>
+      <MenuItem icon="✓" active={has('isaretlenenler')} onClick={() => toggleList('isaretlenenler')}>İşaretlenenler'e Ekle</MenuItem>
+      <MenuItem icon="📅" active={has('bugun')} onClick={() => toggleList('bugun')}>Bugün Yapılacaklara Ekle</MenuItem>
+      <MenuItem icon="🕒" active={has('sonra')} onClick={() => toggleList('sonra')}>Sonra Bakılacaklara Ekle</MenuItem>
+      <MenuItem icon="🔍" active={has('kontrol')} onClick={() => toggleList('kontrol')}>Kontrol Listesine Ekle</MenuItem>
+      <MenuItem icon="📄" active={has('export')} onClick={() => toggleList('export')}>Export Listesine Ekle</MenuItem>
+      <MenuLabel>Durum</MenuLabel>
+      <MenuItem icon="✓✓" onClick={() => onStage({ stage: 9 })}>Tamamlandı Olarak İşaretle</MenuItem>
+      <MenuItem icon="🖨" active={has('baski')} onClick={() => toggleList('baski')}>Baskı Listesine Ekle</MenuItem>
+    </MenuShell>
+  )
+}
+
+function IslemlerDropdown({ detail, onFlag, onDuplicate }) {
+  return (
+    <MenuShell label="⋯ İşlemler">
+      <MenuLabel>Sipariş Kopyala</MenuLabel>
+      <MenuItem icon="⧉" onClick={onDuplicate}>Yeni sipariş olarak çoğalt</MenuItem>
+      <MenuLabel>E-posta</MenuLabel>
+      <MenuItem icon="✉" onClick={() => alert('E-posta şablonları Paket 13te gelecek')}>Şablonlu e-posta yolla</MenuItem>
+      <MenuLabel>Tedarik</MenuLabel>
+      <MenuItem icon="⏸" active={detail.is_tedarik_bekleme}
+        onClick={() => onFlag({ is_tedarik_bekleme: !detail.is_tedarik_bekleme })}>
+        Tedarik Bekleme Modu
+      </MenuItem>
+      <MenuLabel>Hata</MenuLabel>
+      <MenuItem icon="📦" danger active={detail.is_hatali_gonderildi}
+        onClick={() => onFlag({ is_hatali_gonderildi: !detail.is_hatali_gonderildi })}>
+        Hatalı Gönderildi
+      </MenuItem>
+    </MenuShell>
+  )
+}
+
+function TedarikToggle({ value, onChange }) {
+  return (
+    <button
+      onClick={() => onChange(!value)}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+        value ? 'bg-purple-500/15 border-purple-500/40 text-purple-300' : 'bg-brand-card border-brand-border text-gray-400'
+      }`}
+    >
+      <span>⏸</span> Tedarik Bekle
+      <span className={`w-8 h-4 rounded-full relative transition-colors ${value ? 'bg-purple-500' : 'bg-brand-border'}`}>
+        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${value ? 'left-4' : 'left-0.5'}`} />
+      </span>
+    </button>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Kalıp Özeti + Ürünler
+// ═══════════════════════════════════════════════════════════
+
+function KalipOzeti({ lineItems }) {
+  const total = lineItems.length
+  const eklenmis = lineItems.filter(li => li.is_kaliba_eklendi).length
+  const eksik = total - eklenmis
+
+  return (
+    <div className="card">
+      <h2 className="text-sm font-medium text-gray-200 mb-2 flex items-center gap-2">
+        <span>🧩</span> Kalıp Özeti
+      </h2>
+      {eksik > 0 ? (
+        <div className="flex items-center gap-2 text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <span>⚠</span> Bu siparişin {eksik} ürünü için henüz kalıp atanmamış.
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+          <span>✓</span> Tüm ürünler kalıba eklenmiş.
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function ProductRow({ item, onPatch, onZoom }) {
+  const [editModel, setEditModel] = useState(false)
+  const [modelVal, setModelVal] = useState(item.device_model_override || '')
+
+  const saveModel = () => {
+    onPatch({ device_model_override: modelVal, fields_to_update: ['device_model_override'] })
+    setEditModel(false)
+  }
+
+  return (
+    <div className="bg-brand-input/40 border border-brand-border/60 rounded-lg p-3">
+      <div className="flex gap-3">
+        {item.image_url ? (
+          <button
+            type="button"
+            onClick={() => onZoom && onZoom(item.image_url)}
+            className="relative w-16 h-16 rounded-lg overflow-hidden border border-brand-border shrink-0 group/img"
+            title="Büyütmek için tıkla"
+          >
+            <img src={item.image_url} alt="" className="w-full h-full object-cover"
+                 onError={e => { e.target.style.display = 'none' }} />
+            <span className="absolute inset-0 bg-black/45 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white text-lg">
+              🔍
+            </span>
+          </button>
+        ) : (
+          <div className="w-16 h-16 rounded-lg bg-brand-card border border-brand-border flex items-center justify-center text-gray-600 shrink-0">📱</div>
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-gray-200 font-medium leading-tight">{item.title}</div>
+          {(() => {
+            const model = resolveDeviceModel(item)
+            return model ? <div className="text-xs text-accent font-medium mt-0.5">📱 {model}</div> : null
+          })()}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {item.variant_title && <span className="text-[10px] bg-gray-700/40 text-gray-300 px-1.5 py-0.5 rounded">{item.variant_title}</span>}
+            {item.device_model_override && <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded">↳ Override: {item.device_model_override}</span>}
+          </div>
+          {!editModel ? (
+            <button onClick={() => setEditModel(true)} className="text-[10px] text-gray-500 hover:text-accent mt-1 flex items-center gap-1">
+              ✎ Cihaz Modelini Değiştir
+            </button>
+          ) : (
+            <div className="flex items-center gap-1 mt-1">
+              <input value={modelVal} onChange={e => setModelVal(e.target.value)} placeholder="örn: iPhone 15 Pro"
+                     className="input !text-xs !py-1 flex-1" autoFocus />
+              <button onClick={saveModel} className="btn-primary !text-[10px] !py-1 !px-2">Kaydet</button>
+              <button onClick={() => { setEditModel(false); setModelVal(item.device_model_override || '') }}
+                      className="text-gray-500 text-xs px-1">×</button>
+            </div>
+          )}
+        </div>
+
+        <div className="text-right shrink-0">
+          <div className="text-xs text-gray-400">x{item.quantity}</div>
+          {item.assigned_design && (
+            <div className="flex items-center gap-1 mt-1 justify-end">
+              {item.assigned_design.thumbnail_url ? (
+                <img src={item.assigned_design.thumbnail_url} alt="" className="w-7 h-7 rounded object-cover border border-emerald-500/30" />
+              ) : <span className="text-emerald-400 text-xs">📄</span>}
+              <span className="text-[10px] font-mono text-emerald-300">{item.assigned_design.code}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Alt aksiyon barı */}
+      <div className="flex items-center gap-3 mt-2 pt-2 border-t border-brand-border/50 flex-wrap">
+        <span className="text-[10px] uppercase text-gray-600">Durum:</span>
+        <CheckPill
+          checked={item.tedarik_status === 'tedarik'}
+          onChange={c => onPatch({ tedarik_status: c ? 'tedarik' : 'bekliyor', fields_to_update: ['tedarik_status'] })}
+          label="⏰ Tedarik"
+        />
+        <CheckPill
+          checked={item.is_hazir}
+          onChange={c => onPatch({ is_hazir: c, fields_to_update: ['is_hazir'] })}
+          label="📦 Hazır"
+        />
+        <button
+          onClick={async () => {
+            if (!confirm("Bu ürünü askıya atmak istediğine emin misin?")) return
+            try {
+              const r = await api.post(`/api/aski/from-line-item/${item.id}`, {})
+              alert(r.message || "Askıya eklendi")
+            } catch (e) {
+              alert(typeof e?.detail === "string" ? e.detail : "Askıya alınamadı")
+            }
+          }}
+          className="text-[10px] text-purple-400/80 hover:text-purple-300 hover:bg-purple-500/10 rounded px-2 py-0.5 border border-purple-500/20 hover:border-purple-500/40 flex items-center gap-1"
+          title="Bu ürünü askıya at (hatalı üretildi, stokta hazır bekliyor olarak işaretle)"
+        >🎁 Askıya At</button>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[10px] uppercase text-gray-600">Kalıp:</span>
+          {item.is_kaliba_eklendi && item.kalip_kodu ? (
+            <a
+              href="/kalip-olustur"
+              title={`${item.kalip_kodu} kalibinda`}
+              className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
+            >🧩 {item.kalip_kodu}</a>
+          ) : item.is_kaliba_eklendi ? (
+            <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
+              ✓ Kalıba eklendi
+            </span>
+          ) : (
+            <span className="text-[11px] border border-brand-border text-gray-500 px-2 py-1 rounded flex items-center gap-1">
+              ⏳ Kalıp bekliyor
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function CheckPill({ checked, onChange, label }) {
+  return (
+    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-gray-300">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="accent-accent" />
+      {label}
+    </label>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Sağ panel tab'ları
+// ═══════════════════════════════════════════════════════════
+
+function MusteriTab({ detail }) {
+  const ship = detail.shipping_address || {}
+  const bill = detail.billing_address || {}
+  return (
+    <div className="space-y-3">
+      <PanelCard title="Müşteri" icon="👤">
+        <div className="text-sm text-gray-200">{detail.customer_name || '?'}</div>
+        {detail.customer_email && <div className="text-xs text-gray-400 mt-0.5">{detail.customer_email}</div>}
+      </PanelCard>
+
+      {(ship.address1 || ship.city) && (
+        <PanelCard title="Kargo Adresi" icon="📍">
+          <AddressBlock addr={ship} />
+        </PanelCard>
+      )}
+
+      {(bill.address1 || bill.city) && (
+        <PanelCard title="Fatura Adresi" icon="📍">
+          <AddressBlock addr={bill} />
+        </PanelCard>
+      )}
+
+      <PanelCard title="Müşteri Talepleri" icon="💬">
+        {detail.customer_requests && detail.customer_requests.length > 0 ? (
+          <div className="space-y-1.5">
+            {detail.customer_requests.map(r => (
+              <div key={r.id} className="text-xs text-gray-300 bg-brand-input rounded p-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{r.request_type}</span>
+                  <span className={r.status === 'acik' ? 'text-amber-400' : 'text-emerald-400'}>{r.status}</span>
+                </div>
+                <div className="mt-1">{r.message}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 italic">Bu sipariş için müşteri talebi bulunmuyor.</p>
+        )}
+      </PanelCard>
+
+      <PanelCard title="E-posta Geçmişi" icon="✉">
+        {detail.email_logs && detail.email_logs.length > 0 ? (
+          <div className="space-y-1.5">
+            {detail.email_logs.map(e => (
+              <div key={e.id} className="text-xs text-gray-300 bg-brand-input rounded p-2">
+                <div className="font-medium">{e.subject}</div>
+                <div className="text-gray-500 mt-0.5">{e.to_email} · {formatDate(e.created_at)}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 italic">Bu siparişe gönderilmiş e-posta bulunmuyor.</p>
+        )}
+      </PanelCard>
+    </div>
+  )
+}
+
+function AddressBlock({ addr }) {
+  return (
+    <div className="text-xs text-gray-400 leading-relaxed">
+      {addr.name && <div className="text-gray-300">{addr.name}</div>}
+      {addr.address1 && <div>{addr.address1}</div>}
+      {addr.address2 && <div>{addr.address2}</div>}
+      <div>
+        {addr.city}{addr.province && ` / ${addr.province}`}
+        {addr.zip && ` ${addr.zip}`}
+      </div>
+      {addr.country && <div>{addr.country}</div>}
+      {addr.phone && <div className="text-gray-500 mt-1">{addr.phone}</div>}
+    </div>
+  )
+}
+
+function FinansalTab({ f, cur }) {
+  return (
+    <div className="space-y-3">
+      <PanelCard title="Ödeme" icon="💳">
+        <Row label="Yöntem" value={f.payment_method || '—'} />
+        <Row label="Durum" value={paymentLabel(f.payment_status)} />
+      </PanelCard>
+      <PanelCard title="Sipariş Özeti" icon="🧾">
+        <Row label="Ara Toplam" value={fmtMoney(f.subtotal, cur)} />
+        <Row label="Kargo" value={fmtMoney(f.shipping, cur)} />
+        <Row label="Vergi" value={fmtMoney(f.total_tax, cur)} />
+        {f.total_discount > 0 && <Row label="İndirim" value={`-${fmtMoney(f.total_discount, cur)}`} green />}
+        <div className="border-t border-brand-border my-2" />
+        <Row label="Toplam" value={fmtMoney(f.total, cur)} bold />
+      </PanelCard>
+    </div>
+  )
+}
+
+function KargoTab({ detail, onPatchBarkod }) {
+  const ship = detail.shipping_address || {}
+  const [barkod, setBarkod] = useState(detail.barkod_kodu || '')
+  return (
+    <div className="space-y-3">
+      <PanelCard title="Kargo Adresi" icon="🚚">
+        {(ship.address1 || ship.city) ? <AddressBlock addr={ship} /> : <p className="text-xs text-gray-500 italic">Adres bilgisi yok.</p>}
+      </PanelCard>
+      <PanelCard title="BK Kargo Barkodu" icon="🏷">
+        <div className="flex gap-1">
+          <input value={barkod} onChange={e => setBarkod(e.target.value)} placeholder="Barkod kodu"
+                 className="input !text-xs flex-1" />
+          <button onClick={() => onPatchBarkod(barkod)} className="btn-primary !text-xs !px-3">Kaydet</button>
+        </div>
+      </PanelCard>
+    </div>
+  )
+}
+
+function DigerTab({ detail }) {
+  return (
+    <div className="space-y-3">
+      {detail.note && (
+        <PanelCard title="Müşteri Notu" icon="📝">
+          <p className="text-xs text-gray-300 italic">{detail.note}</p>
+        </PanelCard>
+      )}
+      {detail.tags && (
+        <PanelCard title="Etiketler" icon="🏷">
+          <div className="flex flex-wrap gap-1">
+            {detail.tags.split(',').map((t, i) => t.trim() && (
+              <span key={i} className="text-[10px] bg-brand-input text-gray-300 px-1.5 py-0.5 rounded">{t.trim()}</span>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+      <PanelCard title="Durum Geçmişi" icon="🕐">
+        {detail.status_history && detail.status_history.length > 0 ? (
+          <div className="space-y-1.5">
+            {detail.status_history.map(h => (
+              <div key={h.id} className="text-xs border-l-2 border-brand-border pl-2">
+                <div className="text-gray-300">
+                  {actionLabel(h)}
+                </div>
+                <div className="text-[10px] text-gray-500">
+                  {h.created_by} · {formatDate(h.created_at)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500 italic">Henüz durum değişikliği yok.</p>
+        )}
+      </PanelCard>
+    </div>
+  )
+}
+
+function actionLabel(h) {
+  if (h.action === 'stage_change') return `${h.from_label || '?'} → ${h.to_label || '?'}`
+  const map = {
+    acil: '⚠ Acil olarak işaretlendi',
+    acil_kaldir: 'Acil işareti kaldırıldı',
+    iptal: '⊘ İptal edildi',
+    iptal_geri: 'İptal geri alındı',
+    hatali_gonderildi: 'Hatalı gönderildi olarak işaretlendi',
+    tedarik_bekle: '⏸ Tedarik bekleme açıldı',
+    tedarik_devam: 'Tedarik bekleme kapatıldı',
+    list_add: `Listeye eklendi: ${h.note || ''}`,
+    list_remove: `Listeden çıkarıldı: ${h.note || ''}`,
+  }
+  return map[h.action] || h.action
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Yardımcı bileşenler
+// ═══════════════════════════════════════════════════════════
+
+function PanelCard({ title, icon, children }) {
+  return (
+    <div className="card !p-3">
+      <h3 className="text-xs font-medium text-gray-300 mb-2 flex items-center gap-1.5">
+        <span>{icon}</span> {title}
+      </h3>
+      {children}
+    </div>
+  )
+}
+
+function Row({ label, value, bold, green }) {
+  return (
+    <div className="flex justify-between items-center py-0.5">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className={`text-xs ${bold ? 'font-semibold text-gray-100 text-sm' : green ? 'text-emerald-400' : 'text-gray-300'}`}>{value}</span>
+    </div>
+  )
+}
+
+function KpiCard({ label, value, icon, color = 'gray', small }) {
+  const colors = {
+    gray: 'text-gray-100', emerald: 'text-emerald-400', accent: 'text-accent',
+  }
+  return (
+    <div className="bg-brand-card border border-brand-border rounded-lg p-3 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-lg bg-brand-input flex items-center justify-center text-base shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <div className="text-[10px] uppercase text-gray-500">{label}</div>
+        <div className={`${small ? 'text-sm' : 'text-lg'} font-semibold ${colors[color]} truncate`}>{value}</div>
+      </div>
+    </div>
+  )
+}
+
+function Badge({ color, children }) {
+  const colors = {
+    red: 'bg-red-500/15 text-red-300 border-red-500/30',
+    amber: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    gray: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
+    purple: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+  }
+  return <span className={`text-[10px] px-2 py-0.5 rounded-full border ${colors[color]}`}>{children}</span>
+}
+
+function RightTab({ active, onClick, children }) {
+  return (
+    <button onClick={onClick}
+      className={`flex-1 px-2 py-1.5 rounded-md text-[11px] transition-colors ${
+        active ? 'bg-accent/15 text-accent' : 'text-gray-400 hover:text-gray-200'
+      }`}>{children}</button>
+  )
+}
+
+function errMsg(e, fallback) {
+  if (typeof e?.detail === 'string') return e.detail
+  if (Array.isArray(e?.detail)) return e.detail.map(x => x?.msg || JSON.stringify(x)).join(', ')
+  if (typeof e?.message === 'string') return e.message
+  return fallback
+}
+
+function Lightbox({ url, onClose }) {
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-6"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-5 text-white/80 hover:text-white text-3xl leading-none"
+      >×</button>
+      <img
+        src={url}
+        alt=""
+        onClick={e => e.stopPropagation()}
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+      />
+    </div>
+  )
+}
+
+function formatDate(iso) {
+  if (!iso) return '?'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '?'
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtMoney(v, cur) {
+  if (v === null || v === undefined) return '—'
+  const sym = cur === 'TRY' ? '₺' : (cur === 'USD' ? '$' : (cur === 'EUR' ? '€' : ''))
+  return `${sym}${Number(v).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function paymentLabel(status) {
+  const map = { paid: 'Ödendi', pending: 'Bekliyor', refunded: 'İade', partially_paid: 'Kısmi', voided: 'İptal' }
+  return map[status] || status || '—'
+}

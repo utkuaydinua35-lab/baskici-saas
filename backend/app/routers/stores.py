@@ -379,6 +379,56 @@ def oauth_start(
     return OAuthStartResponse(install_url=install_url)
 
 
+@router.post("/{store_id}/reauth", response_model=OAuthStartResponse)
+def oauth_reauth(
+    store_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mevcut OAuth magazasini yeniden yetkilendir (yeni kalici/offline token al)."""
+    from app.config import get_settings as _gs
+    settings = _gs()
+
+    store = db.scalar(select(Store).where(
+        Store.id == store_id, Store.tenant_id == user.tenant_id,
+    ))
+    if not store:
+        raise HTTPException(404, "Magaza bulunamadi")
+
+    cfg = store.config or {}
+    shop = _normalize_shop_domain(cfg.get("store_url", ""))
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+    if not shop.endswith(".myshopify.com") or not client_id or not client_secret:
+        raise HTTPException(
+            400,
+            "Bu magaza OAuth ile bagli degil (client_id/secret yok). "
+            "Custom app token'i icin magazayi duzenleyip access_token girin.",
+        )
+
+    payload = {
+        "user_id": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "shop": shop,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "name": store.name,
+        "slug": store.slug,
+        "store_id": str(store.id),
+        "nonce": secrets.token_urlsafe(16),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+    }
+    state_token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    redirect_uri = f"{settings.backend_url}/api/stores/oauth/callback"
+    qs = urlencode({
+        "client_id": client_id,
+        "scope": SHOPIFY_OAUTH_SCOPES,
+        "redirect_uri": redirect_uri,
+        "state": state_token,
+    })
+    return OAuthStartResponse(install_url=f"https://{shop}/admin/oauth/authorize?{qs}")
+
+
 @router.get("/oauth/callback")
 def oauth_callback(
     code: str,
@@ -439,6 +489,31 @@ def oauth_callback(
 
     # Store kaydet
     tenant_id = uuid.UUID(payload["tenant_id"])
+
+    # ─── REAUTH: state'te store_id varsa mevcut store'un token'ini guncelle ───
+    reauth_store_id = payload.get("store_id")
+    if reauth_store_id:
+        st = db.scalar(select(Store).where(
+            Store.id == uuid.UUID(reauth_store_id),
+            Store.tenant_id == tenant_id,
+        ))
+        if not st:
+            return RedirectResponse(
+                f"{settings.frontend_url}/stores?oauth=error&reason=store_not_found",
+                status_code=302,
+            )
+        cfg = dict(st.config or {})
+        cfg["access_token"] = access_token
+        cfg["granted_scopes"] = granted_scopes
+        cfg["auth_type"] = "oauth"
+        cfg["store_url"] = payload["shop"]
+        cfg.setdefault("api_version", "2024-01")
+        st.config = cfg
+        db.commit()
+        return RedirectResponse(
+            f"{settings.frontend_url}/stores?oauth=success&reauth=1&store_id={st.id}",
+            status_code=302,
+        )
 
     # Çakışma kontrol (yarış varsa)
     existing = db.scalar(select(Store).where(

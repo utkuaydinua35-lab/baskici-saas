@@ -16,7 +16,8 @@ export default function StoresPage() {
     const params = new URLSearchParams(window.location.search)
     const oauth = params.get('oauth')
     if (oauth === 'success') {
-      setOauthBanner({ ok: true, text: 'Mağaza OAuth ile başarıyla bağlandı.' })
+      const reauth = params.get('reauth')
+      setOauthBanner({ ok: true, text: reauth ? 'Mağaza yeniden yetkilendirildi (yeni token alındı).' : 'Mağaza OAuth ile başarıyla bağlandı.' })
       window.history.replaceState({}, '', window.location.pathname)
     } else if (oauth === 'error') {
       const reason = params.get('reason') || 'bilinmeyen hata'
@@ -65,6 +66,17 @@ export default function StoresPage() {
       loadData()
     } catch (e) {
       alert(`Silme başarısız: ${e.detail || e.message}`)
+    }
+  }
+
+  const handleReauth = async (store) => {
+    setError('')
+    try {
+      const r = await api.post(`/api/stores/${store.id}/reauth`, {})
+      if (r?.install_url) window.location.href = r.install_url
+      else setError('install_url alınamadı')
+    } catch (e) {
+      setError(typeof e?.detail === 'string' ? e.detail : 'Yeniden yetkilendirme başlatılamadı')
     }
   }
 
@@ -160,6 +172,15 @@ export default function StoresPage() {
                   >
                     {testingId === store.id ? 'Test...' : '🔌 Bağlantı'}
                   </button>
+                  {store.config?.auth_type === 'oauth' && (
+                    <button
+                      onClick={() => handleReauth(store)}
+                      className="btn-secondary !text-xs !py-1 !px-2"
+                      title="Token süresi dolduysa yeniden bağlan (kalıcı token)"
+                    >
+                      🔐 Yeniden Yetkilendir
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDelete(store)}
                     className="text-xs px-2 py-1 rounded-lg text-red-400 hover:bg-red-500/10 transition-colors"

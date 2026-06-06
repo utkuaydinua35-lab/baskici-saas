@@ -13,6 +13,7 @@ import MoldGeneratorPage from './pages/MoldGeneratorPage'
 import OrdersPage from './pages/OrdersPage'
 import PhoneModelsPage from './pages/PhoneModelsPage'
 import StockPage from './pages/StockPage'
+import PackagingPage from './pages/PackagingPage'
 import PipelinePage from './pages/PipelinePage'
 import RegisterPage from './pages/RegisterPage'
 import ShortcutsPage from './pages/ShortcutsPage'
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/aski" element={<AskiPage />} />
           <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />
           <Route path="/stok" element={<StockPage />} />
+          <Route path="/paketleme" element={<PackagingPage />} />
           <Route path="/designs" element={<DesignsPage />} />
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />

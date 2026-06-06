@@ -43,6 +43,7 @@ export default function Layout() {
             <SectionLabel>SİPARİŞ YÖNETİMİ</SectionLabel>
             <NavItem to="/stores" label="Mağazalar" icon="🏪" />
             <NavItem to="/orders" label="Siparişler" icon="📦" />
+            <NavItem to="/paketleme" label="Paketleme" icon="🏷️" />
 
             <SectionLabel>TASARIM YÖNETİMİ</SectionLabel>
             <NavItem to="/designs" label="Tasarımlar" icon="🎨" />

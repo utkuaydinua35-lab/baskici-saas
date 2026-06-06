@@ -16,6 +16,7 @@ from app.routers.notifications import router as notifications_router
 from app.routers.molds import router as molds_router
 from app.routers.phone_models import router as phone_models_router
 from app.routers.stock import router as stock_router
+from app.routers.packaging import router as packaging_router
 from app.routers.templates import router as templates_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.settings import router as tenant_settings_router
@@ -68,6 +69,7 @@ app.include_router(molds_router)
 app.include_router(templates_router)
 app.include_router(phone_models_router)
 app.include_router(stock_router)
+app.include_router(packaging_router)
 app.include_router(aski.router)
 
 

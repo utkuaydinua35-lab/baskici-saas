@@ -86,10 +86,10 @@ class ShopifyAdapter(StorePlatform):
         return r.json().get("order")
 
     def get_all_active_orders(self, limit: int = 250) -> list[dict]:
-        """Aktif (open) ve son 60 günün tüm siparişleri."""
+        """Aktif ve son 60 günün tüm siparişleri (status=any: read_all_orders gerektirmez)."""
         url = f"{self._base_url()}/orders.json"
         params = {
-            "status": "open",
+            "status": "any",
             "limit": min(limit, 250),
         }
         all_orders: list[dict] = []

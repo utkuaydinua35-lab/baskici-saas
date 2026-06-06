@@ -704,3 +704,60 @@ class PhoneModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class StockItem(Base):
+    """Fiziksel stok kalemi (tenant geneli). bos_kilif/ekran/lens/diger."""
+    __tablename__ = "stock_items"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sku", name="uq_stock_tenant_sku"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+
+    sku: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(30), default="bos_kilif", server_default=text("'bos_kilif'"), index=True)
+    variation: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+
+    quantity: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+    low_stock_threshold: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    product_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    variant_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class StockMovement(Base):
+    """Stok hareketi (giris/cikis audit)."""
+    __tablename__ = "stock_movements"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    stock_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_items.id", ondelete="CASCADE"), index=True
+    )
+
+    delta: Mapped[int] = mapped_column(Integer)
+    balance_after: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(40))
+    ref_mold_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    ref_order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -252,6 +252,7 @@ class MoldStageUpdate(BaseModel):
 def update_mold_stage(mold_id: uuid.UUID, payload: MoldStageUpdate,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     mo = _get_mold(db, mold_id, user.tenant_id)
+    _stock_result = None
     if payload.is_hatali is not None:
         mo.is_hatali = payload.is_hatali
         _log_mold(db, mo, user, action="hatali" if payload.is_hatali else "hatali_geri", note=payload.note)
@@ -262,9 +263,15 @@ def update_mold_stage(mold_id: uuid.UUID, payload: MoldStageUpdate,
         mo.current_stage = payload.stage
         mo.status = "tamamlandi" if payload.stage == 5 else "olusturuldu"
         _log_mold(db, mo, user, action="stage_change", from_stage=old, to_stage=payload.stage, note=payload.note)
+        if payload.stage == 5 and old != 5:
+            from app.services import stock as stock_svc
+            _stock_result = stock_svc.deduct_for_mold(db, user.tenant_id, mo, user)
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)
-    return _serialize_mold_detail(mo, db)
+    _detail = _serialize_mold_detail(mo, db)
+    if _stock_result is not None:
+        _detail["stock_deduction"] = _stock_result
+    return _detail
 
 
 class MoldItemPatch(BaseModel):

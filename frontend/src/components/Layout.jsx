@@ -53,6 +53,7 @@ export default function Layout() {
             <NavItem to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" />
 
             <SectionLabel>STOK YÖNETİMİ</SectionLabel>
+            <NavItem to="/stok" label="Stok" icon="🗃️" />
             <NavItem to="/aski" label="Askıda Bekleyenler" icon="🎁" />
 
             <SectionLabel>KATALOG</SectionLabel>

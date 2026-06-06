@@ -373,7 +373,6 @@ def oauth_start(
         "scope": scopes,
         "redirect_uri": redirect_uri,
         "state": state_token,
-        "grant_options[]": "per-user",  # opsiyonel; offline token istiyorsak çıkarılabilir
     })
     # Shopify install URL
     install_url = f"https://{shop}/admin/oauth/authorize?{qs}"

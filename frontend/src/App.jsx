@@ -11,6 +11,7 @@ import MoldDetailPage from './pages/MoldDetailPage'
 import MoldTemplatePage from './pages/MoldTemplatePage'
 import MoldGeneratorPage from './pages/MoldGeneratorPage'
 import OrdersPage from './pages/OrdersPage'
+import PhoneModelsPage from './pages/PhoneModelsPage'
 import PipelinePage from './pages/PipelinePage'
 import RegisterPage from './pages/RegisterPage'
 import ShortcutsPage from './pages/ShortcutsPage'
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
           <Route path="/aski" element={<AskiPage />} />
+          <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />
           <Route path="/designs" element={<DesignsPage />} />
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />

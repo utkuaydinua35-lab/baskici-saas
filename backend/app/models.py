@@ -671,3 +671,36 @@ class AskiItem(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class PhoneModel(Base):
+    """Telefon modeli olcu OVERLAY (baseline case_dimensions uzerine).
+    tenant_id NULL -> global; doluysa tenant'a ozel. DB baseline'i ezer."""
+    __tablename__ = "phone_models"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "spec_key", name="uq_phone_model_tenant_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+
+    spec_key: Mapped[str] = mapped_column(String(60), index=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    brand: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    width_cm: Mapped[float] = mapped_column(Float)
+    height_cm: Mapped[float] = mapped_column(Float)
+    radius_cm: Mapped[float] = mapped_column(Float, default=0, server_default=text("0"))
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

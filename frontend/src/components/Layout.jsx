@@ -55,6 +55,9 @@ export default function Layout() {
             <SectionLabel>STOK YÖNETİMİ</SectionLabel>
             <NavItem to="/aski" label="Askıda Bekleyenler" icon="🎁" />
 
+            <SectionLabel>KATALOG</SectionLabel>
+            <NavItem to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" />
+
             <SectionLabel>ESKİ SİSTEM</SectionLabel>
             <NavItem to="/shortcuts" label="Kısayollar" icon="🔗" legacy />
             <NavItem to="/pipeline" label="Pipeline" icon="⚙️" legacy />

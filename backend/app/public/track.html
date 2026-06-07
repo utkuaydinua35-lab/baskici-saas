@@ -563,6 +563,12 @@
           <div id="support-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;margin-bottom:12px;"></div>
           <div id="support-cooldown" style="display:none;font-size:12px;color:var(--text-mid);margin-bottom:8px;"></div>
           <textarea id="support-input" rows="3" placeholder="Siparişinizle ilgili sorunuzu yazın..." style="width:100%;box-sizing:border-box;background:#fff;border:1px solid var(--border-soft);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;font-size:13px;resize:vertical;"></textarea>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+            <label for="support-file" style="cursor:pointer;font-size:12px;color:var(--accent-dark);border:1px solid var(--border-soft);border-radius:8px;padding:7px 12px;background:#fff;">📎 Görsel ekle</label>
+            <input type="file" id="support-file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="onSupportFile(event)">
+            <span id="support-file-name" style="font-size:12px;color:var(--text-mid);"></span>
+          </div>
+          <div id="support-file-preview" style="display:none;margin-top:8px;"><img id="support-file-img" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border-soft);"></div>
           <button class="btn" id="support-send" onclick="sendSupport()">Gönder →</button>
           <div id="support-err" style="display:none;font-size:12px;color:#c0392b;margin-top:8px;"></div>
         </div>
@@ -757,10 +763,12 @@
         const mine=m.sender==='musteri';
         const align=mine?'flex-end':'flex-start';
         const bg=mine?'var(--accent-soft)':'#fff';
-        const who=mine?'Siz':'BERNZ';
+        const who=mine?'Siz':'BERNZ Destek Ekibi';
         return `<div style="align-self:${align};max-width:82%;background:${bg};border:1px solid var(--border-soft);border-radius:12px;padding:8px 11px;">`
           +`<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">${who}</div>`
-          +`<div style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${escapeHtml(m.body)}</div></div>`;
+          +(m.body?`<div style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${escapeHtml(m.body)}</div>`:'')
+          +(m.image_url?`<a href="${m.image_url}" target="_blank"><img src="${m.image_url}" style="max-width:200px;max-height:200px;border-radius:8px;margin-top:${m.body?'6px':'0'};display:block;"></a>`:'')
+          +`</div>`;
       }).join('');
     }
     const cd=$('support-cooldown');
@@ -781,17 +789,40 @@
       if(res.ok){ SUP_LOADED=true; renderSupportMsgs(data); }
     }catch{}
   }
+  let SUP_FILE=null;
+  function onSupportFile(e){
+    const f=e.target.files[0]; const err=$('support-err'); err.style.display='none';
+    if(!f) return;
+    if(!['image/jpeg','image/png','image/webp'].includes(f.type)){ err.style.display='block'; err.textContent='Yalnızca JPG, PNG veya WEBP.'; e.target.value=''; return; }
+    if(f.size>5*1024*1024){ err.style.display='block'; err.textContent='Görsel en fazla 5MB olabilir.'; e.target.value=''; return; }
+    SUP_FILE=f;
+    $('support-file-name').textContent=f.name;
+    $('support-file-img').src=URL.createObjectURL(f);
+    $('support-file-preview').style.display='block';
+  }
+  function clearSupportFile(){
+    SUP_FILE=null; $('support-file').value=''; $('support-file-name').textContent='';
+    $('support-file-preview').style.display='none'; $('support-file-img').src='';
+  }
   async function sendSupport(){
     if(!window.__q) return;
     const ta=$('support-input'); const msg=ta.value.trim();
     const err=$('support-err'); err.style.display='none';
-    if(msg.length<2){ err.style.display='block'; err.textContent='Lütfen mesajınızı yazın.'; return; }
+    if(msg.length<2 && !SUP_FILE){ err.style.display='block'; err.textContent='Lütfen mesaj yazın veya görsel ekleyin.'; return; }
     $('support-send').disabled=true;
     try{
-      const res=await fetch('./support/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_number:window.__q.order_number,email:window.__q.email,message:msg})});
+      let image_url=null;
+      if(SUP_FILE){
+        const fd=new FormData(); fd.append('file', SUP_FILE);
+        const up=await fetch('./support/upload',{method:'POST',body:fd});
+        const ud=await up.json();
+        if(!up.ok){ err.style.display='block'; err.textContent=ud.detail||'Görsel yüklenemedi.'; $('support-send').disabled=false; return; }
+        image_url=ud.url;
+      }
+      const res=await fetch('./support/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_number:window.__q.order_number,email:window.__q.email,message:msg,image_url})});
       const data=await res.json();
       if(!res.ok){ err.style.display='block'; err.textContent=data.detail||'Mesaj gönderilemedi.'; $('support-send').disabled=false; return; }
-      ta.value=''; SUP_LOADED=true; renderSupportMsgs(data);
+      ta.value=''; clearSupportFile(); SUP_LOADED=true; renderSupportMsgs(data);
     }catch{ err.style.display='block'; err.textContent='Bağlantı hatası. Lütfen tekrar deneyin.'; $('support-send').disabled=false; }
   }
   document.addEventListener('keydown', e => { if (e.key === 'Enter') searchOrder(); });

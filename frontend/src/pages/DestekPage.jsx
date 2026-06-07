@@ -22,6 +22,8 @@ export default function DestekPage() {
   const [error, setError] = useState('')
   const [active, setActive] = useState(null)        // detay (mesajlarla)
   const [reply, setReply] = useState('')
+  const [replyImg, setReplyImg] = useState(null)       // File
+  const [replyImgPreview, setReplyImgPreview] = useState('')
   const [sending, setSending] = useState(false)
   const msgEndRef = useRef(null)
 
@@ -56,16 +58,45 @@ export default function DestekPage() {
     if (msgEndRef.current) msgEndRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [active])
 
+  const uploadImage = async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const token = localStorage.getItem('baskici_token')
+    const res = await fetch('/api/support/upload', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || 'Görsel yüklenemedi')
+    return data.url
+  }
+
+  const onPickImage = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) { setError('Yalnızca JPG, PNG veya WEBP'); e.target.value = ''; return }
+    if (f.size > 5 * 1024 * 1024) { setError('Görsel en fazla 5MB'); e.target.value = ''; return }
+    setError('')
+    setReplyImg(f)
+    setReplyImgPreview(URL.createObjectURL(f))
+  }
+
+  const clearImage = () => { setReplyImg(null); setReplyImgPreview('') }
+
   const sendReply = async () => {
-    if (!active || reply.trim().length < 1) return
+    if (!active || (reply.trim().length < 1 && !replyImg)) return
     setSending(true)
     try {
-      const updated = await api.post(`/api/support/threads/${active.id}/reply`, { message: reply.trim() })
+      let image_url = null
+      if (replyImg) image_url = await uploadImage(replyImg)
+      const updated = await api.post(`/api/support/threads/${active.id}/reply`, { message: reply.trim(), image_url })
       setActive(updated)
       setReply('')
+      clearImage()
       loadThreads()
     } catch (e) {
-      setError(e.detail || 'Cevap gönderilemedi')
+      setError(e.detail || e.message || 'Cevap gönderilemedi')
     } finally {
       setSending(false)
     }
@@ -163,7 +194,12 @@ export default function DestekPage() {
                         mine ? 'bg-emerald-500/15 text-emerald-100' : 'bg-white/5 text-gray-200'
                       }`}>
                         <div className="text-[10px] opacity-60 mb-0.5">{mine ? 'Sen' : 'Müşteri'} · {fmt(m.created_at)}</div>
-                        <div className="text-sm whitespace-pre-wrap leading-relaxed">{m.body}</div>
+                        {m.body && <div className="text-sm whitespace-pre-wrap leading-relaxed">{m.body}</div>}
+                        {m.image_url && (
+                          <a href={m.image_url} target="_blank" rel="noreferrer">
+                            <img src={m.image_url} alt="" className="mt-1.5 max-w-[200px] max-h-[200px] rounded-lg border border-white/10" />
+                          </a>
+                        )}
                       </div>
                     </div>
                   )
@@ -175,13 +211,22 @@ export default function DestekPage() {
                 <div className="text-xs text-gray-500 text-center py-2 border-t border-white/5">Bu konuşma kapatıldı</div>
               ) : (
                 <div className="border-t border-white/5 pt-3">
+                  {replyImgPreview && (
+                    <div className="mb-2 flex items-center gap-2">
+                      <img src={replyImgPreview} alt="" className="max-w-[80px] max-h-[80px] rounded-lg border border-white/10" />
+                      <button onClick={clearImage} className="text-xs text-red-400 hover:underline">kaldır</button>
+                    </div>
+                  )}
                   <textarea value={reply} onChange={e => setReply(e.target.value)} rows={3}
                     placeholder="Cevabını yaz... (müşteri takip sayfasında görecek)"
                     className="w-full bg-brand-input border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-100 resize-y focus:outline-none focus:border-white/25"
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply() }} />
                   <div className="flex justify-between items-center mt-2">
-                    <span className="text-[10px] text-gray-600">⌘/Ctrl + Enter ile gönder</span>
-                    <button onClick={sendReply} disabled={sending || reply.trim().length < 1}
+                    <label className="text-xs text-gray-400 hover:text-gray-200 cursor-pointer">
+                      📎 Görsel
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onPickImage} />
+                    </label>
+                    <button onClick={sendReply} disabled={sending || (reply.trim().length < 1 && !replyImg)}
                       className="btn-primary !text-xs !py-1.5 !px-3 disabled:opacity-40">
                       {sending ? 'Gönderiliyor...' : 'Cevapla →'}
                     </button>

@@ -82,6 +82,8 @@ def plan_molds(
         .where(
             Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
+            # Sadece ACIK siparisler: kargoya verilmis (fulfilled) olanlar plana girmez
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         )
         .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
     )

@@ -18,6 +18,7 @@ import PipelinePage from './pages/PipelinePage'
 import RegisterPage from './pages/RegisterPage'
 import ShortcutsPage from './pages/ShortcutsPage'
 import StoresPage from './pages/StoresPage'
+import DestekPage from './pages/DestekPage'
 
 export default function App() {
   return (
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />
           <Route path="/stok" element={<StockPage />} />
           <Route path="/paketleme" element={<PackagingPage />} />
+          <Route path="/destek" element={<DestekPage />} />
           <Route path="/designs" element={<DesignsPage />} />
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />

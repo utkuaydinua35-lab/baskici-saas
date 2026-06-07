@@ -52,7 +52,7 @@ def can_customer_post(thread: SupportThread | None) -> tuple[bool, int]:
     return False, int((timedelta(hours=COOLDOWN_HOURS) - elapsed).total_seconds())
 
 
-def add_customer_message(db: Session, store, order_info: dict, body: str) -> SupportThread:
+def add_customer_message(db: Session, store, order_info: dict, body: str, image_url: str | None = None) -> SupportThread:
     """Thread'i bul/oluştur, müşteri mesajı ekle, admin'e bildirim düş."""
     now = _now()
     soid = order_info["shopify_order_id"]
@@ -69,7 +69,7 @@ def add_customer_message(db: Session, store, order_info: dict, body: str) -> Sup
         db.add(thread)
         db.flush()
 
-    msg = SupportMessage(thread_id=thread.id, sender="musteri", body=body.strip()[:MAX_MESSAGE_LEN])
+    msg = SupportMessage(thread_id=thread.id, sender="musteri", body=body.strip()[:MAX_MESSAGE_LEN], image_url=image_url)
     db.add(msg)
 
     thread.status = "acik"
@@ -82,16 +82,16 @@ def add_customer_message(db: Session, store, order_info: dict, body: str) -> Sup
         store_id=thread.store_id,
         kind="info",
         title=f"Yeni destek mesajı — {thread.order_number or thread.shopify_order_id}",
-        body=body.strip()[:200],
+        body=(body.strip()[:200] or "📷 Görsel"),
     ))
     db.commit()
     db.refresh(thread)
     return thread
 
 
-def add_admin_message(db: Session, thread: SupportThread, body: str) -> SupportThread:
+def add_admin_message(db: Session, thread: SupportThread, body: str, image_url: str | None = None) -> SupportThread:
     now = _now()
-    db.add(SupportMessage(thread_id=thread.id, sender="admin", body=body.strip()[:MAX_MESSAGE_LEN]))
+    db.add(SupportMessage(thread_id=thread.id, sender="admin", body=body.strip()[:MAX_MESSAGE_LEN], image_url=image_url))
     thread.status = "cevaplandi"
     thread.unread_admin = 0
     thread.last_admin_message_at = now
@@ -112,6 +112,7 @@ def messages_payload(db: Session, thread: SupportThread) -> list[dict]:
             "id": str(m.id),
             "sender": m.sender,
             "body": m.body,
+            "image_url": m.image_url,
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
         for m in msgs

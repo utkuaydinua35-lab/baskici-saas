@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models import SupportMessage, SupportThread, User
 from app.services import support as sup
+from app.services import uploads as uploads_service
 
 router = APIRouter(prefix="/api/support", tags=["support"])
 
@@ -97,15 +98,13 @@ def get_thread_detail(
 
 
 class ReplyRequest(BaseModel):
-    message: str
+    message: str = ""
+    image_url: str | None = None
 
     @field_validator("message")
     @classmethod
     def _m(cls, v: str) -> str:
-        v = (v or "").strip()
-        if len(v) < 1:
-            raise ValueError("Mesaj boş olamaz")
-        return v[:sup.MAX_MESSAGE_LEN]
+        return (v or "").strip()[:sup.MAX_MESSAGE_LEN]
 
 
 @router.post("/threads/{thread_id}/reply", response_model=dict)
@@ -116,7 +115,10 @@ def reply_thread(
     db: Session = Depends(get_db),
 ):
     t = _get_thread(db, thread_id, user)
-    t = sup.add_admin_message(db, t, payload.message)
+    img = payload.image_url if uploads_service.is_valid_image_url(payload.image_url) else None
+    if not payload.message.strip() and not img:
+        raise HTTPException(422, "Mesaj veya görsel gerekli.")
+    t = sup.add_admin_message(db, t, payload.message, image_url=img)
     return {**_thread_summary(db, t), "messages": sup.messages_payload(db, t)}
 
 
@@ -142,3 +144,13 @@ def close_thread(
     t.status = "kapali"
     db.commit()
     return {"ok": True}
+
+
+@router.post("/upload", response_model=dict)
+def upload_support_image_admin(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Admin panelden görsel yükler (cevaba eklemek için). URL döner."""
+    rel = uploads_service.save_image(file)
+    return {"url": uploads_service.public_url(rel)}

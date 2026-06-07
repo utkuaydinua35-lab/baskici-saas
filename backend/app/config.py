@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Public sipariş takip — hangi Shopify mağazasi sorgulanacak (store_url ile eşleşir)
     tracker_shop_domain: str = Field("2eb3e1-48.myshopify.com", alias="TRACKER_SHOP_DOMAIN")
 
+    # Destek görsellerinin servis edildiği public taban URL
+    support_public_base_url: str = Field("https://siparistakip.bernzcompany.com", alias="SUPPORT_PUBLIC_BASE_URL")
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

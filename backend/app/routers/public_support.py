@@ -9,7 +9,7 @@ mesaj olmaz). Rate-limit + 12 saat mesaj kuralı uygulanır.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.database import get_db
 from app.routers.public_tracker import rate_limit
 from app.services import support as sup
 from app.services import tracker as tk
+from app.services import uploads as uploads_service
 
 router = APIRouter(tags=["public-support"])
 
@@ -29,15 +30,8 @@ class ThreadRequest(BaseModel):
 class MessageRequest(BaseModel):
     order_number: str
     email: EmailStr
-    message: str
-
-    @field_validator("message")
-    @classmethod
-    def _msg(cls, v: str) -> str:
-        v = (v or "").strip()
-        if len(v) < 2:
-            raise ValueError("Mesaj çok kısa")
-        return v[:sup.MAX_MESSAGE_LEN]
+    message: str = ""
+    image_url: str | None = None
 
 
 def _verify_order(db: Session, order_number: str, email: str) -> dict:
@@ -74,6 +68,11 @@ def post_support_message(
     store, info = _verify_order(db, payload.order_number, str(payload.email))
     thread = sup.get_thread(db, info["shopify_order_id"])
 
+    msg = (payload.message or "").strip()
+    img = payload.image_url if uploads_service.is_valid_image_url(payload.image_url) else None
+    if not msg and not img:
+        raise HTTPException(422, "Mesaj veya görsel gerekli.")
+
     allowed, wait = sup.can_customer_post(thread)
     if not allowed:
         hours = max(1, round(wait / 3600))
@@ -82,5 +81,16 @@ def post_support_message(
             f"Yeni mesaj için lütfen bekleyin. Yaklaşık {hours} saat sonra tekrar yazabilirsiniz.",
         )
 
-    thread = sup.add_customer_message(db, store, info, payload.message)
+    thread = sup.add_customer_message(db, store, info, msg, image_url=img)
     return sup.public_thread_payload(db, thread)
+
+
+@router.post("/support/upload")
+def upload_support_image(
+    request: Request,
+    file: UploadFile = File(...),
+    _rl: None = Depends(rate_limit),
+):
+    """Müşteri görsel yükler (mesaj göndermeden önce). URL döner."""
+    rel = uploads_service.save_image(file)
+    return {"url": uploads_service.public_url(rel)}

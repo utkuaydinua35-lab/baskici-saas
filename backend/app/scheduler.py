@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.database import SessionLocal
 from app.services.sync_service import sync_all_stores
+from app.services.uploads import cleanup_old as _cleanup_uploads
 
 logger = logging.getLogger("scheduler")
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +41,9 @@ def start_scheduler():
     _scheduler.add_job(lambda: _sync_job("warmup"), "date",
                        run_date=datetime.now() + timedelta(seconds=20),
                        id="warmup_sync", max_instances=1)
+    # Gunluk destek gorsel temizligi (14 gunden eski)
+    _scheduler.add_job(lambda: _cleanup_uploads(14), "interval", hours=24,
+                       id="cleanup_support_uploads", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

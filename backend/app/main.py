@@ -89,6 +89,15 @@ app.mount(
     name="storage",
 )
 
+# ─── Destek görselleri (public /uploads) ──────────────────────
+from app.services import uploads as uploads_service
+uploads_service.ensure_upload_root()
+app.mount(
+    "/uploads",
+    StaticFiles(directory=str(uploads_service.UPLOAD_ROOT)),
+    name="uploads",
+)
+
 
 # ─── Health ───────────────────────────────────────────────────
 

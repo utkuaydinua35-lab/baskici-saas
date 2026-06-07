@@ -86,6 +86,16 @@ def add_customer_message(db: Session, store, order_info: dict, body: str, image_
     ))
     db.commit()
     db.refresh(thread)
+
+    # Telegram bildirimi (yeni musteri destek mesaji) — hata-toleransli, akisi bozmaz
+    try:
+        from app.services import telegram
+        telegram.notify_support_message(
+            thread.order_number, thread.shopify_order_id, body, has_image=bool(image_url)
+        )
+    except Exception:
+        pass
+
     return thread
 
 

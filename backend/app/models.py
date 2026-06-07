@@ -835,6 +835,7 @@ class SupportMessage(Base):
     )
     sender: Mapped[str] = mapped_column(String(10))  # musteri | admin
     body: Mapped[str] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # destek_gorsel
     is_read_by_admin: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )

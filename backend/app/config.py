@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     frontend_url: str = Field("http://localhost:5173", alias="FRONTEND_URL")
     backend_url: str = Field("http://localhost:8000", alias="BACKEND_URL")
 
+    # Public sipariş takip — hangi Shopify mağazasi sorgulanacak (store_url ile eşleşir)
+    tracker_shop_domain: str = Field("2eb3e1-48.myshopify.com", alias="TRACKER_SHOP_DOMAIN")
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

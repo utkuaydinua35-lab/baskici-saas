@@ -761,3 +761,27 @@ class StockMovement(Base):
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrackerOrderStage(Base):
+    """Public sipariş takip — siparişe atanan BERNZ ozel asamasi (mongo'dan port)."""
+    __tablename__ = "tracker_order_stages"
+    __table_args__ = (
+        UniqueConstraint("shopify_order_id", name="uq_tracker_stage_order"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    shopify_order_id: Mapped[str] = mapped_column(String(50), index=True)
+    order_number: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    stage_id: Mapped[str] = mapped_column(String(40))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

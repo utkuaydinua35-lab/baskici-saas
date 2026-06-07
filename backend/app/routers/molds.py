@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/molds", tags=["molds"])
 
 def plan(
 
-    store_id: uuid.UUID = Query(...),
+    store_id: uuid.UUID | None = Query(None),  # tum magazalar (multi-store)
 
     user: User = Depends(get_current_user),
 

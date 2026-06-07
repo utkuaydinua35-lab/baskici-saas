@@ -557,6 +557,18 @@
         <div id="r-tl"></div>
       </div>
 
+      <div id="support" style="display:none;padding:0 24px 4px;">
+        <div class="r-section-label">Destek</div>
+        <button class="btn" id="support-toggle" onclick="toggleSupport()">💬 Destek'e ulaş</button>
+        <div id="support-panel" style="display:none;margin-top:12px;border:1px solid var(--border-soft);border-radius:12px;padding:14px;background:var(--accent-softer);">
+          <div id="support-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;margin-bottom:12px;"></div>
+          <div id="support-cooldown" style="display:none;font-size:12px;color:var(--text-mid);margin-bottom:8px;"></div>
+          <textarea id="support-input" rows="3" placeholder="Siparişinizle ilgili sorunuzu yazın..." style="width:100%;box-sizing:border-box;background:#fff;border:1px solid var(--border-soft);border-radius:8px;padding:10px;color:var(--text);font-family:inherit;font-size:13px;resize:vertical;"></textarea>
+          <button class="btn" id="support-send" onclick="sendSupport()">Gönder →</button>
+          <div id="support-err" style="display:none;font-size:12px;color:#c0392b;margin-top:8px;"></div>
+        </div>
+      </div>
+
       <div class="r-tracking" id="r-tracking" style="display:none">
         <div class="r-section-label">Kargo Bilgisi</div>
         <div id="r-tracking-content"></div>
@@ -606,17 +618,6 @@
         Her türlü sorunuzda size destek olmaktan mutluluk duyarız. 🌟
         <strong>Keyifli günler dileriz — BERNZ COMPANY</strong>
       </div>
-    </div>
-  </div>
-
-  <div id="support" style="display:none;max-width:560px;margin:20px auto 0;">
-    <button class="btn" id="support-toggle" onclick="toggleSupport()" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);">💬 Destek'e ulaş</button>
-    <div id="support-panel" style="display:none;margin-top:14px;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:16px;background:rgba(255,255,255,.02);">
-      <div id="support-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;margin-bottom:12px;"></div>
-      <div id="support-cooldown" style="display:none;font-size:12px;color:#C48A6A;margin-bottom:8px;"></div>
-      <textarea id="support-input" rows="3" placeholder="Siparişinizle ilgili sorunuzu yazın..." style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px;color:inherit;font-family:inherit;font-size:13px;resize:vertical;"></textarea>
-      <button class="btn" id="support-send" onclick="sendSupport()" style="margin-top:10px;">Gönder →</button>
-      <div id="support-err" style="display:none;font-size:12px;color:#e06a6a;margin-top:8px;"></div>
     </div>
   </div>
 
@@ -751,16 +752,16 @@
   function renderSupportMsgs(data){
     const box=$('support-msgs');
     if(!data.messages || !data.messages.length){
-      box.innerHTML='<div style="font-size:12px;color:#8a93a0;text-align:center;padding:10px;">Henüz mesaj yok. Siparişinizle ilgili ilk mesajınızı yazabilirsiniz.</div>';
+      box.innerHTML='<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:10px;">Henüz mesaj yok. Siparişinizle ilgili ilk mesajınızı yazabilirsiniz.</div>';
     } else {
       box.innerHTML=data.messages.map(m=>{
         const mine=m.sender==='musteri';
         const align=mine?'flex-end':'flex-start';
-        const bg=mine?'rgba(122,184,154,.18)':'rgba(255,255,255,.05)';
+        const bg=mine?'var(--accent-soft)':'#fff';
         const who=mine?'Siz':'BERNZ';
-        return `<div style="align-self:${align};max-width:82%;background:${bg};border-radius:12px;padding:8px 11px;">`
-          +`<div style="font-size:10px;opacity:.55;margin-bottom:2px;">${who}</div>`
-          +`<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(m.body)}</div></div>`;
+        return `<div style="align-self:${align};max-width:82%;background:${bg};border:1px solid var(--border-soft);border-radius:12px;padding:8px 11px;">`
+          +`<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">${who}</div>`
+          +`<div style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${escapeHtml(m.body)}</div></div>`;
       }).join('');
     }
     const cd=$('support-cooldown');

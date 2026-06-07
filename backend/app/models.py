@@ -785,3 +785,58 @@ class TrackerOrderStage(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class SupportThread(Base):
+    """Public destek konuşması — bir siparişe bağlı (Paket 3)."""
+    __tablename__ = "support_threads"
+    __table_args__ = (
+        UniqueConstraint("shopify_order_id", name="uq_support_thread_order"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+
+    shopify_order_id: Mapped[str] = mapped_column(String(50), index=True)
+    order_number: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    customer_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # acik = musteri yazdi, admin cevabi bekliyor | cevaplandi = admin son yazan | kapali
+    status: Mapped[str] = mapped_column(
+        String(20), default="acik", server_default=text("'acik'"), nullable=False, index=True
+    )
+    unread_admin: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_customer_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    messages: Mapped[list["SupportMessage"]] = relationship(
+        back_populates="thread", cascade="all, delete-orphan", order_by="SupportMessage.created_at"
+    )
+
+
+class SupportMessage(Base):
+    """Destek konuşmasındaki tekil mesaj."""
+    __tablename__ = "support_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("support_threads.id", ondelete="CASCADE"), index=True
+    )
+    sender: Mapped[str] = mapped_column(String(10))  # musteri | admin
+    body: Mapped[str] = mapped_column(Text)
+    is_read_by_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    thread: Mapped["SupportThread"] = relationship(back_populates="messages")

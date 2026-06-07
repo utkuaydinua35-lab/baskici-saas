@@ -19,6 +19,8 @@ from app.routers.stock import router as stock_router
 from app.routers.packaging import router as packaging_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.public_tracker import router as public_tracker_router
+from app.routers.public_support import router as public_support_router
+from app.routers.support import router as support_router
 from app.routers.templates import router as templates_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.settings import router as tenant_settings_router
@@ -74,6 +76,8 @@ app.include_router(stock_router)
 app.include_router(packaging_router)
 app.include_router(dashboard_router)
 app.include_router(public_tracker_router)
+app.include_router(public_support_router)
+app.include_router(support_router)
 app.include_router(aski.router)
 
 

@@ -127,19 +127,47 @@ function NotificationBell() {
   const [items, setItems] = useState([])
   const [unread, setUnread] = useState(0)
   const ref = useRef(null)
+  const seenSupportIds = useRef(null)
+
+  const playBeep = () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext
+      if (!AC) return
+      const ctx = new AC()
+      const o = ctx.createOscillator(), g = ctx.createGain()
+      o.type = 'sine'; o.frequency.value = 880
+      o.connect(g); g.connect(ctx.destination)
+      g.gain.setValueAtTime(0.0001, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
+      o.start(); o.stop(ctx.currentTime + 0.36)
+      o.onended = () => ctx.close()
+    } catch {}
+  }
 
   const load = async () => {
     try {
       const r = await api.get('/api/notifications?limit=30')
-      setItems(r.items || [])
+      const list = r.items || []
+      setItems(list)
       setUnread(r.unread_count || 0)
+      const supportIds = list
+        .filter(n => (n.title || '').toLowerCase().includes('destek mesaj'))
+        .map(n => n.id)
+      if (seenSupportIds.current === null) {
+        seenSupportIds.current = new Set(supportIds)
+      } else {
+        const fresh = supportIds.some(id => !seenSupportIds.current.has(id))
+        seenSupportIds.current = new Set(supportIds)
+        if (fresh) playBeep()
+      }
     } catch {}
   }
 
   useEffect(() => { load() }, [])
   // 60 sn'de bir + senk sonrası tazele
   useEffect(() => {
-    const t = setInterval(load, 60000)
+    const t = setInterval(load, 20000)
     const onRefresh = () => load()
     window.addEventListener('notifications:refresh', onRefresh)
     return () => { clearInterval(t); window.removeEventListener('notifications:refresh', onRefresh) }

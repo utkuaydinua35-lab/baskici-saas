@@ -33,16 +33,20 @@ function DesignPicker({ storeId, onPick, onClose, title }) {
         <div className="p-3 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2">
           {loading && <div className="col-span-full text-center text-gray-500 text-sm py-6">Yükleniyor...</div>}
           {!loading && items.length === 0 && <div className="col-span-full text-center text-gray-500 text-sm py-6">Tasarım yok.</div>}
-          {items.map(d => (
-            <button key={d.id} onClick={() => onPick(d)}
-              className="card !p-2 text-left hover:border-accent/50 transition-colors">
-              <div className="aspect-square bg-brand-input/40 rounded mb-1 overflow-hidden flex items-center justify-center">
-                {d.thumbnail_url ? <img src={d.thumbnail_url} alt="" className="w-full h-full object-contain" /> : <span className="opacity-30 text-2xl">🎨</span>}
-              </div>
-              <div className="text-xs text-gray-200 truncate font-mono">{d.code}</div>
-              {d.kalip_tipi && <div className="text-[10px] text-gray-500">{d.kalip_tipi}</div>}
-            </button>
-          ))}
+          {items.map(d => {
+            const img = d.thumbnail_url || d.product_image_url || null
+            return (
+              <button key={d.id} onClick={() => onPick(d)}
+                className="card !p-2 text-left hover:border-accent/50 transition-colors">
+                <div className="aspect-square bg-brand-input/40 rounded mb-1 overflow-hidden flex items-center justify-center">
+                  {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-contain" /> : <span className="opacity-30 text-2xl">🎨</span>}
+                </div>
+                <div className="text-xs text-gray-200 truncate font-mono">{d.code}</div>
+                {d.product_title && <div className="text-[10px] text-gray-400 truncate">{d.product_title}</div>}
+                {d.kalip_tipi && <div className="text-[10px] text-gray-500">{d.kalip_tipi}</div>}
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -56,10 +60,11 @@ function DesignSlot({ label, design, onPick, onClear }) {
       {design ? (
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 rounded bg-brand-input/50 overflow-hidden shrink-0 flex items-center justify-center">
-            {design.thumbnail_url ? <img src={design.thumbnail_url} alt="" className="w-full h-full object-contain" /> : <span className="opacity-30">🎨</span>}
+            {(design.thumbnail_url || design.product_image_url) ? <img src={design.thumbnail_url || design.product_image_url} alt="" className="w-full h-full object-contain" /> : <span className="opacity-30">🎨</span>}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs font-mono text-gray-200 truncate">{design.code}</div>
+            {design.product_title && <div className="text-[10px] text-gray-400 truncate">{design.product_title}</div>}
             {design.kalip_tipi && <div className="text-[10px] text-gray-500">{design.kalip_tipi}</div>}
           </div>
           <button onClick={onClear} className="text-red-400/70 hover:text-red-300 text-xs px-1">×</button>

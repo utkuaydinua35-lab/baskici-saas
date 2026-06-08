@@ -39,6 +39,8 @@ def _design_brief(db: Session, design_id) -> dict | None:
         "id": str(d.id),
         "code": d.code,
         "kalip_tipi": d.kalip_tipi,
+        "product_title": d.product_title,
+        "product_image_url": d.product_image_url,
         "thumbnail_url": storage.get_thumbnail_url(d.file_path, d.file_format) if d.file_path else None,
     }
 

@@ -13,7 +13,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store
+from app.models import AccessoryProduct, Design, KisiyeOzelProduct, LineItem, Order, Store
 from app.services import placement_rules as pr, storage
 
 
@@ -59,6 +59,16 @@ def plan_molds(
     kop_keys: set[tuple[uuid.UUID, str]] = {
         (s_id, str(pid)) for (s_id, pid) in db.execute(kop_q).all()
     }
+
+    # Aksesuar (store_id, product_id) — kalip planina dahil edilmez
+    acc_q = (
+        select(AccessoryProduct.store_id, AccessoryProduct.product_id)
+        .join(Store, Store.id == AccessoryProduct.store_id)
+        .where(Store.tenant_id == tenant_id, AccessoryProduct.product_id.isnot(None))
+    )
+    if store_id:
+        acc_q = acc_q.where(AccessoryProduct.store_id == store_id)
+    acc_keys: set[tuple] = {(s_id, str(pid)) for (s_id, pid) in db.execute(acc_q).all()}
 
     # (store_id, product_id) -> Design
     design_q = (
@@ -120,6 +130,8 @@ def plan_molds(
                 continue
             pid = str(li.product_id) if li.product_id else None
             model = extract_phone_model(li)
+            if pid and (order_store_id, pid) in acc_keys:
+                continue  # aksesuar — kalipa da eksik listesine de girmez
             is_ko = (order_store_id, pid) in kop_keys if pid else False
 
             design = None

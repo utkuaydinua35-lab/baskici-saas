@@ -215,6 +215,26 @@ class KisiyeOzelProduct(Base):
     store: Mapped[Store] = relationship(back_populates="kisiye_ozel_products")
 
 
+class AccessoryProduct(Base):
+    """Aksesuar olarak isaretlenen Shopify urunleri — kalip planina dahil edilmez."""
+    __tablename__ = "accessory_products"
+    __table_args__ = (
+        UniqueConstraint("store_id", "product_id", name="uq_acc_store_product"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    product_id: Mapped[str] = mapped_column(String(50), index=True)
+    product_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ExternalCacheEntry(Base):
     __tablename__ = "external_cache"
     __table_args__ = (

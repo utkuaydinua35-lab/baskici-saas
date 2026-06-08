@@ -13,7 +13,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import AccessoryProduct, Design, KisiyeOzelProduct, LineItem, Order, Store
+from app.models import AccessoryProduct, CoupleProduct, Design, KisiyeOzelProduct, LineItem, Order, Store
 from app.services import placement_rules as pr, storage
 
 
@@ -86,6 +86,28 @@ def plan_molds(
         (d.store_id, str(d.product_id)): d for d in designs
     }
 
+    # Couple (cift kilif) urunleri: (store_id, product_id) -> CoupleProduct
+    couple_q = (
+        select(CoupleProduct)
+        .join(Store, Store.id == CoupleProduct.store_id)
+        .where(Store.tenant_id == tenant_id, CoupleProduct.product_id.isnot(None))
+    )
+    if store_id:
+        couple_q = couple_q.where(CoupleProduct.store_id == store_id)
+    couple_rows = db.scalars(couple_q).all()
+    couple_map: dict[tuple, CoupleProduct] = {
+        (c.store_id, str(c.product_id)): c for c in couple_rows
+    }
+    # Couple tasarimlarini id'den bulmak icin (product_id'siz de olabilirler)
+    _couple_design_ids = set()
+    for c in couple_rows:
+        if c.design_id_1: _couple_design_ids.add(c.design_id_1)
+        if c.design_id_2: _couple_design_ids.add(c.design_id_2)
+    design_by_id: dict[uuid.UUID, Design] = {}
+    if _couple_design_ids:
+        for d in db.scalars(select(Design).where(Design.id.in_(_couple_design_ids))).all():
+            design_by_id[d.id] = d
+
     # Bekleyen siparişler
     orders_q = (
         select(Order)
@@ -132,6 +154,56 @@ def plan_molds(
             model = extract_phone_model(li)
             if pid and (order_store_id, pid) in acc_keys:
                 continue  # aksesuar — kalipa da eksik listesine de girmez
+
+            # Couple (cift kilif): 2 ayri tasarim, ayni model, 2 birim
+            couple = couple_map.get((order_store_id, pid)) if pid else None
+            if couple is not None:
+                d1 = design_by_id.get(couple.design_id_1) if couple.design_id_1 else None
+                d2 = design_by_id.get(couple.design_id_2) if couple.design_id_2 else None
+                if not d1 or not d2:
+                    add_eksik("couple_tasarim_eksik", li, order, model)
+                    continue
+                if not model:
+                    add_eksik("model_belirsiz", li, order, model)
+                    continue
+                qty = li.quantity or 1
+                _ok = True
+                _pending = []
+                for _cd in (d1, d2):
+                    _var = pr.normalize_variation(_cd.kalip_tipi)
+                    _kod = pr.resolve_kalip_kodu(model, _var, k)
+                    if not _kod:
+                        add_eksik("model_taninmadi", li, order, model)
+                        _ok = False
+                        break
+                    _pending.append((_cd, _var, _kod))
+                if not _ok:
+                    continue
+                for _ in range(qty):
+                    for (_cd, _var, _kod) in _pending:
+                        units.append({
+                            "line_item_id": str(li.id),
+                            "order_id": str(order.id),
+                            "order_number": order.order_number,
+                            "store_id": str(order_store_id),
+                            "model": model,
+                            "product_id": pid,
+                            "design_id": str(_cd.id),
+                            "design_code": _cd.code,
+                            "variation": _var,
+                            "kod": _kod,
+                            "is_kisiye_ozel": False,
+                            "title": li.title,
+                            "thumbnail_url": (
+                                storage.get_thumbnail_url(_cd.file_path, _cd.file_format)
+                                if _cd else None
+                            ),
+                            "birincil_renk": getattr(_cd, "birincil_renk", None),
+                            "kalip_tipi": getattr(_cd, "kalip_tipi", None),
+                            "is_couple": True,
+                        })
+                continue
+
             is_ko = (order_store_id, pid) in kop_keys if pid else False
 
             design = None

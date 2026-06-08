@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Panel taban URL (Telegram deep-link icin)
     panel_base_url: str = Field("https://baskici.bernzcompany.com", alias="PANEL_BASE_URL")
 
+    # Sürat Kargo
+    surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")
+    surat_sifre: str = Field("", alias="SURAT_SIFRE")
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

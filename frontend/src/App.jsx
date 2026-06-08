@@ -20,6 +20,7 @@ import ShortcutsPage from './pages/ShortcutsPage'
 import StoresPage from './pages/StoresPage'
 import DestekPage from './pages/DestekPage'
 import AccessoriesPage from './pages/AccessoriesPage'
+import CoupleProductsPage from './pages/CoupleProductsPage'
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/destek" element={<DestekPage />} />
           <Route path="/designs" element={<DesignsPage />} />
           <Route path="/aksesuarlar" element={<AccessoriesPage />} />
+          <Route path="/couple" element={<CoupleProductsPage />} />
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />
           <Route path="/kalip-olustur" element={<MoldGeneratorPage />} />

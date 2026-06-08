@@ -41,6 +41,16 @@ export default function DestekPage() {
 
   useEffect(() => { loadThreads() }, [filter])
 
+  // Telegram deep-link: /destek?thread=<id> ile gelince o talebi otomatik ac
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get('thread')
+    if (tid) {
+      openThread(tid)
+      // URL'i temizle (geri/yenilemede tekrar acmasin)
+      window.history.replaceState({}, '', '/destek')
+    }
+  }, [])
+
   const openThread = async (id) => {
     try {
       const t = await api.get(`/api/support/threads/${id}`)

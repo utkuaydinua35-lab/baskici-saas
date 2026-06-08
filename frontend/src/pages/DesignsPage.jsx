@@ -31,6 +31,13 @@ const RENK_SECENEKLERI = [
   { name: 'Gri', hex: '#BCBCBC' },
 ]
 
+const REASON_LABELS = {
+  urun_tasarima_baglanmamis: 'Ürün tasarıma bağlanmamış',
+  kisiye_ozel_tasarim_eksik: 'Kişiye özel tasarımı eksik',
+  model_belirsiz: 'Telefon modeli belirsiz',
+  model_taninmadi: 'Model tanınmadı',
+}
+
 export default function DesignsPage() {
   const [stores, setStores] = useState([])
   const [storesLoading, setStoresLoading] = useState(true)
@@ -46,6 +53,7 @@ export default function DesignsPage() {
   const [search, setSearch] = useState('')
   const [unmatched, setUnmatched] = useState([])
   const [unmatchedOpen, setUnmatchedOpen] = useState(false)
+  const [eksikler, setEksikler] = useState([])
   const [assignProduct, setAssignProduct] = useState(null)  // {product_id, sample_title}
   const [filters, setFilters] = useState({
     no_product: false,
@@ -82,6 +90,14 @@ export default function DesignsPage() {
       const r = await api.get(`/api/designs/_meta/unmatched-products?store_id=${sid}`)
       setUnmatched(r.items || [])
     } catch { setUnmatched([]) }
+  }
+
+  const loadEksikler = async (sid) => {
+    try {
+      const url = sid ? `/api/molds/plan?store_id=${sid}` : '/api/molds/plan'
+      const r = await api.get(url)
+      setEksikler(r.eksikler || [])
+    } catch { setEksikler([]) }
   }
 
   const loadDesigns = async () => {
@@ -124,6 +140,7 @@ export default function DesignsPage() {
 
   useEffect(() => { loadDesigns() }, [selectedStore, page, activeTab, filters])
   useEffect(() => { loadUnmatched(selectedStore) }, [selectedStore])
+  useEffect(() => { loadEksikler(selectedStore) }, [selectedStore])
   useEffect(() => {
     const h = () => loadUnmatched(selectedStore)
     window.addEventListener('notifications:refresh', h)
@@ -227,6 +244,30 @@ export default function DesignsPage() {
                 color="gray" label="◔ CMYK Yapılmamış" />
             </div>
           </div>
+
+          {eksikler.length > 0 && (
+            <div className="card mb-3 border-amber-500/30 bg-amber-500/5">
+              <h2 className="text-sm font-medium text-amber-300 mb-2">
+                ⚠ {eksikler.reduce((a, e) => a + (e.count || 0), 0)} kalem için tasarım eksik — kalıp oluşturmadan önce tamamlanmalı
+              </h2>
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {eksikler.slice(0, 50).map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-brand-input/40 rounded px-2 py-1.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">
+                      {REASON_LABELS[e.reason] || e.reason}
+                    </span>
+                    <span className="text-gray-300 truncate flex-1">{e.title || '(başlıksız)'}</span>
+                    {e.model && <span className="text-gray-500 shrink-0">{e.model}</span>}
+                    <span className="text-gray-600 shrink-0">×{e.count}</span>
+                  </div>
+                ))}
+                {eksikler.length > 50 && <div className="text-[11px] text-gray-500 px-2">+{eksikler.length - 50} daha...</div>}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                Tasarıma bağlanmamış ürünleri aşağıdan, kişiye özelleri <a href="/kisiye-ozel" className="text-accent hover:underline">Kişiye Özel</a> sayfasından tamamla.
+              </p>
+            </div>
+          )}
 
           {unmatched.length > 0 && (
             <div className="card mb-3 border-amber-500/30 bg-amber-500/5">

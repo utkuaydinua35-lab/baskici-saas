@@ -568,7 +568,10 @@
             <input type="file" id="support-file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="onSupportFile(event)">
             <span id="support-file-name" style="font-size:12px;color:var(--text-mid);"></span>
           </div>
-          <div id="support-file-preview" style="display:none;margin-top:8px;"><img id="support-file-img" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border-soft);"></div>
+          <div id="support-file-preview" style="display:none;margin-top:8px;position:relative;width:max-content;">
+            <img id="support-file-img" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border-soft);display:block;">
+            <button type="button" onclick="clearSupportFile()" title="Görseli kaldır" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:none;background:#c0392b;color:#fff;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.3);">×</button>
+          </div>
           <button class="btn" id="support-send" onclick="sendSupport()">Gönder →</button>
           <div id="support-err" style="display:none;font-size:12px;color:#c0392b;margin-top:8px;"></div>
         </div>
@@ -679,6 +682,7 @@
       window.__q = { order_number: num, email };
       SUP_LOADED = false;
       $('support-panel').style.display = 'none';
+      autoOpenSupportIfExists();
       $('support-msgs').innerHTML = '';
       $('support').style.display = 'block';
     } catch { showError('Bağlantı hatası. Lütfen tekrar deneyin.'); }
@@ -768,6 +772,7 @@
           +`<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;">${who}</div>`
           +(m.body?`<div style="font-size:13px;line-height:1.5;color:var(--text);white-space:pre-wrap;">${escapeHtml(m.body)}</div>`:'')
           +(m.image_url?`<a href="${m.image_url}" target="_blank"><img src="${m.image_url}" style="max-width:200px;max-height:200px;border-radius:8px;margin-top:${m.body?'6px':'0'};display:block;"></a>`:'')
+          +(m.created_at?`<div style="font-size:9px;color:var(--text-muted);margin-top:4px;text-align:right;">${fmtMsgTime(m.created_at)}</div>`:'')
           +`</div>`;
       }).join('');
     }
@@ -790,6 +795,26 @@
     }catch{}
   }
   let SUP_FILE=null;
+  function fmtMsgTime(iso){
+    try{
+      const d=new Date(iso);
+      const months=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+      const p=n=>String(n).padStart(2,'0');
+      return `${p(d.getDate())} ${months[d.getMonth()]} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }catch{ return ''; }
+  }
+  async function autoOpenSupportIfExists(){
+    if(!window.__q) return;
+    try{
+      const res=await fetch('./support/thread',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(window.__q)});
+      const data=await res.json();
+      if(res.ok && data.exists && data.messages && data.messages.length){
+        SUP_LOADED=true;
+        $('support-panel').style.display='block';
+        renderSupportMsgs(data);
+      }
+    }catch{}
+  }
   function onSupportFile(e){
     const f=e.target.files[0]; const err=$('support-err'); err.style.display='none';
     if(!f) return;

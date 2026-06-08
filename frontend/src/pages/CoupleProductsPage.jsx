@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 
 // Tasarim secici modal — mevcut tasarimlardan birini ara/sec
-function DesignPicker({ storeId, onPick, onClose, title }) {
+function DesignPicker({ storeId, onPick, onClose, title, productImgMap }) {
   const [q, setQ] = useState('')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
@@ -34,12 +34,13 @@ function DesignPicker({ storeId, onPick, onClose, title }) {
           {loading && <div className="col-span-full text-center text-gray-500 text-sm py-6">Yükleniyor...</div>}
           {!loading && items.length === 0 && <div className="col-span-full text-center text-gray-500 text-sm py-6">Tasarım yok.</div>}
           {items.map(d => {
-            const img = d.thumbnail_url || d.product_image_url || null
+            const img = d.product_image_url || (productImgMap && d.product_id ? productImgMap[String(d.product_id)] : null) || d.thumbnail_url || null
             return (
-              <button key={d.id} onClick={() => onPick(d)}
+              <button key={d.id} onClick={() => onPick({ ...d, _img: img })}
                 className="card !p-2 text-left hover:border-accent/50 transition-colors">
-                <div className="aspect-square bg-brand-input/40 rounded mb-1 overflow-hidden flex items-center justify-center">
-                  {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-contain" /> : <span className="opacity-30 text-2xl">🎨</span>}
+                <div className="aspect-square bg-brand-input/40 rounded mb-1 overflow-hidden flex items-center justify-center relative">
+                  <span className="opacity-30 text-2xl absolute">🎨</span>
+                  {img && <img src={img} alt="" loading="lazy" className="w-full h-full object-contain relative" onError={e => { e.currentTarget.style.display = 'none' }} />}
                 </div>
                 <div className="text-xs text-gray-200 truncate font-mono">{d.code}</div>
                 {d.product_title && <div className="text-[10px] text-gray-400 truncate">{d.product_title}</div>}
@@ -53,14 +54,16 @@ function DesignPicker({ storeId, onPick, onClose, title }) {
   )
 }
 
-function DesignSlot({ label, design, onPick, onClear }) {
+function DesignSlot({ label, design, onPick, onClear, productImgMap }) {
+  const slotImg = design ? (design._img || design.product_image_url || (productImgMap && design.product_id ? productImgMap[String(design.product_id)] : null) || design.thumbnail_url || null) : null
   return (
     <div className="flex-1 border border-brand-border rounded-lg p-2 bg-brand-input/30">
       <div className="text-[10px] text-gray-500 mb-1">{label}</div>
       {design ? (
         <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded bg-brand-input/50 overflow-hidden shrink-0 flex items-center justify-center">
-            {(design.thumbnail_url || design.product_image_url) ? <img src={design.thumbnail_url || design.product_image_url} alt="" className="w-full h-full object-contain" /> : <span className="opacity-30">🎨</span>}
+          <div className="w-10 h-10 rounded bg-brand-input/50 overflow-hidden shrink-0 flex items-center justify-center relative">
+            <span className="opacity-30 absolute">🎨</span>
+            {slotImg && <img src={slotImg} alt="" className="w-full h-full object-contain relative" onError={e => { e.currentTarget.style.display = 'none' }} />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs font-mono text-gray-200 truncate">{design.code}</div>
@@ -161,6 +164,9 @@ export default function CoupleProductsPage() {
     } catch (e) { setError(e.detail || 'Kaldırılamadı') } finally { setSavingId(null) }
   }
 
+  const productImgMap = {}
+  products.forEach(p => { if (p.id && p.image_url) productImgMap[String(p.id)] = p.image_url })
+
   const filtered = products.filter(p => {
     if (onlyCouple && !isCouple(p.id)) return false
     if (search && !(p.title || '').toLowerCase().includes(search.toLowerCase())) return false
@@ -218,10 +224,10 @@ export default function CoupleProductsPage() {
 
                 {(marked || hasDraft) && (
                   <div className="flex gap-2 mt-3">
-                    <DesignSlot label="1. Tasarım" design={sel.design_1}
+                    <DesignSlot label="1. Tasarım" design={sel.design_1} productImgMap={productImgMap}
                       onPick={() => setPicker({ productId: p.id, slot: 'design_1' })}
                       onClear={() => setSlot(p.id, 'design_1', null)} />
-                    <DesignSlot label="2. Tasarım" design={sel.design_2}
+                    <DesignSlot label="2. Tasarım" design={sel.design_2} productImgMap={productImgMap}
                       onPick={() => setPicker({ productId: p.id, slot: 'design_2' })}
                       onClear={() => setSlot(p.id, 'design_2', null)} />
                   </div>
@@ -252,6 +258,7 @@ export default function CoupleProductsPage() {
         <DesignPicker
           storeId={selectedStore}
           title={picker.slot === 'design_1' ? '1. Tasarımı seç' : '2. Tasarımı seç'}
+          productImgMap={productImgMap}
           onPick={(d) => { setSlot(picker.productId, picker.slot, d); setPicker(null) }}
           onClose={() => setPicker(null)}
         />

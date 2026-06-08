@@ -1,47 +1,65 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { api, getToken } from '../lib/api'
 
+const LAST_INDEX_KEY = 'packaging_last_index'
+const CARGO_HOUR = 18   // kargo kesim saati
+
+// stages.py ikon hint -> emoji
+const STAGE_EMOJI = {
+  inbox: '📥', loader: '🔄', barcode: '|||', layers: '🧩',
+  printer: '🖨', 'printer-check': '🖨', package: '📦', truck: '🚚', 'check-circle': '✓',
+}
+
+function useCargoCountdown() {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(t)
+  }, [])
+  const d = new Date(now)
+  const target = new Date(d); target.setHours(CARGO_HOUR, 0, 0, 0)
+  let diffMs = target - d
+  const passed = diffMs <= 0
+  if (diffMs < 0) diffMs = 0
+  const h = Math.floor(diffMs / 3600000)
+  const m = Math.floor((diffMs % 3600000) / 60000)
+  const clock = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  return { clock, h, m, passed }
+}
+
 export default function PackagingPage() {
-  const [ref, setRef] = useState('')
-  const [data, setData] = useState(null)
-  const [stock, setStock] = useState([])
-  const [rows, setRows] = useState([])      // [{stock_item_id, quantity}]
-  const [loading, setLoading] = useState(false)
+  const [queue, setQueue] = useState({ total: 0, index: 0, order: null, stages: [] })
+  const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
-  const [result, setResult] = useState(null)
+  const { clock, h, m, passed } = useCargoCountdown()
 
-  const loadStock = async () => {
+  const loadIndex = useCallback(async (idx) => {
+    setLoading(true); setMsg(null)
     try {
-      const r = await api.get('/api/stock')
-      setStock((r.items || []).filter(i => i.is_active))
-    } catch { setStock([]) }
-  }
-  useEffect(() => { loadStock() }, [])
-
-  const fetchOrder = async () => {
-    if (!ref.trim()) return
-    setLoading(true); setMsg(null); setResult(null); setData(null)
-    try {
-      const r = await api.get(`/api/packaging/order/${encodeURIComponent(ref.trim())}`)
-      setData(r)
-      // önerilerden başlangıç düşüm satırları (eşleşeni olanlar)
-      const init = (r.suggestions || [])
-        .filter(s => s.suggested_stock_item_id)
-        .map(s => ({ stock_item_id: s.suggested_stock_item_id, quantity: s.quantity || 1 }))
-      setRows(init)
+      const r = await api.get(`/api/packaging/queue?index=${idx}`)
+      setQueue(r)
+      try { localStorage.setItem(LAST_INDEX_KEY, String(r.index)) } catch {}
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Sipariş bulunamadı' })
+      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Kuyruk yüklenemedi' })
     } finally { setLoading(false) }
-  }
+  }, [])
 
-  const addRow = () => setRows(r => [...r, { stock_item_id: '', quantity: 1 }])
-  const setRow = (i, patch) => setRows(r => r.map((x, idx) => idx === i ? { ...x, ...patch } : x))
-  const delRow = (i) => setRows(r => r.filter((_, idx) => idx !== i))
+  // ilk acilis: localStorage'daki son index (yoksa 0 = en eski)
+  useEffect(() => {
+    let start = 0
+    try { const v = parseInt(localStorage.getItem(LAST_INDEX_KEY) || '0', 10); if (!isNaN(v) && v >= 0) start = v } catch {}
+    loadIndex(start)
+  }, [loadIndex])
+
+  const total = queue.total || 0
+  const index = queue.index || 0
+  const order = queue.order
+  const go = (idx) => { if (total === 0) return; const c = Math.max(0, Math.min(idx, total - 1)); loadIndex(c) }
 
   const downloadLabel = async () => {
-    const r = ref.trim()
-    const res = await fetch(`/api/packaging/order/${encodeURIComponent(r)}/label`, {
+    if (!order) return
+    const res = await fetch(`/api/packaging/order/${encodeURIComponent(order.id)}/label`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
     if (!res.ok) { setMsg({ ok: false, text: 'Etiket üretilemedi' }); return }
@@ -51,58 +69,34 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  const printAndComplete = async () => {
-    setBusy(true); setMsg(null); setResult(null)
-    try {
-      const deductions = rows
-        .filter(x => x.stock_item_id && x.quantity > 0)
-        .map(x => ({ stock_item_id: x.stock_item_id, quantity: parseInt(x.quantity, 10) }))
-      const r = await api.post(`/api/packaging/order/${encodeURIComponent(ref.trim())}/complete`, { deductions })
-      setResult(r)
-      await downloadLabel()
-      // veriyi tazele
-      const fresh = await api.get(`/api/packaging/order/${encodeURIComponent(ref.trim())}`)
-      setData(fresh)
-      loadStock()
-      setMsg({
-        ok: true,
-        text: r.already
-          ? 'Bu sipariş zaten paketlenmişti — etiket yeniden yazdırıldı (stok tekrar düşmedi).'
-          : `Paketlendi · ${r.deducted} stok düşüldü${r.shortages?.length ? `, ${r.shortages.length} eksik` : ''}.`,
-      })
-    } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'İşlem başarısız' })
-    } finally { setBusy(false) }
+  const simpleCargoSend = async () => {
+    // Basit kargo entegrasyonu ileride. Simdilik placeholder.
+    setMsg({ ok: false, text: 'Basit kargo entegrasyonu henüz aktif değil — yakında.' })
   }
 
-  const stockName = id => {
-    const s = stock.find(x => x.id === id)
-    return s ? `${s.name} (${s.sku}) · ${s.quantity} adet` : ''
+  const fmtDate = (iso) => {
+    if (!iso) return ''
+    try {
+      return new Date(iso).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch { return iso }
   }
+
+  const stageEmoji = (icon) => STAGE_EMOJI[icon] || '•'
 
   return (
-    <div className="max-w-[1100px]">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-gray-100">🏷️ Paketleme</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Sipariş no veya barkod oku → içindekileri ve aksesuarları onayla → kargo etiketi
-          yazdır. Etiket yazdırınca sipariş "Paketlendi" olur, aksesuar stoğu düşer.
-        </p>
-      </div>
-
-      <div className="card mb-4 flex flex-wrap gap-2 !p-3">
-        <input
-          type="text"
-          placeholder="Sipariş no / barkod (ör: #1234)"
-          value={ref}
-          onChange={e => setRef(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && fetchOrder()}
-          className="input !text-sm flex-1 min-w-[220px]"
-          autoFocus
-        />
-        <button onClick={fetchOrder} disabled={loading} className="btn-secondary !text-sm disabled:opacity-50">
-          {loading ? 'Getiriliyor...' : 'Getir'}
-        </button>
+    <div className="max-w-[1400px]">
+      {/* Ust bar: kargo geri sayim + kalan */}
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <div className="text-sm text-gray-300">
+          <span className="font-mono text-gray-100">{clock}</span>
+          {' — '}
+          {passed
+            ? <span className="text-red-400 font-medium">KARGO SAATİ GEÇTİ</span>
+            : <span className="text-gray-300">KARGO SAATİNE <b className="text-gray-100">{h} SAAT {m} DAKİKA</b> KALDI</span>}
+        </div>
+        <div className="text-sm text-gray-400">
+          KALAN PAKETLENECEK SİPARİŞ: <b className="text-gray-100">{total} ADET</b>
+        </div>
       </div>
 
       {msg && (
@@ -112,104 +106,99 @@ export default function PackagingPage() {
         }`}>{msg.ok ? '✓ ' : '✗ '}{msg.text}</div>
       )}
 
-      {result?.shortages?.length > 0 && (
-        <div className="text-sm rounded-lg px-3 py-2 mb-3 border bg-amber-500/10 border-amber-500/30 text-amber-300">
-          ⚠ Yetersiz/eksik stok (paketleme yine de tamamlandı):
-          <ul className="mt-1 text-xs list-disc list-inside">
-            {result.shortages.map((s, i) => (
-              <li key={i}>{s.name || s.sku || s.stock_item_id} — gereken {s.need}{s.deducted != null ? `, düşülen ${s.deducted}` : ''} ({s.reason})</li>
-            ))}
-          </ul>
+      {loading && !order && <div className="text-gray-500 text-sm text-center py-16">Yükleniyor...</div>}
+
+      {!loading && total === 0 && (
+        <div className="card text-center py-16 text-gray-500">
+          <div className="text-3xl mb-2">📦</div>
+          Paketlenecek (gönderilmemiş) sipariş yok.
         </div>
       )}
 
-      {data && (
-        <>
-          <div className="card mb-4 !p-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <div className="text-lg font-semibold text-gray-100">
-                  {data.order.name || data.order.order_number}
-                  {data.is_packaged && (
-                    <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                      Paketlendi
+      {order && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* SOL: urun gorselleri */}
+          <div>
+            <div className="grid grid-cols-2 gap-3">
+              {order.items.map((it) => (
+                <div key={it.line_item_id} className="card !p-0 overflow-hidden">
+                  <div className="aspect-square bg-brand-input/40 flex items-center justify-center overflow-hidden">
+                    {it.thumbnail_url
+                      ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-cover" />
+                      : <div className="text-4xl opacity-30">📱</div>}
+                  </div>
+                  <div className="flex items-center justify-between px-2.5 py-2 gap-2">
+                    <span className="text-xs font-medium text-gray-200 truncate">{it.model || (it.title || '').slice(0, 22)}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-accent/15 text-accent shrink-0 font-mono">
+                      {it.kalip_kodu || '—'}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
                     </span>
-                  )}
-                </div>
-                <div className="text-sm text-gray-500">
-                  {data.order.customer_name || '—'} · {data.order.store_name || ''}
-                  {data.order.barkod_kodu ? ` · barkod: ${data.order.barkod_kodu}` : ''}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card mb-4 !p-0 overflow-hidden">
-            <div className="px-3 py-2 border-b border-brand-border text-xs text-gray-500 bg-brand-input">
-              Sipariş İçeriği
-            </div>
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-brand-border/50">
-                {(data.suggestions || []).map(s => (
-                  <tr key={s.line_item_id}>
-                    <td className="px-3 py-2 text-gray-200">
-                      {s.title}
-                      {s.variant_title && <span className="text-gray-500 text-xs"> · {s.variant_title}</span>}
-                      {s.is_kaliba_eklendi && <span className="ml-2 text-[10px] text-gray-500">(kalıpta basıldı)</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center text-gray-400 w-16">×{s.quantity}</td>
-                    <td className="px-3 py-2 text-xs text-gray-500 w-48">
-                      {s.suggested_stock_item_id
-                        ? <span className="text-emerald-400">→ {s.suggested_name}</span>
-                        : <span className="text-gray-600">stok eşleşmesi yok</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="card mb-4 !p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-200">Düşülecek Stok (aksesuar/diğer)</h3>
-              <button onClick={addRow} className="text-xs text-accent hover:underline">+ kalem ekle</button>
-            </div>
-            <p className="text-[11px] text-gray-500 mb-3">
-              Boş kılıf kalıp basımında düştüğü için burada görünmez. Sadece ekran/lens koruyucu
-              ve diğer aksesuarları düş.
-            </p>
-            {rows.length === 0 && <div className="text-xs text-gray-600 py-2">Düşülecek aksesuar yok.</div>}
-            <div className="space-y-2">
-              {rows.map((row, i) => (
-                <div key={i} className="flex gap-2 items-center">
-                  <select
-                    value={row.stock_item_id}
-                    onChange={e => setRow(i, { stock_item_id: e.target.value })}
-                    className="input !text-xs !py-1.5 flex-1"
-                  >
-                    <option value="">— stok kalemi seç —</option>
-                    {stock.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.sku}) · {s.quantity} adet</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number" min="1" value={row.quantity}
-                    onChange={e => setRow(i, { quantity: e.target.value })}
-                    className="input !text-xs !py-1.5 w-20"
-                  />
-                  <button onClick={() => delRow(i)} className="w-7 h-7 flex items-center justify-center text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded">×</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <button onClick={downloadLabel} className="btn-secondary !text-sm">Sadece Etiketi Yazdır</button>
-            <button onClick={printAndComplete} disabled={busy} className="btn-primary !text-sm disabled:opacity-50">
-              {busy ? 'İşleniyor...' : '🏷️ Kargo Etiketi Yazdır (Paketle)'}
-            </button>
+          {/* SAG: siparis detayi */}
+          <div className="card !p-5 flex flex-col">
+            <div className="text-center pb-3 border-b border-brand-border">
+              <div className="text-2xl font-bold text-gray-100">
+                {order.order_number} <span className="text-gray-500 text-lg font-normal">— {order.total_units} ADET</span>
+              </div>
+            </div>
+
+            <div className="text-center py-4 border-b border-brand-border">
+              <div className="text-xl font-semibold text-gray-100">{order.customer_name || '—'}</div>
+              {order.address && <div className="text-sm text-gray-400 mt-2 leading-relaxed">{order.address}</div>}
+              <div className="flex items-center justify-center gap-2 mt-2 text-sm text-gray-300">
+                📍 {[order.district, order.province].filter(Boolean).join(' / ') || '—'}
+              </div>
+              {order.phone && <div className="text-base font-mono text-gray-200 mt-2">{order.phone}</div>}
+              <div className="text-xs text-gray-500 mt-2">📅 Sipariş Tarihi: {fmtDate(order.created_at_platform)}</div>
+            </div>
+
+            {order.note && (
+              <div className="py-3 border-b border-brand-border text-sm text-gray-300">
+                <b className="text-gray-200">Sipariş Notu:</b> {order.note}
+              </div>
+            )}
+
+            <div className="py-3 border-b border-brand-border text-sm text-gray-300">
+              <b className="text-gray-200">KARGO ŞİRKETİ:</b> {order.kargo_sirketi || '—'}
+            </div>
+
+            {/* Asama (eski mor TAKIP butonu yerine) */}
+            <div className="py-4 border-b border-brand-border">
+              <div className="flex items-center justify-center gap-2 text-base font-semibold text-gray-100">
+                <span className="text-xl">{stageEmoji(order.stage?.icon)}</span>
+                {order.stage?.label || '—'}
+                <span className="text-xs text-gray-500 font-normal">({order.stage?.no}/{queue.stages.length})</span>
+              </div>
+              <div className="mt-2 h-1.5 bg-brand-input rounded-full overflow-hidden">
+                <div className="h-full bg-accent transition-all" style={{ width: `${order.progress_percent || 0}%` }} />
+              </div>
+            </div>
+
+            {/* Butonlar */}
+            <div className="space-y-2 py-4">
+              <button onClick={downloadLabel} className="w-full btn-secondary !text-sm flex items-center justify-center gap-2">
+                🖨 KARGO ETİKETİ YAZDIR
+              </button>
+              <button onClick={simpleCargoSend} disabled={busy}
+                className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
+                🚚 BASİT KARGO İLE GÖNDER
+              </button>
+            </div>
+
+            {/* Navigasyon */}
+            <div className="grid grid-cols-4 gap-2 mt-auto pt-3 border-t border-brand-border">
+              <button onClick={() => go(0)} disabled={index === 0} className="btn-secondary !text-xs disabled:opacity-30">« EN YENİ</button>
+              <button onClick={() => go(index - 1)} disabled={index === 0} className="btn-secondary !text-xs disabled:opacity-30">‹ ÖNCEKİ</button>
+              <button onClick={() => go(index + 1)} disabled={index >= total - 1} className="btn-secondary !text-xs disabled:opacity-30">SONRAKİ ›</button>
+              <button onClick={() => go(total - 1)} disabled={index >= total - 1} className="btn-secondary !text-xs disabled:opacity-30">EN ESKİ »</button>
+            </div>
+            <div className="text-center text-xs text-gray-500 mt-2">{index + 1} / {total}</div>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

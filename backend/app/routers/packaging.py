@@ -133,6 +133,8 @@ def _queue_filter(tenant_id):
         (Order.tenant_id == tenant_id)
         & (Order.is_iptal == False)  # noqa: E712
         & (or_(Order.fulfillment_status.is_(None), Order.fulfillment_status != "fulfilled"))
+        & (Order.cancelled_at.is_(None))
+        & (or_(Order.financial_status.is_(None), Order.financial_status != "refunded"))
     )
 
 

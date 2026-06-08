@@ -116,6 +116,9 @@ def plan_molds(
             Order.is_iptal == False,  # noqa: E712
             # Sadece ACIK siparisler: kargoya verilmis (fulfilled) olanlar plana girmez
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            # Iptal/iade edilenler plana girmez
+            Order.cancelled_at.is_(None),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         )
         .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
     )

@@ -773,7 +773,7 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
                 {file ? (
                   <div className="relative min-h-[220px] flex flex-col items-center justify-center">
                     {filePreview && (
-                      <div className="absolute inset-0 overflow-hidden rounded pointer-events-none" style={{ opacity: 0.16 }}>
+                      <div className="absolute inset-0 overflow-hidden rounded pointer-events-none" style={{ opacity: 0.24 }}>
                         {(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) ? (
                           <embed src={`${filePreview}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`} type="application/pdf" className="w-full h-full" />
                         ) : (

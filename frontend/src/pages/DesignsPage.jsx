@@ -695,6 +695,8 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
       const reader = new FileReader()
       reader.onload = e => setFilePreview(e.target.result)
       reader.readAsDataURL(f)
+    } else if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      setFilePreview(URL.createObjectURL(f))   // PDF: blob URL (arka planda <embed>)
     } else {
       setFilePreview(null)
     }
@@ -769,12 +771,20 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
                   className="hidden"
                 />
                 {file ? (
-                  <div className="space-y-2">
+                  <div className="relative">
                     {filePreview && (
-                      <img src={filePreview} alt="" className="max-h-32 mx-auto rounded" />
+                      <div className="absolute inset-0 flex items-center justify-center overflow-hidden rounded pointer-events-none" style={{ opacity: 0.14 }}>
+                        {(file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) ? (
+                          <embed src={`${filePreview}#toolbar=0&navpanes=0&scrollbar=0`} type="application/pdf" className="w-full h-full" />
+                        ) : (
+                          <img src={filePreview} alt="" className="max-h-full max-w-full object-contain" />
+                        )}
+                      </div>
                     )}
-                    <div className="text-sm text-gray-300">{file.name}</div>
-                    <div className="text-[10px] text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                    <div className="relative space-y-2 py-6">
+                      <div className="text-sm text-gray-300">{file.name}</div>
+                      <div className="text-[10px] text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
                   </div>
                 ) : (
                   <>

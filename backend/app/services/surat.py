@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import requests
 
-from app.config import settings
+from app.config import get_settings
 
 CANLI_URL = "https://api01.suratkargo.com.tr/api/OrtakBarkodOlustur"
 TEST_URL = "https://api02.suratkargo.com.tr/api/OrtakBarkodOlustur"
@@ -61,8 +61,9 @@ def create_shipment(
     Sürat'a gönderi oluşturur.
     Returns: {ok, takip_no, barkod_base64, message, raw_response}
     """
-    ka = kullanici_adi or settings.surat_kullanici_adi
-    sf = sifre or settings.surat_sifre
+    _s = get_settings()
+    ka = kullanici_adi or _s.surat_kullanici_adi
+    sf = sifre or _s.surat_sifre
     if not ka or not sf:
         return {"ok": False, "message": "Sürat kullanıcı adı/şifre tanımlı değil (.env)"}
 

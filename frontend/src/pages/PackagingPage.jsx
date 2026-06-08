@@ -191,10 +191,10 @@ export default function PackagingPage() {
 
             {/* Navigasyon */}
             <div className="grid grid-cols-4 gap-2 mt-auto pt-3 border-t border-brand-border">
-              <button onClick={() => go(0)} disabled={index === 0} className="btn-secondary !text-xs disabled:opacity-30">« EN YENİ</button>
+              <button onClick={() => go(0)} disabled={index === 0} className="btn-secondary !text-xs disabled:opacity-30">« EN ESKİ</button>
               <button onClick={() => go(index - 1)} disabled={index === 0} className="btn-secondary !text-xs disabled:opacity-30">‹ ÖNCEKİ</button>
               <button onClick={() => go(index + 1)} disabled={index >= total - 1} className="btn-secondary !text-xs disabled:opacity-30">SONRAKİ ›</button>
-              <button onClick={() => go(total - 1)} disabled={index >= total - 1} className="btn-secondary !text-xs disabled:opacity-30">EN ESKİ »</button>
+              <button onClick={() => go(total - 1)} disabled={index >= total - 1} className="btn-secondary !text-xs disabled:opacity-30">EN YENİ »</button>
             </div>
             <div className="text-center text-xs text-gray-500 mt-2">{index + 1} / {total}</div>
           </div>

@@ -387,6 +387,7 @@ class LineItem(Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
     device_model_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # shopify_urun_gorseli
 
     order: Mapped[Order] = relationship(back_populates="line_items")
     assigned_design: Mapped[Design | None] = relationship("Design", foreign_keys=[assigned_design_id])

@@ -16,6 +16,7 @@ from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user
+from app.adapters import get_adapter
 from app.database import get_db
 from app.models import Design, LineItem, MoldItem, Order, OrderStatusHistory, Store, User
 from app.services import label_pdf, packaging as pkg, storage
@@ -151,8 +152,8 @@ def _addr(raw: dict) -> dict:
     }
 
 
-def _design_for_line_item(db, order, li, mi):
-    """Gorsel cozumleme: MoldItem.design -> assigned_design -> product_id eslesme."""
+def _design_for_line_item(db, order, li, mi, adapter=None):
+    """Gorsel: MoldItem.design -> assigned_design -> product_id eslesme -> Shopify urun gorseli."""
     d = None
     if mi and mi.design_id:
         d = db.scalar(select(Design).where(Design.id == mi.design_id))
@@ -167,6 +168,17 @@ def _design_for_line_item(db, order, li, mi):
         )
     if d and d.file_path:
         return storage.get_thumbnail_url(d.file_path, d.file_format)
+    # Tasarim yok -> Shopify urun gorseli (lazy-fill: bir kez cekilip DB'ye yazilir)
+    if li.product_image_url:
+        return li.product_image_url
+    if adapter is not None and li.product_id:
+        try:
+            img = adapter.get_product_image(li.product_id)
+            if img:
+                li.product_image_url = img   # DB'ye yaz (commit _order_payload sonunda)
+                return img
+        except Exception:
+            pass
     return None
 
 
@@ -206,10 +218,22 @@ def _order_payload(db, order) -> dict:
     raw = order.raw or {}
     info = _addr(raw)
     si = stage_defs.stage_info(order.current_stage or 1)
+    # Shopify adapter'i siparis basina bir kez kur (urun gorseli lazy-fill icin)
+    adapter = None
+    try:
+        store = db.scalar(select(Store).where(Store.id == order.store_id))
+        if store:
+            adapter = get_adapter(store)
+    except Exception:
+        adapter = None
     items = []
+    _img_filled = False
     for li in (order.line_items or []):
         kod_label, mi = _kalip_kodu_for(db, li)
-        thumb = _design_for_line_item(db, order, li, mi)
+        before = li.product_image_url
+        thumb = _design_for_line_item(db, order, li, mi, adapter)
+        if li.product_image_url and li.product_image_url != before:
+            _img_filled = True
         items.append({
             "line_item_id": str(li.id),
             "title": li.title,
@@ -218,6 +242,11 @@ def _order_payload(db, order) -> dict:
             "kalip_kodu": kod_label,        # "A5" / "A5 P1" / None
             "thumbnail_url": thumb,         # gorsel ya da None
         })
+    if _img_filled:
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
     return {
         "id": str(order.id),
         "order_number": order.order_number,

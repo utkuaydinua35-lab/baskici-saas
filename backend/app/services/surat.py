@@ -31,6 +31,29 @@ def _normalize_phone(raw: str | None) -> str:
     return d                              # 10 hane '5...' beklenir
 
 
+def _split_il_ilce(province: str, city: str) -> tuple[str, str]:
+    """Shopify il/ilce tutarsiz gelebilir. Olasi durumlar:
+    - province='Gaziantep', city='Sahinbey'         -> (il, ilce)
+    - province=None, city='Gaziantep/Sahinbey'       -> '/' ile bol
+    - province=None, city='Gaziantep'                -> il=ilce=Gaziantep
+    """
+    province = (province or "").strip()
+    city = (city or "").strip()
+    # city icinde ayirici varsa (/, -, ,) -> il/ilce
+    for sep in ("/", " - ", " / ", ",", "-"):
+        if sep in city:
+            parts = [x.strip() for x in city.split(sep) if x.strip()]
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+    if province and city:
+        return province, city
+    if province and not city:
+        return province, province
+    if city and not province:
+        return city, city
+    return "", ""
+
+
 def _addr_parts(raw: dict) -> dict:
     sa = raw.get("shipping_address") or {}
     a1 = (sa.get("address1") or "").strip()
@@ -39,11 +62,12 @@ def _addr_parts(raw: dict) -> dict:
     ad = (sa.get("first_name") or "").strip()
     soyad = (sa.get("last_name") or "").strip()
     kisi = (ad + " " + soyad).strip() or (sa.get("name") or "").strip()
+    il, ilce = _split_il_ilce(sa.get("province"), sa.get("city"))
     return {
         "kisi": kisi,
         "adres": adres,
-        "il": (sa.get("province") or "").strip(),
-        "ilce": (sa.get("city") or "").strip(),
+        "il": il,
+        "ilce": ilce,
         "telefon": _normalize_phone(sa.get("phone") or raw.get("phone")),
         "email": (raw.get("email") or raw.get("contact_email") or "").strip(),
     }

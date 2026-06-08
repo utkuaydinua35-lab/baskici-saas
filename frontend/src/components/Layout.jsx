@@ -49,6 +49,7 @@ export default function Layout() {
             <SectionLabel>TASARIM YÖNETİMİ</SectionLabel>
             <NavItem to="/designs" label="Tasarımlar" icon="🎨" />
             <NavItem to="/kisiye-ozel" label="Kişiye Özel" icon="✨" />
+            <NavItem to="/aksesuarlar" label="Aksesuarlar" icon="🧷" />
 
             <SectionLabel>KALIP YÖNETİMİ</SectionLabel>
             <NavItem to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" />

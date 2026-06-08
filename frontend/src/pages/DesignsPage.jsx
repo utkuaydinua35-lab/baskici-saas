@@ -259,6 +259,13 @@ export default function DesignsPage() {
                     <span className="text-gray-300 truncate flex-1">{e.title || '(başlıksız)'}</span>
                     {e.model && <span className="text-gray-500 shrink-0">{e.model}</span>}
                     <span className="text-gray-600 shrink-0">×{e.count}</span>
+                    {e.product_id && e.reason !== 'kisiye_ozel_tasarim_eksik' && (
+                      <button
+                        onClick={() => setAssignProduct({ id: e.product_id, title: e.title || '' })}
+                        className="btn-primary !text-[10px] !py-0.5 !px-2 shrink-0">
+                        Tasarım Ekle
+                      </button>
+                    )}
                   </div>
                 ))}
                 {eksikler.length > 50 && <div className="text-[11px] text-gray-500 px-2">+{eksikler.length - 50} daha...</div>}
@@ -376,7 +383,7 @@ export default function DesignsPage() {
           storeId={selectedStore}
           initialProduct={assignProduct}
           onClose={() => { setShowUpload(false); setAssignProduct(null) }}
-          onSaved={() => { setShowUpload(false); setAssignProduct(null); loadDesigns(); loadUnmatched(selectedStore) }}
+          onSaved={() => { setShowUpload(false); setAssignProduct(null); loadDesigns(); loadUnmatched(selectedStore); loadEksikler(selectedStore) }}
         />
       )}
 

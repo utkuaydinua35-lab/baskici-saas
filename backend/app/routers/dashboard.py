@@ -29,6 +29,12 @@ def summary(
 ):
     tid = user.tenant_id
     not_cancelled = Order.cancelled_at.is_(None)
+    # Gercek acik siparis: iptal degil + kargoya verilmemis (fulfilled degil) + iade degil (refunded degil)
+    _acik_kosul = (
+        Order.cancelled_at.is_(None),
+        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+    )
 
     def ocount(*conds) -> int:
         q = select(sql_func.count(Order.id)).where(Order.tenant_id == tid, *conds)
@@ -37,7 +43,7 @@ def summary(
         return db.scalar(q) or 0
 
     # ─── KPI'lar ───
-    acik = ocount(not_cancelled, Order.current_stage < 9)
+    acik = ocount(*_acik_kosul, Order.current_stage < 9)
     acil = ocount(not_cancelled, Order.is_acil.is_(True), Order.current_stage < 9)
 
     start_today = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)

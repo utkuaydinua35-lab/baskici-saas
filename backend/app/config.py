@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field("", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field("", alias="TELEGRAM_CHAT_ID")
 
+    # Panel taban URL (Telegram deep-link icin)
+    panel_base_url: str = Field("https://baskici.bernzcompany.com", alias="PANEL_BASE_URL")
+
     @property
     def is_production(self) -> bool:
         return self.env == "production"

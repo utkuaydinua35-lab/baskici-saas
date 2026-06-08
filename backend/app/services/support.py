@@ -91,7 +91,8 @@ def add_customer_message(db: Session, store, order_info: dict, body: str, image_
     try:
         from app.services import telegram
         telegram.notify_support_message(
-            thread.order_number, thread.shopify_order_id, body, has_image=bool(image_url)
+            thread.order_number, thread.shopify_order_id, body,
+            has_image=bool(image_url), thread_id=str(thread.id)
         )
     except Exception:
         pass

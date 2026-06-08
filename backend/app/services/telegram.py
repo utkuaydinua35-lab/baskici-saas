@@ -43,17 +43,21 @@ def send_message(text: str) -> bool:
 
 
 def notify_support_message(order_number: str | None, shopify_order_id: str,
-                           body: str, has_image: bool = False) -> bool:
-    """Yeni müşteri destek mesajı bildirimi."""
+                           body: str, has_image: bool = False,
+                           thread_id: str | None = None) -> bool:
+    """Yeni müşteri destek mesajı bildirimi (panel deep-link ile)."""
     ref = order_number or shopify_order_id
     preview = (body or "").strip()
     if len(preview) > 300:
         preview = preview[:300] + "…"
     img = " 📷" if has_image else ""
+    base = (get_settings().panel_base_url or "").rstrip("/")
+    link = f"{base}/destek?thread={thread_id}" if (base and thread_id) else (f"{base}/destek" if base else "")
+    link_line = f'\n\n<a href="{link}">↳ Talebi aç ve cevapla</a>' if link else ""
     text = (
         f"🔔 <b>Yeni Destek Mesajı</b>{img}\n"
         f"Sipariş: <b>#{ref}</b>\n\n"
-        f"{preview or '(görsel)'}\n\n"
-        f"<i>baskıcı panelinden cevaplayabilirsin.</i>"
+        f"{preview or '(görsel)'}"
+        f"{link_line}"
     )
     return send_message(text)

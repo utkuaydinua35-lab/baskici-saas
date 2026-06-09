@@ -1,124 +1,166 @@
 """
-Kalıp yerleştirme kural motoru — BERNZ production mantığının birebir kopyası.
+placement_rules — kalıp grup/kod sistemi (script v5 ile birebir).
 
-DB'den bağımsız, saf fonksiyonlar. Girdi: ürün model adı + varyasyon (kalıp tipi).
-Çıktı: kalıp kodu (boyut grubu kimliği) + bin-packing ile optimize edilmiş kalıp listesi.
+12 iPhone grubu + ince android markaları + baskı-sırası priority.
+DB'den bağımsız, saf fonksiyonlar.
 
-Kaynak: bernz-web/pipeline.py + siparis_common.py + config.py (IPHONE_GROUPS).
+Dışa açık API (mold_planner vb. tarafından kullanılır, KORUNDU):
+  KALIP_MAX_BOXES, KALIP_COLS, KALIP_ROWS, VARIATIONS,
+  KalipKodlari, DEFAULT_KODLARI,
+  normalize_variation, resolve_kalip_kodu, kod_to_group_priority,
+  bin_pack_by_variation, _count_rows, _can_merge, _do_merge
+
+Yeni eklenenler:
+  get_model_group, group_priority, is_android_group, effective_variation,
+  GROUP_PRIORITY, GROUP_DISPLAY_NAMES, IPHONE_GROUPS, ANDROID_GROUPS
 """
-from __future__ import annotations
-
 import re
 import unicodedata
 
-# ═══════════════════════════════════════════════════════════
-# SABİTLER
-# ═══════════════════════════════════════════════════════════
-
-KALIP_MAX_BOXES = 27   # bir kalıba sığan toplam kılıf
-KALIP_COLS = 9         # sütun (her satır en fazla 9 aynı-grup kılıf)
-KALIP_ROWS = 3         # satır (bir kalıpta en fazla 3 farklı boyut grubu)
-
+KALIP_MAX_BOXES = 27
+KALIP_COLS = 9
+KALIP_ROWS = 3
 VARIATIONS = ("SİYAH", "BEYAZ", "ŞEFFAF", "PARLAK", "MAGSAFE")
 
-# Hangi iPhone modeli hangi boyut grubuna ait (config.py'den birebir)
+# ═══════════════════════════════════════════════════════════
+# GRUP SİSTEMİ (script v5 birebir)
+# ═══════════════════════════════════════════════════════════
+
 IPHONE_GROUPS = {
-    "11": ["6", "6s", "6s plus", "6 plus", "7", "7 plus", "8", "8 plus",
-           "x", "xs", "xs max", "xr", "11", "11 pro", "11 pro max",
-           "12", "12 pro", "12 mini", "13 mini",
-           "se", "se 2", "se 2020", "se 2022", "se 3"],
-    "13": ["13", "14", "16e"],
-    "15": ["15", "16", "17"],
-    "13_pro_max": ["12 pro max", "13 pro", "13 pro max",
-                   "14 plus", "15 plus", "16 plus"],
-    "15_pro": ["14 pro", "15 pro", "16 pro", "17 pro"],
-    "15_pro_max": ["14 pro max", "15 pro max", "16 pro max", "17 pro max"],
+    "IPHONE-11-GROUP": ["6", "6S", "6S-PLUS", "6-PLUS", "7", "7-PLUS", "8", "8-PLUS",
+                        "X", "XS", "XS-MAX", "XR", "11", "11-PRO", "11-PROMAX",
+                        "12", "12-PRO", "12-MINI", "13-MINI",
+                        "SE", "SE-2", "SE-2020", "SE-2022", "SE-3"],
+    "IPHONE-13-GROUP": ["13", "14", "16E"],
+    "IPHONE-15-GROUP": ["15", "16", "17"],
+    "IPHONE-13-PROMAX-GROUP": ["12-PROMAX", "13-PRO", "13-PROMAX"],
+    "IPHONE-14-PLUS-GROUP": ["14-PLUS", "15-PLUS"],
+    "IPHONE-16-PLUS-GROUP": ["16-PLUS"],
+    "IPHONE-15-PRO-GROUP": ["14-PRO", "15-PRO"],
+    "IPHONE-16-PRO-GROUP": ["16-PRO"],
+    "IPHONE-17-PRO-GROUP": ["17-PRO"],
+    "IPHONE-15-PROMAX-GROUP": ["14-PROMAX", "15-PROMAX"],
+    "IPHONE-16-PROMAX-GROUP": ["16-PROMAX"],
+    "IPHONE-17-PROMAX-GROUP": ["17-PROMAX"],
 }
 
-# Boyut grubu öncelik sırası (gruplar bu sırada sıralanır / kontrol edilir)
-GROUP_PRIORITY = [
-    "11", "13", "15", "13_pro_max", "15_pro", "15_pro_max",
-    "SEFFAF", "PARLAK", "REDMI", "XIAOMI", "SAMSUNG_A", "SAMSUNG_S",
-    "SAMSUNG_ULTRA", "DIGER_CIN", "MAGSAFE", "UNKNOWN",
-]
+GROUP_PRIORITY = {
+    "IPHONE-11-GROUP": 1, "IPHONE-13-GROUP": 2, "IPHONE-15-GROUP": 3,
+    "IPHONE-13-PROMAX-GROUP": 4, "IPHONE-14-PLUS-GROUP": 5, "IPHONE-16-PLUS-GROUP": 6,
+    "IPHONE-15-PRO-GROUP": 7, "IPHONE-16-PRO-GROUP": 8, "IPHONE-17-PRO-GROUP": 9,
+    "IPHONE-15-PROMAX-GROUP": 10, "IPHONE-16-PROMAX-GROUP": 11, "IPHONE-17-PROMAX-GROUP": 12,
+    "SAMSUNG-A-GROUP": 100, "SAMSUNG-S-GROUP": 101, "SAMSUNG-ULTRA-GROUP": 102,
+    "SAMSUNG-M-GROUP": 103, "SAMSUNG-OTHER-GROUP": 104,
+    "REDMI-GROUP": 110, "XIAOMI-GROUP": 111, "POCO-GROUP": 112, "OPPO-GROUP": 113,
+    "VIVO-GROUP": 114, "REALME-GROUP": 115, "TECNO-GROUP": 116,
+    "HUAWEI-GROUP": 117, "OMIX-GROUP": 118,
+    "IPHONE-UNKNOWN": 50, "UNKNOWN-GROUP": 999,
+    # ozel varyasyonlar (markadan bagimsiz tek kalip) — siralamada sona yakin
+    "SEFFAF": 200, "PARLAK": 201, "MAGSAFE": 202,
+}
+
+GROUP_DISPLAY_NAMES = {
+    "IPHONE-11-GROUP": "iPhone 11 Grubu", "IPHONE-13-GROUP": "iPhone 13 Grubu",
+    "IPHONE-15-GROUP": "iPhone 15 Grubu", "IPHONE-13-PROMAX-GROUP": "iPhone 13 Pro Max",
+    "IPHONE-14-PLUS-GROUP": "iPhone 14 Plus", "IPHONE-16-PLUS-GROUP": "iPhone 16 Plus",
+    "IPHONE-15-PRO-GROUP": "iPhone 15 Pro", "IPHONE-16-PRO-GROUP": "iPhone 16 Pro",
+    "IPHONE-17-PRO-GROUP": "iPhone 17 Pro", "IPHONE-15-PROMAX-GROUP": "iPhone 15 Pro Max",
+    "IPHONE-16-PROMAX-GROUP": "iPhone 16 Pro Max", "IPHONE-17-PROMAX-GROUP": "iPhone 17 Pro Max",
+    "SAMSUNG-A-GROUP": "Samsung A", "SAMSUNG-S-GROUP": "Samsung S",
+    "SAMSUNG-ULTRA-GROUP": "Samsung Ultra", "SAMSUNG-M-GROUP": "Samsung M",
+    "SAMSUNG-OTHER-GROUP": "Samsung", "REDMI-GROUP": "Redmi", "XIAOMI-GROUP": "Xiaomi",
+    "POCO-GROUP": "Poco", "OPPO-GROUP": "Oppo", "VIVO-GROUP": "Vivo", "REALME-GROUP": "Realme",
+    "TECNO-GROUP": "Tecno", "HUAWEI-GROUP": "Huawei", "OMIX-GROUP": "Omix",
+    "IPHONE-UNKNOWN": "iPhone (?)", "UNKNOWN-GROUP": "Bilinmeyen",
+    "SEFFAF": "Şeffaf", "PARLAK": "Parlak", "MAGSAFE": "MagSafe",
+}
+
+ANDROID_GROUPS = {
+    "SAMSUNG-A-GROUP", "SAMSUNG-S-GROUP", "SAMSUNG-ULTRA-GROUP", "SAMSUNG-M-GROUP",
+    "SAMSUNG-OTHER-GROUP", "REDMI-GROUP", "XIAOMI-GROUP", "POCO-GROUP", "OPPO-GROUP",
+    "VIVO-GROUP", "REALME-GROUP", "TECNO-GROUP", "HUAWEI-GROUP", "OMIX-GROUP",
+}
 
 
-# ═══════════════════════════════════════════════════════════
-# KALIP KODU SİSTEMİ (3-harf, örn A/B/C)
-# ═══════════════════════════════════════════════════════════
-
-class KalipKodlari:
-    """3-harf kod sistemi: telefon grubu+renk -> kod (A1, A7, B4...)."""
-    def __init__(self, h1="A", h2="B", h3="C"):
-        self.iphone_11_siyah = f"{h1}1"
-        self.iphone_11_beyaz = f"{h1}2"
-        self.iphone_13_siyah = f"{h1}3"
-        self.iphone_13_beyaz = f"{h1}4"
-        self.iphone_15_siyah = f"{h1}5"
-        self.iphone_15_beyaz = f"{h1}6"
-        self.iphone_13_pro_max_siyah = f"{h1}7"
-        self.iphone_13_pro_max_beyaz = f"{h1}8"
-        self.iphone_15_pro_siyah = f"{h1}9"
-        self.iphone_15_pro_beyaz = f"{h2}1"
-        self.iphone_15_pro_max_siyah = f"{h2}2"
-        self.iphone_15_pro_max_beyaz = f"{h2}3"
-        self.seffaf = f"{h2}4"
-        self.parlak = f"{h2}5"
-        self.redmi = f"{h2}6"
-        self.xiaomi = f"{h2}7"
-        self.samsung_a = f"{h2}8"
-        self.samsung_s = f"{h2}9"
-        self.samsung_ultra = f"{h3}1"
-        self.diger_cin = f"{h3}2"
-        self.magsafe = f"{h3}3"  # baskıcı eklemesi (BERNZ'de ayrı kod yoktu)
-
-
-DEFAULT_KODLARI = KalipKodlari()
-
-
-# ═══════════════════════════════════════════════════════════
-# MODEL NORMALİZE + GRUP
-# ═══════════════════════════════════════════════════════════
-
-def normalize_iphone_model(phone_model: str) -> str:
+def _norm_key(phone_model: str) -> str:
     if not phone_model:
         return ""
-    model = phone_model.lower()
-    model = re.sub(r'i\s*phone\s*', '', model)
-    model = model.replace("apple", "").strip()
-    model = model.replace("-", " ").replace("_", " ")
-    return re.sub(r'\s+', ' ', model).strip()
+    s = unicodedata.normalize("NFC", phone_model).upper().strip()
+    s = s.replace("APPLE", "").strip()
+    s = re.sub(r"I\s*PHONE\s*", "IPHONE ", s)
+    s = re.sub(r"GALAXY", "SAMSUNG", s)
+    s = s.replace("PRO MAX", "PROMAX")
+    s = re.sub(r"\s+", "-", s.strip())
+    s = re.sub(r"-+", "-", s)
+    return s
 
 
-def get_iphone_group(phone_model: str) -> str | None:
-    """iPhone modelini boyut grubuna çevir (11 / 13 / 15 / 13_pro_max / 15_pro / 15_pro_max)."""
-    normalized = normalize_iphone_model(phone_model)
-    if not normalized:
-        return None
-    # En spesifik önce (pro max -> pro -> düz numara)
-    for group_name in ["15_pro_max", "13_pro_max", "15_pro", "15", "13", "11"]:
-        for model in IPHONE_GROUPS.get(group_name, []):
-            if model == normalized or normalized.startswith(model + " ") or f" {model} " in f" {normalized} ":
-                return group_name
+def extract_iphone_model_number(model_key: str) -> str | None:
+    m = re.match(r"IPHONE-(.+)", model_key)
+    if m:
+        return m.group(1)
+    if re.match(r"^\d", model_key):
+        return model_key
     return None
 
 
+def get_model_group(phone_model: str) -> str:
+    """Model -> grup (script v5 getModelGroup birebir)."""
+    mk = _norm_key(phone_model)
+    if not mk:
+        return "UNKNOWN-GROUP"
+    if mk.startswith("IPHONE") or re.match(r"^\d", mk):
+        iphone_model = extract_iphone_model_number(mk)
+        if not iphone_model and re.match(r"^\d", mk):
+            iphone_model = mk
+        if iphone_model:
+            for group_name, models in IPHONE_GROUPS.items():
+                if iphone_model in models:
+                    return group_name
+        return "IPHONE-UNKNOWN"
+    if mk.startswith("SAMSUNG") or re.match(r"^S[12]\d", mk):
+        if "ULTRA" in mk:
+            return "SAMSUNG-ULTRA-GROUP"
+        if re.match(r"^S\d", mk) or re.search(r"SAMSUNG-S\d", mk):
+            return "SAMSUNG-S-GROUP"
+        if re.match(r"^A\d", mk) or re.search(r"SAMSUNG-A\d", mk):
+            return "SAMSUNG-A-GROUP"
+        if re.match(r"^M\d", mk) or re.search(r"SAMSUNG-M\d", mk):
+            return "SAMSUNG-M-GROUP"
+        return "SAMSUNG-OTHER-GROUP"
+    for brand, grp in [("REDMI", "REDMI-GROUP"), ("XIAOMI", "XIAOMI-GROUP"),
+                       ("POCO", "POCO-GROUP"), ("OPPO", "OPPO-GROUP"),
+                       ("VIVO", "VIVO-GROUP"), ("REALME", "REALME-GROUP"),
+                       ("TECNO", "TECNO-GROUP"), ("HUAWEI", "HUAWEI-GROUP"),
+                       ("OMIX", "OMIX-GROUP")]:
+        if brand in mk:
+            return grp
+    return "UNKNOWN-GROUP"
+
+
+def group_priority(group: str) -> int:
+    return GROUP_PRIORITY.get(group, 999)
+
+
+def is_android_group(group: str) -> bool:
+    return group in ANDROID_GROUPS
+
+
 # ═══════════════════════════════════════════════════════════
-# RENK / VARYASYON NORMALİZE
+# VARYASYON NORMALİZE (korundu)
 # ═══════════════════════════════════════════════════════════
 
 def normalize_text(text: str) -> str:
     if not text:
         return ""
     result = unicodedata.normalize("NFC", text)
-    result = result.replace("\u0307", "")  # combining dot (si̇yah -> siyah)
+    result = result.replace("\u0307", "")
     return result
 
 
 def normalize_variation(kalip_tipi: str | None) -> str:
-    """Design.kalip_tipi -> standart varyasyon (SİYAH/BEYAZ/ŞEFFAF/PARLAK/MAGSAFE)."""
     if not kalip_tipi:
-        return "SİYAH"  # varsayılan
+        return "SİYAH"
     t = normalize_text(kalip_tipi).upper().strip()
     if "BEYAZ" in t or "WHITE" in t:
         return "BEYAZ"
@@ -131,110 +173,79 @@ def normalize_variation(kalip_tipi: str | None) -> str:
     return "SİYAH"
 
 
+def effective_variation(group: str, variation: str) -> str:
+    """Android + BEYAZ -> SİYAH (android'de beyaz kılıf yok)."""
+    v = (variation or "SİYAH").upper()
+    if v == "BEYAZ" and is_android_group(group):
+        return "SİYAH"
+    return v
+
+
 # ═══════════════════════════════════════════════════════════
-# KALIP KODU EŞLEŞMESİ
+# KALIP KODU (yeni format: "GRUP|RENK" — ör IPHONE-15-GROUP|SIYAH)
 # ═══════════════════════════════════════════════════════════
 
-def get_iphone_kalip_kodu(phone_model: str, renk: str, k: KalipKodlari) -> str:
-    group = get_iphone_group(phone_model)
-    if not group or not renk:
-        return ""
-    renk_lower = renk.lower().strip()
-    kalip_map = {
-        ("11", "siyah"): k.iphone_11_siyah, ("11", "beyaz"): k.iphone_11_beyaz,
-        ("13", "siyah"): k.iphone_13_siyah, ("13", "beyaz"): k.iphone_13_beyaz,
-        ("15", "siyah"): k.iphone_15_siyah, ("15", "beyaz"): k.iphone_15_beyaz,
-        ("13_pro_max", "siyah"): k.iphone_13_pro_max_siyah,
-        ("13_pro_max", "beyaz"): k.iphone_13_pro_max_beyaz,
-        ("15_pro", "siyah"): k.iphone_15_pro_siyah,
-        ("15_pro", "beyaz"): k.iphone_15_pro_beyaz,
-        ("15_pro_max", "siyah"): k.iphone_15_pro_max_siyah,
-        ("15_pro_max", "beyaz"): k.iphone_15_pro_max_beyaz,
-    }
-    # renk siyah/beyaz değilse (ör. şeffaf iPhone) siyah kalıbına düş
-    if renk_lower not in ("siyah", "beyaz"):
-        renk_lower = "siyah"
-    return kalip_map.get((group, renk_lower), "")
+# Geriye-uyum: eski kod kullanan yerler icin KalipKodlari sinifi korunur (no-op).
+class KalipKodlari:
+    """Geriye-uyumluluk için korundu. Yeni sistemde kod = 'GRUP|RENK'."""
+    def __init__(self, h1="A", h2="B", h3="C"):
+        self.h1, self.h2, self.h3 = h1, h2, h3
+
+
+DEFAULT_KODLARI = KalipKodlari()
 
 
 def resolve_kalip_kodu(phone_model: str, variation: str, k: KalipKodlari = DEFAULT_KODLARI) -> str:
     """
-    Telefon modeli + varyasyon -> kalıp kodu (boyut grubu kimliği).
-    variation: normalize edilmiş (SİYAH/BEYAZ/ŞEFFAF/PARLAK/MAGSAFE).
-    Boş string dönerse model tanınamadı (kod atanamaz).
+    Telefon modeli + varyasyon -> kalıp kodu.
+    Yeni format: "GRUP|RENK" (ör. "IPHONE-15-GROUP|SIYAH").
+    Özel varyasyonlar (PARLAK/ŞEFFAF/MAGSAFE) markadan bağımsız tek kalıp.
+    Android + BEYAZ -> SİYAH. Boş string = model tanınamadı.
     """
-    phone_lower = (phone_model or "").lower()
     v = (variation or "SİYAH").upper()
-
-    # Özel varyasyonlar markadan bağımsız tek kalıba gider
     if v == "PARLAK":
-        return k.parlak
+        return "PARLAK"
     if v == "ŞEFFAF":
-        return k.seffaf
+        return "SEFFAF"
     if v == "MAGSAFE":
-        return k.magsafe
+        return "MAGSAFE"
+    group = get_model_group(phone_model)
+    if group == "UNKNOWN-GROUP" or group == "IPHONE-UNKNOWN":
+        return ""
+    eff_v = effective_variation(group, v)
+    renk = "BEYAZ" if eff_v == "BEYAZ" else "SIYAH"
+    if group.startswith("IPHONE"):
+        return f"{group}|{renk}"
+    # android: tek renk (siyah)
+    return f"{group}|SIYAH"
 
-    # iPhone: grup + renk (siyah/beyaz)
-    if "iphone" in phone_lower:
-        renk = "beyaz" if v == "BEYAZ" else "siyah"
-        kod = get_iphone_kalip_kodu(phone_model, renk, k)
-        if kod:
-            return kod
 
-    # Samsung
-    if "samsung" in phone_lower or "galaxy" in phone_lower:
-        if "ultra" in phone_lower:
-            return k.samsung_ultra
-        if "galaxy s" in phone_lower or "samsung s" in phone_lower or re.search(r'\bs\d', phone_lower):
-            return k.samsung_s
-        return k.samsung_a
-
-    # Xiaomi ailesi
-    if "redmi" in phone_lower:
-        return k.redmi
-    if "xiaomi" in phone_lower or "poco" in phone_lower:
-        return k.xiaomi
-
-    # Diğer Çin markaları
-    if any(m in phone_lower for m in ["vivo", "vıvo", "oppo", "realme", "tecno", "honor", "huawei", "omix"]):
-        return k.diger_cin
-
-    return ""
+def _kod_group(kod: str) -> str:
+    """Kalıp kodundan grup adını çıkar ('IPHONE-15-GROUP|SIYAH' -> 'IPHONE-15-GROUP')."""
+    if not kod:
+        return "UNKNOWN-GROUP"
+    if kod in ("PARLAK", "SEFFAF", "MAGSAFE"):
+        return kod
+    return kod.split("|", 1)[0]
 
 
 def kod_to_group_priority(kod: str, k: KalipKodlari = DEFAULT_KODLARI) -> int:
-    """Kalıp kodunun sıralama önceliği (küçük = önce). Kod -> grup adı -> GROUP_PRIORITY index."""
-    rev = {
-        k.iphone_11_siyah: "11", k.iphone_11_beyaz: "11",
-        k.iphone_13_siyah: "13", k.iphone_13_beyaz: "13",
-        k.iphone_15_siyah: "15", k.iphone_15_beyaz: "15",
-        k.iphone_13_pro_max_siyah: "13_pro_max", k.iphone_13_pro_max_beyaz: "13_pro_max",
-        k.iphone_15_pro_siyah: "15_pro", k.iphone_15_pro_beyaz: "15_pro",
-        k.iphone_15_pro_max_siyah: "15_pro_max", k.iphone_15_pro_max_beyaz: "15_pro_max",
-        k.seffaf: "SEFFAF", k.parlak: "PARLAK", k.redmi: "REDMI", k.xiaomi: "XIAOMI",
-        k.samsung_a: "SAMSUNG_A", k.samsung_s: "SAMSUNG_S",
-        k.samsung_ultra: "SAMSUNG_ULTRA", k.diger_cin: "DIGER_CIN", k.magsafe: "MAGSAFE",
-    }
-    grp = rev.get(kod, "UNKNOWN")
-    try:
-        return GROUP_PRIORITY.index(grp)
-    except ValueError:
-        return len(GROUP_PRIORITY)
+    """Kalıp kodunun baskı-sırası önceliği (küçük = önce/alt satır)."""
+    return group_priority(_kod_group(kod))
 
 
 # ═══════════════════════════════════════════════════════════
-# BİN-PACKING (kalıpları optimize et)
+# BİN-PACKING (korundu — imza aynı)
 # ═══════════════════════════════════════════════════════════
 
 def _count_rows(items: list[dict]) -> int:
-    """Item listesinin kaç satır kaplayacağı (her kalıp kodu/grup ayrı satır(lar))."""
     group_counts: dict[str, int] = {}
     for it in items:
         kod = it.get("kod", "UNKNOWN")
         group_counts[kod] = group_counts.get(kod, 0) + 1
     total = 0
     for count in group_counts.values():
-        total += -(-count // KALIP_COLS)  # ceil(count/9)
+        total += -(-count // KALIP_COLS)
     return total
 
 
@@ -256,7 +267,6 @@ def _do_merge(a: dict, b: dict) -> None:
 
 
 def bin_pack(queue: list[dict]) -> list[dict]:
-    """First-Fit-Decreasing: aynı varyasyondaki kalıpları 27/3-satır limitine kadar birleştir."""
     if len(queue) <= 1:
         return queue
     queue = sorted(queue, key=lambda x: x["count"], reverse=True)
@@ -280,11 +290,9 @@ def bin_pack(queue: list[dict]) -> list[dict]:
 
 
 def bin_pack_by_variation(queue: list[dict]) -> list[dict]:
-    """Varyasyona göre ayır, her varyasyonu ayrı bin-pack et (farklı varyasyon birleşmez)."""
     out = []
     for v in VARIATIONS:
         vq = [k for k in queue if k["variation"] == v]
         out.extend(bin_pack(vq))
-    # bilinmeyen varyasyonlar
     out.extend([k for k in queue if k["variation"] not in VARIATIONS])
     return out

@@ -69,9 +69,37 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  const simpleCargoSend = async () => {
-    // Basit kargo entegrasyonu ileride. Simdilik placeholder.
-    setMsg({ ok: false, text: 'Basit kargo entegrasyonu henüz aktif değil — yakında.' })
+  // base64 PDF -> indir/yazdir
+  const openBarkodPdf = (b64) => {
+    try {
+      const bin = atob(b64)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
+    } catch { /* yok say */ }
+  }
+
+  const suratGonder = async () => {
+    if (!order || busy) return
+    if (!confirm(`#${order.order_number} siparişi Sürat Kargo ile gönderilecek. Onaylıyor musun?`)) return
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/surat-gonder`, {})
+      const tn = r.takip_no || '—'
+      const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
+      setMsg({ ok: true, text: `✅ Sürat: gönderi oluştu · Takip: ${tn}${extra}` })
+      if (r.barkod_base64) openBarkodPdf(r.barkod_base64)
+      // bir sonraki siparise gec (gonderilen kuyruktan dustu)
+      setTimeout(() => go(index), 800)
+    } catch (e) {
+      const t = typeof e?.detail === 'string' ? e.detail : 'Sürat gönderimi başarısız'
+      setMsg({ ok: false, text: t })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const fmtDate = (iso) => {
@@ -183,9 +211,9 @@ export default function PackagingPage() {
               <button onClick={downloadLabel} className="w-full btn-secondary !text-sm flex items-center justify-center gap-2">
                 🖨 KARGO ETİKETİ YAZDIR
               </button>
-              <button onClick={simpleCargoSend} disabled={busy}
+              <button onClick={suratGonder} disabled={busy}
                 className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
-                🚚 BASİT KARGO İLE GÖNDER
+                {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 SÜRAT KARGO İLE GÖNDER'}
               </button>
             </div>
 

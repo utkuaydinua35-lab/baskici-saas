@@ -210,7 +210,13 @@ class ShopifyAdapter(StorePlatform):
             return {"ok": False, "error": "Fulfillment order bulunamadı"}
 
         fo_id = fos[0]["id"]
-        line_items = [{"id": li["id"]} for li in fos[0].get("line_items", [])]
+        # quantity zorunlu: fulfillment_order line item'in kalan miktarini kullan
+        line_items = []
+        for li in fos[0].get("line_items", []):
+            qty = li.get("fulfillable_quantity")
+            if qty is None:
+                qty = li.get("quantity") or 1
+            line_items.append({"id": li["id"], "quantity": qty})
 
         url2 = f"{self._base_url()}/fulfillments.json"
         payload = {

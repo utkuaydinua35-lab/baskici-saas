@@ -38,11 +38,10 @@ for _k, _v in _IL_ALIAS.items():
 
 # Surat Kargo, bazi illeri kisa/yaygin adla bekliyor (resmi ad InvalidCast veriyor).
 # resmi ad -> Surat'in bekledigi ad. Listede olmayan iller resmi adiyla gider.
-_SURAT_IL_ADI = {
-    "Afyonkarahisar": "Afyon",
-    "Kahramanmaraş": "Kahramanmaraş",   # test edilecek; gerekirse "Maraş"
-    "Şanlıurfa": "Şanlıurfa",            # test edilecek; gerekirse "Urfa"
-}
+# Surat resmi il adlarini kabul ediyor (Afyonkarahisar, vb). InvalidCast bug'i
+# il adindan degil, Surat'in ilk-yanit serilestirme hatasindan kaynaklaniyordu
+# (retry ile cozuluyor). Bu yuzden harita bos — resmi ad kullanilir.
+_SURAT_IL_ADI = {}
 
 
 def surat_il_adi(resmi_il):

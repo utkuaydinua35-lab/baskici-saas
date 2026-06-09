@@ -148,9 +148,10 @@ def create_shipment(
     }
 
     surat_url = CANLI_URL if canli else TEST_URL
-    try:
+
+    def _post():
+        """Tek POST; (data, http_status) doner. Hata durumunda Exception."""
         if relay_url:
-            # Relay uzerinden (Mac TR IP) — VPS->relay->Surat
             r = requests.post(
                 relay_url.rstrip("/") + "/surat",
                 json={"url": surat_url, "payload": payload},
@@ -159,28 +160,49 @@ def create_shipment(
             r.raise_for_status()
             wrap = r.json()
             if not wrap.get("ok"):
-                return {"ok": False, "message": f"Relay hatası: {wrap.get('error', '?')}"}
-            data = wrap.get("data")
-            if data is None:
-                return {"ok": False, "message": f"Relay yanıtı boş: {wrap.get('data_text', '')[:200]}"}
-            http_status = wrap.get("status", 200)
+                raise RuntimeError(f"Relay hatası: {wrap.get('error', '?')}")
+            d = wrap.get("data")
+            if d is None:
+                raise RuntimeError(f"Relay yanıtı boş: {wrap.get('data_text', '')[:200]}")
+            return d, wrap.get("status", 200)
         else:
-            # Direkt Surat (Mac local / IP izni varsa)
             r = requests.post(surat_url, json=payload, timeout=30)
-            data = r.json()
-            http_status = r.status_code
+            return r.json(), r.status_code
+
+    def _parse(d):
+        is_err = d.get("isError", d.get("IsError", True))
+        msg = str(d.get("Message", ""))
+        tn = d.get("KargoTakipNo") or ""
+        bc = d.get("Barcode")
+        b64 = bc[0] if isinstance(bc, list) and bc else (bc if isinstance(bc, str) else None)
+        ok = (not is_err) and (msg in ("013", "014", "015", "016") or bool(tn))
+        return ok, tn, b64, msg
+
+    # Surat'in bilinen bug'i: ilk cagri bazen InvalidCastException verir AMA
+    # gonderi yine de olusur. Ayni OzelKargoTakipNo ile tekrar cagirinca
+    # "013/016" + takip no + barkod duzgun doner. Bu yuzden 2 deneme yapariz.
+    try:
+        data, http_status = _post()
     except Exception as e:
         return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:180]}"}
 
-    # Basarili response: isError False, Message '015'/'016', KargoTakipNo dolu
-    is_error = data.get("isError", data.get("IsError", True))
-    message = str(data.get("Message", ""))
-    takip_no = data.get("KargoTakipNo") or ""
-    barkod = data.get("Barcode")
-    barkod_b64 = barkod[0] if isinstance(barkod, list) and barkod else (barkod if isinstance(barkod, str) else None)
+    basarili, takip_no, barkod_b64, message = _parse(data)
 
-    # basarili kodlar: 013,014,015,016 (barkod iletildi/gonderildi)
-    basarili = (not is_error) and (message in ("013", "014", "015", "016") or bool(takip_no))
+    # InvalidCast ya da barkodsuz/takipsiz ise: kisa bekle, ayni takip no ile tekrar dene
+    needs_retry = (not basarili and "InvalidCast" in message) or (basarili and not barkod_b64)
+    if needs_retry:
+        import time as _t
+        for _ in range(2):
+            _t.sleep(1.5)
+            try:
+                data2, http_status = _post()
+            except Exception:
+                break
+            ok2, tn2, b2, msg2 = _parse(data2)
+            if ok2:
+                basarili, takip_no, barkod_b64, message = ok2, tn2, b2, msg2
+                if barkod_b64:
+                    break
     return {
         "ok": bool(basarili),
         "takip_no": takip_no,

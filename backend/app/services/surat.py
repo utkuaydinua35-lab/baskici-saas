@@ -128,8 +128,8 @@ def create_shipment(
             "ReferansNo": "",
             "OzelKargoTakipNo": str(ozel_kargo_takip_no)[:50],
             "Adet": 1,
-            "BirimDesi": 1,                  # Mi: desi=1
-            "BirimKg": 1,                    # Mi: kg=1
+            "BirimDesi": "1",                # Mi: desi=1 (string — Postman formati)
+            "BirimKg": "1",                  # Mi: kg=1 (string — Postman formati)
             "KargoIcerigi": "",
             "KapidanOdemeTahsilatTipi": 0,
             "KapidanOdemeTutari": "0",
@@ -141,7 +141,7 @@ def create_shipment(
             "TeslimSubeKodu": "",
             "Pazaryerimi": 0,
             "EntegrasyonFirmasi": "",
-            "Iademi": 0,
+            "Iademi": False,                 # bool (Postman: false)
         },
     }
 

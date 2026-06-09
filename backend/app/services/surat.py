@@ -69,14 +69,16 @@ def _addr_parts(raw: dict) -> dict:
         bulunan = tr_iller.ilce_bul(adres, il)
         if bulunan:
             ilce = bulunan
-    # il'i resmi adina normalize et (Surat dogru il adi bekler)
+    # resmi il (ilce eslesmesi icin) + Surat'in bekledigi il adi (payload icin)
     resmi_il = tr_iller.resolve_il(il)
     if resmi_il:
         il = resmi_il
+    surat_il = tr_iller.surat_il_adi(il)   # ornek: Afyonkarahisar -> Afyon
     return {
         "kisi": kisi,
         "adres": adres,
-        "il": il,
+        "il": il,                # resmi ad (ilce dogrulama icin)
+        "surat_il": surat_il,    # Surat payload icin
         "ilce": ilce,
         "telefon": _normalize_phone(sa.get("phone") or raw.get("phone")),
         "email": (raw.get("email") or raw.get("contact_email") or "").strip(),
@@ -117,7 +119,7 @@ def create_shipment(
         "Gonderi": {
             "KisiKurum": info["kisi"] or "Alıcı",
             "AliciAdresi": info["adres"],
-            "Il": info["il"],
+            "Il": info.get("surat_il") or info["il"],
             "Ilce": info["ilce"],
             "TelefonCep": info["telefon"],
             "Email": info["email"],

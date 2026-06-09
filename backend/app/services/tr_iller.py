@@ -36,6 +36,22 @@ for _k, _v in _IL_ALIAS.items():
     _IL_LOOKUP.setdefault(_norm(_k), _v)
 
 
+# Surat Kargo, bazi illeri kisa/yaygin adla bekliyor (resmi ad InvalidCast veriyor).
+# resmi ad -> Surat'in bekledigi ad. Listede olmayan iller resmi adiyla gider.
+_SURAT_IL_ADI = {
+    "Afyonkarahisar": "Afyon",
+    "Kahramanmaraş": "Kahramanmaraş",   # test edilecek; gerekirse "Maraş"
+    "Şanlıurfa": "Şanlıurfa",            # test edilecek; gerekirse "Urfa"
+}
+
+
+def surat_il_adi(resmi_il):
+    """Surat'in bekledigi il adini don (yoksa resmi ad)."""
+    if not resmi_il:
+        return resmi_il
+    return _SURAT_IL_ADI.get(resmi_il, resmi_il)
+
+
 def resolve_il(il_raw):
     """Verilen il adini resmi il adina cevir (None ise bulunamadi)."""
     return _IL_LOOKUP.get(_norm(il_raw))

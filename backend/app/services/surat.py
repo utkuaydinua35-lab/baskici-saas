@@ -88,6 +88,7 @@ def create_shipment(
     _s = get_settings()
     ka = kullanici_adi or _s.surat_kullanici_adi
     sf = sifre or _s.surat_sifre
+    relay_url = (getattr(_s, "surat_relay_url", "") or "").strip()
     if not ka or not sf:
         return {"ok": False, "message": "Sürat kullanıcı adı/şifre tanımlı değil (.env)"}
 
@@ -131,16 +132,30 @@ def create_shipment(
         },
     }
 
-    url = CANLI_URL if canli else TEST_URL
+    surat_url = CANLI_URL if canli else TEST_URL
     try:
-        r = requests.post(url, json=payload, timeout=30)
+        if relay_url:
+            # Relay uzerinden (Mac TR IP) — VPS->relay->Surat
+            r = requests.post(
+                relay_url.rstrip("/") + "/surat",
+                json={"url": surat_url, "payload": payload},
+                timeout=40,
+            )
+            r.raise_for_status()
+            wrap = r.json()
+            if not wrap.get("ok"):
+                return {"ok": False, "message": f"Relay hatası: {wrap.get('error', '?')}"}
+            data = wrap.get("data")
+            if data is None:
+                return {"ok": False, "message": f"Relay yanıtı boş: {wrap.get('data_text', '')[:200]}"}
+            http_status = wrap.get("status", 200)
+        else:
+            # Direkt Surat (Mac local / IP izni varsa)
+            r = requests.post(surat_url, json=payload, timeout=30)
+            data = r.json()
+            http_status = r.status_code
     except Exception as e:
-        return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:150]}"}
-
-    try:
-        data = r.json()
-    except Exception:
-        return {"ok": False, "message": f"Geçersiz yanıt (HTTP {r.status_code}): {r.text[:200]}"}
+        return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:180]}"}
 
     # Basarili response: isError False, Message '015'/'016', KargoTakipNo dolu
     is_error = data.get("isError", data.get("IsError", True))
@@ -156,6 +171,6 @@ def create_shipment(
         "takip_no": takip_no,
         "barkod_base64": barkod_b64,
         "message": message,
-        "http_status": r.status_code,
+        "http_status": http_status,
         "raw_response": data if not basarili else None,  # hata ayiklama icin
     }

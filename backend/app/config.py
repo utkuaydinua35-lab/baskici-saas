@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     # Sürat Kargo
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")
     surat_sifre: str = Field("", alias="SURAT_SIFRE")
+    surat_relay_url: str = Field("", alias="SURAT_RELAY_URL")
 
     @property
     def is_production(self) -> bool:

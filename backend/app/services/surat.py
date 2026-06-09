@@ -11,6 +11,7 @@ import re
 import requests
 
 from app.config import get_settings
+from app.services import tr_iller
 
 CANLI_URL = "https://api01.suratkargo.com.tr/api/OrtakBarkodOlustur"
 TEST_URL = "https://api02.suratkargo.com.tr/api/OrtakBarkodOlustur"
@@ -63,6 +64,15 @@ def _addr_parts(raw: dict) -> dict:
     soyad = (sa.get("last_name") or "").strip()
     kisi = (ad + " " + soyad).strip() or (sa.get("name") or "").strip()
     il, ilce = _split_il_ilce(sa.get("province"), sa.get("city"))
+    # ilce gecerli mi? degilse adres metninden cikarmayi dene
+    if il and not tr_iller.gecerli_ilce_mi(ilce, il):
+        bulunan = tr_iller.ilce_bul(adres, il)
+        if bulunan:
+            ilce = bulunan
+    # il'i resmi adina normalize et (Surat dogru il adi bekler)
+    resmi_il = tr_iller.resolve_il(il)
+    if resmi_il:
+        il = resmi_il
     return {
         "kisi": kisi,
         "adres": adres,
@@ -70,6 +80,7 @@ def _addr_parts(raw: dict) -> dict:
         "ilce": ilce,
         "telefon": _normalize_phone(sa.get("phone") or raw.get("phone")),
         "email": (raw.get("email") or raw.get("contact_email") or "").strip(),
+        "ilce_gecerli": bool(il and tr_iller.gecerli_ilce_mi(ilce, il)),
     }
 
 
@@ -95,8 +106,10 @@ def create_shipment(
     info = _addr_parts(order_raw)
     if not info["telefon"] or len(info["telefon"]) < 10:
         return {"ok": False, "message": f"Geçersiz telefon: '{info['telefon']}'"}
-    if not info["il"] or not info["ilce"] or not info["adres"]:
-        return {"ok": False, "message": "Eksik adres bilgisi (il/ilçe/adres)"}
+    if not info["il"] or not info["adres"]:
+        return {"ok": False, "message": "Eksik adres bilgisi (il/adres)"}
+    if not info.get("ilce_gecerli"):
+        return {"ok": False, "message": f"İlçe belirlenemedi (il={info['il']}, ilçe='{info['ilce']}'). Adreste ilçe yok — manuel ilçe gerekli.", "ilce_eksik": True, "il": info["il"]}
 
     payload = {
         "KullaniciAdi": ka,

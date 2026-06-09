@@ -296,3 +296,44 @@ def bin_pack_by_variation(queue: list[dict]) -> list[dict]:
         out.extend(bin_pack(vq))
     out.extend([k for k in queue if k["variation"] not in VARIATIONS])
     return out
+
+
+# ═══════════════════════════════════════════════════════════
+# SLOT YERLEŞİMİ (grid 1-27; 1=alt-sağ, 27=üst-sol)
+# ═══════════════════════════════════════════════════════════
+# Grid:
+#   27 26 25 24 23 22 21 20 19   <- ust satir (en yuksek priority)
+#   18 17 16 15 14 13 12 11 10   <- orta satir
+#    9  8  7  6  5  4  3  2  1    <- alt satir (en dusuk priority)
+
+def _row_slots(row_idx: int) -> list[int]:
+    base = row_idx * KALIP_COLS
+    return [base + i + 1 for i in range(KALIP_COLS)]
+
+
+def assign_slots(items: list[dict]) -> list[dict]:
+    """Kalıp içi item'lara grid slot no ata (priority düşük=alt satır, yüksek=üst).
+    Her item'a 'slot_no' (1-27) ve 'slot_index' (0-26) ekler. Sıralı liste döner."""
+    if not items:
+        return items
+    by_kod: dict[str, list[dict]] = {}
+    for it in items:
+        by_kod.setdefault(it.get("kod", "UNKNOWN"), []).append(it)
+    sorted_kods = sorted(by_kod.keys(), key=kod_to_group_priority)
+    out = []
+    row_cursor = 0
+    for kod in sorted_kods:
+        grp_items = by_kod[kod]
+        n = len(grp_items)
+        rows_needed = -(-n // KALIP_COLS)
+        for r in range(rows_needed):
+            if row_cursor >= KALIP_ROWS:
+                break
+            chunk = grp_items[r * KALIP_COLS:(r + 1) * KALIP_COLS]
+            slots = _row_slots(row_cursor)
+            for i, it in enumerate(chunk):
+                it["slot_no"] = slots[i]
+                it["slot_index"] = slots[i] - 1
+                out.append(it)
+            row_cursor += 1
+    return out

@@ -86,13 +86,15 @@ def create_molds(
         )
         db.add(mold)
         db.flush()
-        for slot, it in enumerate(m["items"]):
+        # Grid slot ataması (priority düşük=alt satır 1-9, yüksek=üst satır 19-27)
+        placed_items = mold_planner.pr.assign_slots(list(m["items"]))
+        for it in placed_items:
             db.add(MoldItem(
                 tenant_id=user.tenant_id, mold_id=mold.id,
                 line_item_id=uuid.UUID(it["line_item_id"]),
                 design_id=uuid.UUID(it["design_id"]) if it.get("design_id") else None,
                 store_id=uuid.UUID(it["store_id"]) if it.get("store_id") else None,
-                slot_index=slot, kalip_kodu=it["kod"],
+                slot_index=it["slot_index"], kalip_kodu=it["kod"],
                 design_code=it.get("design_code"), model=it.get("model"),
                 order_number=it.get("order_number"),
             ))

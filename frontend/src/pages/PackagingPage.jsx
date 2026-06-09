@@ -69,16 +69,22 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  // base64 PDF -> indir/yazdir
-  const openBarkodPdf = (b64) => {
+  // base64 PDF -> hem indir hem yeni sekmede ac
+  const openBarkodPdf = (b64, takipNo) => {
     try {
       const bin = atob(b64)
       const bytes = new Uint8Array(bin.length)
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
       const blob = new Blob([bytes], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      setTimeout(() => URL.revokeObjectURL(url), 30000)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `surat_barkod_${takipNo || 'etiket'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      try { window.open(url, '_blank') } catch { /* popup engellendi */ }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch { /* yok say */ }
   }
 
@@ -90,13 +96,15 @@ export default function PackagingPage() {
       const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/surat-gonder`, {})
       const tn = r.takip_no || '—'
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
-      setMsg({ ok: true, text: `✅ Sürat: gönderi oluştu · Takip: ${tn}${extra}` })
-      if (r.barkod_base64) openBarkodPdf(r.barkod_base64)
-      // bir sonraki siparise gec (gonderilen kuyruktan dustu)
-      setTimeout(() => go(index), 800)
+      setMsg({ ok: true, text: `✅ Sürat gönderi oluştu · Takip No: ${tn} · Barkod indirildi${extra}` })
+      if (r.barkod_base64) openBarkodPdf(r.barkod_base64, tn)
+      setTimeout(() => loadIndex(index), 2500)
     } catch (e) {
       const t = typeof e?.detail === 'string' ? e.detail : 'Sürat gönderimi başarısız'
-      setMsg({ ok: false, text: t })
+      const friendly = t.includes('İlçe belirlenemedi')
+        ? `⚠ ${t} (Adreste ilçe yok — Shopify'da ilçeyi düzeltip tekrar deneyin.)`
+        : t
+      setMsg({ ok: false, text: friendly })
     } finally {
       setBusy(false)
     }

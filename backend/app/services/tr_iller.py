@@ -14,6 +14,27 @@ def _norm(s):
 # il adi normalize -> resmi il adi
 _IL_LOOKUP = {_norm(il): il for il in IL_ILCE}
 
+# halk arasinda kullanilan kisa/eski il adlari -> resmi ad
+_IL_ALIAS = {
+    "afyon": "Afyonkarahisar",
+    "antep": "Gaziantep",
+    "g.antep": "Gaziantep",
+    "maras": "Kahramanmaraş",
+    "kmaras": "Kahramanmaraş",
+    "k.maras": "Kahramanmaraş",
+    "urfa": "Şanlıurfa",
+    "s.urfa": "Şanlıurfa",
+    "mersin": "Mersin",
+    "icel": "Mersin",
+    "içel": "Mersin",
+    "istanbul avr": "İstanbul",
+    "istanbul and": "İstanbul",
+    "izmit": "Kocaeli",
+    "adapazari": "Sakarya",
+}
+for _k, _v in _IL_ALIAS.items():
+    _IL_LOOKUP.setdefault(_norm(_k), _v)
+
 
 def resolve_il(il_raw):
     """Verilen il adini resmi il adina cevir (None ise bulunamadi)."""

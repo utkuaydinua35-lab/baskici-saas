@@ -196,7 +196,7 @@ export default function MoldGeneratorPage() {
                 count: m.kilif_sayisi, rows_used: m.rows_used,
                 is_multi_store: m.is_multi_store,
                 kod_counts: m.items.reduce((a, it) => { a[it.kalip_kodu] = (a[it.kalip_kodu] || 0) + 1; return a }, {}),
-                items: m.items.map(it => ({ kod: it.kalip_kodu, design_code: it.design_code, model: it.model, order_number: it.order_number, variation: m.variation, thumbnail_url: it.thumbnail_url, birincil_renk: it.birincil_renk, kalip_tipi: it.kalip_tipi })),
+                items: m.items.map(it => ({ kod: it.kalip_kodu, design_code: it.design_code, model: it.model, order_number: it.order_number, variation: m.variation, kilif_rengi: it.kilif_rengi, thumbnail_url: it.thumbnail_url, birincil_renk: it.birincil_renk, kalip_tipi: it.kalip_tipi })),
               }}
               status={m.status}
               kod={m.kod}
@@ -267,9 +267,10 @@ function shortModel(m) {
   return m.replace(/i\s*phone/i, '').replace(/apple/i, '').replace(/galaxy/i, '').replace(/samsung/i, '').trim().toUpperCase()
 }
 function kilifLabel(it) {
-  if (it.birincil_renk) return `Kılıf: ${it.birincil_renk.toUpperCase()}`
-  if (it.kalip_tipi) return it.kalip_tipi.toUpperCase()
-  return it.variation || ''
+  // Kalibin GERCEK rengi (android beyaz->siyah sonrasi)
+  if (it.kilif_rengi) return `Kılıf: ${String(it.kilif_rengi).toUpperCase()}`
+  if (it.variation) return `Kılıf: ${String(it.variation).toUpperCase()}`
+  return ''
 }
 
 // Grup baski-sirasi onceligi (backend GROUP_PRIORITY ile ayni — dusuk=alt satir)

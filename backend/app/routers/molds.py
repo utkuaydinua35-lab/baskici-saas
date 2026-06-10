@@ -18,7 +18,7 @@ from app.database import get_db
 
 from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, MoldTemplate, Order, User
 
-from app.services import mold_planner, mold_pdf, storage
+from app.services import mold_planner, mold_pdf, storage, kisa_kod
 
 router = APIRouter(prefix="/api/molds", tags=["molds"])
 
@@ -57,6 +57,7 @@ def _next_kod_number(db: Session, tenant_id) -> int:
 def create_molds(
     store_id: uuid.UUID | None = Query(None),
     skip_missing: bool = Query(False),
+    harfler: str = Query("GHJ"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -77,7 +78,7 @@ def create_molds(
     li_ids_done: set = set()
 
     for m in plan["molds"]:
-        kod = "-".join(m["kodlar"]) or "KALIP"
+        kod = "-".join(kisa_kod.kisa_kodlar(m["kodlar"], harfler)) or "KALIP"
         mold = Mold(
             tenant_id=user.tenant_id, store_id=store_id,
             kod=kod, variation=m["variation"],

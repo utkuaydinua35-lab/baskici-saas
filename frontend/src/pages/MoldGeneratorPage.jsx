@@ -60,6 +60,7 @@ export default function MoldGeneratorPage() {
   }
   useEffect(() => { loadPlan(storeId); loadExisting(storeId) }, [storeId])
 
+  const [harfler, setHarfler] = useState('GHJ')
   const handleCreate = async () => {
     const canGo = plan?.can_create || (skipMissing && plan?.mold_count > 0)
     if (!canGo) return
@@ -69,9 +70,10 @@ export default function MoldGeneratorPage() {
     if (!confirm(cm)) return
     setCreating(true); setError(''); setMsg(null)
     try {
+      const hq = `&harfler=${encodeURIComponent((harfler || 'GHJ').toUpperCase())}`
       const url = storeId
-        ? `/api/molds/create?store_id=${storeId}&skip_missing=${skipMissing}`
-        : `/api/molds/create?skip_missing=${skipMissing}`
+        ? `/api/molds/create?store_id=${storeId}&skip_missing=${skipMissing}${hq}`
+        : `/api/molds/create?skip_missing=${skipMissing}${hq}`
       const r = await api.post(url, {})
       if (r.success) {
         setMsg({ ok: true, text: r.message })
@@ -124,8 +126,19 @@ export default function MoldGeneratorPage() {
                 <Kpi label="TOPLAM KILIF" value={plan.total_units} />
                 <Kpi label="EKSİK KALEM" value={plan.eksik_count} color={plan.eksik_count ? 'red' : 'emerald'} />
                 <div className="bg-brand-card border border-brand-border rounded-lg p-3 flex flex-col justify-center gap-2">
+                  <label className="flex items-center gap-2 text-[11px] text-gray-400">
+                    <span className="whitespace-nowrap">Kalıp harfleri:</span>
+                    <input
+                      type="text"
+                      value={harfler}
+                      onChange={e => setHarfler(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3))}
+                      maxLength={3}
+                      placeholder="GHJ"
+                      className="w-16 px-2 py-1 bg-brand-input border border-brand-border rounded text-center font-mono text-gray-100 uppercase"
+                    />
+                  </label>
                   <button onClick={handleCreate}
-                    disabled={creating || !(plan.can_create || (skipMissing && plan.mold_count > 0))}
+                    disabled={creating || !(plan.can_create || (skipMissing && plan.mold_count > 0)) || (harfler || '').length < 3}
                     className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed">
                     {creating ? 'Oluşturuluyor...' : '🎯 Kalıpları Oluştur'}
                   </button>
@@ -166,7 +179,7 @@ export default function MoldGeneratorPage() {
               {plan.molds.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="text-sm font-medium text-gray-300">Kalıp Önizlemesi ({plan.mold_count})</h2>
-                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview />)}
+                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview harfler={harfler} />)}
                 </div>
               )}
 
@@ -226,14 +239,14 @@ export default function MoldGeneratorPage() {
   )
 }
 
-function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot }) {
+function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot, harfler }) {
   const vc = VAR_COLORS[mold.variation] || 'bg-gray-700 text-gray-200 border-gray-600'
   return (
     <div className={`card ${onClick ? 'cursor-pointer hover:border-accent/40 transition-colors' : ''}`} onClick={onClick}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-100">
-            {kod ? kod : (mold.kodlar && mold.kodlar.length ? mold.kodlar.join('-') : `Kalıp ${mold.sira}`)}
+            {kod ? kod : (mold.kodlar && mold.kodlar.length ? kisaKodlar(mold.kodlar, harfler).join('-') : `Kalıp ${mold.sira}`)}
           </span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${vc}`}>{mold.variation}</span>
           {mold.is_multi_store && (
@@ -254,12 +267,52 @@ function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot 
           {preview && <span className="text-[10px] text-gray-500">önizleme</span>}
         </div>
         <div className="text-xs text-gray-500">
-          {mold.count}/27 kılıf · {mold.rows_used} satır · kodlar: {mold.kodlar.join(', ')}
+          {mold.count}/27 kılıf · {mold.rows_used} satır · kodlar: {kisaKodlar(mold.kodlar, harfler).join(', ')}
         </div>
       </div>
-      <MoldGrid items={mold.items} onAssignSlot={onAssignSlot} />
+      <MoldGrid items={mold.items} onAssignSlot={onAssignSlot} harfler={harfler} />
     </div>
   )
+}
+
+const _KISA_SLOT = {
+  'IPHONE-11-GROUP|SIYAH': [0,1], 'IPHONE-11-GROUP|BEYAZ': [0,2],
+  'IPHONE-13-GROUP|SIYAH': [0,3], 'IPHONE-13-GROUP|BEYAZ': [0,4],
+  'IPHONE-15-GROUP|SIYAH': [0,5], 'IPHONE-15-GROUP|BEYAZ': [0,6],
+  'IPHONE-13-PROMAX-GROUP|SIYAH': [0,7], 'IPHONE-13-PROMAX-GROUP|BEYAZ': [0,8],
+  'IPHONE-14-PLUS-GROUP|SIYAH': [0,7], 'IPHONE-14-PLUS-GROUP|BEYAZ': [0,8],
+  'IPHONE-16-PLUS-GROUP|SIYAH': [0,7], 'IPHONE-16-PLUS-GROUP|BEYAZ': [0,8],
+  'IPHONE-15-PRO-GROUP|SIYAH': [0,9], 'IPHONE-15-PRO-GROUP|BEYAZ': [1,1],
+  'IPHONE-16-PRO-GROUP|SIYAH': [0,9], 'IPHONE-16-PRO-GROUP|BEYAZ': [1,1],
+  'IPHONE-17-PRO-GROUP|SIYAH': [0,9], 'IPHONE-17-PRO-GROUP|BEYAZ': [1,1],
+  'IPHONE-15-PROMAX-GROUP|SIYAH': [1,2], 'IPHONE-15-PROMAX-GROUP|BEYAZ': [1,3],
+  'IPHONE-16-PROMAX-GROUP|SIYAH': [1,2], 'IPHONE-16-PROMAX-GROUP|BEYAZ': [1,3],
+  'IPHONE-17-PROMAX-GROUP|SIYAH': [1,2], 'IPHONE-17-PROMAX-GROUP|BEYAZ': [1,3],
+  'SEFFAF': [1,4], 'PARLAK': [1,5], 'MAGSAFE': [2,3],
+  'REDMI-GROUP|SIYAH': [1,6], 'XIAOMI-GROUP|SIYAH': [1,7],
+  'SAMSUNG-A-GROUP|SIYAH': [1,8], 'SAMSUNG-M-GROUP|SIYAH': [1,8],
+  'SAMSUNG-S-GROUP|SIYAH': [1,9], 'SAMSUNG-ULTRA-GROUP|SIYAH': [2,1],
+  'POCO-GROUP|SIYAH': [2,2], 'OPPO-GROUP|SIYAH': [2,2], 'VIVO-GROUP|SIYAH': [2,2],
+  'REALME-GROUP|SIYAH': [2,2], 'TECNO-GROUP|SIYAH': [2,2], 'HUAWEI-GROUP|SIYAH': [2,2],
+  'OMIX-GROUP|SIYAH': [2,2], 'SAMSUNG-OTHER-GROUP|SIYAH': [2,2],
+}
+function kisaKod(grupKodu, harfler) {
+  if (!grupKodu) return '?'
+  let h = (harfler || 'GHJ').toUpperCase()
+  if (h.length < 3) h = (h + 'GHJ').slice(0, 3)
+  h = h.slice(0, 3)
+  let slot = _KISA_SLOT[grupKodu]
+  if (!slot && grupKodu.indexOf('|BEYAZ') >= 0) slot = _KISA_SLOT[grupKodu.replace('|BEYAZ', '|SIYAH')]
+  if (!slot) return grupKodu.split('|')[0].replace('-GROUP', '').slice(0, 4)
+  return `${h[slot[0]]}${slot[1]}`
+}
+function kisaKodlar(grupKodlari, harfler) {
+  const seen = []
+  for (const gk of (grupKodlari || [])) {
+    const kk = kisaKod(gk, harfler)
+    if (seen.indexOf(kk) < 0) seen.push(kk)
+  }
+  return seen
 }
 
 function shortModel(m) {
@@ -292,7 +345,7 @@ function _kodPriority(kod) {
   return _GROUP_PRIORITY[grp] != null ? _GROUP_PRIORITY[grp] : 999
 }
 
-function MoldGrid({ items, onAssignSlot }) {
+function MoldGrid({ items, onAssignSlot, harfler }) {
   // slot_index varsa onu kullan (kaydedilmis kalip); yoksa (plan onizleme) priority'ye gore diz.
   const hasSlots = items.some(it => typeof it.slot_index === 'number')
   const bySlot = {}
@@ -346,6 +399,7 @@ function MoldGrid({ items, onAssignSlot }) {
                 key={ci}
                 item={cell}
                 no={slotNo}
+                harfler={harfler}
                 onAssign={canAssign ? (e) => { e.stopPropagation(); onAssignSlot(rowKod) } : null}
                 assignKod={canAssign ? rowKod : null}
               />
@@ -357,7 +411,7 @@ function MoldGrid({ items, onAssignSlot }) {
   )
 }
 
-function Slot({ item, no, onAssign, assignKod }) {
+function Slot({ item, no, onAssign, assignKod, harfler }) {
   if (!item) {
     if (onAssign) {
       return (
@@ -366,7 +420,7 @@ function Slot({ item, no, onAssign, assignKod }) {
           title={`${assignKod} satırına slot ata`}
           className="aspect-[9/16] rounded-lg border border-dashed border-accent/40 hover:border-accent hover:bg-accent/10 flex flex-col items-center justify-center text-gray-500 hover:text-accent transition-colors group">
           <span className="text-2xl leading-none group-hover:scale-110 transition-transform">+</span>
-          <span className="text-[9px] mt-0.5 font-mono opacity-60">{assignKod}</span>
+          <span className="text-[9px] mt-0.5 font-mono opacity-60">{kisaKod(assignKod, harfler)}</span>
           <span className="text-[8px] mt-0.5">#{no}</span>
         </button>
       )
@@ -387,7 +441,7 @@ function Slot({ item, no, onAssign, assignKod }) {
       )}
       <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
       <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[7px]">✓</div>
-      <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{item.kod}</div>
+      <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{kisaKod(item.kod, harfler)}</div>
       <div className="relative z-10 h-full flex flex-col justify-end p-1 text-center gap-0.5">
         <div className="text-[9px] font-semibold text-white leading-none truncate drop-shadow">{item.design_code || ''}</div>
         <div className="text-[8px] text-gray-200 leading-none drop-shadow">{shortModel(item.model)}</div>

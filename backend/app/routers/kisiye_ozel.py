@@ -193,6 +193,9 @@ def list_kisiye_ozel_orders(
                 sql_func.lower(Order.fulfillment_status) != "fulfilled",
             )
         )
+        # Iptal / iade edilen siparisleri de cikar
+        .where(Order.cancelled_at.is_(None))
+        .where(or_(Order.financial_status.is_(None), Order.financial_status != "refunded"))
     )
 
     if search:
@@ -260,6 +263,9 @@ def stats(
                 sql_func.lower(Order.fulfillment_status) != "fulfilled",
             )
         )
+        # Iptal / iade edilen siparisleri de cikar
+        .where(Order.cancelled_at.is_(None))
+        .where(or_(Order.financial_status.is_(None), Order.financial_status != "refunded"))
         .options(selectinload(Order.line_items))
     )
     rows = db.scalars(q).all()

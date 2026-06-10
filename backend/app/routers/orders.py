@@ -157,6 +157,16 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
                 setattr(existing, k, v)
                 was_updated = True
         order = existing
+        # Sync sirasinda line item'lar silinip yeniden olusturuluyor; design bağlamasini
+        # (assigned_design_id) Shopify line item id'si (external_id) bazinda koru.
+        _preserved_assign = {}
+        _preserved_ko = {}
+        for _li in order.line_items:
+            if _li.external_id:
+                if _li.assigned_design_id:
+                    _preserved_assign[_li.external_id] = _li.assigned_design_id
+                if getattr(_li, "is_kisiye_ozel", None):
+                    _preserved_ko[_li.external_id] = _li.is_kisiye_ozel
         order.line_items.clear()
         db.flush()
     else:
@@ -166,11 +176,14 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         db.add(order)
         db.flush()
 
+    _preserved_assign = locals().get("_preserved_assign", {})
+    _preserved_ko = locals().get("_preserved_ko", {})
     for pos, li_raw in enumerate(raw.get("line_items", [])):
+        _ext = str(li_raw.get("id", "")) if li_raw.get("id") else None
         li = LineItem(
             tenant_id=tenant_id,
             order_id=order.id,
-            external_id=str(li_raw.get("id", "")) if li_raw.get("id") else None,
+            external_id=_ext,
             product_id=str(li_raw.get("product_id", "")) if li_raw.get("product_id") else None,
             variant_id=str(li_raw.get("variant_id", "")) if li_raw.get("variant_id") else None,
             title=li_raw.get("title", ""),
@@ -181,6 +194,11 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             properties=li_raw.get("properties") or [],
             raw=li_raw,
         )
+        # Sync oncesi bağlama varsa koru (PDF/design line item'a bağli kalsin)
+        if _ext and _ext in _preserved_assign:
+            li.assigned_design_id = _preserved_assign[_ext]
+        if _ext and _ext in _preserved_ko:
+            li.is_kisiye_ozel = _preserved_ko[_ext]
         db.add(li)
 
     return order, is_new, was_updated

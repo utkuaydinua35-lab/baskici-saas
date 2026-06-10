@@ -186,6 +186,13 @@ def list_kisiye_ozel_orders(
         select(Order)
         .where(Order.store_id == store_id)
         .where(kisiye_filter)
+        # Gonderilen (fulfilled) siparisleri kisiye ozel bekleyenler listesinden cikar
+        .where(
+            or_(
+                Order.fulfillment_status.is_(None),
+                sql_func.lower(Order.fulfillment_status) != "fulfilled",
+            )
+        )
     )
 
     if search:

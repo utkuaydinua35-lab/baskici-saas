@@ -29,6 +29,16 @@ def extract_phone_model(line_item: LineItem) -> str | None:
                 val = (p.get("value") or "").strip()
                 if val:
                     return val
+    # properties'te yoksa variant_title'a dus (orn. Lunera: variant_title = "iPhone 16 Pro")
+    vt = (getattr(line_item, "variant_title", None) or "").strip()
+    if vt:
+        return vt
+    # son care: raw.variant_title
+    raw = getattr(line_item, "raw", None)
+    if isinstance(raw, dict):
+        rvt = (raw.get("variant_title") or "").strip()
+        if rvt:
+            return rvt
     return None
 
 

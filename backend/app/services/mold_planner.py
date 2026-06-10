@@ -311,6 +311,7 @@ def plan_molds(
                     "model": it["model"],
                     "order_number": it["order_number"],
                     "variation": it["variation"],
+                    "kilif_rengi": pr.kod_to_renk(it["kod"], it["variation"]),
                     "is_kisiye_ozel": it["is_kisiye_ozel"],
                     "line_item_id": it["line_item_id"],
                     "design_id": it["design_id"],

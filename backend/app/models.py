@@ -606,7 +606,7 @@ class Mold(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
     store_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, index=True)
 
-    kod: Mapped[str] = mapped_column(String(20), index=True)          # G0001, G0002...
+    kod: Mapped[str] = mapped_column(String(200), index=True)         # birlesik grup kodlari
     variation: Mapped[str] = mapped_column(String(20))               # SİYAH/BEYAZ/...
     kalip_kodlari: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))  # [A1,A5,B2]
     kilif_sayisi: Mapped[int] = mapped_column(Integer, default=0)
@@ -636,7 +636,7 @@ class MoldItem(Base):
     design_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
 
     slot_index: Mapped[int] = mapped_column(Integer, default=0)       # kalıptaki sıra (0..26)
-    kalip_kodu: Mapped[str] = mapped_column(String(20))              # A1, B2...
+    kalip_kodu: Mapped[str] = mapped_column(String(200))            # IPHONE-15-GROUP|SIYAH...
     design_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     order_number: Mapped[str | None] = mapped_column(String(50), nullable=True)

@@ -253,6 +253,13 @@ def stats(
     q = (
         select(Order)
         .where(Order.store_id == store_id, kisiye_filter)
+        # Gonderilen (fulfilled) siparisleri istatistige dahil etme
+        .where(
+            or_(
+                Order.fulfillment_status.is_(None),
+                sql_func.lower(Order.fulfillment_status) != "fulfilled",
+            )
+        )
         .options(selectinload(Order.line_items))
     )
     rows = db.scalars(q).all()

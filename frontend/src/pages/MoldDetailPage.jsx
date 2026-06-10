@@ -305,32 +305,31 @@ function StageDropdown({ stages, current, onSelect }) {
 }
 
 function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
-  const order = []
-  const byKod = {}
+  // Backend'in atadigi slot_index'e gore yerlestir (1=alt-sag, 27=ust-sol).
+  // slot_index 0-tabanli (0..26) -> slot_no = slot_index + 1.
+  const bySlot = {}
   for (const it of items) {
-    if (!byKod[it.kalip_kodu]) { byKod[it.kalip_kodu] = []; order.push(it.kalip_kodu) }
-    byKod[it.kalip_kodu].push(it)
+    const sn = (typeof it.slot_index === 'number') ? it.slot_index + 1 : null
+    if (sn) bySlot[sn] = it
   }
-  const rows = []
-  const rowKods = []
-  for (const kod of order) {
-    const g = byKod[kod]
-    for (let i = 0; i < g.length; i += 9) {
-      rows.push(g.slice(i, i + 9))
-      rowKods.push(kod)
+  // her satirin hangi koda ait oldugunu (bos slota atama icin) cikar
+  const rowKodOf = (ri) => {
+    for (let ci = 0; ci < 9; ci++) {
+      const sn = 27 - (ri * 9 + ci)
+      if (bySlot[sn]) return bySlot[sn].kalip_kodu
     }
+    return null
   }
-  while (rows.length < 3) { rows.push([]); rowKods.push(null) }
 
   return (
     <div className="space-y-1.5">
-      {rows.map((row, ri) => {
-        const padded = [...Array(Math.max(0, 9 - row.length)).fill(null), ...row].slice(0, 9)
-        const rowKod = rowKods[ri]
+      {[0, 1, 2].map((ri) => {
+        const rowKod = rowKodOf(ri)
         return (
           <div key={ri} className="grid grid-cols-9 gap-1.5">
-            {padded.map((cell, ci) => {
+            {Array.from({ length: 9 }).map((_, ci) => {
               const slotNo = 27 - (ri * 9 + ci)
+              const cell = bySlot[slotNo] || null
               const canAssign = !cell && rowKod && onAssign
               return <Slot
                 key={ci}

@@ -272,32 +272,74 @@ function kilifLabel(it) {
   return it.variation || ''
 }
 
+// Grup baski-sirasi onceligi (backend GROUP_PRIORITY ile ayni — dusuk=alt satir)
+const _GROUP_PRIORITY = {
+  'IPHONE-11-GROUP': 1, 'IPHONE-13-GROUP': 2, 'IPHONE-15-GROUP': 3,
+  'IPHONE-13-PROMAX-GROUP': 4, 'IPHONE-14-PLUS-GROUP': 5, 'IPHONE-16-PLUS-GROUP': 6,
+  'IPHONE-15-PRO-GROUP': 7, 'IPHONE-16-PRO-GROUP': 8, 'IPHONE-17-PRO-GROUP': 9,
+  'IPHONE-15-PROMAX-GROUP': 10, 'IPHONE-16-PROMAX-GROUP': 11, 'IPHONE-17-PROMAX-GROUP': 12,
+  'SAMSUNG-A-GROUP': 100, 'SAMSUNG-S-GROUP': 101, 'SAMSUNG-ULTRA-GROUP': 102,
+  'SAMSUNG-M-GROUP': 103, 'SAMSUNG-OTHER-GROUP': 104,
+  'REDMI-GROUP': 110, 'XIAOMI-GROUP': 111, 'POCO-GROUP': 112, 'OPPO-GROUP': 113,
+  'VIVO-GROUP': 114, 'REALME-GROUP': 115, 'TECNO-GROUP': 116,
+  'HUAWEI-GROUP': 117, 'OMIX-GROUP': 118, 'SEFFAF': 200, 'PARLAK': 201, 'MAGSAFE': 202,
+  'IPHONE-UNKNOWN': 50, 'UNKNOWN-GROUP': 999,
+}
+function _kodPriority(kod) {
+  if (!kod) return 999
+  const grp = (kod.indexOf('|') >= 0) ? kod.split('|')[0] : kod
+  return _GROUP_PRIORITY[grp] != null ? _GROUP_PRIORITY[grp] : 999
+}
+
 function MoldGrid({ items, onAssignSlot }) {
-  const order = []
-  const byKod = {}
-  for (const it of items) {
-    if (!byKod[it.kod]) { byKod[it.kod] = []; order.push(it.kod) }
-    byKod[it.kod].push(it)
-  }
-  const rows = []
-  const rowKods = []
-  for (const kod of order) {
-    const g = byKod[kod]
-    for (let i = 0; i < g.length; i += 9) {
-      rows.push(g.slice(i, i + 9))
-      rowKods.push(kod)
+  // slot_index varsa onu kullan (kaydedilmis kalip); yoksa (plan onizleme) priority'ye gore diz.
+  const hasSlots = items.some(it => typeof it.slot_index === 'number')
+  const bySlot = {}
+  if (hasSlots) {
+    for (const it of items) {
+      const sn = (typeof it.slot_index === 'number') ? it.slot_index + 1 : null
+      if (sn) bySlot[sn] = it
+    }
+  } else {
+    // onizleme: kodlari priority'ye gore sirala, dusuk->alt satir (row 0 = slot 1-9)
+    const byKod = {}
+    const kods = []
+    for (const it of items) {
+      if (!byKod[it.kod]) { byKod[it.kod] = []; kods.push(it.kod) }
+      byKod[it.kod].push(it)
+    }
+    kods.sort((a, b) => _kodPriority(a) - _kodPriority(b))
+    let rowCursor = 0
+    for (const kod of kods) {
+      const g = byKod[kod]
+      const rowsNeeded = Math.ceil(g.length / 9)
+      for (let r = 0; r < rowsNeeded; r++) {
+        if (rowCursor >= 3) break
+        const chunk = g.slice(r * 9, r * 9 + 9)
+        // row 0 -> slot 1-9, row 1 -> 10-18, row 2 -> 19-27
+        for (let i = 0; i < chunk.length; i++) {
+          bySlot[rowCursor * 9 + i + 1] = chunk[i]
+        }
+        rowCursor++
+      }
     }
   }
-  while (rows.length < 3) { rows.push([]); rowKods.push(null) }
+  const rowKodOf = (ri) => {
+    for (let ci = 0; ci < 9; ci++) {
+      const sn = 27 - (ri * 9 + ci)
+      if (bySlot[sn]) return bySlot[sn].kod
+    }
+    return null
+  }
   return (
     <div className="space-y-1.5">
-      {rows.map((row, ri) => {
-        const padded = [...Array(Math.max(0, 9 - row.length)).fill(null), ...row].slice(0, 9)
-        const rowKod = rowKods[ri]
+      {[0, 1, 2].map((ri) => {
+        const rowKod = rowKodOf(ri)
         return (
           <div key={ri} className="grid grid-cols-9 gap-1.5">
-            {padded.map((cell, ci) => {
+            {Array.from({ length: 9 }).map((_, ci) => {
               const slotNo = 27 - (ri * 9 + ci)
+              const cell = bySlot[slotNo] || null
               const canAssign = !cell && rowKod && onAssignSlot
               return <Slot
                 key={ci}

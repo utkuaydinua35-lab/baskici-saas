@@ -195,6 +195,7 @@ def plan_molds(
                             "design_code": _cd.code,
                             "variation": _var,
                             "kod": _kod,
+                            "kilif_rengi": pr.kod_to_renk(_kod, _var),
                             "is_kisiye_ozel": False,
                             "title": li.title,
                             "thumbnail_url": (
@@ -245,6 +246,7 @@ def plan_molds(
                     "design_code": design.code,
                     "variation": variation,
                     "kod": kod,
+                    "kilif_rengi": pr.kod_to_renk(kod, variation),
                     "is_kisiye_ozel": is_ko,
                     "title": li.title,
                     "thumbnail_url": (

@@ -395,9 +395,10 @@ function shortModel(m) {
   return m.replace(/i\s*phone/i, '').replace(/apple/i, '').replace(/galaxy/i, '').replace(/samsung/i, '').trim().toUpperCase()
 }
 function kilifLabel(it) {
-  if (it.birincil_renk) return `Kılıf: ${it.birincil_renk.toUpperCase()}`
-  if (it.kalip_tipi) return it.kalip_tipi.toUpperCase()
-  return it.variation || ''
+  // Kalibin GERCEK rengi (android beyaz->siyah sonrasi). Once kilif_rengi.
+  if (it.kilif_rengi) return `Kılıf: ${String(it.kilif_rengi).toUpperCase()}`
+  if (it.variation) return `Kılıf: ${String(it.variation).toUpperCase()}`
+  return ''
 }
 function actionLabel(h) {
   if (h.action === 'stage_change') return `${h.from_label || '?'} → ${h.to_label || '?'}`

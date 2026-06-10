@@ -337,3 +337,16 @@ def assign_slots(items: list[dict]) -> list[dict]:
                 out.append(it)
             row_cursor += 1
     return out
+
+
+def kod_to_renk(kod: str, variation: str = None) -> str:
+    """Kalıp kodundan gerçek kılıf rengini döndür (android beyaz->siyah sonrası).
+    'GRUP|SIYAH' -> SİYAH, 'GRUP|BEYAZ' -> BEYAZ, ozel varyasyonlar kendileri."""
+    if not kod:
+        return (variation or "SİYAH").upper()
+    if kod in ("PARLAK", "SEFFAF", "MAGSAFE"):
+        return {"SEFFAF": "ŞEFFAF"}.get(kod, kod)
+    if "|" in kod:
+        renk = kod.split("|", 1)[1]
+        return "BEYAZ" if renk == "BEYAZ" else "SİYAH"
+    return (variation or "SİYAH").upper()

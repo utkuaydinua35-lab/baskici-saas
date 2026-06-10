@@ -147,7 +147,7 @@ def list_molds(
                 "created_at": mo.created_at.isoformat() if mo.created_at else None,
                 "items": [
                     {
-                        "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu,
+                        "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
                         "design_code": it.design_code, "model": it.model,
                         "order_number": it.order_number,
                         "design_id": str(it.design_id) if it.design_id else None,
@@ -210,7 +210,7 @@ def _serialize_mold_detail(mo, db):
     for it in sorted(mo.items, key=lambda x: x.slot_index):
         d = dmap.get(it.design_id)
         items.append({
-            "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu,
+            "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
             "design_code": it.design_code, "model": it.model, "order_number": it.order_number,
             "is_hazir": it.is_hazir,
             "design_id": str(it.design_id) if it.design_id else None,

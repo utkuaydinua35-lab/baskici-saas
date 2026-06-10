@@ -174,6 +174,7 @@ def plan_molds(
                 _pending = []
                 for _cd in (d1, d2):
                     _var = pr.normalize_variation(_cd.kalip_tipi)
+                    _var = pr.effective_variation(pr.get_model_group(model), _var)
                     _kod = pr.resolve_kalip_kodu(model, _var, k)
                     if not _kod:
                         add_eksik("model_taninmadi", li, order, model)
@@ -228,6 +229,7 @@ def plan_molds(
                 continue
 
             variation = pr.normalize_variation(design.kalip_tipi)
+            variation = pr.effective_variation(pr.get_model_group(model), variation)
             kod = pr.resolve_kalip_kodu(model, variation, k)
             if not kod:
                 add_eksik("model_taninmadi", li, order, model)

@@ -55,7 +55,7 @@ def summary(
     # ─── Üretim hattı (stage dağılımı) ───
     fq = (
         select(Order.current_stage, sql_func.count(Order.id))
-        .where(Order.tenant_id == tid, not_cancelled)
+        .where(Order.tenant_id == tid, *_acik_kosul)
         .group_by(Order.current_stage)
     )
     if store_id:

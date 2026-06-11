@@ -161,12 +161,22 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         # (assigned_design_id) Shopify line item id'si (external_id) bazinda koru.
         _preserved_assign = {}
         _preserved_ko = {}
+        _preserved_flow = {}  # uretim akisi alanlari (is_kaliba_eklendi vb) — cift baski riskini onler
         for _li in order.line_items:
             if _li.external_id:
                 if _li.assigned_design_id:
                     _preserved_assign[_li.external_id] = _li.assigned_design_id
                 if getattr(_li, "is_kisiye_ozel", None):
                     _preserved_ko[_li.external_id] = _li.is_kisiye_ozel
+                _preserved_flow[_li.external_id] = {
+                    "is_kaliba_eklendi": getattr(_li, "is_kaliba_eklendi", False),
+                    "is_hazir": getattr(_li, "is_hazir", False),
+                    "tedarik_status": getattr(_li, "tedarik_status", "bekliyor"),
+                    "device_model_override": getattr(_li, "device_model_override", None),
+                    "birincil_renk": getattr(_li, "birincil_renk", None),
+                    "ikincil_renk": getattr(_li, "ikincil_renk", None),
+                    "ucuncu_renk": getattr(_li, "ucuncu_renk", None),
+                }
         order.line_items.clear()
         db.flush()
     else:
@@ -178,6 +188,7 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
 
     _preserved_assign = locals().get("_preserved_assign", {})
     _preserved_ko = locals().get("_preserved_ko", {})
+    _preserved_flow = locals().get("_preserved_flow", {})
     for pos, li_raw in enumerate(raw.get("line_items", [])):
         _ext = str(li_raw.get("id", "")) if li_raw.get("id") else None
         li = LineItem(
@@ -194,6 +205,16 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             properties=li_raw.get("properties") or [],
             raw=li_raw,
         )
+        # Sync oncesi uretim akisi alanlarini koru (is_kaliba_eklendi -> cift baski riskini onler)
+        if _ext and _ext in locals().get("_preserved_flow", {}):
+            _fl = _preserved_flow[_ext]
+            li.is_kaliba_eklendi = _fl["is_kaliba_eklendi"]
+            li.is_hazir = _fl["is_hazir"]
+            li.tedarik_status = _fl["tedarik_status"]
+            li.device_model_override = _fl["device_model_override"]
+            li.birincil_renk = _fl["birincil_renk"]
+            li.ikincil_renk = _fl["ikincil_renk"]
+            li.ucuncu_renk = _fl["ucuncu_renk"]
         # Sync oncesi bağlama varsa koru (PDF/design line item'a bağli kalsin)
         if _ext and _ext in _preserved_assign:
             li.assigned_design_id = _preserved_assign[_ext]

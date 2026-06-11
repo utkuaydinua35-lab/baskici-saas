@@ -152,9 +152,15 @@ def surat_gonder(
     except Exception as e:
         shopify_err = str(e)[:200]
 
-    # 3) Stage 8 (Kargoda) + history
+    # 3) Stage 8 (Kargoda) + history + stok dusumu
     prev_stage = order.current_stage or 1
     order.current_stage = 8
+    # Kargoya verilince ana kalem/alt kalem stogundan dus (idempotent, bloklamaz)
+    try:
+        from app.services import stock as _stock_svc
+        _stock_svc.deduct_for_shipment(db, order.tenant_id, order, user)
+    except Exception:
+        pass
     db.add(OrderStatusHistory(
         tenant_id=order.tenant_id,
         order_id=order.id,

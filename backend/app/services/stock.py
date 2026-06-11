@@ -129,3 +129,89 @@ def deduct_for_mold(db: Session, tenant_id, mold, user=None) -> dict:
             })
 
     return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}
+
+
+def _extract_model_for_shipment(li) -> str | None:
+    """Line item'tan telefon modeli cikar (mold_planner ile ayni heuristic)."""
+    try:
+        from app.services import mold_planner
+        return mold_planner.extract_phone_model(li)
+    except Exception:
+        # fallback: variant_title ilk parca
+        if getattr(li, "device_model_override", None):
+            return li.device_model_override
+        if getattr(li, "variant_title", None):
+            return li.variant_title.split("/")[0].strip()
+        return None
+
+
+def _norm_model(s: str | None) -> str:
+    return (s or "").strip().lower().replace("ı", "i").replace("İ", "i")
+
+
+def deduct_for_shipment(db: Session, tenant_id, order, user=None) -> dict:
+    """Siparis kargoya verilince: her kalemin urunu bagli oldugu ana kalemde,
+    kalemin modeline karsilik gelen alt kalem stogundan dus. Idempotent.
+
+    Donus: {already, deducted, shortages, lines}
+    """
+    from app.models import StockGroup, StockItem as _SI
+    # Idempotent: bu siparis icin zaten dusulmus mu?
+    already = db.scalar(
+        select(StockMovement.id).where(
+            StockMovement.tenant_id == tenant_id,
+            StockMovement.reason == "siparis_kargoda",
+            StockMovement.ref_order_id == order.id,
+        ).limit(1)
+    )
+    if already:
+        return {"already": True, "deducted": 0, "shortages": [], "lines": []}
+
+    created_by = getattr(user, "email", None) if user else None
+
+    # Tum ana kalemleri + bagli urun id'lerini hazirla
+    groups = db.scalars(
+        select(StockGroup).where(StockGroup.tenant_id == tenant_id, StockGroup.is_active.is_(True))
+    ).all()
+    # product_id -> group eslesmesi
+    pid_to_group = {}
+    for g in groups:
+        for lp in (g.linked_products or []):
+            pid = str(lp.get("product_id")) if isinstance(lp, dict) else None
+            if pid:
+                pid_to_group[pid] = g
+
+    deducted = 0
+    shortages = []
+    lines = []
+    for li in (order.line_items or []):
+        pid = str(li.product_id) if li.product_id else None
+        if not pid or pid not in pid_to_group:
+            continue  # bu kalem bir ana kaleme bagli degil
+        g = pid_to_group[pid]
+        model = _extract_model_for_shipment(li)
+        if not model:
+            shortages.append({"group": g.name, "model": None, "reason": "model_belirlenemedi"})
+            continue
+        # gruptaki modele uyan alt kalem (varyasyon yoksa sadece model)
+        cand = db.scalars(
+            select(_SI).where(_SI.group_id == g.id, _SI.is_active.is_(True))
+        ).all()
+        nm = _norm_model(model)
+        si = next((x for x in cand if _norm_model(x.model) == nm), None)
+        qty = li.quantity or 1
+        if not si:
+            shortages.append({"group": g.name, "model": model, "need": qty, "reason": "alt_kalem_yok"})
+            continue
+        take = min(si.quantity or 0, qty)
+        if take > 0:
+            _move(db, si, -take, "siparis_kargoda",
+                  ref_order_id=order.id,
+                  note=f"Siparis #{getattr(order, 'order_number', '?')} kargoda",
+                  created_by=created_by)
+            deducted += take
+            lines.append({"group": g.name, "model": model, "deducted": take})
+        if take < qty:
+            shortages.append({"group": g.name, "model": model, "need": qty, "deducted": take, "reason": "yetersiz_stok"})
+
+    return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}

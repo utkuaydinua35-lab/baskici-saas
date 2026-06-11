@@ -1,286 +1,268 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
-const CAT_LABELS = {
-  bos_kilif: 'Boş Kılıf',
-  ekran_koruyucu: 'Ekran Koruyucu',
-  lens_koruyucu: 'Lens Koruyucu',
-  diger: 'Diğer',
-}
-const EMPTY = {
-  sku: '', name: '', category: 'bos_kilif', variation: '', model: '',
-  quantity: '', low_stock_threshold: '', product_id: '', variant_id: '', notes: '',
-}
-
 export default function StockPage() {
-  const [items, setItems] = useState([])
-  const [meta, setMeta] = useState({ categories: [], variations: [] })
-  const [stores, setStores] = useState([])
-  const [cat, setCat] = useState('')
-  const [search, setSearch] = useState('')
-  const [lowOnly, setLowOnly] = useState(false)
-  const [stats, setStats] = useState({ all_total: 0, low_count: 0, total_quantity: 0 })
+  const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(true)
-
-  const [form, setForm] = useState(EMPTY)
-  const [storeId, setStoreId] = useState('')
-  const [editId, setEditId] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [expanded, setExpanded] = useState(null)       // acik ana kalem id
+  const [showNewGroup, setShowNewGroup] = useState(false)
+  const [addItemGroup, setAddItemGroup] = useState(null)  // alt kalem ekleme dialogu
+  const [linkGroup, setLinkGroup] = useState(null)        // urun eslestirme dialogu
+  const [adjItem, setAdjItem] = useState(null)            // stok ayarlama
+  const [moveItem, setMoveItem] = useState(null)          // hareket gecmisi
   const [msg, setMsg] = useState(null)
-
-  const [adjItem, setAdjItem] = useState(null)
-  const [moveItem, setMoveItem] = useState(null)
-
-  const loadMeta = async () => {
-    try { setMeta(await api.get('/api/stock/_meta')) } catch {}
-    try {
-      const s = await api.get('/api/stores')
-      setStores(Array.isArray(s) ? s : [])
-    } catch {}
-  }
 
   const load = async () => {
     setLoading(true)
     try {
-      const p = new URLSearchParams()
-      if (cat) p.set('category', cat)
-      if (search) p.set('search', search)
-      if (lowOnly) p.set('low_only', 'true')
-      const r = await api.get(`/api/stock?${p}`)
-      setItems(r.items || [])
-      setStats({ all_total: r.all_total || 0, low_count: r.low_count || 0, total_quantity: r.total_quantity || 0 })
-    } catch { setItems([]) } finally { setLoading(false) }
+      const r = await api.get('/api/stock/groups')
+      setGroups(r.groups || [])
+    } catch { setGroups([]) } finally { setLoading(false) }
   }
+  useEffect(() => { load() }, [])
 
-  useEffect(() => { loadMeta() }, [])
-  useEffect(() => { load() }, [cat, lowOnly])
-  useEffect(() => {
-    const t = setTimeout(load, 400)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line
-  }, [search])
-
-  const openCreate = () => { setForm(EMPTY); setStoreId(''); setEditId(null); setShowForm(true); setMsg(null) }
-  const openEdit = (it) => {
-    setForm({
-      sku: it.sku || '', name: it.name || '', category: it.category || 'bos_kilif',
-      variation: it.variation || '', model: it.model || '',
-      quantity: it.quantity ?? '', low_stock_threshold: it.low_stock_threshold ?? '',
-      product_id: it.product_id || '', variant_id: it.variant_id || '', notes: it.notes || '',
-    })
-    setStoreId(it.store_id || '')
-    setEditId(it.id); setShowForm(true); setMsg(null)
-  }
-
-  const save = async () => {
-    setSaving(true); setMsg(null)
-    const payload = {
-      sku: form.sku.trim(), name: form.name.trim(), category: form.category,
-      variation: form.variation.trim() || null, model: form.model.trim() || null,
-      low_stock_threshold: form.low_stock_threshold === '' ? 0 : parseInt(form.low_stock_threshold, 10),
-      store_id: storeId || null,
-      product_id: form.product_id.trim() || null, variant_id: form.variant_id.trim() || null,
-      notes: form.notes.trim() || null,
-    }
-    if (!editId) payload.quantity = form.quantity === '' ? 0 : parseInt(form.quantity, 10)
-    if (!payload.sku || !payload.name) { setMsg({ ok: false, text: 'Stok kodu ve ad zorunlu.' }); setSaving(false); return }
-    try {
-      if (editId) await api.patch(`/api/stock/${editId}`, payload)
-      else await api.post('/api/stock', payload)
-      setShowForm(false); setEditId(null); setForm(EMPTY)
-      setMsg({ ok: true, text: editId ? 'Güncellendi.' : 'Eklendi.' })
-      load()
-    } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi' })
-    } finally { setSaving(false) }
-  }
-
-  const remove = async (it) => {
-    if (!confirm(`"${it.name}" (${it.sku}) silinecek. Hareket geçmişi de gider. Emin misin?`)) return
-    try { await api.del(`/api/stock/${it.id}`); load() }
-    catch (e) { alert(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
-  }
+  const toplamStok = groups.reduce((a, g) => a + (g.toplam_stok || 0), 0)
+  const dusukToplam = groups.reduce((a, g) => a + (g.dusuk_count || 0), 0)
 
   return (
-    <div className="max-w-[1400px]">
+    <div className="max-w-5xl">
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">🗃️ Stok</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Boş kılıf, ekran/lens koruyucu ve diğer stok kalemleri. Kalıp basıldığında
-            (Tamamlandı) eşleşen boş kılıflar otomatik düşer.
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Ana kalem (ürün) · alt kalem (model) bazlı stok takibi</p>
         </div>
-        <button onClick={openCreate} className="btn-primary !text-sm">+ Yeni Stok Kalemi</button>
+        <button onClick={() => setShowNewGroup(true)} className="btn-primary !text-sm">➕ Yeni Ana Kalem</button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <Kpi label="KALEM SAYISI" value={stats.all_total} color="gray" />
-        <Kpi label="TOPLAM ADET" value={stats.total_quantity} color="accent" />
-        <Kpi label="DÜŞÜK STOK" value={stats.low_count} color={stats.low_count > 0 ? 'red' : 'gray'} />
+      {msg && <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>{msg.text}</div>}
+
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <Kpi label="Ana Kalem" value={groups.length} />
+        <Kpi label="Toplam Stok" value={toplamStok} />
+        <Kpi label="Düşük Stok" value={dusukToplam} color={dusukToplam > 0 ? 'amber' : 'gray'} />
       </div>
 
-      <div className="card mb-4 flex flex-wrap gap-2 !p-3 items-center">
-        <select value={cat} onChange={e => setCat(e.target.value)} className="input !text-xs !py-1.5">
-          <option value="">Tüm kategoriler</option>
-          {(meta.categories || []).map(c => <option key={c} value={c}>{CAT_LABELS[c] || c}</option>)}
-        </select>
-        <input type="text" placeholder="Ara: kod, ad, model, varyasyon..." value={search}
-               onChange={e => setSearch(e.target.value)}
-               className="input !text-xs !py-1.5 flex-1 min-w-[200px]" />
-        <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
-          <input type="checkbox" checked={lowOnly} onChange={e => setLowOnly(e.target.checked)} />
-          Sadece düşük stok
-        </label>
-      </div>
-
-      {msg && (
-        <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${
-          msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-                 : 'bg-red-500/10 border-red-500/20 text-red-300'
-        }`}>{msg.ok ? '✓ ' : '✗ '}{msg.text}</div>
-      )}
-
-      {showForm && (
-        <div className="card mb-4 !p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-200">{editId ? 'Kalemi Düzenle' : 'Yeni Stok Kalemi'}</h2>
-            <button onClick={() => { setShowForm(false); setEditId(null) }} className="text-gray-500 hover:text-gray-200 text-xl leading-none">×</button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <F label="Stok kodu (SKU) *"><input className="input w-full !text-xs !py-1.5" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} /></F>
-            <F label="Ad *"><input className="input w-full !text-xs !py-1.5" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></F>
-            <F label="Kategori">
-              <select className="input w-full !text-xs !py-1.5" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {(meta.categories || []).map(c => <option key={c} value={c}>{CAT_LABELS[c] || c}</option>)}
-              </select>
-            </F>
-            <F label="Varyasyon (boş kılıf)">
-              <input className="input w-full !text-xs !py-1.5" list="var-list" placeholder="siyah / beyaz / şeffaf..." value={form.variation} onChange={e => setForm(f => ({ ...f, variation: e.target.value }))} />
-              <datalist id="var-list">{(meta.variations || []).map(v => <option key={v} value={v} />)}</datalist>
-            </F>
-            <F label="Telefon modeli (boş kılıf)"><input className="input w-full !text-xs !py-1.5" placeholder="iPhone 15 Pro Max" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} /></F>
-            <F label="Uyarı eşiği"><input type="number" className="input w-full !text-xs !py-1.5" placeholder="0" value={form.low_stock_threshold} onChange={e => setForm(f => ({ ...f, low_stock_threshold: e.target.value }))} /></F>
-            {!editId && <F label="Başlangıç adedi"><input type="number" className="input w-full !text-xs !py-1.5" placeholder="0" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} /></F>}
-            <F label="Shopify mağaza (eşleşme)">
-              <select className="input w-full !text-xs !py-1.5" value={storeId} onChange={e => setStoreId(e.target.value)}>
-                <option value="">—</option>
-                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </F>
-            <F label="Shopify product_id"><input className="input w-full !text-xs !py-1.5" value={form.product_id} onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))} /></F>
-            <F label="Shopify variant_id"><input className="input w-full !text-xs !py-1.5" value={form.variant_id} onChange={e => setForm(f => ({ ...f, variant_id: e.target.value }))} /></F>
-            <F label="Not"><input className="input w-full !text-xs !py-1.5" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></F>
-          </div>
-          <div className="flex justify-end gap-2 mt-3">
-            <button onClick={() => { setShowForm(false); setEditId(null) }} className="btn-secondary !text-sm">İptal</button>
-            <button onClick={save} disabled={saving} className="btn-primary !text-sm disabled:opacity-50">{saving ? 'Kaydediliyor...' : editId ? 'Güncelle' : 'Ekle'}</button>
-          </div>
-        </div>
-      )}
-
-      {loading && <div className="text-gray-500 text-sm text-center py-8">Yükleniyor...</div>}
-
-      {!loading && items.length === 0 && (
+      {loading ? (
+        <div className="card text-center py-12 text-gray-500">Yükleniyor...</div>
+      ) : groups.length === 0 ? (
         <div className="card text-center py-12 text-gray-500">
-          <div className="text-3xl mb-2">🗃️</div>
-          Stok kalemi yok. <br/>
-          <span className="text-xs">Boş kılıf, ekran/lens koruyucu veya diğer stok kalemlerini ekle.</span>
+          <div className="text-3xl mb-2">📦</div>
+          Henüz ana kalem yok. "Yeni Ana Kalem" ile başla (örn. "Ekran Koruyucu").
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groups.map(g => (
+            <GroupCard
+              key={g.id} g={g}
+              expanded={expanded === g.id}
+              onToggle={() => setExpanded(expanded === g.id ? null : g.id)}
+              onAddItem={() => setAddItemGroup(g)}
+              onLink={() => setLinkGroup(g)}
+              onAdjust={(it) => setAdjItem(it)}
+              onMove={(it) => setMoveItem(it)}
+              onDeleteGroup={async () => {
+                if (!confirm(`"${g.name}" ana kalemi ve tüm alt kalemleri silinecek. Emin misin?`)) return
+                try { await api.del(`/api/stock/groups/${g.id}`); load() }
+                catch (e) { setMsg({ ok: false, text: 'Silinemedi: ' + (e?.detail || '') }) }
+              }}
+            />
+          ))}
         </div>
       )}
 
-      {!loading && items.length > 0 && (
-        <div className="card !p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-brand-input border-b border-brand-border">
-              <tr className="text-left text-xs text-gray-500">
-                <th className="px-3 py-2 font-medium">Stok Kodu</th>
-                <th className="px-3 py-2 font-medium">Ad</th>
-                <th className="px-3 py-2 font-medium">Kategori</th>
-                <th className="px-3 py-2 font-medium">Varyasyon / Model</th>
-                <th className="px-3 py-2 font-medium text-center">Adet</th>
-                <th className="px-3 py-2 font-medium text-center">Eşik</th>
-                <th className="w-32 px-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-brand-border/50">
-              {items.map(it => (
-                <tr key={it.id} className={`hover:bg-brand-input/30 ${!it.is_active ? 'opacity-50' : ''}`}>
-                  <td className="px-3 py-2 font-mono text-[11px] text-accent">{it.sku}</td>
-                  <td className="px-3 py-2 text-gray-200">{it.name}</td>
-                  <td className="px-3 py-2 text-xs text-gray-400">{CAT_LABELS[it.category] || it.category}</td>
-                  <td className="px-3 py-2 text-xs text-gray-400">
-                    {it.variation && <span className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-200 mr-1">{it.variation}</span>}
-                    {it.model || (it.variation ? '' : '—')}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`font-semibold ${it.is_low ? 'text-red-400' : 'text-gray-100'}`}>{it.quantity}</span>
-                    {it.is_low && <span className="ml-1 text-[10px] text-red-400">düşük</span>}
-                  </td>
-                  <td className="px-3 py-2 text-center text-xs text-gray-500">{it.low_stock_threshold || '—'}</td>
-                  <td className="px-2 py-2">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => setAdjItem(it)} className="px-2 h-7 flex items-center text-[11px] text-emerald-400 hover:bg-emerald-500/10 rounded" title="Stok giriş/çıkış">±</button>
-                      <button onClick={() => setMoveItem(it)} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-brand-input rounded" title="Hareketler">≣</button>
-                      <button onClick={() => openEdit(it)} className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-accent hover:bg-accent/10 rounded" title="Düzenle">✎</button>
-                      <button onClick={() => remove(it)} className="w-7 h-7 flex items-center justify-center text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded" title="Sil">🗑</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
+      {showNewGroup && <NewGroupDialog onClose={() => setShowNewGroup(false)} onSaved={() => { setShowNewGroup(false); load() }} />}
+      {addItemGroup && <AddItemDialog group={addItemGroup} onClose={() => setAddItemGroup(null)} onSaved={() => { setAddItemGroup(null); load() }} />}
+      {linkGroup && <LinkProductsDialog group={linkGroup} onClose={() => setLinkGroup(null)} onSaved={() => { setLinkGroup(null); load() }} />}
       {adjItem && <AdjustDialog item={adjItem} onClose={() => setAdjItem(null)} onSaved={() => { setAdjItem(null); load() }} />}
       {moveItem && <MovementsDialog item={moveItem} onClose={() => setMoveItem(null)} />}
     </div>
   )
 }
 
-function AdjustDialog({ item, onClose, onSaved }) {
-  const [delta, setDelta] = useState('')
-  const [reason, setReason] = useState('manuel_giris')
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
+function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onDeleteGroup }) {
+  return (
+    <div className="card !p-0 overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/30 cursor-pointer" onClick={onToggle}>
+        <span className="text-gray-500 text-sm">{expanded ? '▾' : '▸'}</span>
+        <span className="font-medium text-gray-100 flex-1">{g.name}</span>
+        {g.dusuk_count > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">⚠ {g.dusuk_count} düşük</span>}
+        <span className="text-xs text-gray-400">{g.item_count} model</span>
+        <span className="text-sm font-semibold text-gray-200">{g.toplam_stok} adet</span>
+        {(g.linked_products?.length || 0) > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300">🔗 {g.linked_products.length}</span>}
+      </div>
+      {expanded && (
+        <div className="border-t border-brand-border px-4 py-3 bg-brand-bg/30">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <button onClick={onAddItem} className="btn-secondary !text-xs">➕ Model Ekle</button>
+            <button onClick={onLink} className="btn-secondary !text-xs">🔗 Ürün Eşleştir ({g.linked_products?.length || 0})</button>
+            <button onClick={onDeleteGroup} className="text-xs text-red-400/70 hover:text-red-300 ml-auto">🗑 Ana Kalemi Sil</button>
+          </div>
+          {g.items.length === 0 ? (
+            <p className="text-xs text-gray-500 py-2">Henüz model eklenmemiş. "Model Ekle" ile telefon modeli + adet gir.</p>
+          ) : (
+            <div className="divide-y divide-brand-border/40">
+              {g.items.map(it => (
+                <div key={it.id} className="flex items-center gap-3 py-2">
+                  <span className="text-sm text-gray-200 flex-1">{it.model}{it.variation ? <span className="text-gray-500"> · {it.variation}</span> : null}</span>
+                  {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
+                  <span className={`text-sm font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
+                  <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
+                  <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NewGroupDialog({ onClose, onSaved }) {
+  const [name, setName] = useState('')
+  const [threshold, setThreshold] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    if (!name.trim()) { setErr('İsim gerekli'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post('/api/stock/groups', { name: name.trim(), low_stock_threshold: threshold === '' ? 0 : parseInt(threshold, 10) })
+      onSaved()
+    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
+  }
+  return (
+    <Modal title="Yeni Ana Kalem" onClose={onClose}>
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+      <F label="Ana kalem adı"><input className="input w-full" placeholder="Örn. Ekran Koruyucu" value={name} onChange={e => setName(e.target.value)} autoFocus /></F>
+      <F label="Düşük stok uyarı eşiği (varsayılan)"><input type="number" className="input w-full" placeholder="0" value={threshold} onChange={e => setThreshold(e.target.value)} /></F>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Oluştur'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+function AddItemDialog({ group, onClose, onSaved }) {
+  const [model, setModel] = useState('')
+  const [variation, setVariation] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    if (!model.trim()) { setErr('Model gerekli'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post(`/api/stock/groups/${group.id}/items`, {
+        model: model.trim(), variation: variation.trim() || null,
+        quantity: quantity === '' ? 0 : parseInt(quantity, 10),
+      })
+      onSaved()
+    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
+  }
+  return (
+    <Modal title={`Model Ekle — ${group.name}`} onClose={onClose}>
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+      <F label="Telefon modeli"><input className="input w-full" placeholder="Örn. iPhone 13" value={model} onChange={e => setModel(e.target.value)} autoFocus /></F>
+      <F label="Varyasyon (opsiyonel)"><input className="input w-full" placeholder="siyah / beyaz / şeffaf — boş bırakılabilir" value={variation} onChange={e => setVariation(e.target.value)} /></F>
+      <F label="Başlangıç adedi"><input type="number" className="input w-full" placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} /></F>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Ekle'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+function LinkProductsDialog({ group, onClose, onSaved }) {
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(() => new Set((group.linked_products || []).map(p => p.product_id)))
+  const [filter, setFilter] = useState('')
+  const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
-  const submit = async (sign) => {
-    const n = parseInt(delta, 10)
-    if (isNaN(n) || n <= 0) { setErr('Geçerli bir adet gir'); return }
-    setBusy(true); setErr('')
+  useEffect(() => {
+    api.get('/api/stock/groups/_assignable-products')
+      .then(r => setProducts(r.products || []))
+      .catch(() => setErr('Ürünler yüklenemedi'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const toggle = (pid) => {
+    const next = new Set(selected)
+    if (next.has(pid)) next.delete(pid); else next.add(pid)
+    setSelected(next)
+  }
+  const filtered = products.filter(p => !filter || (p.title || '').toLowerCase().includes(filter.toLowerCase()))
+
+  const save = async () => {
+    setSaving(true); setErr('')
     try {
-      await api.post(`/api/stock/${item.id}/adjust`, { delta: sign * n, reason, note: note || null })
+      const linked = products.filter(p => selected.has(p.product_id))
+        .map(p => ({ product_id: p.product_id, title: p.title, store_id: p.store_id }))
+      await api.patch(`/api/stock/groups/${group.id}`, { linked_products: linked })
       onSaved()
-    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Hata') } finally { setBusy(false) }
+    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5">
-        <div className="flex justify-between items-center mb-1">
-          <h2 className="text-base font-semibold text-gray-100">Stok Giriş / Çıkış</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl">×</button>
+    <Modal title={`Ürün Eşleştir — ${group.name}`} onClose={onClose} wide>
+      <p className="text-xs text-gray-500 mb-3">Bu ana kaleme bağlı ürünler kargoya verilince, siparişteki modele göre alt kalem stoğu düşer.</p>
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+      <input className="input w-full mb-3 !text-sm" placeholder="Ürün ara..." value={filter} onChange={e => setFilter(e.target.value)} />
+      {loading ? <p className="text-sm text-gray-500 py-4">Yükleniyor...</p> : (
+        <div className="max-h-80 overflow-y-auto space-y-1">
+          {filtered.map(p => (
+            <label key={p.product_id} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer ${selected.has(p.product_id) ? 'border-accent bg-accent/10' : 'border-brand-border hover:bg-brand-input/30'}`}>
+              <input type="checkbox" checked={selected.has(p.product_id)} onChange={() => toggle(p.product_id)} />
+              <span className="text-sm text-gray-200 flex-1 truncate">{p.title || '(başlıksız)'}</span>
+              <span className="text-[10px] text-gray-500 font-mono">{p.product_id}</span>
+            </label>
+          ))}
+          {filtered.length === 0 && <p className="text-sm text-gray-500 py-4 text-center">Ürün bulunamadı</p>}
         </div>
-        <p className="text-xs text-gray-500 mb-3">{item.name} · <span className="font-mono">{item.sku}</span> · mevcut: <span className="text-gray-200">{item.quantity}</span></p>
-        <div className="space-y-3">
-          <input type="number" min="1" value={delta} onChange={e => setDelta(e.target.value)} placeholder="Adet" className="input w-full" autoFocus />
-          <select value={reason} onChange={e => setReason(e.target.value)} className="input w-full !text-sm">
-            <option value="manuel_giris">Manuel giriş (satın alma vb.)</option>
-            <option value="manuel_cikis">Manuel çıkış (fire, iade vb.)</option>
-            <option value="duzeltme">Sayım düzeltmesi</option>
-          </select>
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Not (opsiyonel)" className="input w-full !text-sm" />
-          {err && <div className="text-xs text-red-400 bg-red-500/10 rounded p-2">{err}</div>}
-          <div className="flex gap-2">
-            <button onClick={() => submit(1)} disabled={busy} className="flex-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm disabled:opacity-50">+ Giriş</button>
-            <button onClick={() => submit(-1)} disabled={busy} className="flex-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm disabled:opacity-50">− Çıkış</button>
-          </div>
-        </div>
+      )}
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : `Kaydet (${selected.size})`}</button>
       </div>
-    </div>
+    </Modal>
+  )
+}
+
+function AdjustDialog({ item, onClose, onSaved }) {
+  const [sign, setSign] = useState(1)
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('manuel')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const save = async () => {
+    const n = parseInt(amount, 10)
+    if (!n || n <= 0) { setErr('Geçerli miktar gir'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.post(`/api/stock/${item.id}/adjust`, { delta: sign * n, reason, note: note || null })
+      onSaved()
+    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Hata'); setSaving(false) }
+  }
+  return (
+    <Modal title={`Stok Ayarla — ${item.model || item.name}`} onClose={onClose}>
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+      <p className="text-sm text-gray-400 mb-3">Mevcut: <span className="font-semibold text-gray-200">{item.quantity}</span> adet</p>
+      <div className="flex gap-2 mb-3">
+        <button onClick={() => setSign(1)} className={`flex-1 py-2 rounded-lg text-sm ${sign === 1 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-brand-input text-gray-400'}`}>➕ Giriş</button>
+        <button onClick={() => setSign(-1)} className={`flex-1 py-2 rounded-lg text-sm ${sign === -1 ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-brand-input text-gray-400'}`}>➖ Çıkış</button>
+      </div>
+      <F label="Miktar"><input type="number" className="input w-full" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} autoFocus /></F>
+      <F label="Not (opsiyonel)"><input className="input w-full" value={note} onChange={e => setNote(e.target.value)} /></F>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Uygula'}</button>
+      </div>
+    </Modal>
   )
 }
 
@@ -288,59 +270,46 @@ function MovementsDialog({ item, onClose }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   useEffect(() => {
-    (async () => {
-      try { const r = await api.get(`/api/stock/${item.id}/movements`); setRows(r.items || []) }
-      catch { setRows([]) } finally { setLoading(false) }
-    })()
+    api.get(`/api/stock/${item.id}/movements`).then(r => setRows(r.items || [])).catch(() => setRows([])).finally(() => setLoading(false))
   }, [item.id])
-
-  const reasonLabel = r => ({
-    ilk_giris: 'İlk giriş', manuel_giris: 'Manuel giriş', manuel_cikis: 'Manuel çıkış',
-    duzeltme: 'Düzeltme', mold_basildi: 'Kalıp basıldı',
-  }[r] || r)
-
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-base font-semibold text-gray-100">Hareket Geçmişi — {item.name}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl">×</button>
-        </div>
-        {loading ? <div className="text-gray-500 text-sm py-6 text-center">Yükleniyor...</div>
-          : rows.length === 0 ? <div className="text-gray-500 text-sm py-6 text-center">Hareket yok</div>
-          : (
-            <div className="max-h-96 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-gray-500 border-b border-brand-border">
-                  <tr><th className="px-2 py-1 text-left">Tarih</th><th className="px-2 py-1 text-left">Sebep</th><th className="px-2 py-1 text-right">Değişim</th><th className="px-2 py-1 text-right">Bakiye</th></tr>
-                </thead>
-                <tbody className="divide-y divide-brand-border/40">
-                  {rows.map(m => (
-                    <tr key={m.id}>
-                      <td className="px-2 py-1.5 text-xs text-gray-500 whitespace-nowrap">{m.created_at ? new Date(m.created_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                      <td className="px-2 py-1.5 text-xs text-gray-300">{reasonLabel(m.reason)}{m.note ? <span className="text-gray-600"> · {m.note}</span> : ''}</td>
-                      <td className={`px-2 py-1.5 text-right font-semibold ${m.delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{m.delta >= 0 ? '+' : ''}{m.delta}</td>
-                      <td className="px-2 py-1.5 text-right text-gray-300">{m.balance_after}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+    <Modal title={`Hareket Geçmişi — ${item.model || item.name}`} onClose={onClose} wide>
+      {loading ? <p className="text-sm text-gray-500 py-4">Yükleniyor...</p> : rows.length === 0 ? (
+        <p className="text-sm text-gray-500 py-4 text-center">Henüz hareket yok</p>
+      ) : (
+        <div className="max-h-80 overflow-y-auto divide-y divide-brand-border/40">
+          {rows.map((m, i) => (
+            <div key={i} className="flex items-center gap-3 py-2 text-sm">
+              <span className={`font-semibold ${m.delta > 0 ? 'text-emerald-300' : 'text-red-300'}`}>{m.delta > 0 ? '+' : ''}{m.delta}</span>
+              <span className="text-gray-400 flex-1">{m.reason}{m.note ? ` · ${m.note}` : ''}</span>
+              <span className="text-xs text-gray-500">{m.created_at ? new Date(m.created_at).toLocaleString('tr-TR') : ''}</span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function Modal({ title, children, onClose, wide }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className={`bg-brand-card border border-brand-border rounded-xl w-full ${wide ? 'max-w-xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-5`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-100">{title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        {children}
       </div>
     </div>
   )
 }
 
 function F({ label, children }) {
-  return <div><label className="block text-[10px] uppercase text-gray-500 mb-1">{label}</label>{children}</div>
+  return <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">{label}</span>{children}</label>
 }
+
 function Kpi({ label, value, color = 'gray' }) {
-  const colors = { gray: 'text-gray-100', accent: 'text-accent', red: 'text-red-400' }
-  return (
-    <div className="bg-brand-card border border-brand-border rounded-lg p-3">
-      <div className="text-[10px] uppercase text-gray-500">{label}</div>
-      <div className={`text-2xl font-semibold ${colors[color]}`}>{value}</div>
-    </div>
-  )
+  const c = color === 'amber' ? 'text-amber-300' : 'text-gray-100'
+  return <div className="card !py-3"><div className="text-xs text-gray-500">{label}</div><div className={`text-xl font-semibold ${c}`}>{value}</div></div>
 }

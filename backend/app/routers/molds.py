@@ -19,6 +19,7 @@ from app.database import get_db
 from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, MoldTemplate, Order, User
 
 from app.services import mold_planner, mold_pdf, storage, kisa_kod
+from app.services import placement_rules as pr
 
 router = APIRouter(prefix="/api/molds", tags=["molds"])
 
@@ -51,6 +52,24 @@ def _next_kod_number(db: Session, tenant_id) -> int:
         if kod and kod[1:].isdigit():
             mx = max(mx, int(kod[1:]))
     return mx + 1
+
+
+@router.post("/create-empty", response_model=None)
+def create_empty_mold(
+    store_id: uuid.UUID | None = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bos kalip olustur. Varyasyon ve kod ilk eklenen kilif/tasarim ile belirlenir."""
+    mold = Mold(
+        tenant_id=user.tenant_id, store_id=store_id,
+        kod="BOS", variation="", kalip_kodlari=[],
+        kilif_sayisi=0, rows_used=0, status="olusturuldu",
+    )
+    db.add(mold)
+    db.commit()
+    db.refresh(mold)
+    return {"success": True, "id": str(mold.id), "kod": mold.kod}
 
 
 @router.post("/create", response_model=None)
@@ -677,8 +696,12 @@ def assign_slot(
     """Boş bir slota tasarım/sipariş ata. Sırada gelen slot_index'i otomatik hesaplar."""
     mo = _get_mold(db, mold_id, user.tenant_id)
 
-    if body.kalip_kodu not in (mo.kalip_kodlari or []):
-        raise HTTPException(400, f"Bu kalıpta '{body.kalip_kodu}' kalıp kodu yok")
+    # Bos kalip mi? (henuz hic kilif yok) -> ilk eklenen kilif/tasarim duzeni belirler
+    _is_empty_mold = not (mo.kalip_kodlari or []) and len(mo.items) == 0
+    # kalip_kodu kontrolu: dolu kalipta var olmali; bos kalipta sonra hesaplanacak
+    if not _is_empty_mold and body.kalip_kodu and body.kalip_kodu not in (mo.kalip_kodlari or []):
+        # Kod kalipta yok ama varyasyon uyumlu olabilir -> ekle (asagida varyasyon kontrolu yapilir)
+        pass
 
     same_kod = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
     if len(same_kod) >= 9:
@@ -713,8 +736,7 @@ def assign_slot(
             raise HTTPException(400, "Bu kalem zaten kalıba eklenmiş")
 
         variation = _extract_variation_for_assign(li)
-        if variation and variation != mo.variation:
-            raise HTTPException(400, f"Varyasyon uyumsuz: kalıp={mo.variation}, kalem={variation}")
+        # Varyasyon uyum kontrolu asagida ortak blokta (bos kalip destegi)
 
         design = li.assigned_design
         if not design and li.product_id:
@@ -769,6 +791,41 @@ def assign_slot(
 
     else:
         raise HTTPException(400, f"Geçersiz source: {body.source}")
+
+    # === Bos kalip + ilk-ekleme + varyasyon uyum kontrolu ===
+    # Eklenen kilifin gercek kalip kodunu modelinden hesapla
+    if body.source == "order":
+        _var = _extract_variation_for_assign(li) or "SİYAH"
+    else:
+        _var = pr.normalize_variation(getattr(design, "kalip_tipi", None)) or "SİYAH"
+    _hesap_kod = pr.resolve_kalip_kodu(model, _var)
+    if not _hesap_kod:
+        raise HTTPException(400, f"Model '{model}' icin kalip kodu hesaplanamadi")
+
+    if _is_empty_mold:
+        # Ilk ekleme: kalibin varyasyonunu ve ilk kodunu belirle
+        mo.variation = pr.kod_to_renk(_hesap_kod, _var)
+        mo.kalip_kodlari = [_hesap_kod]
+        body.kalip_kodu = _hesap_kod
+    else:
+        # Dolu kalip: varyasyon/kod uyumlu olmali
+        _kalip_renk = (mo.variation or "").upper()
+        _yeni_renk = pr.kod_to_renk(_hesap_kod, _var).upper()
+        if _kalip_renk and _yeni_renk and _kalip_renk != _yeni_renk:
+            raise HTTPException(400, f"Varyasyon uyumsuz: kalip={mo.variation}, eklenen={_yeni_renk}")
+        # Ozel varyasyonlar (SEFFAF/PARLAK/MAGSAFE) tek kalip — farkli ozel tip karismasin
+        _ozel = {"SEFFAF", "PARLAK", "MAGSAFE"}
+        _mevcut_ozel = {pr._kod_group(k) for k in (mo.kalip_kodlari or [])} & _ozel if hasattr(pr, "_kod_group") else set()
+        # Kod kalipta yoksa ekle
+        if _hesap_kod not in (mo.kalip_kodlari or []):
+            mo.kalip_kodlari = list(mo.kalip_kodlari or []) + [_hesap_kod]
+        body.kalip_kodu = _hesap_kod
+
+    # body.kalip_kodu artik hesaplanan kod -> same_kod/next_slot_index'i yeniden hesapla
+    _same = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
+    if len(_same) >= 9:
+        raise HTTPException(400, f"'{body.kalip_kodu}' satiri dolu (9/9)")
+    next_slot_index = max((it.slot_index for it in _same), default=-1) + 1
 
     # Slot'un store_id'sini belirle: order source → line item'ın store'u; manual → design'ın store'u
     slot_store_id = None

@@ -676,7 +676,7 @@ def assignable_models(
 
 
 class AssignSlotRequest(BaseModel):
-    kalip_kodu: str
+    kalip_kodu: str | None = None  # bos kalipta None — backend modelden hesaplar
     source: str  # "order" veya "manual"
     line_item_id: uuid.UUID | None = None
     design_id: uuid.UUID | None = None
@@ -700,10 +700,13 @@ def assign_slot(
         # Kod kalipta yok ama varyasyon uyumlu olabilir -> ekle (asagida varyasyon kontrolu yapilir)
         pass
 
-    same_kod = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
-    if len(same_kod) >= 9:
-        raise HTTPException(400, f"'{body.kalip_kodu}' satırı dolu (9/9)")
-    next_slot_index = max((it.slot_index for it in same_kod), default=-1) + 1
+    # Bos kalipta kalip_kodu None — slot hesabi asagida (kod hesaplandiktan sonra) yapilir
+    next_slot_index = 0
+    if body.kalip_kodu:
+        same_kod = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
+        if len(same_kod) >= 9:
+            raise HTTPException(400, f"'{body.kalip_kodu}' satırı dolu (9/9)")
+        next_slot_index = max((it.slot_index for it in same_kod), default=-1) + 1
 
     line_item_id = None
     design_id = None

@@ -24,7 +24,8 @@ export default function SlotAssignDialog({ open, mold, kalipKodu, onClose, onAss
     }
   }, [open, mold?.id, kalipKodu])
 
-  if (!open || !mold || !kalipKodu) return null
+  if (!open || !mold) return null
+  const _bosKalip = !kalipKodu  // bos kalip: ilk ekleme
 
   return (
     <div
@@ -38,8 +39,14 @@ export default function SlotAssignDialog({ open, mold, kalipKodu, onClose, onAss
             <h2 className="text-lg font-semibold text-gray-100">Slot Ataması</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Kalıp: <span className="font-mono text-gray-300">{mold.kod}</span>
-              {' · '}Kod: <span className="font-mono text-accent">{kalipKodu}</span>
-              {' · '}Varyasyon: <span className="text-gray-300">{mold.variation}</span>
+              {_bosKalip ? (
+                <span className="text-amber-300">{' · '}İlk kılıf — varyasyon ilk eklemeyle belirlenecek</span>
+              ) : (
+                <>
+                  {' · '}Kod: <span className="font-mono text-accent">{kalipKodu}</span>
+                  {' · '}Varyasyon: <span className="text-gray-300">{mold.variation}</span>
+                </>
+              )}
             </p>
           </div>
           <button

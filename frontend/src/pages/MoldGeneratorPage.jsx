@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
 
@@ -30,7 +31,8 @@ export default function MoldGeneratorPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [msg, setMsg] = useState(null)
-  const [tab, setTab] = useState('plan')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('tab') === 'existing' ? 'existing' : 'plan')
   const [skipMissing, setSkipMissing] = useState(false)
 
   useEffect(() => {
@@ -97,6 +99,7 @@ export default function MoldGeneratorPage() {
 
   return (
     <div className="max-w-6xl">
+      <MoldTabs />
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">🎯 Kalıp Oluşturucu</h1>

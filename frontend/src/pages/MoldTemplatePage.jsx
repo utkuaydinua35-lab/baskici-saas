@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import MoldTabs from '../components/MoldTabs'
 
 export default function MoldTemplatePage() {
   const [tpl, setTpl] = useState(null)
@@ -49,6 +50,7 @@ export default function MoldTemplatePage() {
 
   return (
     <div className="max-w-5xl">
+      <MoldTabs active="sablon" />
       <div className="mb-5">
         <h1 className="text-2xl font-semibold text-gray-100">🧩 Kalıp Şablonu</h1>
         <p className="text-sm text-gray-500 mt-1">

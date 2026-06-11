@@ -9,6 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.database import SessionLocal
 from app.services.sync_service import sync_all_stores
 from app.services.uploads import cleanup_old as _cleanup_uploads
+from app.services import stage_automation
 
 logger = logging.getLogger("scheduler")
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,18 @@ def _sync_job(reason="interval"):
         db.close()
 
 
+def _stage_job():
+    logger.info("[scheduler] asama otomasyonu basliyor")
+    db = SessionLocal()
+    try:
+        res = stage_automation.run_time_based(db)
+        logger.info(f"[scheduler] asama otomasyonu: {res}")
+    except Exception as e:
+        logger.exception(f"[scheduler] asama otomasyonu hata: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     global _scheduler
     if _scheduler is not None:
@@ -44,6 +57,9 @@ def start_scheduler():
     # Gunluk destek gorsel temizligi (14 gunden eski)
     _scheduler.add_job(lambda: _cleanup_uploads(14), "interval", hours=24,
                        id="cleanup_support_uploads", max_instances=1, coalesce=True)
+    # Asama otomasyonu — her 10 dk (zaman bazli gecisler)
+    _scheduler.add_job(_stage_job, "interval", minutes=10,
+                       id="stage_automation", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

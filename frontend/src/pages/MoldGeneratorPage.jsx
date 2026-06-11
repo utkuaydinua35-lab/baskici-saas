@@ -102,18 +102,13 @@ export default function MoldGeneratorPage() {
       <MoldTabs />
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-100">🎯 Kalıp Oluşturucu</h1>
-          <p className="text-sm text-gray-500 mt-1">Bekleyen siparişleri otomatik kalıplara böler</p>
+          <h1 className="text-2xl font-semibold text-gray-100">{tab === 'existing' ? '📦 Oluşturulan Kalıplar' : '🎯 Kalıp Oluşturucu'}</h1>
+          <p className="text-sm text-gray-500 mt-1">{tab === 'existing' ? 'Daha önce oluşturulan kalıplar' : 'Bekleyen siparişleri otomatik kalıplara böler'}</p>
         </div>
         <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[200px]">
           <option value="">Tüm Mağazalar</option>
           {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-      </div>
-
-      <div className="flex gap-1 bg-brand-card border border-brand-border rounded-lg p-1 mb-4 w-fit">
-        <TabBtn active={tab === 'plan'} onClick={() => setTab('plan')}>Yeni Plan</TabBtn>
-        <TabBtn active={tab === 'existing'} onClick={() => setTab('existing')}>Oluşturulan Kalıplar ({molds.length})</TabBtn>
       </div>
 
       {error && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3">{error}</div>}

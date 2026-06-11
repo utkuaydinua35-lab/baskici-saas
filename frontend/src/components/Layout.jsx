@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 
@@ -55,6 +55,7 @@ export default function Layout() {
             <SectionLabel>KALIP YÖNETİMİ</SectionLabel>
             <NavItem to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" />
             <NavItem to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" />
+            <NavItem to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" />
 
             <SectionLabel>STOK YÖNETİMİ</SectionLabel>
             <NavItem to="/stok" label="Stok" icon="🗃️" />
@@ -360,6 +361,13 @@ function ChangePasswordModal({ onClose }) {
 }
 
 function NavItem({ to, label, icon, end = false, disabled = false, legacy = false }) {
+  const _loc = useLocation()
+  const _toPath = to.split('?')[0]
+  const _toTab = (to.split('?')[1] || '').includes('tab=existing')
+  const _curTab = new URLSearchParams(_loc.search).get('tab') === 'existing'
+  const _tabAware = to.includes('?tab=') || (_toPath === '/kalip-olustur')
+  const _forceActive = _tabAware && _loc.pathname === _toPath && (_toTab === _curTab)
+  const _forceInactive = _tabAware && _loc.pathname === _toPath && (_toTab !== _curTab)
   if (disabled) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 cursor-not-allowed">
@@ -372,15 +380,14 @@ function NavItem({ to, label, icon, end = false, disabled = false, legacy = fals
     <NavLink
       to={to}
       end={end}
-      className={({ isActive }) =>
+      className={({ isActive: _ia }) => { const isActive = _forceInactive ? false : (_forceActive ? true : _ia); return (
         `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
           isActive
             ? 'bg-accent/15 text-accent'
             : legacy
               ? 'text-gray-500 hover:bg-brand-input hover:text-gray-300'
               : 'text-gray-400 hover:bg-brand-input hover:text-gray-200'
-        }`
-      }
+        }` ) }}
     >
       <span className="w-5 text-center">{icon}</span>
       <span className={legacy ? 'italic' : ''}>{label}</span>

@@ -554,14 +554,13 @@ def assignable_line_items(
     """Bu kalıba (variation uyumlu, kalıba eklenmemiş) atanabilir line item'lar."""
     mo = _get_mold(db, mold_id, user.tenant_id)
 
+    _conds = [Order.tenant_id == user.tenant_id, LineItem.is_kaliba_eklendi == False]
+    if mo.store_id:
+        _conds.append(Order.store_id == mo.store_id)
     rows = db.scalars(
         select(LineItem)
         .join(Order, LineItem.order_id == Order.id)
-        .where(
-            Order.store_id == mo.store_id,
-            Order.tenant_id == user.tenant_id,
-            LineItem.is_kaliba_eklendi == False,
-        )
+        .where(*_conds)
         .options(selectinload(LineItem.order), selectinload(LineItem.assigned_design))
         .order_by(desc(Order.created_at_platform))
         .limit(500)
@@ -570,17 +569,15 @@ def assignable_line_items(
     out = []
     for li in rows:
         variation = _extract_variation_for_assign(li)
-        if variation and variation != mo.variation:
-            continue  # uyumsuz
+        if mo.variation and variation and variation != mo.variation:
+            continue  # uyumsuz (bos kalipta mo.variation bos -> filtreleme yok)
 
         design = li.assigned_design
         if not design and li.product_id:
-            design = db.scalar(
-                select(Design).where(
-                    Design.store_id == mo.store_id,
-                    Design.product_id == li.product_id,
-                ).limit(1)
-            )
+            _dq = select(Design).where(Design.product_id == li.product_id)
+            if mo.store_id:
+                _dq = _dq.where(Design.store_id == mo.store_id)
+            design = db.scalar(_dq.limit(1))
         if not design:
             continue
 

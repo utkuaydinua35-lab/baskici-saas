@@ -202,9 +202,20 @@ export default function MoldDetailPage() {
           </div>
           <div className="lg:col-span-2 card">
             <h2 className="text-sm font-medium text-gray-200 mb-1">Slot Yerleşimi</h2>
-            <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · slota tıkla → hazır işaretle · boş + → ata</p>
-            <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget}
-              onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} />
+            {(!mold.kalip_kodlari || mold.kalip_kodlari.length === 0) ? (
+              <div className="text-center py-10">
+                <div className="text-4xl mb-3">📭</div>
+                <p className="text-sm text-gray-400 mb-1">Bu kalıp boş</p>
+                <p className="text-xs text-gray-500 mb-4">İlk eklediğin kılıf ve tasarım kalıbın varyasyonunu ve düzenini belirleyecek.</p>
+                <button onClick={() => setAssignTarget({ kalip_kodu: null })} className="btn-primary !text-sm">➕ İlk Kılıfı Ekle</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · slota tıkla → hazır işaretle · boş + → ata</p>
+                <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget}
+                  onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} />
+              </>
+            )}
           </div>
         </div>
       )}

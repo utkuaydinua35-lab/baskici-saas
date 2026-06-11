@@ -65,6 +65,15 @@ export default function MoldGeneratorPage() {
   useEffect(() => { loadPlan(storeId); loadExisting(storeId) }, [storeId])
 
   const [harfler, setHarfler] = useState('GHJ')
+  const handleCreateEmpty = async () => {
+    try {
+      const r = await api.post(`/api/molds/create-empty${storeId ? `?store_id=${storeId}` : ''}`)
+      if (r?.id) navigate(`/kalip/${r.id}`)
+    } catch (e) {
+      alert('Boş kalıp oluşturulamadı: ' + (e?.detail || e?.message || ''))
+    }
+  }
+
   const handleCreate = async () => {
     const canGo = plan?.can_create || (skipMissing && plan?.mold_count > 0)
     if (!canGo) return
@@ -107,10 +116,13 @@ export default function MoldGeneratorPage() {
           <h1 className="text-2xl font-semibold text-gray-100">{tab === 'existing' ? '📦 Oluşturulan Kalıplar' : '🎯 Kalıp Oluşturucu'}</h1>
           <p className="text-sm text-gray-500 mt-1">{tab === 'existing' ? 'Daha önce oluşturulan kalıplar' : 'Bekleyen siparişleri otomatik kalıplara böler'}</p>
         </div>
-        <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[200px]">
-          <option value="">Tüm Mağazalar</option>
-          {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[200px]">
+            <option value="">Tüm Mağazalar</option>
+            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <button onClick={handleCreateEmpty} className="btn-secondary !text-sm whitespace-nowrap" title="Boş kalıp oluştur, + ile doldur">➕ Boş Kalıp</button>
+        </div>
       </div>
 
       {error && <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3">{error}</div>}

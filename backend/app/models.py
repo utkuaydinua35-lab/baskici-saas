@@ -616,6 +616,7 @@ class Mold(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     current_stage: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    pdf_indirilme_zamani: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_hatali: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

@@ -382,6 +382,37 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
         "cols": tpl.cols, "rows": tpl.rows, "boxes": tpl.boxes,
     }
     pdf_bytes, report = mold_pdf.render_mold_pdf(slot_items, template=template_data)
+
+    # === Asama otomasyonu: PDF indirilince ===
+    # 1) Onceki acik kaliplari (baskiya_gonderildi=3 veya baskida=4, bu kalip haric) tamamla
+    from datetime import datetime as _dt, timezone as _tz
+    _onceki = db.scalars(
+        select(Mold).where(
+            Mold.tenant_id == user.tenant_id,
+            Mold.id != mo.id,
+            Mold.current_stage.in_([3, 4]),
+        )
+    ).all()
+    for _prev in _onceki:
+        _old_stage = _prev.current_stage
+        _prev.current_stage = 5  # tamamlandi
+        _prev.status = "tamamlandi"
+        _log_mold(db, _prev, user, action="stage_change", from_stage=_old_stage, to_stage=5,
+                  note="Yeni kalip baskiya gonderildi (otomatik tamamlandi)")
+        try:
+            from app.services import stock as stock_svc
+            stock_svc.deduct_for_mold(db, user.tenant_id, _prev, user)
+        except Exception:
+            pass
+    # 2) Bu kalibi baskiya_gonderildi yap + indirme zamanini kaydet
+    if mo.current_stage < 3:
+        _old = mo.current_stage
+        mo.current_stage = 3  # baskiya_gonderildi
+        _log_mold(db, mo, user, action="stage_change", from_stage=_old, to_stage=3,
+                  note="PDF indirildi")
+    mo.pdf_indirilme_zamani = _dt.now(_tz.utc)
+    db.commit()
+
     filename = f"kalip_{mo.kod}.pdf"
     return Response(
         content=pdf_bytes,

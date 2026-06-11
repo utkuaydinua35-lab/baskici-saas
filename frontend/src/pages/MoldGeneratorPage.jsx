@@ -201,23 +201,18 @@ export default function MoldGeneratorPage() {
               <div className="text-3xl mb-2">🧩</div>
               Henüz kalıp oluşturulmamış.
             </div>
-          ) : molds.map(m => (
-            <MoldCard
-              key={m.id}
-              mold={{
-                sira: m.kod, variation: m.variation, kodlar: m.kalip_kodlari,
-                count: m.kilif_sayisi, rows_used: m.rows_used,
-                is_multi_store: m.is_multi_store,
-                kod_counts: m.items.reduce((a, it) => { a[it.kalip_kodu] = (a[it.kalip_kodu] || 0) + 1; return a }, {}),
-                items: m.items.map(it => ({ kod: it.kalip_kodu, design_code: it.design_code, model: it.model, order_number: it.order_number, variation: m.variation, kilif_rengi: it.kilif_rengi, thumbnail_url: it.thumbnail_url, birincil_renk: it.birincil_renk, kalip_tipi: it.kalip_tipi })),
-              }}
-              status={m.status}
-              kod={m.kod}
-              onClick={() => navigate(`/kalip/${m.id}`)}
-              onDelete={() => setDeleteTarget({ id: m.id, kod: m.kod })}
-              onAssignSlot={(kod) => setAssignTarget({ mold: m, kalip_kodu: kod })}
-            />
-          ))}
+          ) : (
+            <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
+              {molds.map(m => (
+                <MoldRow
+                  key={m.id}
+                  mold={m}
+                  onClick={() => navigate(`/kalip/${m.id}`)}
+                  onDelete={() => setDeleteTarget({ id: m.id, kod: m.kod })}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -235,6 +230,34 @@ export default function MoldGeneratorPage() {
         onClose={() => setAssignTarget(null)}
         onAssigned={() => { setAssignTarget(null); loadExisting(); loadPlan() }}
       />
+    </div>
+  )
+}
+
+function MoldRow({ mold, onClick, onDelete }) {
+  const vc = VAR_COLORS[mold.variation] || 'bg-gray-700 text-gray-200 border-gray-600'
+  const statusColors = {
+    olusturuldu: 'bg-blue-500/15 text-blue-300',
+    basildi: 'bg-emerald-500/15 text-emerald-300',
+    iptal: 'bg-red-500/15 text-red-300',
+  }
+  const sc = statusColors[mold.status] || 'bg-gray-600/30 text-gray-300'
+  const tarih = mold.created_at ? new Date(mold.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/40 cursor-pointer transition-colors">
+      <span className="text-sm font-mono font-semibold text-gray-100 min-w-[90px]">{mold.kod}</span>
+      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${vc}`}>{mold.variation}</span>
+      <span className="text-xs text-gray-400">{mold.kilif_sayisi}/27 kılıf · {mold.rows_used} satır</span>
+      {mold.is_multi_store && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300">🏪 Çoklu</span>}
+      <span className={`text-[10px] px-2 py-0.5 rounded-full ${sc}`}>{mold.status}</span>
+      <span className="text-xs text-gray-500 ml-auto">{tarih}</span>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete() }}
+        className="text-xs text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded px-2 py-1 border border-red-500/20"
+        title="Kalıbı sil">🗑</button>
+      <span className="text-gray-600 text-lg">›</span>
     </div>
   )
 }

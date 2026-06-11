@@ -754,6 +754,29 @@ class PhoneModel(Base):
     )
 
 
+class StockGroup(Base):
+    """Stok ana kalemi (urun grubu). Or: 'Ekran Koruyucu'. Alt kalemler = StockItem (model bazli)."""
+    __tablename__ = "stock_groups"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_stock_group_tenant_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    # Bu gruba bagli Shopify urunleri (kargoda eslestirme icin): [{"store_id":..,"product_id":..,"title":..}]
+    linked_products: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    low_stock_threshold: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items: Mapped[list["StockItem"]] = relationship(back_populates="group", cascade="all, delete-orphan")
+
+
 class StockItem(Base):
     """Fiziksel stok kalemi (tenant geneli). bos_kilif/ekran/lens/diger."""
     __tablename__ = "stock_items"
@@ -766,6 +789,9 @@ class StockItem(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
 
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_groups.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     sku: Mapped[str] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(30), default="bos_kilif", server_default=text("'bos_kilif'"), index=True)
@@ -786,6 +812,8 @@ class StockItem(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    group: Mapped["StockGroup | None"] = relationship(back_populates="items")
 
 
 class StockMovement(Base):

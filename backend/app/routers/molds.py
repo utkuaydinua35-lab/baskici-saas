@@ -339,6 +339,14 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
         raise HTTPException(status_code=400, detail="Geçersiz işlem")
 
     db.delete(it)
+    db.flush()
+    # Kalan item'lari yeniden yerlestir (slot bosluklarini doldur, grup/priority duzenini koru)
+    _kalanlar = [x for x in mo.items if x.id != it.id]
+    if _kalanlar:
+        _dicts = [{"kod": x.kalip_kodu, "_ref": x} for x in _kalanlar]
+        _yeni = mold_planner.pr.assign_slots(_dicts)
+        for _d in _yeni:
+            _d["_ref"].slot_index = _d["slot_index"]
     # kalıp boşaldıysa kilif_sayisi güncelle
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
     db.commit()

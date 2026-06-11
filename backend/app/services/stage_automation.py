@@ -100,3 +100,85 @@ def run_time_based(db) -> dict:
 
     db.commit()
     return res
+
+def run_mold_based(db) -> dict:
+    """Kalip durumlarindan siparis asamasini turet (sadece ileri).
+    - >=1 kalemi kaliba eklendi -> Kaliba Alindi (4)
+    - >=1 kalemi baskidaki kalipta (mold stage 4) -> Baskida (5)
+    - TUM kaliba eklenmis kalemlerin kaliplari tamamlandi (mold stage 5) -> Baski Tamam (6)
+    """
+    res = {"kaliba_alindi": 0, "baskida": 0, "baski_tamam": 0}
+
+    # Acik, asamasi 6'dan kucuk siparisleri al (ilerleyebilir olanlar)
+    orders = db.scalars(
+        select(Order).where(Order.current_stage < 6)
+    ).all()
+    if not orders:
+        db.commit()
+        return res
+
+    for o in orders:
+        if not _order_acik(o):
+            continue
+        # Siparisin kalemleri
+        lis = db.scalars(select(LineItem).where(LineItem.order_id == o.id)).all()
+        if not lis:
+            continue
+        li_ids = [li.id for li in lis]
+        # Kaliba eklenmis kalemler (baskilik): is_kaliba_eklendi=True
+        kaliba_eklenenler = [li for li in lis if getattr(li, "is_kaliba_eklendi", False)]
+        if not kaliba_eklenenler:
+            continue  # hic kaliba eklenmemis -> bu otomasyon dokunmaz
+
+        # Bu kalemlerin kalip item'lari + kalip asamalari
+        mold_items = db.scalars(
+            select(MoldItem).where(MoldItem.line_item_id.in_(li_ids))
+        ).all()
+        if not mold_items:
+            continue
+        mold_ids = {mi.mold_id for mi in mold_items if mi.mold_id}
+        molds = db.scalars(select(Mold).where(Mold.id.in_(mold_ids))).all()
+        mold_stage = {m.id: m.current_stage for m in molds}
+
+        # Kalip item'i olan line_item id'leri
+        li_to_mold = {}
+        for mi in mold_items:
+            if mi.line_item_id and mi.mold_id:
+                li_to_mold[mi.line_item_id] = mi.mold_id
+
+        # En yuksek asama hesapla (sadece ileri)
+        hedef = o.current_stage
+
+        # (4) Kaliba Alindi — en az 1 kalem kaliba eklendi (zaten var)
+        if hedef < 4:
+            hedef = 4
+
+        # (5) Baskida — en az 1 kalemin kalibi baskida (mold stage 4) veya uzeri
+        kalemler_baskida = any(
+            mold_stage.get(li_to_mold.get(li.id)) in (4, 5)
+            for li in kaliba_eklenenler if li.id in li_to_mold
+        )
+        if kalemler_baskida and hedef < 5:
+            hedef = 5
+
+        # (6) Baski Tamam — TUM kaliba eklenmis kalemlerin kaliplari tamamlandi (mold stage 5)
+        # Kosul: her kaliba eklenmis kalemin bir kalibi olmali VE o kalip stage 5 olmali
+        tum_tamam = (
+            len(kaliba_eklenenler) > 0
+            and all(li.id in li_to_mold for li in kaliba_eklenenler)
+            and all(mold_stage.get(li_to_mold[li.id]) == 5 for li in kaliba_eklenenler)
+        )
+        if tum_tamam and hedef < 6:
+            hedef = 6
+
+        if hedef > o.current_stage:
+            old = o.current_stage
+            o.current_stage = hedef
+            label = {4: "Kalıba Alındı", 5: "Baskıda", 6: "Baskı Tamam"}.get(hedef, str(hedef))
+            _log_order(db, o, old, hedef, f"Kalıp durumundan otomatik ({label})")
+            if hedef == 4: res["kaliba_alindi"] += 1
+            elif hedef == 5: res["baskida"] += 1
+            elif hedef == 6: res["baski_tamam"] += 1
+
+    db.commit()
+    return res

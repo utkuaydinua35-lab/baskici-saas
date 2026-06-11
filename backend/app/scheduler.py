@@ -35,7 +35,8 @@ def _stage_job():
     db = SessionLocal()
     try:
         res = stage_automation.run_time_based(db)
-        logger.info(f"[scheduler] asama otomasyonu: {res}")
+        res_mold = stage_automation.run_mold_based(db)
+        logger.info(f"[scheduler] asama otomasyonu: zaman={res} kalip={res_mold}")
     except Exception as e:
         logger.exception(f"[scheduler] asama otomasyonu hata: {e}")
     finally:

@@ -117,7 +117,7 @@ export default function MoldGeneratorPage() {
           <p className="text-sm text-gray-500 mt-1">{tab === 'existing' ? 'Daha önce oluşturulan kalıplar' : 'Bekleyen siparişleri otomatik kalıplara böler'}</p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[200px]">
+          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 w-full sm:w-auto sm:min-w-[200px]">
             <option value="">Tüm Mağazalar</option>
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -421,7 +421,8 @@ function MoldGrid({ items, onAssignSlot, harfler }) {
     return null
   }
   return (
-    <div className="space-y-1.5">
+    <div className="overflow-x-auto -mx-1 px-1">
+    <div className="space-y-1.5 min-w-[520px]">
       {[0, 1, 2].map((ri) => {
         const rowKod = rowKodOf(ri)
         return (
@@ -442,6 +443,7 @@ function MoldGrid({ items, onAssignSlot, harfler }) {
           </div>
         )
       })}
+    </div>
     </div>
   )
 }

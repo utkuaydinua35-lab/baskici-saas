@@ -24,7 +24,7 @@ export default function Layout() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
             {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-9 max-w-[160px] object-contain" />
+              <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-11 max-w-[190px] object-contain rounded-lg" />
             ) : (
               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-bold">
                 {(tenant?.name || 'B').charAt(0).toUpperCase()}

@@ -71,6 +71,7 @@ def _serialize(it: StockItem) -> dict:
         "category": it.category,
         "variation": it.variation,
         "model": it.model,
+        "models": it.models or ([it.model] if it.model else []),
         "quantity": it.quantity,
         "low_stock_threshold": it.low_stock_threshold,
         "is_low": low,
@@ -140,7 +141,8 @@ class GroupUpdate(BaseModel):
 
 
 class GroupItemCreate(BaseModel):
-    model: str = Field(..., min_length=1, max_length=100)
+    models: list[str] = Field(..., min_length=1)  # bir veya cok uyumlu model
+    name: str | None = Field(None, max_length=200)  # opsiyonel etiket
     variation: str | None = Field(None, max_length=30)
     quantity: int = Field(0, ge=0)
     low_stock_threshold: int | None = Field(None, ge=0)
@@ -236,25 +238,30 @@ def add_group_item(group_id: uuid.UUID, body: GroupItemCreate,
         StockGroup.id == group_id, StockGroup.tenant_id == user.tenant_id))
     if not g:
         raise HTTPException(404, "Ana kalem bulunamadi")
-    # Ayni grup + model + varyasyon zaten var mi?
+    _models = [m.strip() for m in body.models if m and m.strip()]
+    if not _models:
+        raise HTTPException(400, "En az bir model gerekli")
     _var = (body.variation or "").strip() or None
-    dup = db.scalar(select(StockItem).where(
-        StockItem.group_id == g.id, StockItem.model == body.model.strip(),
-        StockItem.variation.is_(None) if _var is None else (StockItem.variation == _var),
-        StockItem.is_active.is_(True)))
-    if dup:
-        raise HTTPException(409, f"'{body.model}' modeli bu ana kalemde zaten var")
-    # benzersiz sku uret
+    # Cakisma: bu gruptaki diger alt kalemlerde ayni model var mi? (bir model tek alt keleme ait)
+    existing = db.scalars(select(StockItem).where(
+        StockItem.group_id == g.id, StockItem.is_active.is_(True))).all()
+    for ex in existing:
+        ex_models = set(ex.models or ([ex.model] if ex.model else []))
+        clash = ex_models & set(_models)
+        if clash:
+            raise HTTPException(409, f"Bu modeller bu ana kalemde zaten baska bir alt kalemde: {', '.join(sorted(clash))}")
+    # etiket: verilmemisse modellerden uret
+    label = (body.name or "").strip() or " / ".join(_models)
+    # benzersiz sku
     import re as _re
-    base_sku = _re.sub(r"[^A-Za-z0-9]+", "-", f"{g.name}-{body.model}-{_var or 'std'}").strip("-").upper()[:90]
-    sku = base_sku
-    n = 1
+    base_sku = _re.sub(r"[^A-Za-z0-9]+", "-", f"{g.name}-{_models[0]}-{_var or 'std'}").strip("-").upper()[:90]
+    sku = base_sku; n = 1
     while db.scalar(select(StockItem).where(StockItem.tenant_id == user.tenant_id, StockItem.sku == sku)):
         n += 1; sku = f"{base_sku}-{n}"[:100]
     it = StockItem(
         tenant_id=user.tenant_id, group_id=g.id,
-        sku=sku, name=f"{g.name} · {body.model}", category="bos_kilif",
-        variation=_var, model=body.model.strip(),
+        sku=sku, name=label, category="bos_kilif",
+        variation=_var, model=_models[0], models=_models,
         quantity=body.quantity,
         low_stock_threshold=body.low_stock_threshold if body.low_stock_threshold is not None else (g.low_stock_threshold or 0),
     )

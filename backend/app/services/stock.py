@@ -206,7 +206,10 @@ def deduct_for_shipment(db: Session, tenant_id, order, user=None) -> dict:
             select(_SI).where(_SI.group_id == g.id, _SI.is_active.is_(True))
         ).all()
         nm = _norm_model(model)
-        si = next((x for x in cand if _norm_model(x.model) == nm), None)
+        def _item_matches(x):
+            xm = x.models if x.models else ([x.model] if x.model else [])
+            return any(_norm_model(mm) == nm for mm in xm)
+        si = next((x for x in cand if _item_matches(x)), None)
         qty = li.quantity or 1
         if not si:
             shortages.append({"group": g.name, "model": model, "need": qty, "reason": "alt_kalem_yok"})

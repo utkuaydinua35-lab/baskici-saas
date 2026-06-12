@@ -797,6 +797,8 @@ class StockItem(Base):
     category: Mapped[str] = mapped_column(String(30), default="bos_kilif", server_default=text("'bos_kilif'"), index=True)
     variation: Mapped[str | None] = mapped_column(String(30), nullable=True)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Coklu uyumlu model (ekran koruyucu/kilif birden cok modele uyar) — bu liste paylasimli tek stok
+    models: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
 
     quantity: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)

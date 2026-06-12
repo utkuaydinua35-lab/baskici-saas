@@ -258,7 +258,7 @@ export default function OrdersPage() {
 
           {!loading && orders.length > 0 && (
             <div className="card !p-0 overflow-visible">
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
                 <thead className="bg-brand-input border-b border-brand-border">
                   <tr className="text-left text-xs text-gray-500">
                     <th className="w-8 px-2"></th>
@@ -376,7 +376,7 @@ export default function OrdersPage() {
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
 
               {total > 50 && (
                 <div className="flex items-center justify-between px-3 py-2 border-t border-brand-border bg-brand-input/30 text-xs">

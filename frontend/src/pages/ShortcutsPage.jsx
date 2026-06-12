@@ -224,7 +224,7 @@ export default function ShortcutsPage() {
 
           {!loading && shortcuts.length > 0 && (
             <div className="card !p-0 overflow-hidden">
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
                 <thead className="bg-brand-input border-b border-brand-border">
                   <tr className="text-left text-xs text-gray-500">
                     <th className="px-3 py-2 w-8">
@@ -271,7 +271,7 @@ export default function ShortcutsPage() {
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
         </>

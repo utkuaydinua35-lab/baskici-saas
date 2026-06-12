@@ -3,7 +3,7 @@ Tenant ayarları — /api/tenant/settings
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -70,3 +70,67 @@ def update_settings(
     return {
         "custom_design_keywords": list(t.custom_design_keywords or []),
     }
+_LOGO_EXT = {"png", "jpg", "jpeg", "svg", "webp"}
+_LOGO_MAX = 5 * 1024 * 1024  # 5 MB
+
+
+async def _read_logo(file: UploadFile) -> tuple[bytes, str]:
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in _LOGO_EXT:
+        raise HTTPException(400, f"Izin verilen formatlar: {', '.join(sorted(_LOGO_EXT))}")
+    data = await file.read()
+    if len(data) > _LOGO_MAX:
+        raise HTTPException(400, f"Dosya cok buyuk (max {_LOGO_MAX // 1024 // 1024} MB)")
+    return data, ext
+
+
+@router.post("/brand-logo", response_model=dict)
+async def upload_brand_logo(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Marka (tenant) logosu yukle. Sol ust + markalama icin."""
+    data, ext = await _read_logo(file)
+    url = storage.save_logo(user.tenant_id, "brand", data, ext)
+    tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
+    if not tenant:
+        raise HTTPException(404, "Tenant bulunamadi")
+    tenant.logo_url = url
+    db.commit()
+    return {"ok": True, "logo_url": url}
+
+
+@router.delete("/brand-logo", response_model=dict)
+def delete_brand_logo(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
+    if tenant:
+        tenant.logo_url = None
+        db.commit()
+    return {"ok": True}
+
+
+@router.post("/avatar", response_model=dict)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Profil avatari yukle (kullaniciya ozel)."""
+    data, ext = await _read_logo(file)
+    url = storage.save_logo(user.tenant_id, f"avatar-{user.id}", data, ext)
+    u = db.scalar(select(User).where(User.id == user.id))
+    if not u:
+        raise HTTPException(404, "Kullanici bulunamadi")
+    u.avatar_url = url
+    db.commit()
+    return {"ok": True, "avatar_url": url}
+
+
+@router.delete("/avatar", response_model=dict)
+def delete_avatar(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    u = db.scalar(select(User).where(User.id == user.id))
+    if u:
+        u.avatar_url = None
+        db.commit()
+    return {"ok": True}

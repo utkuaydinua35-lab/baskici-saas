@@ -55,6 +55,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str | None
     role: str
+    avatar_url: str | None = None
     is_active: bool
     tenant_id: uuid.UUID
     last_login_at: datetime | None
@@ -66,6 +67,7 @@ class TenantResponse(BaseModel):
 
     id: uuid.UUID
     name: str
+    logo_url: str | None = None
     slug: str
     plan: str
     is_active: bool

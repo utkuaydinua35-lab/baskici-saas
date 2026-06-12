@@ -38,6 +38,7 @@ class Tenant(Base):
     plan: Mapped[str] = mapped_column(String(30), default="trial")
     active_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # LEGACY — artık kullanılmıyor (Paket 11c'de ürün bazlı sisteme geçildi)
     custom_design_keywords: Mapped[list] = mapped_column(JSONB, default=list)
@@ -70,6 +71,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(30), default="operator")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

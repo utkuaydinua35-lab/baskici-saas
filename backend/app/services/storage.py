@@ -171,3 +171,17 @@ def get_thumbnail_url(file_path: str | None, file_format: str | None) -> str | N
         if full.exists():
             return f"/storage/{thumb_path}"
     return None
+
+
+def save_logo(tenant_id, kind: str, file_data: bytes, ext: str) -> str:
+    """Logo/avatar kaydet. kind: 'brand' | 'avatar-<uuid>'. Donus: /storage/... URL."""
+    import time
+    rel_dir = Path("tenants") / str(tenant_id) / "branding"
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"{kind}-{int(time.time())}.{ext}"
+    rel_path = rel_dir / fname
+    full_path = STORAGE_ROOT / rel_path
+    with open(full_path, "wb") as f:
+        f.write(file_data)
+    return f"/storage/{rel_path.as_posix()}"

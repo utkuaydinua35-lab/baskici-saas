@@ -44,9 +44,7 @@ export default function Layout() {
         <aside className="w-56 border-r border-brand-border bg-brand-card/30 p-3 hidden md:block overflow-y-auto">
           <NavLinks />
 
-          <div className="mt-6 px-2 text-[10px] text-gray-600 leading-relaxed">
-            Soluk olanlar yapım aşamasında. "Eski sistem" kısmı yeni mimariye geçiş bitince kaldırılır.
-          </div>
+
         </aside>
 
         {mobileMenu && (
@@ -235,6 +233,7 @@ function fmtTime(iso) {
 }
 
 function ProfileDropdown({ user, onLogout }) {
+  const _nav = useNavigate()
   const [open, setOpen] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const ref = useRef(null)
@@ -259,8 +258,11 @@ function ProfileDropdown({ user, onLogout }) {
             <div className="text-[11px] text-gray-500">{user?.email}</div>
             <div className="text-[10px] text-gray-600 mt-0.5">{user?.role}</div>
           </div>
-          <button onClick={() => { setShowPw(true); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+          <button onClick={() => { _nav('/ayarlar'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
             <span className="w-5 text-center">⚙</span> Ayarlar
+          </button>
+          <button onClick={() => { setShowPw(true); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+            <span className="w-5 text-center">🔑</span> Şifre Değiştir
           </button>
           <button onClick={onLogout} className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2">
             <span className="w-5 text-center">⎋</span> Çıkış Yap
@@ -354,7 +356,6 @@ function NavLinks({ onNavigate }) {
     <nav className="space-y-1 text-sm">
       <I to="/" label="Dashboard" icon="📊" end />
       <SectionLabel>SİPARİŞ YÖNETİMİ</SectionLabel>
-      <I to="/stores" label="Mağazalar" icon="🏪" />
       <I to="/orders" label="Siparişler" icon="📦" />
       <I to="/paketleme" label="Paketleme" icon="🏷️" />
       <I to="/destek" label="Destek" icon="🎧" />

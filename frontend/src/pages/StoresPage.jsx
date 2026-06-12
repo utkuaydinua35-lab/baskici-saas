@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
-export default function StoresPage() {
+export default function StoresPage({ embedded = false }) {
   const [stores, setStores] = useState([])
   const [platforms, setPlatforms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -81,13 +81,14 @@ export default function StoresPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className={embedded ? "" : "max-w-4xl"}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-100">Mağazalar</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          {!embedded && <h1 className="text-2xl font-semibold text-gray-100">Mağazalar</h1>}
+          {!embedded && <p className="text-sm text-gray-500 mt-1">
             Shopify ve İkas mağazalarını bağla
-          </p>
+          </p>}
+          {embedded && <p className="text-sm text-gray-500">Shopify ve İkas mağazalarını bağla</p>}
         </div>
         <button onClick={() => setShowAddDialog(true)} className="btn-primary">
           + Yeni Mağaza

@@ -18,6 +18,7 @@ import PipelinePage from './pages/PipelinePage'
 import RegisterPage from './pages/RegisterPage'
 import ShortcutsPage from './pages/ShortcutsPage'
 import StoresPage from './pages/StoresPage'
+import SettingsPage from './pages/SettingsPage'
 import DestekPage from './pages/DestekPage'
 import AccessoriesPage from './pages/AccessoriesPage'
 import CoupleProductsPage from './pages/CoupleProductsPage'
@@ -32,6 +33,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/stores" element={<StoresPage />} />
+          <Route path="/ayarlar" element={<SettingsPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
           <Route path="/aski" element={<AskiPage />} />

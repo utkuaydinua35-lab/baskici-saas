@@ -13,11 +13,16 @@ export default function Layout() {
     navigate('/login', { replace: true })
   }
 
+  const [mobileMenu, setMobileMenu] = useState(false)
+
   return (
     <div className="h-full flex flex-col">
       <header className="border-b border-brand-border bg-brand-card/50 backdrop-blur-md relative z-[60]">
-        <div className="px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-4 md:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
+            <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-bold">
               B
             </div>
@@ -37,44 +42,27 @@ export default function Layout() {
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-56 border-r border-brand-border bg-brand-card/30 p-3 hidden md:block overflow-y-auto">
-          <nav className="space-y-1 text-sm">
-            <NavItem to="/" label="Dashboard" icon="📊" end />
-
-            <SectionLabel>SİPARİŞ YÖNETİMİ</SectionLabel>
-            <NavItem to="/stores" label="Mağazalar" icon="🏪" />
-            <NavItem to="/orders" label="Siparişler" icon="📦" />
-            <NavItem to="/paketleme" label="Paketleme" icon="🏷️" />
-            <NavItem to="/destek" label="Destek" icon="🎧" />
-
-            <SectionLabel>TASARIM YÖNETİMİ</SectionLabel>
-            <NavItem to="/designs" label="Tasarımlar" icon="🎨" />
-            <NavItem to="/kisiye-ozel" label="Kişiye Özel" icon="✨" />
-            <NavItem to="/aksesuarlar" label="Aksesuarlar" icon="🧷" />
-            <NavItem to="/couple" label="Couple Ürünler" icon="👫" />
-
-            <SectionLabel>KALIP YÖNETİMİ</SectionLabel>
-            <NavItem to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" />
-            <NavItem to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" />
-            <NavItem to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" />
-
-            <SectionLabel>STOK YÖNETİMİ</SectionLabel>
-            <NavItem to="/stok" label="Stok" icon="🗃️" />
-            <NavItem to="/aski" label="Askıda Bekleyenler" icon="🎁" />
-
-            <SectionLabel>KATALOG</SectionLabel>
-            <NavItem to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" />
-
-            <SectionLabel>ESKİ SİSTEM</SectionLabel>
-            <NavItem to="/shortcuts" label="Kısayollar" icon="🔗" legacy />
-            <NavItem to="/pipeline" label="Pipeline" icon="⚙️" legacy />
-          </nav>
+          <NavLinks />
 
           <div className="mt-6 px-2 text-[10px] text-gray-600 leading-relaxed">
             Soluk olanlar yapım aşamasında. "Eski sistem" kısmı yeni mimariye geçiş bitince kaldırılır.
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-6">
+        {mobileMenu && (
+          <div className="fixed inset-0 z-[80] md:hidden">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenu(false)} />
+            <aside className="absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] bg-brand-card border-r border-brand-border p-3 overflow-y-auto">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-sm font-semibold text-gray-200">Menü</span>
+                <button onClick={() => setMobileMenu(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+              </div>
+              <NavLinks onNavigate={() => setMobileMenu(false)} />
+            </aside>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>
@@ -360,7 +348,38 @@ function ChangePasswordModal({ onClose }) {
   )
 }
 
-function NavItem({ to, label, icon, end = false, disabled = false, legacy = false }) {
+function NavLinks({ onNavigate }) {
+  const I = (props) => <NavItem {...props} onNavigate={onNavigate} />
+  return (
+    <nav className="space-y-1 text-sm">
+      <I to="/" label="Dashboard" icon="📊" end />
+      <SectionLabel>SİPARİŞ YÖNETİMİ</SectionLabel>
+      <I to="/stores" label="Mağazalar" icon="🏪" />
+      <I to="/orders" label="Siparişler" icon="📦" />
+      <I to="/paketleme" label="Paketleme" icon="🏷️" />
+      <I to="/destek" label="Destek" icon="🎧" />
+      <SectionLabel>TASARIM YÖNETİMİ</SectionLabel>
+      <I to="/designs" label="Tasarımlar" icon="🎨" />
+      <I to="/kisiye-ozel" label="Kişiye Özel" icon="✨" />
+      <I to="/aksesuarlar" label="Aksesuarlar" icon="🧷" />
+      <I to="/couple" label="Couple Ürünler" icon="👫" />
+      <SectionLabel>KALIP YÖNETİMİ</SectionLabel>
+      <I to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" />
+      <I to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" />
+      <I to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" />
+      <SectionLabel>STOK YÖNETİMİ</SectionLabel>
+      <I to="/stok" label="Stok" icon="🗃️" />
+      <I to="/aski" label="Askıda Bekleyenler" icon="🎁" />
+      <SectionLabel>KATALOG</SectionLabel>
+      <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" />
+      <SectionLabel>ESKİ SİSTEM</SectionLabel>
+      <I to="/shortcuts" label="Kısayollar" icon="🔗" legacy />
+      <I to="/pipeline" label="Pipeline" icon="⚙️" legacy />
+    </nav>
+  )
+}
+
+function NavItem({ to, label, icon, end = false, disabled = false, legacy = false, onNavigate }) {
   const _loc = useLocation()
   const _toPath = to.split('?')[0]
   const _toTab = (to.split('?')[1] || '').includes('tab=existing')
@@ -380,6 +399,7 @@ function NavItem({ to, label, icon, end = false, disabled = false, legacy = fals
     <NavLink
       to={to}
       end={end}
+      onClick={() => onNavigate?.()}
       className={({ isActive: _ia }) => { const isActive = _forceInactive ? false : (_forceActive ? true : _ia); return (
         `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
           isActive

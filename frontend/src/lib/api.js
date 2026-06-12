@@ -53,6 +53,17 @@ async function request(method, url, body) {
 export const api = {
   get:   (url)        => request('GET',    url),
   post:  (url, body)  => request('POST',   url, body ?? {}),
+  postForm: async (url, formData) => {
+    const headers = { 'Accept': 'application/json' }
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(url, { method: 'POST', headers, body: formData })
+    if (res.status === 204) return null
+    const ct = res.headers.get('content-type') || ''
+    const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
+    if (!res.ok) { const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`; throw new ApiError(res.status, detail) }
+    return data
+  },
   put:   (url, body)  => request('PUT',    url, body ?? {}),
   patch: (url, body)  => request('PATCH',  url, body ?? {}),
   del:   (url)        => request('DELETE', url),

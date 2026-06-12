@@ -23,13 +23,13 @@ export default function Layout() {
             <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-bold">
-              B
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-gray-100">{tenant?.name || 'Baskıcı'}</div>
-              <div className="text-[10px] text-gray-500">baskıcı paneli · {tenant?.plan || 'trial'}</div>
-            </div>
+            {tenant?.logo_url ? (
+              <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-9 max-w-[160px] object-contain" />
+            ) : (
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                {(tenant?.name || 'B').charAt(0).toUpperCase()}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -247,7 +247,11 @@ function ProfileDropdown({ user, onLogout }) {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-brand-input transition-colors">
-        <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
+        {user?.avatar_url ? (
+          <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+        ) : (
+          <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
+        )}
         <span className="text-xs text-gray-300 hidden sm:block">{user?.full_name || user?.email}</span>
         <span className="text-gray-500 text-xs">⌄</span>
       </button>

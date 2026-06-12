@@ -61,6 +61,14 @@ export function AuthProvider({ children }) {
     return me
   }
 
+  const refresh = async () => {
+    try {
+      const me = await api.get('/api/auth/me')
+      setUser(me.user)
+      setTenant(me.tenant)
+    } catch {}
+  }
+
   const logout = () => {
     setToken(null)
     setUser(null)
@@ -70,7 +78,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, register, logout }}>
+    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, register, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

@@ -9,6 +9,7 @@ export default function StockPage() {
   const [addItemGroup, setAddItemGroup] = useState(null)  // alt kalem ekleme dialogu
   const [linkGroup, setLinkGroup] = useState(null)        // urun eslestirme dialogu
   const [adjItem, setAdjItem] = useState(null)            // stok ayarlama
+  const [editItem, setEditItem] = useState(null)          // alt kalem duzenleme
   const [moveItem, setMoveItem] = useState(null)          // hareket gecmisi
   const [msg, setMsg] = useState(null)
 
@@ -60,6 +61,7 @@ export default function StockPage() {
               onLink={() => setLinkGroup(g)}
               onAdjust={(it) => setAdjItem(it)}
               onMove={(it) => setMoveItem(it)}
+              onEdit={(it) => setEditItem(it)}
               onDeleteGroup={async () => {
                 if (!confirm(`"${g.name}" ana kalemi ve tüm alt kalemleri silinecek. Emin misin?`)) return
                 try { await api.del(`/api/stock/groups/${g.id}`); load() }
@@ -74,12 +76,13 @@ export default function StockPage() {
       {addItemGroup && <AddItemDialog group={addItemGroup} onClose={() => setAddItemGroup(null)} onSaved={() => { setAddItemGroup(null); load() }} />}
       {linkGroup && <LinkProductsDialog group={linkGroup} onClose={() => setLinkGroup(null)} onSaved={() => { setLinkGroup(null); load() }} />}
       {adjItem && <AdjustDialog item={adjItem} onClose={() => setAdjItem(null)} onSaved={() => { setAdjItem(null); load() }} />}
+      {editItem && <EditItemDialog item={editItem} onClose={() => setEditItem(null)} onSaved={() => { setEditItem(null); load() }} />}
       {moveItem && <MovementsDialog item={moveItem} onClose={() => setMoveItem(null)} />}
     </div>
   )
 }
 
-function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onDeleteGroup }) {
+function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup }) {
   return (
     <div className="card !p-0 overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/30 cursor-pointer" onClick={onToggle}>
@@ -103,9 +106,17 @@ function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove,
             <div className="divide-y divide-brand-border/40">
               {g.items.map(it => (
                 <div key={it.id} className="flex items-center gap-3 py-2">
-                  <span className="text-sm text-gray-200 flex-1">{it.model}{it.variation ? <span className="text-gray-500"> · {it.variation}</span> : null}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap gap-1">
+                      {(it.models && it.models.length ? it.models : [it.model]).filter(Boolean).map((m, mi) => (
+                        <span key={mi} className="text-[11px] px-1.5 py-0.5 rounded bg-brand-input text-gray-300">{m}</span>
+                      ))}
+                    </div>
+                    {it.variation ? <span className="text-[10px] text-gray-500">{it.variation}</span> : null}
+                  </div>
                   {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
                   <span className={`text-sm font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
+                  <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
                   <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
                   <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
                 </div>
@@ -144,42 +155,121 @@ function NewGroupDialog({ onClose, onSaved }) {
   )
 }
 
+function ModelPicker({ models, setModels, modelList }) {
+  const [input, setInput] = useState('')
+  const [suggest, setSuggest] = useState([])
+  const add = (m) => {
+    const v = (m || '').trim()
+    if (!v) return
+    if (!models.includes(v)) setModels([...models, v])
+    setInput('')
+  }
+  const remove = (m) => setModels(models.filter(x => x !== m))
+  const loadSuggest = async (m) => {
+    try {
+      const r = await api.get(`/api/stock/groups/_suggest-compatible?model=${encodeURIComponent(m)}`)
+      setSuggest((r.compatible || []).filter(x => !models.includes(x)))
+    } catch { setSuggest([]) }
+  }
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input className="input flex-1" placeholder="Yazıp listeden seç..." list="stock-model-list" value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(input) } }} />
+        <button type="button" onClick={() => add(input)} className="btn-secondary !text-sm">+ Ekle</button>
+      </div>
+      <datalist id="stock-model-list">{modelList.map(m => <option key={m} value={m} />)}</datalist>
+      {models.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {models.map(m => (
+            <span key={m} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-accent/15 text-accent">
+              {m}<button type="button" onClick={() => remove(m)} className="hover:text-red-300">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {models.length > 0 && (
+        <button type="button" onClick={() => loadSuggest(models[models.length - 1])} className="text-[11px] text-gray-400 hover:text-accent mt-2">
+          💡 "{models[models.length - 1]}" ile uyumlu olabilecekleri öner
+        </button>
+      )}
+      {suggest.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2 p-2 rounded-lg bg-brand-input/40 border border-brand-border">
+          <span className="text-[10px] text-gray-500 w-full">Öneriler (tıkla → ekle):</span>
+          {suggest.map(s => (
+            <button type="button" key={s} onClick={() => { add(s); setSuggest(suggest.filter(x => x !== s)) }}
+              className="text-xs px-2 py-1 rounded-full bg-brand-card border border-brand-border text-gray-300 hover:border-accent hover:text-accent">+ {s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AddItemDialog({ group, onClose, onSaved }) {
-  const [model, setModel] = useState('')
+  const [models, setModels] = useState([])
+  const [name, setName] = useState('')
   const [variation, setVariation] = useState('')
   const [quantity, setQuantity] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
   const [modelList, setModelList] = useState([])
-  useEffect(() => {
-    api.get('/api/stock/_models').then(r => setModelList(r.models || [])).catch(() => {})
-  }, [])
+  useEffect(() => { api.get('/api/stock/_models').then(r => setModelList(r.models || [])).catch(() => {}) }, [])
   const save = async () => {
-    if (!model.trim()) { setErr('Model gerekli'); return }
+    if (models.length === 0) { setErr('En az bir model ekle'); return }
     setSaving(true); setErr('')
     try {
       await api.post(`/api/stock/groups/${group.id}/items`, {
-        model: model.trim(), variation: variation.trim() || null,
+        models, name: name.trim() || null, variation: variation.trim() || null,
         quantity: quantity === '' ? 0 : parseInt(quantity, 10),
       })
       onSaved()
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
   return (
-    <Modal title={`Model Ekle — ${group.name}`} onClose={onClose}>
+    <Modal title={`Alt Kalem Ekle — ${group.name}`} onClose={onClose}>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
-      <F label="Telefon modeli">
-        <input className="input w-full" placeholder="Yazıp listeden seç..." list="stock-model-list" value={model} onChange={e => setModel(e.target.value)} autoFocus />
-        <datalist id="stock-model-list">
-          {modelList.map(m => <option key={m} value={m} />)}
-        </datalist>
-        <span className="block text-[10px] text-gray-500 mt-1">Sistemdeki modellerden seç — sipariş eşleşmesi bu sayede çalışır.</span>
+      <F label="Uyumlu telefon modelleri">
+        <ModelPicker models={models} setModels={setModels} modelList={modelList} />
+        <span className="block text-[10px] text-gray-500 mt-1">Bu alt kalem tek stok tutar; eklediğin modellerden herhangi biri sipariş edilince buradan düşer.</span>
       </F>
+      <F label="Etiket (opsiyonel)"><input className="input w-full" placeholder="Boş bırakılırsa modellerden üretilir" value={name} onChange={e => setName(e.target.value)} /></F>
       <F label="Varyasyon (opsiyonel)"><input className="input w-full" placeholder="siyah / beyaz / şeffaf — boş bırakılabilir" value={variation} onChange={e => setVariation(e.target.value)} /></F>
       <F label="Başlangıç adedi"><input type="number" className="input w-full" placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} /></F>
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
         <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Ekle'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+function EditItemDialog({ item, onClose, onSaved }) {
+  const [models, setModels] = useState(item.models && item.models.length ? item.models : (item.model ? [item.model] : []))
+  const [name, setName] = useState(item.name || '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const [modelList, setModelList] = useState([])
+  useEffect(() => { api.get('/api/stock/_models').then(r => setModelList(r.models || [])).catch(() => {}) }, [])
+  const save = async () => {
+    if (models.length === 0) { setErr('En az bir model gerekli'); return }
+    setSaving(true); setErr('')
+    try {
+      await api.patch(`/api/stock/${item.id}`, { models, name: name.trim() || null })
+      onSaved()
+    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
+  }
+  return (
+    <Modal title="Alt Kalem Düzenle" onClose={onClose}>
+      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+      <F label="Uyumlu telefon modelleri">
+        <ModelPicker models={models} setModels={setModels} modelList={modelList} />
+      </F>
+      <F label="Etiket (opsiyonel)"><input className="input w-full" placeholder="Boş bırakılırsa modellerden üretilir" value={name} onChange={e => setName(e.target.value)} /></F>
+      <div className="flex justify-end gap-2 mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Kaydet'}</button>
       </div>
     </Modal>
   )

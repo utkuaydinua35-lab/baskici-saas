@@ -99,6 +99,11 @@ def stock_models(user: User = Depends(get_current_user)):
         parts = key.replace("_", " ").split("-")
         if parts and parts[0].upper() == "APPLE":
             parts = parts[1:]
+        # Marka oneki yoksa ve ilk parca sayiyla basliyorsa (modern iPhone: "13", "13-PRO") -> iPhone ekle
+        _brands = ("IPHONE", "SAMSUNG", "REDMI", "XIAOMI", "OPPO", "POCO", "REALME",
+                   "VIVO", "TECNO", "HUAWEI", "HONOR", "INFINIX", "OMIX", "REEDER", "GENERAL", "NOKIA", "LG", "SONY")
+        if parts and not any(parts[0].upper().startswith(b) for b in _brands) and parts[0][:1].isdigit():
+            parts = ["iPhone"] + parts
         out = []
         for p in parts:
             pl = p.lower()

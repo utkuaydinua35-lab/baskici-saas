@@ -91,7 +91,7 @@ export default function AccessoriesPage() {
         <input
           type="text" placeholder="Ürün ara..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="input !text-sm flex-1 min-w-[200px]"
+          className="input !text-sm flex-1 w-full sm:min-w-[200px]"
         />
         <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
           <input type="checkbox" checked={onlyAcc} onChange={e => setOnlyAcc(e.target.checked)} />

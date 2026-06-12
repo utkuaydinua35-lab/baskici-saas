@@ -175,7 +175,7 @@ export default function KisiyeOzelPage() {
               <select
                 value={selectedStore}
                 onChange={e => setSelectedStore(e.target.value)}
-                className="input !text-sm !py-1.5 min-w-[180px]"
+                className="input !text-sm !py-1.5 w-full sm:w-auto sm:min-w-[180px]"
               >
                 {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>

@@ -188,7 +188,7 @@ export default function CoupleProductsPage() {
           {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <input type="text" placeholder="Ürün ara..." value={search} onChange={e => setSearch(e.target.value)}
-          className="input !text-sm flex-1 min-w-[200px]" />
+          className="input !text-sm flex-1 w-full sm:min-w-[200px]" />
         <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
           <input type="checkbox" checked={onlyCouple} onChange={e => setOnlyCouple(e.target.checked)} />
           Sadece couple ({Object.keys(coupleMap).length})

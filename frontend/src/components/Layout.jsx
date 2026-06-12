@@ -372,9 +372,6 @@ function NavLinks({ onNavigate }) {
       <I to="/aski" label="Askıda Bekleyenler" icon="🎁" />
       <SectionLabel>KATALOG</SectionLabel>
       <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" />
-      <SectionLabel>ESKİ SİSTEM</SectionLabel>
-      <I to="/shortcuts" label="Kısayollar" icon="🔗" legacy />
-      <I to="/pipeline" label="Pipeline" icon="⚙️" legacy />
     </nav>
   )
 }

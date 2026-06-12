@@ -90,6 +90,35 @@ def meta(user: User = Depends(get_current_user)):
     return {"categories": stock_svc.CATEGORIES, "variations": stock_svc.DEFAULT_VARIATIONS}
 
 
+@router.get("/_models", response_model=dict)
+def stock_models(user: User = Depends(get_current_user)):
+    """Sistemin tanidigi telefon modelleri (alt kalem secimi icin)."""
+    from app.services._private import case_dimensions as cd
+
+    def display_name(key):
+        parts = key.replace("_", " ").split("-")
+        if parts and parts[0].upper() == "APPLE":
+            parts = parts[1:]
+        out = []
+        for p in parts:
+            pl = p.lower()
+            if pl == "iphone": out.append("iPhone")
+            elif pl == "promax": out.append("Pro Max")
+            elif pl in ("se", "fe", "5g", "4g", "lte"): out.append(p.upper())
+            elif pl in ("plus", "ultra", "pro", "mini", "air", "lite"): out.append(p.capitalize())
+            else: out.append(p.capitalize())
+        return " ".join(out)
+
+    keys = list(cd._MODEL_SPECS.keys()) if hasattr(cd, "_MODEL_SPECS") else []
+    seen = set(); names = []
+    for k in keys:
+        name = display_name(k)
+        if name in seen: continue
+        seen.add(name); names.append(name)
+    names.sort()
+    return {"models": names, "total": len(names)}
+
+
 # ═══ ANA KALEM (StockGroup) — alt kalem (StockItem) hiyerarsisi ═══
 class GroupCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)

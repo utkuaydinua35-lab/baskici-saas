@@ -146,6 +146,14 @@ def _extract_model_for_shipment(li) -> str | None:
 
 
 def _norm_model(s: str | None) -> str:
+    # Onceligi case_dimensions normalize key'e ver (siparis modeli ile stok modeli ayni key'e gelsin)
+    try:
+        from app.services._private import case_dimensions as cd
+        k = cd._normalize_to_spec_key(s or "")
+        if k:
+            return k
+    except Exception:
+        pass
     return (s or "").strip().lower().replace("ı", "i").replace("İ", "i")
 
 

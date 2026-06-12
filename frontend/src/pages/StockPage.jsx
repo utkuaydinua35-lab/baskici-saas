@@ -150,6 +150,10 @@ function AddItemDialog({ group, onClose, onSaved }) {
   const [quantity, setQuantity] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  const [modelList, setModelList] = useState([])
+  useEffect(() => {
+    api.get('/api/stock/_models').then(r => setModelList(r.models || [])).catch(() => {})
+  }, [])
   const save = async () => {
     if (!model.trim()) { setErr('Model gerekli'); return }
     setSaving(true); setErr('')
@@ -164,7 +168,13 @@ function AddItemDialog({ group, onClose, onSaved }) {
   return (
     <Modal title={`Model Ekle — ${group.name}`} onClose={onClose}>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
-      <F label="Telefon modeli"><input className="input w-full" placeholder="Örn. iPhone 13" value={model} onChange={e => setModel(e.target.value)} autoFocus /></F>
+      <F label="Telefon modeli">
+        <input className="input w-full" placeholder="Yazıp listeden seç..." list="stock-model-list" value={model} onChange={e => setModel(e.target.value)} autoFocus />
+        <datalist id="stock-model-list">
+          {modelList.map(m => <option key={m} value={m} />)}
+        </datalist>
+        <span className="block text-[10px] text-gray-500 mt-1">Sistemdeki modellerden seç — sipariş eşleşmesi bu sayede çalışır.</span>
+      </F>
       <F label="Varyasyon (opsiyonel)"><input className="input w-full" placeholder="siyah / beyaz / şeffaf — boş bırakılabilir" value={variation} onChange={e => setVariation(e.target.value)} /></F>
       <F label="Başlangıç adedi"><input type="number" className="input w-full" placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} /></F>
       <div className="flex justify-end gap-2 mt-4">

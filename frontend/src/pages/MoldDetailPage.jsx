@@ -333,7 +333,8 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="overflow-x-auto -mx-1 px-1">
+    <div className="space-y-1.5 min-w-[520px]">
       {[0, 1, 2].map((ri) => {
         const rowKod = rowKodOf(ri)
         return (
@@ -356,6 +357,7 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
           </div>
         )
       })}
+    </div>
     </div>
   )
 }

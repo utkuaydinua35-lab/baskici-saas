@@ -10,6 +10,7 @@ export default function DashboardPage() {
   const [storeId, setStoreId] = useState('')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showCiro, setShowCiro] = useState(true)
 
   useEffect(() => {
     (async () => {
@@ -48,6 +49,21 @@ export default function DashboardPage() {
 
       {!loading && data && (
         <>
+          <div className="mb-6 animate-fadein">
+            <div className="flex items-center gap-2 mb-2">
+              <h2 className="text-sm font-semibold text-gray-300">💰 Ciro</h2>
+              <span className="text-[10px] text-gray-600">(iptal + iade hariç)</span>
+              <button onClick={() => setShowCiro(v => !v)} className="ml-auto text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1">
+                {showCiro ? '🙈 Gizle' : '👁️ Göster'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <CiroCard label="BUGÜN" value={data?.ciro?.bugun} show={showCiro} />
+              <CiroCard label="BU HAFTA" value={data?.ciro?.hafta} show={showCiro} />
+              <CiroCard label="BU AY" value={data?.ciro?.ay} show={showCiro} accent />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <Kpi label="AÇIK SİPARİŞ" value={k.acik_siparis} onClick={() => navigate('/orders')} />
             <Kpi label="BUGÜN GELEN" value={k.bugun_gelen} color="accent" onClick={() => navigate('/orders')} />
@@ -139,6 +155,21 @@ function fmt(iso) {
   if (diff < 3600) return `${Math.floor(diff / 60)} dk`
   if (diff < 86400) return `${Math.floor(diff / 3600)} sa`
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })
+}
+
+function CiroCard({ label, value, show, accent }) {
+  const fmt = (n) => {
+    if (n == null) return '—'
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(n)
+  }
+  return (
+    <div className={`card !py-4 transition-all ${accent ? 'border-accent/30 bg-accent/5' : ''}`}>
+      <div className="text-[11px] text-gray-500 font-medium tracking-wide">{label}</div>
+      <div className={`text-xl font-bold mt-1 ${accent ? 'text-accent' : 'text-gray-100'} ${!show ? 'blur-sm select-none' : ''}`}>
+        {show ? fmt(value) : '₺ ••••••'}
+      </div>
+    </div>
+  )
 }
 
 function Kpi({ label, value, color = 'gray', onClick }) {

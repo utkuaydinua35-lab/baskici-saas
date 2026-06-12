@@ -47,6 +47,7 @@ class StockItemUpdate(BaseModel):
     category: str | None = Field(None, max_length=30)
     variation: str | None = Field(None, max_length=30)
     model: str | None = Field(None, max_length=100)
+    models: list[str] | None = None
     low_stock_threshold: int | None = Field(None, ge=0)
     store_id: uuid.UUID | None = None
     product_id: str | None = Field(None, max_length=50)
@@ -269,6 +270,48 @@ def add_group_item(group_id: uuid.UUID, body: GroupItemCreate,
     return _serialize(it)
 
 
+@router.get("/groups/_suggest-compatible", response_model=dict)
+def suggest_compatible(model: str, user: User = Depends(get_current_user)):
+    """Verilen model ile ayni kalibi/olcuyu paylasan (uyumlu olabilecek) modelleri oner.
+    Kaynak: placement_rules IPHONE_GROUPS/ANDROID_GROUPS. Son karar kullanicida."""
+    from app.services import placement_rules as pr
+    from app.services._private import case_dimensions as cd
+
+    def display_name(key):
+        parts = key.replace("_", " ").split("-")
+        if parts and parts[0].upper() == "APPLE":
+            parts = parts[1:]
+        _brands = ("IPHONE","SAMSUNG","REDMI","XIAOMI","OPPO","POCO","REALME","VIVO","TECNO","HUAWEI","HONOR","INFINIX","OMIX","REEDER","GENERAL","NOKIA","LG","SONY")
+        if parts and not any(parts[0].upper().startswith(b) for b in _brands) and parts[0][:1].isdigit():
+            parts = ["iPhone"] + parts
+        out = []
+        for p in parts:
+            pl = p.lower()
+            if pl == "iphone": out.append("iPhone")
+            elif pl == "promax": out.append("Pro Max")
+            elif pl in ("se","fe","5g","4g","lte"): out.append(p.upper())
+            elif pl in ("plus","ultra","pro","mini","air","lite"): out.append(p.capitalize())
+            else: out.append(p.capitalize())
+        return " ".join(out)
+
+    # Modeli key'e cevir, grubunu bul
+    try:
+        group = pr.get_model_group(model)
+    except Exception:
+        group = None
+    suggestions = []
+    if group and hasattr(pr, "IPHONE_GROUPS"):
+        members = pr.IPHONE_GROUPS.get(group) or []
+        for code in members:
+            suggestions.append(display_name(code))
+    # benzersiz + sirali
+    seen = set(); out = []
+    for s in suggestions:
+        if s in seen: continue
+        seen.add(s); out.append(s)
+    return {"model": model, "group": group, "compatible": out}
+
+
 @router.get("/groups/_assignable-products", response_model=dict)
 def assignable_products(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Ana kaleme baglanabilir Shopify urunleri (siparislerden cikarilan benzersiz urun listesi)."""
@@ -395,6 +438,22 @@ def update_item(
         it.variation = body.variation.strip() or None
     if body.model is not None:
         it.model = body.model.strip() or None
+    if body.models is not None:
+        _new = [m.strip() for m in body.models if m and m.strip()]
+        if not _new:
+            raise HTTPException(400, "En az bir model gerekli")
+        # Cakisma: ayni gruptaki BASKA alt kalemlerde bu modeller var mi?
+        if it.group_id:
+            others = db.scalars(select(StockItem).where(
+                StockItem.group_id == it.group_id, StockItem.id != it.id,
+                StockItem.is_active.is_(True))).all()
+            for ox in others:
+                ox_models = set(ox.models or ([ox.model] if ox.model else []))
+                clash = ox_models & set(_new)
+                if clash:
+                    raise HTTPException(409, f"Bu modeller baska bir alt kalemde: {', '.join(sorted(clash))}")
+        it.models = _new
+        it.model = _new[0]
     if body.low_stock_threshold is not None:
         it.low_stock_threshold = body.low_stock_threshold
     if body.store_id is not None:

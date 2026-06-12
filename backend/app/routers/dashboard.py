@@ -7,10 +7,10 @@ metriklerine uygulanır; stok (fiziksel envanter) tenant geneli kalır.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, func as sql_func, select
+from sqlalchemy import Numeric, cast, desc, func as sql_func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -66,6 +66,28 @@ def summary(
         for s in all_stages_payload()
     ]
 
+    # ─── Net ciro (iptal + iade haric) — raw.total_price toplami ───
+    _ciro_kosul = (
+        Order.cancelled_at.is_(None),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+    )
+    def _ciro(*conds) -> float:
+        q = select(sql_func.coalesce(sql_func.sum(
+            cast(Order.raw["total_price"].astext, Numeric)
+        ), 0)).where(Order.tenant_id == tid, *conds)
+        if store_id:
+            q = q.where(Order.store_id == store_id)
+        try:
+            return float(db.scalar(q) or 0)
+        except Exception:
+            return 0.0
+    _today = date.today()
+    _start_week = datetime.combine(_today - timedelta(days=_today.weekday()), time.min, tzinfo=timezone.utc)
+    _start_month = datetime.combine(_today.replace(day=1), time.min, tzinfo=timezone.utc)
+    ciro_bugun = _ciro(*_ciro_kosul, Order.created_at_platform >= start_today)
+    ciro_hafta = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_week)
+    ciro_ay = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_month)
+
     # ─── Askı (adet) ───
     aq = select(sql_func.coalesce(sql_func.sum(AskiItem.quantity), 0)).where(AskiItem.tenant_id == tid)
     if store_id:
@@ -119,6 +141,12 @@ def summary(
             "aski_adet": aski_adet,
             "acik_kalip": acik_kalip,
             "dusuk_stok": len(low_stock),
+        },
+        "ciro": {
+            "bugun": round(ciro_bugun, 2),
+            "hafta": round(ciro_hafta, 2),
+            "ay": round(ciro_ay, 2),
+            "currency": "TRY",
         },
         "funnel": funnel,
         "low_stock": low_stock,

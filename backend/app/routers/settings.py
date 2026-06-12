@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models import Tenant, User
+from app.services import storage
 
 router = APIRouter(prefix="/api/tenant", tags=["tenant"])
 

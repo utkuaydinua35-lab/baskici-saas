@@ -79,6 +79,7 @@ def _serialize(m: PhoneModel) -> dict:
 @router.get("", response_model=dict)
 def list_models(
     search: str | None = Query(None),
+    include_baseline: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -98,6 +99,22 @@ def list_models(
             if q not in hay:
                 continue
         out.append(_serialize(m))
+
+    # Baseline modelleri de ekle (manuel eklenmemis ama kalip taninan 339 model)
+    if include_baseline:
+        _existing_keys = {m.get("spec_key") for m in out}
+        for bkey in pm.baseline_keys():
+            if bkey in _existing_keys:
+                continue
+            if search and search.lower() not in bkey.lower():
+                continue
+            out.append({
+                "id": f"baseline:{bkey}",
+                "spec_key": bkey,
+                "display_name": bkey,
+                "brand": None,
+                "is_baseline": True,
+            })
 
     return {
         "items": out,

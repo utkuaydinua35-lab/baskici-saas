@@ -91,6 +91,11 @@ def resolve_source(db: Session, tenant_id: uuid.UUID, model: str) -> str | None:
     return None
 
 
+def baseline_keys() -> list[str]:
+    """Baseline model adlari (kalip taninan 339 model)."""
+    return cd.all_model_keys()
+
+
 def baseline_count() -> int:
     """Baseline'daki gizli model sayısı (sadece adet, ölçü değil)."""
     return cd.spec_count()

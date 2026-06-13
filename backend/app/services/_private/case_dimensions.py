@@ -401,3 +401,8 @@ def has_spec(model: str) -> bool:
 
 def spec_count() -> int:
     return len(_MODEL_SPECS)
+
+
+def all_model_keys() -> list[str]:
+    """Baseline model anahtarlarinin listesi (olcu doNDURMEZ — sadece adlar)."""
+    return sorted(_MODEL_SPECS.keys())

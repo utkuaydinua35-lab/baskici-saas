@@ -363,28 +363,42 @@ function ChangePasswordModal({ onClose }) {
 }
 
 function NavLinks({ onNavigate }) {
-  const I = (props) => <NavItem {...props} onNavigate={onNavigate} />
+  const { user } = useAuth()
+  const role = user?.role || ''
+  const isAdmin = role === 'yonetici' || role === 'owner'
+  const myPerms = isAdmin ? null : (user?.permissions || [])  // null = hepsi
+  const can = (perm) => isAdmin || !perm || myPerms.includes(perm)
+  const I = (props) => can(props.perm) ? <NavItem {...props} onNavigate={onNavigate} /> : null
+
+  // Bolum: en az 1 gorunur link varsa basligi goster
+  const Section = ({ label, perms }) => (perms.some(can) ? <SectionLabel>{label}</SectionLabel> : null)
+
   return (
     <nav className="space-y-1 text-sm">
-      <I to="/" label="Dashboard" icon="📊" end />
-      <SectionLabel>SİPARİŞ YÖNETİMİ</SectionLabel>
-      <I to="/orders" label="Siparişler" icon="📦" />
-      <I to="/paketleme" label="Paketleme" icon="🏷️" />
-      <I to="/destek" label="Destek" icon="🎧" />
-      <SectionLabel>TASARIM YÖNETİMİ</SectionLabel>
-      <I to="/designs" label="Tasarımlar" icon="🎨" />
-      <I to="/kisiye-ozel" label="Kişiye Özel" icon="✨" />
-      <I to="/aksesuarlar" label="Aksesuarlar" icon="🧷" />
-      <I to="/couple" label="Couple Ürünler" icon="👫" />
-      <SectionLabel>KALIP YÖNETİMİ</SectionLabel>
-      <I to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" />
-      <I to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" />
-      <I to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" />
-      <SectionLabel>STOK YÖNETİMİ</SectionLabel>
-      <I to="/stok" label="Stok" icon="🗃️" />
-      <I to="/aski" label="Askıda Bekleyenler" icon="🎁" />
-      <SectionLabel>KATALOG</SectionLabel>
-      <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" />
+      <I to="/" label="Dashboard" icon="📊" perm="dashboard" end />
+
+      <Section label="SİPARİŞ YÖNETİMİ" perms={['siparisler', 'paketleme', 'destek']} />
+      <I to="/orders" label="Siparişler" icon="📦" perm="siparisler" />
+      <I to="/paketleme" label="Paketleme" icon="🏷️" perm="paketleme" />
+      <I to="/destek" label="Destek" icon="🎧" perm="destek" />
+
+      <Section label="TASARIM YÖNETİMİ" perms={['tasarim', 'kisiye_ozel', 'aksesuar', 'couple']} />
+      <I to="/designs" label="Tasarımlar" icon="🎨" perm="tasarim" />
+      <I to="/kisiye-ozel" label="Kişiye Özel" icon="✨" perm="kisiye_ozel" />
+      <I to="/aksesuarlar" label="Aksesuarlar" icon="🧷" perm="aksesuar" />
+      <I to="/couple" label="Couple Ürünler" icon="👫" perm="couple" />
+
+      <Section label="KALIP YÖNETİMİ" perms={['kalip']} />
+      <I to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" perm="kalip" />
+      <I to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" perm="kalip" />
+      <I to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" perm="kalip" />
+
+      <Section label="STOK YÖNETİMİ" perms={['stok']} />
+      <I to="/stok" label="Stok" icon="🗃️" perm="stok" />
+      <I to="/aski" label="Askıda Bekleyenler" icon="🎁" perm="stok" />
+
+      <Section label="KATALOG" perms={['telefon_modelleri']} />
+      <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" perm="telefon_modelleri" />
     </nav>
   )
 }

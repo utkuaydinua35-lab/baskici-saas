@@ -8,22 +8,53 @@ function playWhoosh() {
     if (!Ctx) return
     const ctx = new Ctx()
     const now = ctx.currentTime
-    // Yukselen suzgecli gurultu + alcalan ton (sinematik "whoosh")
-    const o = ctx.createOscillator()
-    const g = ctx.createGain()
-    const f = ctx.createBiquadFilter()
-    o.type = 'sawtooth'
-    o.frequency.setValueAtTime(120, now)
-    o.frequency.exponentialRampToValueAtTime(420, now + 0.5)
-    f.type = 'lowpass'
-    f.frequency.setValueAtTime(300, now)
-    f.frequency.exponentialRampToValueAtTime(2400, now + 0.5)
-    g.gain.setValueAtTime(0.0001, now)
-    g.gain.exponentialRampToValueAtTime(0.18, now + 0.18)
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.7)
-    o.connect(f); f.connect(g); g.connect(ctx.destination)
-    o.start(now); o.stop(now + 0.72)
-    setTimeout(() => ctx.close().catch(() => {}), 1000)
+
+    // Master + yumusak reverb (convolver yerine kisa feedback delay zinciri ile derinlik)
+    const master = ctx.createGain()
+    master.gain.value = 0.0001
+    master.gain.setValueAtTime(0.0001, now)
+    master.gain.exponentialRampToValueAtTime(0.22, now + 0.25)
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 1.8)
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 5200
+    master.connect(lp); lp.connect(ctx.destination)
+
+    // Hafif "shimmer" gecikme (uzayan parlama hissi)
+    const delay = ctx.createDelay()
+    delay.delayTime.value = 0.18
+    const fb = ctx.createGain()
+    fb.gain.value = 0.28
+    const wet = ctx.createGain()
+    wet.gain.value = 0.35
+    lp.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(ctx.destination)
+
+    // Yumusak sinus tonu uretici (nazik attack + uzun release)
+    const tone = (freq, t0, dur, peak) => {
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.type = 'sine'
+      o.frequency.value = freq
+      // hafif detune ile sicaklik
+      const o2 = ctx.createOscillator()
+      o2.type = 'sine'
+      o2.frequency.value = freq * 1.005
+      g.gain.setValueAtTime(0.0001, now + t0)
+      g.gain.exponentialRampToValueAtTime(peak, now + t0 + 0.06)
+      g.gain.exponentialRampToValueAtTime(0.0001, now + t0 + dur)
+      o.connect(g); o2.connect(g); g.connect(master)
+      o.start(now + t0); o.stop(now + t0 + dur + 0.05)
+      o2.start(now + t0); o2.stop(now + t0 + dur + 0.05)
+    }
+
+    // Sicak major akor (C5 - E5 - G5) — arpejli, zarif yukselen giris
+    tone(523.25, 0.00, 1.4, 0.5)   // C5
+    tone(659.25, 0.09, 1.3, 0.42)  // E5
+    tone(783.99, 0.18, 1.25, 0.4)  // G5
+    // Ince parlama (yuksek oktav chime, shimmer ile senkron)
+    tone(1046.50, 0.30, 1.0, 0.22) // C6
+
+    setTimeout(() => ctx.close().catch(() => {}), 2200)
   } catch {}
 }
 

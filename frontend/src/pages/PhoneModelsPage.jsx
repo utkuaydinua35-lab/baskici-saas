@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 const EMPTY = {
   display_name: '', brand: '', width_cm: '', height_cm: '', radius_cm: '', notes: '',
 }
 
 export default function PhoneModelsPage() {
+  const toast = useToast()
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [baselineCount, setBaselineCount] = useState(0)
@@ -102,7 +104,7 @@ export default function PhoneModelsPage() {
       await api.del(`/api/phone-models/${m.id}`)
       load()
     } catch (e) {
-      alert(typeof e?.detail === 'string' ? e.detail : 'Silinemedi')
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi')
     }
   }
 

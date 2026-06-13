@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import ManualOrderDialog from '../components/ManualOrderDialog'
 
 const STATUS_LABELS = {
@@ -38,6 +39,7 @@ function shopifyAdminUrl(store, externalId) {
 }
 
 export default function OrdersPage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [orders, setOrders] = useState([])
   const [total, setTotal] = useState(0)
@@ -120,7 +122,7 @@ export default function OrdersPage() {
       loadOrders()
       loadTabCounts()
     } catch (e) {
-      alert('Silme başarısız: ' + (e?.detail || ''))
+      toast.error('Silme başarısız: ' + (e?.detail || ''))
     }
   }
 

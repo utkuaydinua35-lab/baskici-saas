@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 const KIND_BADGES = {
   simple:  { label: 'Basit',   color: 'bg-gray-500/15 text-gray-300' },
@@ -9,6 +10,7 @@ const KIND_BADGES = {
 }
 
 export default function ShortcutsPage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [storesLoading, setStoresLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState('')
@@ -102,7 +104,7 @@ export default function ShortcutsPage() {
       await api.del(`/api/shortcuts/${shortcut.id}`)
       reload()
     } catch (e) {
-      alert(e.detail || 'Silinemedi')
+      toast.error(e.detail || 'Silinemedi')
     }
   }
 
@@ -113,7 +115,7 @@ export default function ShortcutsPage() {
       await api.post('/api/shortcuts/bulk-delete', { ids: Array.from(selectedIds) })
       reload()
     } catch (e) {
-      alert(e.detail || 'Silinemedi')
+      toast.error(e.detail || 'Silinemedi')
     }
   }
 

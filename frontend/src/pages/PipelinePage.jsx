@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 export default function PipelinePage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [storesLoading, setStoresLoading] = useState(true)
   const [form, setForm] = useState({
@@ -49,8 +51,8 @@ export default function PipelinePage() {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
-      .then(() => alert('Panoya kopyalandı'))
-      .catch(() => alert('Kopyalama başarısız'))
+      .then(() => toast.success('Panoya kopyalandı'))
+      .catch(() => toast.error('Kopyalama başarısız'))
   }
 
   return (

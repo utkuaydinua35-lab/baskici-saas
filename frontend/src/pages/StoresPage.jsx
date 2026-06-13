@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 export default function StoresPage({ embedded = false }) {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [platforms, setPlatforms] = useState([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +67,7 @@ export default function StoresPage({ embedded = false }) {
       await api.del(`/api/stores/${store.id}`)
       loadData()
     } catch (e) {
-      alert(`Silme başarısız: ${e.detail || e.message}`)
+      toast.error(`Silme başarısız: ${e.detail || e.message}`)
     }
   }
 

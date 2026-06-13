@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import AskiItemDialog from '../components/AskiItemDialog'
 
 export default function AskiPage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [storeId, setStoreId] = useState('')
   const [items, setItems] = useState([])
@@ -55,7 +57,7 @@ export default function AskiPage() {
       await api.del(`/api/aski/${id}`)
       load()
     } catch (e) {
-      alert(typeof e?.detail === 'string' ? e.detail : 'Silme başarısız')
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Silme başarısız')
     }
   }
 

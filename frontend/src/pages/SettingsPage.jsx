@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
 import StoresPage from './StoresPage'
 
@@ -181,6 +182,7 @@ function TabBtn({ active, onClick, children }) {
 }
 
 function UsersTab() {
+  const _toastU = useToast()
   const { user: me } = useAuth()
   const [users, setUsers] = useState([])
   const [meta, setMeta] = useState({ all_permissions: [], templates: {} })
@@ -202,7 +204,7 @@ function UsersTab() {
   const remove = async (u) => {
     if (!confirm(`${u.full_name || u.email} silinsin mi?`)) return
     try { await api.del(`/api/users/${u.id}`); load() }
-    catch (e) { alert(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
+    catch (e) { _toastU.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
   }
 
   if (loading) return <div className="text-gray-500 text-sm py-8 text-center">Yükleniyor…</div>

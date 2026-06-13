@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 
 /** Line item'tan telefon modelini çıkar.
@@ -36,6 +37,7 @@ function resolveDeviceModel(item) {
 export default function OrderDetailPage() {
   const { orderId } = useParams()
   const navigate = useNavigate()
+  const toast = useToast()
 
   const [detail, setDetail] = useState(null)
   const [stages, setStages] = useState([])
@@ -66,7 +68,7 @@ export default function OrderDetailPage() {
       const d = await api.patch(`/api/orders/${orderId}/stage`, body)
       setDetail(d)
     } catch (e) {
-      alert(errMsg(e, 'Durum güncellenemedi'))
+      toast.error(errMsg(e, 'Durum güncellenemedi'))
     }
   }
 
@@ -75,7 +77,7 @@ export default function OrderDetailPage() {
       const d = await api.patch(`/api/orders/${orderId}/flags`, body)
       setDetail(d)
     } catch (e) {
-      alert(errMsg(e, 'Güncellenemedi'))
+      toast.error(errMsg(e, 'Güncellenemedi'))
     }
   }
 
@@ -84,7 +86,7 @@ export default function OrderDetailPage() {
       await api.patch(`/api/orders/${orderId}/line-items/${liId}`, body)
       load()
     } catch (e) {
-      alert(errMsg(e, 'Güncellenemedi'))
+      toast.error(errMsg(e, 'Güncellenemedi'))
     }
   }
 
@@ -94,7 +96,7 @@ export default function OrderDetailPage() {
       const r = await api.post(`/api/orders/${orderId}/duplicate`, {})
       navigate(`/orders/${r.id}`)
     } catch (e) {
-      alert(errMsg(e, 'Kopyalanamadı'))
+      toast.error(errMsg(e, 'Kopyalanamadı'))
     }
   }
 
@@ -403,7 +405,7 @@ function IslemlerDropdown({ detail, onFlag, onDuplicate }) {
       <MenuLabel>Sipariş Kopyala</MenuLabel>
       <MenuItem icon="⧉" onClick={onDuplicate}>Yeni sipariş olarak çoğalt</MenuItem>
       <MenuLabel>E-posta</MenuLabel>
-      <MenuItem icon="✉" onClick={() => alert('E-posta şablonları Paket 13te gelecek')}>Şablonlu e-posta yolla</MenuItem>
+      <MenuItem icon="✉" onClick={() => toast.info('E-posta şablonları yakında gelecek')}>Şablonlu e-posta yolla</MenuItem>
       <MenuLabel>Tedarik</MenuLabel>
       <MenuItem icon="⏸" active={detail.is_tedarik_bekleme}
         onClick={() => onFlag({ is_tedarik_bekleme: !detail.is_tedarik_bekleme })}>
@@ -548,9 +550,9 @@ function ProductRow({ item, onPatch, onZoom }) {
             if (!confirm("Bu ürünü askıya atmak istediğine emin misin?")) return
             try {
               const r = await api.post(`/api/aski/from-line-item/${item.id}`, {})
-              alert(r.message || "Askıya eklendi")
+              toast.success(r.message || "Askıya eklendi")
             } catch (e) {
-              alert(typeof e?.detail === "string" ? e.detail : "Askıya alınamadı")
+              toast.error(typeof e?.detail === "string" ? e.detail : "Askıya alınamadı")
             }
           }}
           className="text-[10px] text-purple-400/80 hover:text-purple-300 hover:bg-purple-500/10 rounded px-2 py-0.5 border border-purple-500/20 hover:border-purple-500/40 flex items-center gap-1"

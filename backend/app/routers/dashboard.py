@@ -88,6 +88,29 @@ def summary(
     ciro_hafta = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_week)
     ciro_ay = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_month)
 
+    # Son 30 gun gunluk ciro serisi (grafik icin)
+    _start_30 = datetime.combine(_today - timedelta(days=29), time.min, tzinfo=timezone.utc)
+    _gun_col = sql_func.date_trunc("day", Order.created_at_platform)
+    _gq = (
+        select(_gun_col.label("gun"), sql_func.coalesce(sql_func.sum(cast(Order.raw["total_price"].astext, Numeric)), 0).label("tutar"))
+        .where(Order.tenant_id == tid, *_ciro_kosul, Order.created_at_platform >= _start_30)
+        .group_by(_gun_col)
+    )
+    if store_id:
+        _gq = _gq.where(Order.store_id == store_id)
+    _gunluk_map = {}
+    try:
+        for row in db.execute(_gq).all():
+            if row.gun is not None:
+                _gunluk_map[row.gun.date().isoformat()] = float(row.tutar or 0)
+    except Exception:
+        _gunluk_map = {}
+    # Eksik gunleri 0 ile doldur (30 gun tam seri)
+    ciro_gunluk = []
+    for i in range(30):
+        d = (_today - timedelta(days=29 - i)).isoformat()
+        ciro_gunluk.append({"gun": d, "tutar": round(_gunluk_map.get(d, 0.0), 2)})
+
     # ─── Askı (adet) ───
     aq = select(sql_func.coalesce(sql_func.sum(AskiItem.quantity), 0)).where(AskiItem.tenant_id == tid)
     if store_id:
@@ -146,6 +169,7 @@ def summary(
             "bugun": round(ciro_bugun, 2),
             "hafta": round(ciro_hafta, 2),
             "ay": round(ciro_ay, 2),
+            "gunluk": ciro_gunluk,
             "currency": "TRY",
         },
         "funnel": funnel,

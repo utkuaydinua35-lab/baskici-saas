@@ -45,7 +45,19 @@ export default function DashboardPage() {
         </select>
       </div>
 
-      {loading && <div className="text-gray-500 text-sm text-center py-12">Yükleniyor...</div>}
+      {loading && (
+        <div className="animate-fadein">
+          <div className="mb-6">
+            <div className="skeleton h-4 w-24 mb-3 rounded" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[0,1,2].map(i => <div key={i} className="card !py-4"><div className="skeleton h-3 w-16 mb-3 rounded" /><div className="skeleton h-6 w-28 rounded" /></div>)}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[0,1,2,3,4,5,6,7].map(i => <div key={i} className="card !py-4"><div className="skeleton h-3 w-20 mb-3 rounded" /><div className="skeleton h-7 w-12 rounded" /></div>)}
+          </div>
+        </div>
+      )}
 
       {!loading && data && (
         <>

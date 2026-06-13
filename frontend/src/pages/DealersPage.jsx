@@ -83,6 +83,7 @@ function DealerDialog({ dealer, onClose, onSaved }) {
   const [f, setF] = useState({
     name: dealer.name || '', phone: dealer.phone || '', email: dealer.email || '',
     address: dealer.address || '', note: dealer.note || '',
+    unit_price: dealer.unit_price ?? '', shipping_fee: dealer.shipping_fee ?? '',
   })
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
@@ -91,8 +92,13 @@ function DealerDialog({ dealer, onClose, onSaved }) {
     if (!f.name.trim()) { toast.error('İsim gerekli'); return }
     setBusy(true)
     try {
-      if (isNew) await api.post('/api/dealers', f)
-      else await api.patch(`/api/dealers/${dealer.id}`, f)
+      const payload = {
+        ...f,
+        unit_price: f.unit_price === '' ? 0 : Number(f.unit_price),
+        shipping_fee: f.shipping_fee === '' ? 0 : Number(f.shipping_fee),
+      }
+      if (isNew) await api.post('/api/dealers', payload)
+      else await api.patch(`/api/dealers/${dealer.id}`, payload)
       toast.success(isNew ? 'Bayii eklendi' : 'Güncellendi')
       onSaved()
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setBusy(false) }
@@ -112,6 +118,17 @@ function DealerDialog({ dealer, onClose, onSaved }) {
               : <input className="input w-full" value={f[k]} onChange={set(k)} />}
           </label>
         ))}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="block"><span className="block text-xs text-gray-400 mb-1">Birim Fiyat ₺ *</span>
+            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01"
+              value={f.unit_price} onChange={set('unit_price')} placeholder="örn. 120" />
+          </label>
+          <label className="block"><span className="block text-xs text-gray-400 mb-1">Kargo ₺ (0 = yok)</span>
+            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01"
+              value={f.shipping_fee} onChange={set('shipping_fee')} placeholder="örn. 93" />
+          </label>
+        </div>
+        <p className="text-[11px] text-gray-600 mb-2">Birim fiyat: ürün başına bayi fiyatı. Kargo sipariş başına eklenir (0 ise eklenmez).</p>
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
           <button onClick={save} disabled={busy} className="btn-primary !text-sm">{busy ? '…' : 'Kaydet'}</button>

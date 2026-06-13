@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import SplashScreen from './SplashScreen'
 import { createPortal } from 'react-dom'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -14,9 +15,16 @@ export default function Layout() {
   }
 
   const [mobileMenu, setMobileMenu] = useState(false)
+  const [showSplash, setShowSplash] = useState(() => {
+    try { return sessionStorage.getItem('freshLogin') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    if (showSplash) { try { sessionStorage.removeItem('freshLogin') } catch {} }
+  }, [])
 
   return (
     <div className="h-full flex flex-col">
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
       <header className="border-b border-brand-border bg-brand-card/50 backdrop-blur-md relative z-[60]">
         <div className="px-4 md:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">

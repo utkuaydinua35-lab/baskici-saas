@@ -131,3 +131,39 @@ tr, .row-hover { transition: background-color 0.15s ease; }
   .card:hover { transform: none; }
 }
 
+/* === Splash / giris animasyonu === */
+@keyframes splash-pop {
+  0%   { opacity: 0; transform: scale(0.6) rotate(-6deg); }
+  60%  { opacity: 1; transform: scale(1.08) rotate(2deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes splash-glow-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%      { opacity: 0.5;  transform: scale(1.15); }
+}
+@keyframes splash-dot {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40%           { opacity: 1;   transform: translateY(-5px); }
+}
+@keyframes splash-welcome-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.splash-pop { animation: splash-pop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1.2) both; }
+.splash-welcome { animation: splash-welcome-in 0.6s ease-out 0.3s both; }
+.splash-dot {
+  width: 8px; height: 8px; border-radius: 9999px;
+  background: var(--tw-gradient-from, #7c5cff);
+  background: linear-gradient(135deg, #7c5cff, #a855f7);
+  animation: splash-dot 1.2s ease-in-out infinite;
+}
+.splash-glow {
+  position: absolute; top: 50%; left: 50%;
+  width: 480px; height: 480px; transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(124,92,255,0.35) 0%, rgba(124,92,255,0) 65%);
+  animation: splash-glow-pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash-pop, .splash-welcome, .splash-dot, .splash-glow { animation: none !important; }
+}
+

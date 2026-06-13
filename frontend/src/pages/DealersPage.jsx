@@ -218,8 +218,8 @@ function OrderDialog({ dealer, onClose, onCreated }) {
     })()
   }, [])
 
-  const modelLabel = (m) => m.model || m.name || m.spec_key || m.title || '—'
-  const modelVal = (m) => m.model || m.name || m.spec_key || ''
+  const modelLabel = (m) => m.display_name || m.spec_key || m.model || m.name || '—'
+  const modelVal = (m) => m.display_name || m.spec_key || m.model || m.name || ''
   const designLabel = (d) => d.name || d.code || d.title || ('Tasarım ' + String(d.id).slice(0, 6))
 
   const unitPrice = Number(dealer.unit_price || 0)

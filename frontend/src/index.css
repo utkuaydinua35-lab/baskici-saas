@@ -227,3 +227,17 @@ tr, .row-hover { transition: background-color 0.15s ease; }
   .toast-in, .toast-out { animation: none; }
 }
 
+/* === Ciro grafik animasyonu === */
+@keyframes ciro-line-draw {
+  from { stroke-dashoffset: 1400; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes ciro-area-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ciro-dot-in { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+.ciro-line { stroke-dasharray: 1400; animation: ciro-line-draw 1.1s ease-out both; }
+.ciro-area { animation: ciro-area-in 1.2s ease-out 0.3s both; }
+.ciro-dot { transform-origin: center; animation: ciro-dot-in 0.4s ease-out 1s both; }
+@media (prefers-reduced-motion: reduce) {
+  .ciro-line, .ciro-area, .ciro-dot { animation: none; stroke-dashoffset: 0; }
+}
+

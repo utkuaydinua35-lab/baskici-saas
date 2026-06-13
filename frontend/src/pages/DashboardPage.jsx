@@ -74,6 +74,7 @@ export default function DashboardPage() {
               <CiroCard label="BU HAFTA" value={data?.ciro?.hafta} show={showCiro} />
               <CiroCard label="BU AY" value={data?.ciro?.ay} show={showCiro} accent />
             </div>
+            <CiroChart data={data?.ciro?.gunluk} show={showCiro} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -188,6 +189,41 @@ function useCountUp(target, active, duration = 850) {
     return () => cancelAnimationFrame(ref.current.raf)
   }, [target, active, duration])
   return val
+}
+
+function CiroChart({ data, show }) {
+  if (!Array.isArray(data) || data.length === 0) return null
+  const W = 700, H = 90, P = 4
+  const vals = data.map(d => d.tutar || 0)
+  const max = Math.max(...vals, 1)
+  const n = data.length
+  const x = (i) => P + (i / (n - 1)) * (W - 2 * P)
+  const y = (v) => H - P - (v / max) * (H - 2 * P)
+  const linePts = data.map((d, i) => `${x(i)},${y(d.tutar || 0)}`).join(' ')
+  const areaPts = `${P},${H - P} ${linePts} ${W - P},${H - P}`
+  const fmt = (n) => new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(n)
+  const toplam = vals.reduce((a, b) => a + b, 0)
+  const son = data[n - 1]
+  return (
+    <div className={`card !py-4 mt-3 transition-all ${!show ? 'blur-sm select-none' : ''}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-gray-500 font-medium tracking-wide">SON 30 GÜN</span>
+        <span className="text-[11px] text-gray-400">Toplam: <span className="text-gray-200 font-semibold tabular-nums">₺{show ? fmt(toplam) : '•••'}</span></span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: 90 }}>
+        <defs>
+          <linearGradient id="ciroFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgb(124,92,255)" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="rgb(124,92,255)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={areaPts} fill="url(#ciroFill)" className="ciro-area" />
+        <polyline points={linePts} fill="none" stroke="rgb(124,92,255)" strokeWidth="2"
+          strokeLinejoin="round" strokeLinecap="round" className="ciro-line" />
+        {son && <circle cx={x(n - 1)} cy={y(son.tutar || 0)} r="3.5" fill="rgb(124,92,255)" className="ciro-dot" />}
+      </svg>
+    </div>
+  )
 }
 
 function CiroCard({ label, value, show, accent }) {

@@ -204,3 +204,70 @@ def change_password_endpoint(
     user.password_hash = hash_password(req.new_password)
     db.commit()
     return {"ok": True}
+
+
+# ─── Netflix tarzi profil secimi (Paket Profiles) ───
+from pydantic import BaseModel as _PfBaseModel  # profil semalari
+
+
+class _SelectProfileRequest(_PfBaseModel):
+    user_id: str
+    pin: str | None = None
+
+
+@router.get("/profiles", response_model=None)
+def list_profiles(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Giris yapan kullanicinin tenant'indaki aktif profiller (Netflix 'Kim kullaniyor')."""
+    rows = db.scalars(
+        select(User).where(
+            User.tenant_id == user.tenant_id,
+            User.is_active.is_(True),
+        ).order_by(User.created_at)
+    ).all()
+    return [
+        {
+            "id": str(u.id),
+            "full_name": u.full_name or u.email.split("@")[0],
+            "avatar_url": u.avatar_url,
+            "role": u.role,
+            "has_pin": bool(u.pin_hash),
+        }
+        for u in rows
+    ]
+
+
+@router.post("/select-profile", response_model=TokenResponse)
+def select_profile(
+    req: _SelectProfileRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Profil sec — ayni tenant icinde, PIN'liyse PIN dogrula, secilen profilin token'ini ver."""
+    import uuid as _uuid
+    try:
+        target_id = _uuid.UUID(req.user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Gecersiz profil")
+
+    target = db.scalar(
+        select(User).where(
+            User.id == target_id,
+            User.tenant_id == user.tenant_id,  # sadece ayni tenant
+            User.is_active.is_(True),
+        )
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Profil bulunamadi")
+
+    # PIN'liyse dogrula
+    if target.pin_hash:
+        if not req.pin or not verify_password(req.pin, target.pin_hash):
+            raise HTTPException(status_code=401, detail="PIN yanlis")
+
+    target.last_login_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(target)
+    return _issue_token(target)

@@ -22,6 +22,7 @@ ALL_PERMISSIONS = [
     "telefon_modelleri",
     "ayarlar",
     "kullanici_yonetimi",
+    "bayii",
 ]
 
 # Hazir rol sablonlari (yonetici kullanici eklerken baslangic noktasi)

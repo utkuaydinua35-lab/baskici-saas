@@ -332,9 +332,19 @@ function OrderDialog({ dealer, onClose, onCreated }) {
 function UploadDesignModal({ storeId, onClose, onUploaded }) {
   const toast = useToast()
   const [file, setFile] = useState(null)
+  const [filePreview, setFilePreview] = useState(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const handleFile = (f) => {
+    if (!f) return
+    setFile(f)
+    if (filePreview) URL.revokeObjectURL(filePreview)
+    setFilePreview(URL.createObjectURL(f))
+  }
+  useEffect(() => () => { if (filePreview) URL.revokeObjectURL(filePreview) }, [filePreview])
 
   const save = async () => {
     if (!file) { toast.error('Dosya seç'); return }
@@ -352,17 +362,43 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'); setBusy(false) }
   }
 
+  const isPdf = file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name))
+
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5 animate-popin">
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 animate-popin">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-gray-100">📎 Yeni Tasarım</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
-        <label className="block mb-3">
-          <span className="block text-xs text-gray-400 mb-1">Görsel dosyası *</span>
-          <input type="file" accept="image/*,.pdf,.svg" onChange={e => setFile(e.target.files?.[0] || null)} className="input w-full !py-2 text-xs" />
-        </label>
+
+        <div onClick={() => fileInputRef.current?.click()}
+          className="border-2 border-dashed border-brand-border rounded-lg p-6 text-center cursor-pointer hover:border-accent/50 transition-colors mb-4">
+          <input ref={fileInputRef} type="file" accept=".svg,.png,.jpg,.jpeg,.pdf"
+            onChange={e => handleFile(e.target.files?.[0])} className="hidden" />
+          {file ? (
+            <div className="relative min-h-[180px] flex flex-col items-center justify-center">
+              {filePreview && (
+                <div className="absolute inset-0 overflow-hidden rounded pointer-events-none" style={{ opacity: 0.24 }}>
+                  {isPdf
+                    ? <embed src={`${filePreview}#toolbar=0&navpanes=0&scrollbar=0&view=Fit`} type="application/pdf" className="w-full h-full" />
+                    : <img src={filePreview} alt="" className="w-full h-full object-contain" />}
+                </div>
+              )}
+              <div className="relative space-y-1">
+                <div className="text-sm text-gray-300 break-all px-2">{file.name}</div>
+                <div className="text-[10px] text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB · değiştirmek için tıkla</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text-2xl mb-1">📤</div>
+              <div className="text-sm text-gray-300">Dosya seçmek için tıklayın</div>
+              <div className="text-[10px] text-gray-500 mt-1">SVG, PNG, JPG veya PDF · max 50 MB</div>
+            </>
+          )}
+        </div>
+
         <label className="block mb-3">
           <span className="block text-xs text-gray-400 mb-1">Tasarım kodu *</span>
           <input className="input w-full" value={code} onChange={e => setCode(e.target.value)} placeholder="örn. BAYI-001" />

@@ -214,7 +214,18 @@ def create_dealer_order(
     if not d:
         raise HTTPException(404, "Bayii bulunamadi")
     if not d.store_id:
-        raise HTTPException(400, "Bayinin magazasi yok")
+        # Store silinmis/yok — otomatik yeniden olustur (onarim)
+        base = _slugify(d.name)
+        slug = f"bayii-{base}"
+        i = 1
+        while db.scalar(select(Store).where(Store.tenant_id == user.tenant_id, Store.slug == slug)):
+            i += 1
+            slug = f"bayii-{base}-{i}"
+        _store = Store(tenant_id=user.tenant_id, slug=slug, name=f"Bayii: {d.name}", platform="bayii", is_active=True)
+        db.add(_store)
+        db.flush()
+        d.store_id = _store.id
+        db.flush()
     if not d.is_active:
         raise HTTPException(400, "Bayii pasif")
 

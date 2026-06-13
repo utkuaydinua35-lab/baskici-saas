@@ -16,6 +16,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -924,3 +925,66 @@ class SupportMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     thread: Mapped["SupportThread"] = relationship(back_populates="messages")
+
+
+class Dealer(Base):
+    """Bayii — B2B musteri. Cari hesap + bilgi. Siparisleri sanal bir Store'a yazilir."""
+    __tablename__ = "dealers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_dealer_tenant_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    # Bayinin siparislerinin yazildigi sanal store (platform='bayii')
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Cari bakiye: pozitif = bayi bize borclu (alacagimiz), negatif = biz bayiye borcluyuz
+    balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    transactions: Mapped[list["DealerTransaction"]] = relationship(
+        back_populates="dealer", cascade="all, delete-orphan"
+    )
+
+
+class DealerTransaction(Base):
+    """Bayii cari hareketi. tutar>0 borc (siparis), tutar<0 alacak/odeme."""
+    __tablename__ = "dealer_transactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="CASCADE"), index=True
+    )
+
+    # tutar: pozitif = bayinin borcu artar (siparis), negatif = odeme/alacak
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    kind: Mapped[str] = mapped_column(String(20))  # 'siparis' | 'odeme' | 'duzeltme'
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ref_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    balance_after: Mapped[float] = mapped_column(Numeric(12, 2))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    dealer: Mapped["Dealer"] = relationship(back_populates="transactions")
+

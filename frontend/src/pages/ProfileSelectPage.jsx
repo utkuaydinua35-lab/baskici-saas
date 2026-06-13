@@ -9,10 +9,10 @@ export default function ProfileSelectPage() {
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
-  const [pinFor, setPinFor] = useState(null)   // PIN istenen profil
+  const [pinFor, setPinFor] = useState(null)
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
-  const [picked, setPicked] = useState(null)   // secilen (zoom animasyonu)
+  const [entering, setEntering] = useState(null)  // tam ekran gecis yapilan profil
 
   useEffect(() => {
     (async () => {
@@ -28,32 +28,58 @@ export default function ProfileSelectPage() {
     setBusy(true); setErr('')
     try {
       await selectProfile(p.id, pinVal || null)
-      setPicked(p.id)
-      try { sessionStorage.setItem('freshLogin', '1') } catch {}
-      setTimeout(() => navigate('/', { replace: true }), 650)  // zoom geçiş sonrası
+      // Tek parca gecis: avatar tam ekrana buyur + karsilama, sonra panele fade. Splash YOK.
+      setPinFor(null)
+      setEntering(p)
+      setTimeout(() => navigate('/', { replace: true }), 1700)
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Giriş başarısız')
       setBusy(false)
-      if (pinFor) setPin('')
+      setPin('')
     }
   }
 
   const onPick = (p) => {
-    if (busy) return
+    if (busy || entering) return
     if (p.has_pin) { setPinFor(p); setPin(''); setErr('') }
     else enter(p)
   }
-
   const submitPin = () => {
     if (pin.length < 4) { setErr('PIN en az 4 hane'); return }
     enter(pinFor, pin)
   }
+
+  const firstName = (p) => (p?.full_name || '').split(' ')[0] || p?.full_name || ''
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0910]">
       <div className="text-gray-500 text-sm">Yükleniyor…</div>
     </div>
   )
+
+  // ─── Tam ekran giris gecisi (tek parca) ───
+  if (entering) {
+    return (
+      <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-gradient-to-b from-[#15131f] via-[#0a0910] to-[#060509] overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="splash-glow on" />
+        </div>
+        <div className="relative z-10 pe-avatar-zoom">
+          <div className="w-32 h-32 md:w-40 md:h-40 rounded-3xl overflow-hidden bg-brand-input border-2 border-accent/60 flex items-center justify-center shadow-2xl shadow-accent/30">
+            {entering.avatar_url
+              ? <img src={entering.avatar_url} alt="" className="w-full h-full object-cover" />
+              : <span className="text-5xl md:text-6xl font-bold text-gray-200">{(entering.full_name || '?').charAt(0).toUpperCase()}</span>}
+          </div>
+        </div>
+        <div className="relative z-10 mt-7 text-center pe-welcome">
+          <div className="text-2xl md:text-3xl font-semibold text-gray-100 tracking-tight">
+            Hoş geldin, {firstName(entering)}
+          </div>
+          <div className="text-sm text-gray-500 mt-1.5">{tenant?.name || 'Baskıcı'}</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#15131f] via-[#0a0910] to-[#060509] px-4 py-10">
@@ -65,9 +91,9 @@ export default function ProfileSelectPage() {
       <div className="flex flex-wrap items-start justify-center gap-6 md:gap-8 max-w-4xl">
         {profiles.map((p, i) => (
           <button key={p.id} onClick={() => onPick(p)}
-            className={`profile-card group flex flex-col items-center gap-3 transition-all duration-500 ${picked && picked !== p.id ? 'opacity-0 scale-90' : ''} ${picked === p.id ? 'scale-150 opacity-0' : ''}`}
+            className="profile-card group flex flex-col items-center gap-3"
             style={{ animation: `fade-in-up 0.5s ease-out ${i * 0.08}s both` }}>
-            <div className="profile-avatar relative w-24 h-24 md:w-32 md:h-32 rounded-2xl overflow-hidden bg-brand-input border-2 border-transparent group-hover:border-accent transition-all duration-300 flex items-center justify-center">
+            <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-2xl overflow-hidden bg-brand-input border-2 border-transparent group-hover:border-accent group-hover:scale-105 transition-all duration-300 flex items-center justify-center">
               {p.avatar_url
                 ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
                 : <span className="text-4xl md:text-5xl font-bold text-gray-300">{(p.full_name || '?').charAt(0).toUpperCase()}</span>}
@@ -81,7 +107,6 @@ export default function ProfileSelectPage() {
         ))}
       </div>
 
-      {/* PIN modal */}
       {pinFor && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setPinFor(null)}>
           <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-xs p-6 animate-popin text-center">

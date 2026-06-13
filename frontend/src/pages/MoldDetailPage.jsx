@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
 
@@ -14,6 +15,7 @@ const VAR_COLORS = {
 }
 
 export default function MoldDetailPage() {
+  const toast = useToast()
   const { moldId } = useParams()
   const navigate = useNavigate()
   const [showDelete, setShowDelete] = useState(false)
@@ -45,7 +47,7 @@ export default function MoldDetailPage() {
       setMold(d)
       const h = await api.get(`/api/molds/${moldId}/history`)
       setHistory(h.items || [])
-    } catch (e) { alert(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
   }
 
   const [removeTarget, setRemoveTarget] = useState(null)
@@ -56,7 +58,7 @@ export default function MoldDetailPage() {
       const h = await api.get(`/api/molds/${moldId}/history`)
       setHistory(h.items || [])
       setRemoveTarget(null)
-    } catch (e) { alert(typeof e?.detail === 'string' ? e.detail : 'Çıkarılamadı') }
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Çıkarılamadı') }
   }
 
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -75,7 +77,7 @@ export default function MoldDetailPage() {
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
     } catch (e) {
-      alert('PDF indirilemedi: ' + (e.message || ''))
+      toast.error('PDF indirilemedi: ' + (e.message || ''))
     } finally { setPdfBusy(false) }
   }
 
@@ -84,7 +86,7 @@ export default function MoldDetailPage() {
       await api.patch(`/api/molds/${moldId}/items/${itemId}`, { is_hazir: val })
       setMold(m => ({ ...m, items: m.items.map(it => it.id === itemId ? { ...it, is_hazir: val } : it),
         hazir_count: m.items.filter(it => it.id === itemId ? val : it.is_hazir).length }))
-    } catch (e) { alert('Slot güncellenemedi') }
+    } catch (e) { toast.error('Slot güncellenemedi') }
   }
 
   if (loading) return <div className="text-gray-500 text-sm text-center py-16">Yükleniyor...</div>

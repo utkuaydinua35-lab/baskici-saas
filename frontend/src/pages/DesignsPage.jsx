@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, getToken } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 const KALIP_TIPLERI = [
   { value: '', label: 'Belirtilmedi' },
@@ -39,6 +40,7 @@ const REASON_LABELS = {
 }
 
 export default function DesignsPage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [storesLoading, setStoresLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState('')
@@ -162,7 +164,7 @@ export default function DesignsPage() {
       await api.del(`/api/designs/${design.id}`)
       loadDesigns()
     } catch (e) {
-      alert(e.detail || 'Silinemedi')
+      toast.error(e.detail || 'Silinemedi')
     }
   }
 
@@ -356,7 +358,7 @@ export default function DesignsPage() {
                       design={d}
                       onEdit={() => setEditingDesign(d)}
                       onDelete={() => handleDeleteDesign(d)}
-                      onCmyk={() => alert('CMYK ayarı yakında — script ileride entegre edilecek')}
+                      onCmyk={() => toast.info('CMYK ayarı yakında')}
                     />
                   ))}
                 </div>
@@ -1025,7 +1027,7 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
       await api.del(`/api/designs/${design.id}`)
       onDelete()
     } catch (e) {
-      alert(e.detail || 'Silinemedi')
+      toast.error(e.detail || 'Silinemedi')
     }
   }
 

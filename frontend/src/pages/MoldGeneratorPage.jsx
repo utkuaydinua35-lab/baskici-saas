@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
@@ -20,6 +21,7 @@ const REASON_LABELS = {
 }
 
 export default function MoldGeneratorPage() {
+  const toast = useToast()
   const navigate = useNavigate()
   const [stores, setStores] = useState([])
   const [storeId, setStoreId] = useState('')
@@ -70,7 +72,7 @@ export default function MoldGeneratorPage() {
       const r = await api.post(`/api/molds/create-empty${storeId ? `?store_id=${storeId}` : ''}`)
       if (r?.id) navigate(`/kalip/${r.id}`)
     } catch (e) {
-      alert('Boş kalıp oluşturulamadı: ' + (e?.detail || e?.message || ''))
+      toast.error('Boş kalıp oluşturulamadı: ' + (e?.detail || e?.message || ''))
     }
   }
 

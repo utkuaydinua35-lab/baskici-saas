@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, getToken } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 const KALIP_TIPLERI = [
   { value: '', label: 'Belirtilmedi' },
@@ -32,6 +33,7 @@ const RENK_SECENEKLERI = [
 ]
 
 export default function KisiyeOzelPage() {
+  const toast = useToast()
   const [stores, setStores] = useState([])
   const [storesLoading, setStoresLoading] = useState(true)
   const [selectedStore, setSelectedStore] = useState('')
@@ -412,7 +414,7 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
       })
       onRefresh()
     } catch (e) {
-      alert(e.detail || 'Renk güncellenemedi')
+      toast.error(e.detail || 'Renk güncellenemedi')
     } finally {
       setSavingColor(false)
     }
@@ -427,7 +429,7 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
       })
       onRefresh()
     } catch (e) {
-      alert(e.detail || 'Kaldırılamadı')
+      toast.error(e.detail || 'Kaldırılamadı')
     }
   }
 
@@ -855,7 +857,7 @@ function ProductsDialog({ storeId, onClose, onChanged }) {
       await load()
       onChanged()
     } catch (e) {
-      alert(e.detail || 'Silinemedi')
+      toast.error(e.detail || 'Silinemedi')
     }
   }
 

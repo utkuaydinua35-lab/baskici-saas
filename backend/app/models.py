@@ -70,6 +70,7 @@ class User(Base):
 
     role: Mapped[str] = mapped_column(String(30), default="operator")
     permissions: Mapped[list] = mapped_column(JSONB, default=list)
+    pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

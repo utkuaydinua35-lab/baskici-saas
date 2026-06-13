@@ -11,6 +11,7 @@ from app.routers.designs import router as designs_router
 from app.routers import aski
 from app.routers.kisiye_ozel import router as kisiye_ozel_router
 from app.routers.accessories import router as accessories_router
+from app.routers.users import router as users_router
 from app.routers.couple import router as couple_router
 from app.routers.order_detail import router as order_detail_router
 from app.routers.orders import router as orders_router
@@ -71,6 +72,7 @@ app.include_router(designs_router)
 app.include_router(tenant_settings_router)
 app.include_router(kisiye_ozel_router)
 app.include_router(accessories_router)
+app.include_router(users_router)
 app.include_router(couple_router)
 app.include_router(notifications_router)
 app.include_router(molds_router)

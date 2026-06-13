@@ -951,6 +951,9 @@ class Dealer(Base):
 
     # Cari bakiye: pozitif = bayi bize borclu (alacagimiz), negatif = biz bayiye borcluyuz
     balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
+    # Bayi sabit birim fiyati (urun basina) + kargo ucreti (0 = yansitilmaz)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
+    shipping_fee: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

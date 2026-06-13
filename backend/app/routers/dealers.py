@@ -36,6 +36,8 @@ class DealerIn(BaseModel):
     email: str | None = None
     address: str | None = None
     note: str | None = None
+    unit_price: float | None = None
+    shipping_fee: float | None = None
 
 
 class DealerUpdate(BaseModel):
@@ -44,6 +46,8 @@ class DealerUpdate(BaseModel):
     email: str | None = None
     address: str | None = None
     note: str | None = None
+    unit_price: float | None = None
+    shipping_fee: float | None = None
     is_active: bool | None = None
 
 
@@ -58,6 +62,7 @@ def _ser(d: Dealer) -> dict:
     return {
         "id": str(d.id), "name": d.name, "phone": d.phone, "email": d.email,
         "address": d.address, "note": d.note, "balance": float(d.balance or 0),
+        "unit_price": float(d.unit_price or 0), "shipping_fee": float(d.shipping_fee or 0),
         "is_active": d.is_active, "store_id": str(d.store_id) if d.store_id else None,
     }
 
@@ -102,6 +107,7 @@ def create_dealer(req: DealerIn, user: User = Depends(require_permission("bayii"
         tenant_id=user.tenant_id, store_id=store.id,
         name=req.name, phone=req.phone, email=req.email,
         address=req.address, note=req.note, balance=0, is_active=True,
+        unit_price=req.unit_price or 0, shipping_fee=req.shipping_fee or 0,
     )
     db.add(dealer)
     try:
@@ -126,7 +132,7 @@ def update_dealer(dealer_id: uuid.UUID, req: DealerUpdate, user: User = Depends(
     d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
     if not d:
         raise HTTPException(404, "Bayii bulunamadi")
-    for f in ("name", "phone", "email", "address", "note", "is_active"):
+    for f in ("name", "phone", "email", "address", "note", "unit_price", "shipping_fee", "is_active"):
         v = getattr(req, f)
         if v is not None:
             setattr(d, f, v)

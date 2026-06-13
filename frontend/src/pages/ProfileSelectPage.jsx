@@ -102,7 +102,6 @@ export default function ProfileSelectPage() {
               )}
             </div>
             <span className="text-sm md:text-base text-gray-400 group-hover:text-gray-100 transition-colors">{p.full_name}</span>
-            <span className="text-[10px] text-gray-600 -mt-2">{p.role}</span>
           </button>
         ))}
       </div>

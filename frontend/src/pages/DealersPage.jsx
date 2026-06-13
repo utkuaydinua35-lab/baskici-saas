@@ -233,6 +233,14 @@ function OrderDialog({ dealer, onClose, onCreated }) {
   const addItem = () => setItems(arr => [...arr, { model: '', design_id: '', design_label: '', quantity: 1 }])
   const removeItem = (idx) => setItems(arr => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)
 
+  const reloadDesigns = async () => {
+    const sid = dealer.store_id
+    if (!sid) return
+    try { const d = await api.get(`/api/designs?store_id=${sid}&per_page=500`); setDesigns(Array.isArray(d) ? d : (d?.items || [])) } catch {}
+  }
+
+  const [uploadIdx, setUploadIdx] = useState(null)  // hangi kalem icin yukleme acik
+
   const onDesignChange = (idx, designId) => {
     const d = designs.find(x => String(x.id) === String(designId))
     setItems(arr => arr.map((it, i) => i === idx ? { ...it, design_id: designId, design_label: d ? designLabel(d) : '' } : it))
@@ -276,6 +284,7 @@ function OrderDialog({ dealer, onClose, onCreated }) {
                     <option value="">Tasarım (ops.)…</option>
                     {designs.map((d, i) => <option key={i} value={d.id}>{designLabel(d)}</option>)}
                   </select>
+                  <button type="button" onClick={() => setUploadIdx(idx)} className="btn-secondary !text-xs whitespace-nowrap" title="Yeni tasarım yükle">📎</button>
                   <input className="input w-20" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
                   <button onClick={() => removeItem(idx)} className="text-gray-500 hover:text-red-300 px-1 text-lg" title="Kalemi sil">×</button>
                 </div>
@@ -303,6 +312,69 @@ function OrderDialog({ dealer, onClose, onCreated }) {
             </div>
           </>
         )}
+      </div>
+      {uploadIdx !== null && (
+        <UploadDesignModal
+          storeId={dealer.store_id}
+          onClose={() => setUploadIdx(null)}
+          onUploaded={async (newDesign) => {
+            await reloadDesigns()
+            if (newDesign?.id) onDesignChange(uploadIdx, String(newDesign.id))
+            setUploadIdx(null)
+            toast.success('Tasarım yüklendi')
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function UploadDesignModal({ storeId, onClose, onUploaded }) {
+  const toast = useToast()
+  const [file, setFile] = useState(null)
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    if (!file) { toast.error('Dosya seç'); return }
+    if (!code.trim()) { toast.error('Tasarım kodu gir'); return }
+    if (!storeId) { toast.error('Bayi mağazası yok'); return }
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('store_id', storeId)
+      fd.append('code', code.trim())
+      if (name.trim()) fd.append('name', name.trim())
+      const d = await api.postForm('/api/designs', fd)
+      onUploaded?.(d)
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5 animate-popin">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-100">📎 Yeni Tasarım</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <label className="block mb-3">
+          <span className="block text-xs text-gray-400 mb-1">Görsel dosyası *</span>
+          <input type="file" accept="image/*,.pdf,.svg" onChange={e => setFile(e.target.files?.[0] || null)} className="input w-full !py-2 text-xs" />
+        </label>
+        <label className="block mb-3">
+          <span className="block text-xs text-gray-400 mb-1">Tasarım kodu *</span>
+          <input className="input w-full" value={code} onChange={e => setCode(e.target.value)} placeholder="örn. BAYI-001" />
+        </label>
+        <label className="block mb-4">
+          <span className="block text-xs text-gray-400 mb-1">İsim (ops.)</span>
+          <input className="input w-full" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+          <button onClick={save} disabled={busy} className="btn-primary !text-sm">{busy ? 'Yükleniyor…' : 'Yükle'}</button>
+        </div>
       </div>
     </div>
   )

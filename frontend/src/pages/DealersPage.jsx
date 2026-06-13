@@ -2,6 +2,15 @@ import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
+const KALIP_TIPLERI = [
+  { value: '', label: 'Kalıp tipi (belirtilmedi)' },
+  { value: 'siyah', label: 'Siyah' },
+  { value: 'beyaz', label: 'Beyaz' },
+  { value: 'parlak', label: 'Parlak' },
+  { value: 'seffaf', label: 'Şeffaf' },
+  { value: 'magsafe', label: 'MagSafe' },
+]
+
 export default function DealersPage() {
   const toast = useToast()
   const [dealers, setDealers] = useState([])
@@ -335,6 +344,7 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
   const [filePreview, setFilePreview] = useState(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [kalipTipi, setKalipTipi] = useState('')
   const [busy, setBusy] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -357,6 +367,7 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
       fd.append('store_id', storeId)
       fd.append('code', code.trim())
       if (name.trim()) fd.append('name', name.trim())
+      if (kalipTipi) fd.append('kalip_tipi', kalipTipi)
       const d = await api.postForm('/api/designs', fd)
       onUploaded?.(d)
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'); setBusy(false) }
@@ -403,9 +414,15 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
           <span className="block text-xs text-gray-400 mb-1">Tasarım kodu *</span>
           <input className="input w-full" value={code} onChange={e => setCode(e.target.value)} placeholder="örn. BAYI-001" />
         </label>
-        <label className="block mb-4">
+        <label className="block mb-3">
           <span className="block text-xs text-gray-400 mb-1">İsim (ops.)</span>
           <input className="input w-full" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="block mb-4">
+          <span className="block text-xs text-gray-400 mb-1">Kalıp tipi (kalıba doğru düşmesi için)</span>
+          <select className="input w-full" value={kalipTipi} onChange={e => setKalipTipi(e.target.value)}>
+            {KALIP_TIPLERI.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </label>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>

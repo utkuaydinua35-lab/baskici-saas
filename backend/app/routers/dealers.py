@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import Dealer, DealerTransaction, Order, Store, User
+from app.models import Dealer, DealerTransaction, LineItem, Order, Store, User
 
 router = APIRouter(prefix="/api/dealers", tags=["dealers"])
 
@@ -182,3 +182,121 @@ def add_payment(dealer_id: uuid.UUID, req: PaymentIn, user: User = Depends(requi
     db.add(tx)
     db.commit(); db.refresh(d)
     return _ser(d)
+
+
+# ─── Bayii manuel siparisi (Parca 4c) ───
+class DealerOrderItem(BaseModel):
+    model: str = Field(..., max_length=200)        # telefon modeli (device_model_override)
+    design_id: str | None = None                    # kutuphaneden secilen tasarim
+    design_label: str | None = None                 # tasarim adi (title icin)
+    quantity: int = Field(1, ge=1, le=9999)
+
+
+class DealerOrderIn(BaseModel):
+    items: list[DealerOrderItem] = Field(..., min_length=1)
+    note: str | None = None
+    apply_shipping: bool = True                      # bu siparise kargo yansisin mi
+
+
+@router.post("/{dealer_id}/orders", response_model=dict, status_code=201)
+def create_dealer_order(
+    dealer_id: uuid.UUID,
+    req: DealerOrderIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Bayii icin manuel siparis: bayinin store'una Order + LineItem'lar yazilir,
+    kaliba akar, cari borc eklenir (adet*birim_fiyat + opsiyonel kargo)."""
+    import uuid as _uuid
+    from datetime import UTC as _UTC, datetime as _dt
+
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    if not d.store_id:
+        raise HTTPException(400, "Bayinin magazasi yok")
+    if not d.is_active:
+        raise HTTPException(400, "Bayii pasif")
+
+    unit_price = Decimal(str(d.unit_price or 0))
+    shipping = Decimal(str(d.shipping_fee or 0)) if (req.apply_shipping and d.shipping_fee) else Decimal("0")
+
+    total_qty = sum(it.quantity for it in req.items)
+    urun_tutar = unit_price * Decimal(total_qty)
+    toplam = urun_tutar + shipping
+
+    # Benzersiz siparis no
+    now = _dt.now(_UTC)
+    seq = now.strftime("%y%m%d%H%M%S")
+    external_id = f"BAYII-{d.id.hex[:6]}-{seq}"
+    order_number = f"B{seq}"
+
+    order = Order(
+        tenant_id=user.tenant_id,
+        store_id=d.store_id,
+        external_id=external_id,
+        order_number=order_number,
+        name=f"#{order_number}",
+        customer_name=d.name,
+        created_at_platform=now,
+        note=req.note,
+        current_stage=1,
+        raw={
+            "total_price": str(toplam),
+            "currency": "TRY",
+            "source": "bayii",
+            "dealer_id": str(d.id),
+            "shipping_fee": str(shipping),
+        },
+    )
+    db.add(order)
+    db.flush()
+
+    # LineItem'lar — kaliba akmasi icin assigned_design_id + device_model_override
+    for pos, it in enumerate(req.items):
+        design_uuid = None
+        if it.design_id:
+            try:
+                design_uuid = _uuid.UUID(it.design_id)
+            except (ValueError, AttributeError):
+                design_uuid = None
+        title = it.model
+        if it.design_label:
+            title = f"{it.model} — {it.design_label}"
+        li = LineItem(
+            tenant_id=user.tenant_id,
+            order_id=order.id,
+            title=title,
+            quantity=it.quantity,
+            position=pos,
+            assigned_design_id=design_uuid,
+            device_model_override=it.model,
+            properties=[],
+            raw={"source": "bayii"},
+        )
+        db.add(li)
+
+    # Cari borc: siparis tutari kadar bakiye artar
+    new_balance = Decimal(str(d.balance or 0)) + toplam
+    d.balance = new_balance
+    tx = DealerTransaction(
+        tenant_id=user.tenant_id,
+        dealer_id=d.id,
+        amount=toplam,
+        kind="siparis",
+        description=f"Sipariş #{order_number} — {total_qty} adet" + (f" (+kargo ₺{shipping})" if shipping else ""),
+        ref_order_id=order.id,
+        balance_after=new_balance,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(order)
+
+    return {
+        "order_id": str(order.id),
+        "order_number": order_number,
+        "total": float(toplam),
+        "item_count": len(req.items),
+        "total_qty": total_qty,
+        "new_balance": float(new_balance),
+    }

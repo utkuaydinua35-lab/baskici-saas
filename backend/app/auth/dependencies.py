@@ -98,3 +98,18 @@ def require_role(*allowed: str):
             )
         return user
     return dep
+
+
+from app.auth import permissions as _perms  # esnek yetki sistemi
+
+
+def require_permission(perm: str):
+    """Panel yetkisi zorla. Yonetici her zaman gecer. Orn: require_permission('kalip')."""
+    def dep(user: User = Depends(get_current_user)) -> User:
+        if not _perms.has_permission(user, perm):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Bu panel icin yetkin yok: {perm}",
+            )
+        return user
+    return dep

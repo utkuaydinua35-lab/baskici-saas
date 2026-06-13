@@ -55,6 +55,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str | None
     role: str
+    permissions: list[str] = []
     avatar_url: str | None = None
     is_active: bool
     tenant_id: uuid.UUID

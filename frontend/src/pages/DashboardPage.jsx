@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -157,7 +157,29 @@ function fmt(iso) {
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })
 }
 
+function useCountUp(target, active, duration = 850) {
+  const [val, setVal] = useState(0)
+  const ref = useRef({ raf: 0, from: 0 })
+  useEffect(() => {
+    if (!active || target == null) { setVal(target || 0); return }
+    const start = performance.now()
+    const from = ref.current.from
+    const ease = (t) => 1 - Math.pow(1 - t, 3)  // easeOutCubic
+    const tick = (now) => {
+      const p = Math.min((now - start) / duration, 1)
+      setVal(from + (target - from) * ease(p))
+      if (p < 1) ref.current.raf = requestAnimationFrame(tick)
+      else ref.current.from = target
+    }
+    cancelAnimationFrame(ref.current.raf)
+    ref.current.raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(ref.current.raf)
+  }, [target, active, duration])
+  return val
+}
+
 function CiroCard({ label, value, show, accent }) {
+  const animated = useCountUp(value, show)
   const fmt = (n) => {
     if (n == null) return '—'
     return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2 }).format(n)
@@ -165,8 +187,8 @@ function CiroCard({ label, value, show, accent }) {
   return (
     <div className={`card !py-4 transition-all ${accent ? 'border-accent/30 bg-accent/5' : ''}`}>
       <div className="text-[11px] text-gray-500 font-medium tracking-wide">{label}</div>
-      <div className={`text-xl font-bold mt-1 ${accent ? 'text-accent' : 'text-gray-100'} ${!show ? 'blur-sm select-none' : ''}`}>
-        {show ? fmt(value) : '₺ ••••••'}
+      <div className={`text-xl font-bold mt-1 tabular-nums ${accent ? 'text-accent' : 'text-gray-100'} ${!show ? 'blur-sm select-none' : ''}`}>
+        {show ? fmt(animated) : '₺ ••••••'}
       </div>
     </div>
   )

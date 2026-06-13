@@ -19,6 +19,7 @@ import RegisterPage from './pages/RegisterPage'
 import ShortcutsPage from './pages/ShortcutsPage'
 import StoresPage from './pages/StoresPage'
 import SettingsPage from './pages/SettingsPage'
+import ProfileSelectPage from './pages/ProfileSelectPage'
 import DestekPage from './pages/DestekPage'
 import AccessoriesPage from './pages/AccessoriesPage'
 import CoupleProductsPage from './pages/CoupleProductsPage'
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
 
       <Route element={<ProtectedRoute />}>
+        <Route path="/profil-sec" element={<ProfileSelectPage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/stores" element={<StoresPage />} />

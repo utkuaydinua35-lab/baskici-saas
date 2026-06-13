@@ -69,6 +69,15 @@ export function AuthProvider({ children }) {
     } catch {}
   }
 
+  const selectProfile = async (userId, pin) => {
+    const data = await api.post('/api/auth/select-profile', { user_id: userId, pin: pin || null })
+    setToken(data.access_token)
+    const me = await api.get('/api/auth/me')
+    setUser(me.user)
+    setTenant(me.tenant)
+    return me
+  }
+
   const logout = () => {
     setToken(null)
     setUser(null)
@@ -78,7 +87,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, register, logout, refresh }}>
+    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, register, logout, refresh, selectProfile }}>
       {children}
     </AuthContext.Provider>
   )

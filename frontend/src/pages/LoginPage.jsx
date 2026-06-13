@@ -19,8 +19,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      try { sessionStorage.setItem('freshLogin', '1') } catch {}
-      navigate(from, { replace: true })
+      navigate('/profil-sec', { replace: true })
     } catch (err) {
       setError(err.detail || 'Giriş başarısız')
     } finally {

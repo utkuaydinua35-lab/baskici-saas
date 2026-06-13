@@ -207,7 +207,7 @@ function OrderDialog({ dealer, onClose, onCreated }) {
       try {
         const sid = dealer.store_id
         const [m, d] = await Promise.all([
-          api.get('/api/phone-models').catch(() => ({})),
+          api.get('/api/phone-models?include_baseline=true').catch(() => ({})),
           sid ? api.get(`/api/designs?store_id=${sid}&per_page=500`).catch(() => ({})) : Promise.resolve({}),
         ])
         const mArr = Array.isArray(m) ? m : (m?.items || m?.models || [])

@@ -37,7 +37,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold text-gray-100">
             Hoş geldin, {user?.full_name?.split(' ')[0] || 'sen'} 👋
           </h1>
-          <p className="text-sm text-gray-500 mt-1">{tenant?.name} · {tenant?.plan} plan</p>
+          <p className="text-sm text-gray-500 mt-1">{tenant?.name}</p>
         </div>
         <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm">
           <option value="">Tüm mağazalar</option>

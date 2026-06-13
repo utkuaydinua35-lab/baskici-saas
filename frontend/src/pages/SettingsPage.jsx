@@ -6,7 +6,7 @@ import StoresPage from './StoresPage'
 export default function SettingsPage() {
   const { user: _me } = useAuth()
   const _isAdmin = (_me?.role === 'yonetici' || _me?.role === 'owner')
-  const [tab, setTab] = useState('stores')
+  const [tab, setTab] = useState(_isAdmin ? 'stores' : 'brand')
   return (
     <div className="max-w-5xl animate-fadein">
       <div className="mb-5">
@@ -15,13 +15,13 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex gap-1 border-b border-brand-border mb-5 overflow-x-auto">
-        <TabBtn active={tab === 'stores'} onClick={() => setTab('stores')}>🏪 Mağazalar</TabBtn>
+        {_isAdmin && <TabBtn active={tab === 'stores'} onClick={() => setTab('stores')}>🏪 Mağazalar</TabBtn>}
         <TabBtn active={tab === 'brand'} onClick={() => setTab('brand')}>🎨 Marka & Logo</TabBtn>
         <TabBtn active={tab === 'account'} onClick={() => setTab('account')}>👤 Hesap</TabBtn>
         {_isAdmin && <TabBtn active={tab === 'users'} onClick={() => setTab('users')}>👥 Kullanıcılar</TabBtn>}
       </div>
 
-      {tab === 'stores' && <div className="-mt-2"><StoresPage embedded /></div>}
+      {tab === 'stores' && _isAdmin && <div className="-mt-2"><StoresPage embedded /></div>}
       {tab === 'brand' && <BrandTab />}
       {tab === 'account' && <AccountTab />}
       {tab === 'users' && _isAdmin && <UsersTab />}
@@ -31,9 +31,10 @@ export default function SettingsPage() {
 
 function BrandTab() {
   const { tenant, user, refresh } = useAuth()
+  const _isAdmin = (user?.role === 'yonetici' || user?.role === 'owner')
   return (
     <div className="space-y-5 animate-fadein">
-      <LogoUploader
+      {_isAdmin && <LogoUploader
         title="Marka Logosu"
         desc="Sol üstte ve markalamada görünür. PNG/SVG/JPG, max 5MB."
         current={tenant?.logo_url}
@@ -41,7 +42,7 @@ function BrandTab() {
         deleteUrl="/api/tenant/brand-logo"
         onDone={refresh}
         shape="rounded-xl"
-      />
+      />}
       <LogoUploader
         title="Profil Görseli"
         desc="Profil bölümünde görünür (sana özel). PNG/SVG/JPG, max 5MB."

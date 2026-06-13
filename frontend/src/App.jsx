@@ -23,6 +23,7 @@ import ProfileSelectPage from './pages/ProfileSelectPage'
 import DestekPage from './pages/DestekPage'
 import AccessoriesPage from './pages/AccessoriesPage'
 import CoupleProductsPage from './pages/CoupleProductsPage'
+import DealersPage from './pages/DealersPage'
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="/designs" element={<DesignsPage />} />
           <Route path="/aksesuarlar" element={<AccessoriesPage />} />
           <Route path="/couple" element={<CoupleProductsPage />} />
+          <Route path="/bayiler" element={<DealersPage />} />
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />
           <Route path="/kalip-olustur" element={<MoldGeneratorPage />} />

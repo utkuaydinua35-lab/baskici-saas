@@ -30,6 +30,25 @@ def _slugify(s: str) -> str:
     return s or "bayii"
 
 
+def _ensure_store(db: Session, tenant_id, dealer) -> None:
+    """Bayinin sanal store'u yoksa olustur (onarim)."""
+    if dealer.store_id:
+        # store gercekten var mi kontrol et
+        st = db.scalar(select(Store).where(Store.id == dealer.store_id, Store.tenant_id == tenant_id))
+        if st:
+            return
+    base = _slugify(dealer.name)
+    slug = f"bayii-{base}"
+    i = 1
+    while db.scalar(select(Store).where(Store.tenant_id == tenant_id, Store.slug == slug)):
+        i += 1
+        slug = f"bayii-{base}-{i}"
+    store = Store(tenant_id=tenant_id, slug=slug, name=f"Bayii: {dealer.name}", platform="bayii", is_active=True)
+    db.add(store)
+    db.flush()
+    dealer.store_id = store.id
+
+
 class DealerIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     phone: str | None = None
@@ -81,6 +100,15 @@ def list_dealers(user: User = Depends(require_permission("bayii")), db: Session 
     rows = db.scalars(
         select(Dealer).where(Dealer.tenant_id == user.tenant_id).order_by(Dealer.name)
     ).all()
+    # Store'u olmayan/silinmis bayileri onar
+    _changed = False
+    for d in rows:
+        _before = d.store_id
+        _ensure_store(db, user.tenant_id, d)
+        if d.store_id != _before:
+            _changed = True
+    if _changed:
+        db.commit()
     return [_ser(d) for d in rows]
 
 
@@ -213,19 +241,8 @@ def create_dealer_order(
     d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
     if not d:
         raise HTTPException(404, "Bayii bulunamadi")
-    if not d.store_id:
-        # Store silinmis/yok — otomatik yeniden olustur (onarim)
-        base = _slugify(d.name)
-        slug = f"bayii-{base}"
-        i = 1
-        while db.scalar(select(Store).where(Store.tenant_id == user.tenant_id, Store.slug == slug)):
-            i += 1
-            slug = f"bayii-{base}-{i}"
-        _store = Store(tenant_id=user.tenant_id, slug=slug, name=f"Bayii: {d.name}", platform="bayii", is_active=True)
-        db.add(_store)
-        db.flush()
-        d.store_id = _store.id
-        db.flush()
+    _ensure_store(db, user.tenant_id, d)
+    db.flush()
     if not d.is_active:
         raise HTTPException(400, "Bayii pasif")
 

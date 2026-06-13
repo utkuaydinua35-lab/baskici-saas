@@ -8,6 +8,7 @@ export default function DealersPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)   // {} yeni, obj duzenle, null kapali
   const [detail, setDetail] = useState(null)      // cari detay acilan bayi
+  const [ordering, setOrdering] = useState(null)  // siparis girilen bayi
 
   const load = async () => {
     setLoading(true)
@@ -50,6 +51,7 @@ export default function DealersPage() {
                 </div>
               </div>
               <div className="flex gap-1.5">
+                <button onClick={() => setOrdering(d)} className="btn-primary !text-xs">🛒 Sipariş</button>
                 <button onClick={() => setDetail(d)} className="btn-secondary !text-xs">Cari</button>
                 <button onClick={() => setEditing(d)} className="btn-secondary !text-xs">Düzenle</button>
               </div>
@@ -61,6 +63,7 @@ export default function DealersPage() {
 
       {editing && <DealerDialog dealer={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {detail && <CariDialog dealer={detail} onClose={() => setDetail(null)} onChanged={load} />}
+      {ordering && <OrderDialog dealer={ordering} onClose={() => setOrdering(null)} onCreated={() => { setOrdering(null); load() }} />}
     </div>
   )
 }
@@ -188,3 +191,121 @@ function CariDialog({ dealer, onClose, onChanged }) {
     </div>
   )
 }
+
+function OrderDialog({ dealer, onClose, onCreated }) {
+  const toast = useToast()
+  const [models, setModels] = useState([])
+  const [designs, setDesigns] = useState([])
+  const [loadingLists, setLoadingLists] = useState(true)
+  const [items, setItems] = useState([{ model: '', design_id: '', design_label: '', quantity: 1 }])
+  const [applyShipping, setApplyShipping] = useState((dealer.shipping_fee || 0) > 0)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [m, d] = await Promise.all([
+          api.get('/api/phone-models').catch(() => []),
+          api.get('/api/designs').catch(() => []),
+        ])
+        const mArr = Array.isArray(m) ? m : (m?.items || m?.models || [])
+        const dArr = Array.isArray(d) ? d : (d?.items || d?.designs || [])
+        setModels(mArr); setDesigns(dArr)
+      } catch { toast.error('Listeler yüklenemedi') }
+      finally { setLoadingLists(false) }
+    })()
+  }, [])
+
+  const modelLabel = (m) => m.model || m.name || m.spec_key || m.title || '—'
+  const modelVal = (m) => m.model || m.name || m.spec_key || ''
+  const designLabel = (d) => d.name || d.code || d.title || ('Tasarım ' + String(d.id).slice(0, 6))
+
+  const unitPrice = Number(dealer.unit_price || 0)
+  const shippingFee = Number(dealer.shipping_fee || 0)
+  const totalQty = items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+  const shipping = applyShipping ? shippingFee : 0
+  const total = totalQty * unitPrice + shipping
+  const fmt = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+
+  const setItem = (idx, key, val) => setItems(arr => arr.map((it, i) => i === idx ? { ...it, [key]: val } : it))
+  const addItem = () => setItems(arr => [...arr, { model: '', design_id: '', design_label: '', quantity: 1 }])
+  const removeItem = (idx) => setItems(arr => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)
+
+  const onDesignChange = (idx, designId) => {
+    const d = designs.find(x => String(x.id) === String(designId))
+    setItems(arr => arr.map((it, i) => i === idx ? { ...it, design_id: designId, design_label: d ? designLabel(d) : '' } : it))
+  }
+
+  const save = async () => {
+    const valid = items.filter(it => it.model && (Number(it.quantity) || 0) > 0)
+    if (valid.length === 0) { toast.error('En az bir geçerli kalem gir (model + adet)'); return }
+    if (unitPrice <= 0) { toast.error('Bu bayiye birim fiyat tanımlı değil — önce fiyat belirle'); return }
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/dealers/${dealer.id}/orders`, {
+        items: valid.map(it => ({
+          model: it.model, design_id: it.design_id || null,
+          design_label: it.design_label || null, quantity: Number(it.quantity),
+        })),
+        note: note || null, apply_shipping: applyShipping,
+      })
+      toast.success(`Sipariş #${r.order_number} oluşturuldu — ${fmt(r.total)}`)
+      onCreated?.()
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Sipariş oluşturulamadı'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl p-5 my-8 animate-popin">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-100">{dealer.name} — Yeni Sipariş</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">Birim fiyat: <span className="text-gray-300 font-medium">{fmt(unitPrice)}</span>{shippingFee > 0 && <> · Kargo: {fmt(shippingFee)}</>}</p>
+
+        {loadingLists ? <div className="text-sm text-gray-500 py-6 text-center">Listeler yükleniyor…</div> : (
+          <>
+            <div className="space-y-2 mb-3">
+              {items.map((it, idx) => (
+                <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">
+                  <select className="input flex-1 min-w-[140px]" value={it.model} onChange={e => setItem(idx, 'model', e.target.value)}>
+                    <option value="">Telefon modeli…</option>
+                    {models.map((m, i) => <option key={i} value={modelVal(m)}>{modelLabel(m)}</option>)}
+                  </select>
+                  <select className="input flex-1 min-w-[140px]" value={it.design_id} onChange={e => onDesignChange(idx, e.target.value)}>
+                    <option value="">Tasarım (ops.)…</option>
+                    {designs.map((d, i) => <option key={i} value={d.id}>{designLabel(d)}</option>)}
+                  </select>
+                  <input className="input w-20" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
+                  <button onClick={() => removeItem(idx)} className="text-gray-500 hover:text-red-300 px-1 text-lg" title="Kalemi sil">×</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={addItem} className="btn-secondary !text-xs mb-4">+ Kalem Ekle</button>
+
+            <textarea className="input w-full mb-3" rows={2} placeholder="Sipariş notu (ops.)" value={note} onChange={e => setNote(e.target.value)} />
+
+            {shippingFee > 0 && (
+              <label className="flex items-center gap-2 mb-4 text-sm text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={applyShipping} onChange={e => setApplyShipping(e.target.checked)} />
+                Kargo ücreti uygula ({fmt(shippingFee)})
+              </label>
+            )}
+
+            <div className="flex items-center justify-between border-t border-brand-border pt-3 mb-4">
+              <span className="text-sm text-gray-400">{totalQty} adet{shipping > 0 ? ` + kargo` : ''}</span>
+              <span className="text-lg font-bold text-accent tabular-nums">{fmt(total)}</span>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+              <button onClick={save} disabled={busy} className="btn-primary !text-sm">{busy ? 'Oluşturuluyor…' : 'Sipariş Oluştur'}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+

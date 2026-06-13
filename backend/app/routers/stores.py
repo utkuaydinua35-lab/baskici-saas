@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.config import get_settings
 from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
@@ -109,15 +109,16 @@ def _serialize_store(store: Store, mask_secrets: bool = True) -> dict:
 
 @router.get("", response_model=list[dict])
 def list_stores(
+    include_bayii: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Mevcut tenant'ın tüm mağazaları."""
-    rows = db.scalars(
-        select(Store)
-        .where(Store.tenant_id == user.tenant_id)
-        .order_by(Store.created_at)
-    ).all()
+    """Mevcut tenant'ın mağazaları. Bayii (manuel) mağazalar varsayılan gizli;
+    tasarım gibi akışlarda include_bayii=true ile dahil edilir."""
+    q = select(Store).where(Store.tenant_id == user.tenant_id)
+    if not include_bayii:
+        q = q.where(Store.platform != "bayii")
+    rows = db.scalars(q.order_by(Store.created_at)).all()
     return [_serialize_store(s) for s in rows]
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -270,10 +270,8 @@ function OrderDialog({ dealer, onClose, onCreated }) {
             <div className="space-y-2 mb-3">
               {items.map((it, idx) => (
                 <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">
-                  <select className="input flex-1 min-w-[140px]" value={it.model} onChange={e => setItem(idx, 'model', e.target.value)}>
-                    <option value="">Telefon modeli…</option>
-                    {models.map((m, i) => <option key={i} value={modelVal(m)}>{modelLabel(m)}</option>)}
-                  </select>
+                  <ModelSearch models={models} value={it.model}
+                    onSelect={(v) => setItem(idx, 'model', v)} modelVal={modelVal} modelLabel={modelLabel} />
                   <select className="input flex-1 min-w-[140px]" value={it.design_id} onChange={e => onDesignChange(idx, e.target.value)}>
                     <option value="">Tasarım (ops.)…</option>
                     {designs.map((d, i) => <option key={i} value={d.id}>{designLabel(d)}</option>)}
@@ -306,6 +304,65 @@ function OrderDialog({ dealer, onClose, onCreated }) {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function ModelSearch({ models, value, onSelect, modelVal, modelLabel }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [hi, setHi] = useState(0)
+  const boxRef = useRef(null)
+
+  useEffect(() => {
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const term = q.trim().toLowerCase()
+  const filtered = !term
+    ? models.slice(0, 50)
+    : models.filter(m => modelLabel(m).toLowerCase().includes(term)).slice(0, 50)
+
+  const pick = (m) => { onSelect(modelVal(m)); setQ(''); setOpen(false); setHi(0) }
+
+  // Secili degeri goster (input bos degilse value'yu yansit)
+  const display = open ? q : (value || '')
+
+  return (
+    <div ref={boxRef} className="relative flex-1 min-w-[160px]">
+      <input
+        className="input w-full" placeholder="Model ara… (örn S24, iPhone 15)"
+        value={display}
+        onChange={e => { setQ(e.target.value); setOpen(true); setHi(0) }}
+        onFocus={() => { setQ(''); setOpen(true) }}
+        onKeyDown={e => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, filtered.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter' && open && filtered[hi]) { e.preventDefault(); pick(filtered[hi]) }
+          else if (e.key === 'Escape') setOpen(false)
+        }}
+      />
+      {value && !open && (
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-emerald-400 pointer-events-none">✓</span>
+      )}
+      {open && filtered.length > 0 && (
+        <div className="absolute z-[130] mt-1 w-full max-h-56 overflow-y-auto bg-brand-card border border-brand-border rounded-lg shadow-xl">
+          {filtered.map((m, i) => (
+            <button key={i} type="button" onMouseDown={(e) => { e.preventDefault(); pick(m) }}
+              onMouseEnter={() => setHi(i)}
+              className={`block w-full text-left px-3 py-1.5 text-sm ${i === hi ? 'bg-accent/20 text-gray-100' : 'text-gray-300'}`}>
+              {modelLabel(m)}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && term && filtered.length === 0 && (
+        <div className="absolute z-[130] mt-1 w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-xs text-gray-500">
+          Eşleşen model yok
+        </div>
+      )}
     </div>
   )
 }

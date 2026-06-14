@@ -11,7 +11,7 @@ import { api } from '../lib/api'
  *   onClose: () => void
  *   onCreated: (result) => void
  */
-export default function ManualOrderDialog({ open, stores, defaultStoreId, onClose, onCreated }) {
+export default function ManualOrderDialog({ open, stores, defaultStoreId, onClose, onCreated, dealerId = null, applyShipping = true }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -76,6 +76,8 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
     try {
       const r = await api.post('/api/orders/manual', {
         store_id: storeId,
+        dealer_id: dealerId || null,
+        apply_shipping: applyShipping,
         external_id: externalId.trim(),
         customer_name: customerName.trim(),
         customer_phone: customerPhone.trim() || null,
@@ -127,6 +129,7 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
           <div>
             <h3 className="text-sm font-medium text-gray-300 mb-2">🧾 Sipariş Bilgileri</h3>
             <div className="grid grid-cols-2 gap-2">
+              {!dealerId && (
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Mağaza *</label>
                 <select
@@ -138,6 +141,7 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
                   {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
+              )}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">
                   Sipariş Kodu * <span className="text-gray-600 font-normal">(örn. wa_001)</span>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
+import ManualOrderDialog from '../components/ManualOrderDialog'
 
 const KALIP_TIPLERI = [
   { value: '', label: 'Kalıp tipi (belirtilmedi)' },
@@ -71,7 +72,17 @@ export default function DealersPage() {
 
       {editing && <DealerDialog dealer={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {detail && <CariDialog dealer={detail} onClose={() => setDetail(null)} onChanged={load} />}
-      {ordering && <OrderDialog dealer={ordering} onClose={() => setOrdering(null)} onCreated={() => { setOrdering(null); load() }} />}
+      {ordering && (
+        <ManualOrderDialog
+          open={!!ordering}
+          stores={[{ id: ordering.store_id, name: ordering.name }]}
+          defaultStoreId={ordering.store_id}
+          dealerId={ordering.id}
+          applyShipping={(ordering.shipping_fee || 0) > 0}
+          onClose={() => setOrdering(null)}
+          onCreated={() => { setOrdering(null); load() }}
+        />
+      )}
     </div>
   )
 }

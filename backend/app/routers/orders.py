@@ -538,6 +538,8 @@ class ManualLineItemInput(BaseModel):
 
 
 class ManualOrderRequest(BaseModel):
+    dealer_id: uuid.UUID | None = None
+    apply_shipping: bool = True
     store_id: uuid.UUID
     external_id: str
     customer_name: str
@@ -692,6 +694,25 @@ def create_manual_order(
             device_model_override=li.device_model,
             birincil_renk=li.color,
         ))
+
+    # Bayii siparisi ise cari borc ekle
+    if req.dealer_id:
+        from decimal import Decimal as _Dec
+        from app.models import Dealer as _Dealer, DealerTransaction as _DTx
+        _d = db.scalar(select(_Dealer).where(_Dealer.id == req.dealer_id, _Dealer.tenant_id == user.tenant_id))
+        if _d:
+            _qty = sum(max(1, int(li.quantity or 1)) for li in req.line_items)
+            _unit = _Dec(str(_d.unit_price or 0))
+            _ship = _Dec(str(_d.shipping_fee or 0)) if (req.apply_shipping and _d.shipping_fee) else _Dec("0")
+            _toplam = _unit * _Dec(_qty) + _ship
+            _newbal = _Dec(str(_d.balance or 0)) + _toplam
+            _d.balance = _newbal
+            order.raw = {**(order.raw or {}), "dealer_id": str(_d.id), "total_price": str(_toplam), "source": "bayii"}
+            db.add(_DTx(
+                tenant_id=user.tenant_id, dealer_id=_d.id, amount=_toplam, kind="siparis",
+                description=f"Sipariş #{order.external_id} — {_qty} adet" + (f" (+kargo)" if _ship else ""),
+                ref_order_id=order.id, balance_after=_newbal,
+            ))
 
     db.commit()
     return {

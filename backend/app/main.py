@@ -89,11 +89,36 @@ app.include_router(support_router)
 app.include_router(aski.router)
 
 
+# ─── Guvenli statik servis (SVG/HTML XSS korumasi) ────────────
+from starlette.responses import Response as _Resp
+
+class SafeStaticFiles(StaticFiles):
+    """SVG/HTML/XML gibi tarayicida script calistirabilen dosyalari
+    inline yerine attachment olarak + siki guvenlik basliklariyla servis eder.
+    Resimler (png/jpg/jpeg/gif/webp) normal inline gosterilir."""
+    _RISKY_EXT = {".svg", ".html", ".htm", ".xml", ".xhtml"}
+
+    async def get_response(self, path: str, scope):
+        resp = await super().get_response(path, scope)
+        try:
+            ext = Path(path).suffix.lower()
+        except Exception:
+            ext = ""
+        # Tum statik dosyalara temel guvenlik basliklari
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        if ext in self._RISKY_EXT:
+            # Tarayicida CALISTIRMA — indir + CSP ile script engelle
+            resp.headers["Content-Disposition"] = "attachment"
+            resp.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+            resp.headers["Content-Type"] = "application/octet-stream"
+        return resp
+
+
 # ─── Static files (tasarım dosyaları) ─────────────────────────
 storage_service.ensure_storage_root()
 app.mount(
     "/storage",
-    StaticFiles(directory=str(storage_service.STORAGE_ROOT)),
+    SafeStaticFiles(directory=str(storage_service.STORAGE_ROOT)),
     name="storage",
 )
 
@@ -102,7 +127,7 @@ from app.services import uploads as uploads_service
 uploads_service.ensure_upload_root()
 app.mount(
     "/uploads",
-    StaticFiles(directory=str(uploads_service.UPLOAD_ROOT)),
+    SafeStaticFiles(directory=str(uploads_service.UPLOAD_ROOT)),
     name="uploads",
 )
 

@@ -80,7 +80,7 @@ class TestConnectionResponse(BaseModel):
 
 # ─── Helpers ─────────────────────────────────────────────────
 
-_SECRET_KEYS = {"access_token", "client_secret", "api_secret", "api_key"}
+_SECRET_KEYS = {"access_token", "client_secret", "api_secret", "api_key", "password", "secret", "token", "refresh_token", "webhook_secret", "private_key"}
 
 
 def _mask_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -90,8 +90,9 @@ def _mask_config(config: dict[str, Any]) -> dict[str, Any]:
     """
     masked = {}
     for k, v in (config or {}).items():
-        if k in _SECRET_KEYS and isinstance(v, str) and len(v) > 8:
-            masked[k] = v[:6] + "••••••" + v[-4:]
+        if k in _SECRET_KEYS and isinstance(v, str) and v:
+            # Sadece son 4 karakter (kullanici kendi girdigini tanisin); geri kalan TAMAMEN gizli
+            masked[k] = ("••••••••" + v[-4:]) if len(v) >= 4 else "••••••••"
         else:
             masked[k] = v
     return masked

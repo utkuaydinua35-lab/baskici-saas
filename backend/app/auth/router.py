@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -122,18 +122,56 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespon
     return _issue_token(user)
 
 
+_login_hits: dict[str, list[float]] = {}
+_LOGIN_WINDOW = 300   # 5 dakika
+_LOGIN_MAX = 10       # IP basina 5 dakikada en fazla 10 basarisiz deneme
+
+
+def _login_client_ip(request: Request) -> str:
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _login_rate_limit(request: Request) -> None:
+    """Basarisiz giris denemelerini IP basina sinirla (brute-force korumasi)."""
+    import time as _t
+    ip = _login_client_ip(request)
+    now = _t.time()
+    arr = [x for x in _login_hits.get(ip, []) if now - x < _LOGIN_WINDOW]
+    if len(arr) >= _LOGIN_MAX:
+        raise HTTPException(429, "Çok fazla başarısız giriş denemesi. Lütfen birkaç dakika sonra tekrar deneyin.")
+    _login_hits[ip] = arr
+    if len(_login_hits) > 5000:
+        for k in [k for k, v in _login_hits.items() if not v or now - v[-1] > _LOGIN_WINDOW]:
+            _login_hits.pop(k, None)
+
+
+def _login_record_fail(request: Request) -> None:
+    import time as _t
+    ip = _login_client_ip(request)
+    _login_hits.setdefault(ip, []).append(_t.time())
+
+
 @router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+    _login_rate_limit(request)
     """Email + şifre ile giriş. Yanlış bilgi → 401."""
     user = db.scalar(select(User).where(User.email == req.email.lower()))
     if not user or not user.password_hash:
         # password_hash null = sadece OAuth user, email/şifre giriş yok
+        _login_record_fail(request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email veya şifre hatalı",
         )
 
     if not verify_password(req.password, user.password_hash):
+        _login_record_fail(request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email veya şifre hatalı",

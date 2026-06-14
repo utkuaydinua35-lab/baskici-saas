@@ -73,7 +73,7 @@ export default function DesignsPage() {
   // ─── Stores ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
-    api.get('/api/stores')
+    api.get('/api/stores?include_bayii=true')
       .then(s => {
         if (cancelled) return
         const list = Array.isArray(s) ? s : []

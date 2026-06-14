@@ -273,9 +273,6 @@ function ProfileDropdown({ user, onLogout }) {
           <button onClick={() => { _nav('/ayarlar'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
             <span className="w-5 text-center">⚙</span> Ayarlar
           </button>
-          <button onClick={() => { setShowPw(true); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
-            <span className="w-5 text-center">🔑</span> Şifre Değiştir
-          </button>
           <button onClick={onLogout} className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2">
             <span className="w-5 text-center">⎋</span> Çıkış Yap
           </button>

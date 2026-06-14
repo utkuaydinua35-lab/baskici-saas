@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
 import StoresPage from './StoresPage'
+import BayiYonetim from './BayiYonetim'
 
 export default function SettingsPage() {
   const { user: _me } = useAuth()
@@ -19,12 +20,14 @@ export default function SettingsPage() {
         {_isAdmin && <TabBtn active={tab === 'stores'} onClick={() => setTab('stores')}>🏪 Mağazalar</TabBtn>}
         <TabBtn active={tab === 'brand'} onClick={() => setTab('brand')}>🎨 Marka & Logo</TabBtn>
         <TabBtn active={tab === 'account'} onClick={() => setTab('account')}>👤 Hesap</TabBtn>
+        {_isAdmin && <TabBtn active={tab === 'bayiler'} onClick={() => setTab('bayiler')}>🤝 Bayiler</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'users'} onClick={() => setTab('users')}>👥 Kullanıcılar</TabBtn>}
       </div>
 
       {tab === 'stores' && _isAdmin && <div className="-mt-2"><StoresPage embedded /></div>}
       {tab === 'brand' && <BrandTab />}
       {tab === 'account' && <AccountTab />}
+      {tab === 'bayiler' && _isAdmin && <BayiYonetim />}
       {tab === 'users' && _isAdmin && <UsersTab />}
     </div>
   )

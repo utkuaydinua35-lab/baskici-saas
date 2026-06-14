@@ -36,7 +36,7 @@ export default function DealersPage() {
           <h1 className="text-2xl font-semibold text-gray-100">🤝 Bayiler</h1>
           <p className="text-sm text-gray-500 mt-1">B2B müşteriler ve cari hesaplar</p>
         </div>
-        <button onClick={() => setEditing({})} className="btn-primary">+ Bayii Ekle</button>
+        <a href="/ayarlar" className="text-xs text-gray-500 hover:text-gray-300">⚙ Bayi ekle/düzenle → Ayarlar</a>
       </div>
 
       {loading ? (
@@ -62,7 +62,6 @@ export default function DealersPage() {
               <div className="flex gap-1.5">
                 <button onClick={() => setOrdering(d)} className="btn-primary !text-xs">🛒 Sipariş</button>
                 <button onClick={() => setDetail(d)} className="btn-secondary !text-xs">Cari</button>
-                <button onClick={() => setEditing(d)} className="btn-secondary !text-xs">Düzenle</button>
               </div>
             </div>
           ))}

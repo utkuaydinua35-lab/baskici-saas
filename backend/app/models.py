@@ -957,6 +957,7 @@ class Dealer(Base):
 
     # Cari bakiye: pozitif = bayi bize borclu (alacagimiz), negatif = biz bayiye borcluyuz
     balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
+    balance_usd: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
     # Bayi sabit birim fiyati (urun basina) + kargo ucreti (0 = yansitilmaz)
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
     shipping_fee: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
@@ -986,6 +987,7 @@ class DealerTransaction(Base):
 
     # tutar: pozitif = bayinin borcu artar (siparis), negatif = odeme/alacak
     amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="TRY", server_default=text("'TRY'"))
     kind: Mapped[str] = mapped_column(String(20))  # 'siparis' | 'odeme' | 'duzeltme'
     description: Mapped[str | None] = mapped_column(String(300), nullable=True)
     ref_order_id: Mapped[uuid.UUID | None] = mapped_column(

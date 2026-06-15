@@ -75,12 +75,13 @@ class PaymentIn(BaseModel):
     kind: str = Field("odeme", max_length=20)  # 'odeme' | 'duzeltme'
     description: str | None = Field(None, max_length=300)
     direction: str = Field("payment")       # 'payment' (alacak/borc azalt) | 'debt' (borc ekle)
+    currency: str = Field("TRY")            # 'TRY' | 'USD'
 
 
 def _ser(d: Dealer) -> dict:
     return {
         "id": str(d.id), "name": d.name, "phone": d.phone, "email": d.email,
-        "address": d.address, "note": d.note, "balance": float(d.balance or 0),
+        "address": d.address, "note": d.note, "balance": float(d.balance or 0), "balance_usd": float(d.balance_usd or 0),
         "unit_price": float(d.unit_price or 0), "shipping_fee": float(d.shipping_fee or 0),
         "is_active": d.is_active, "store_id": str(d.store_id) if d.store_id else None,
     }
@@ -88,7 +89,7 @@ def _ser(d: Dealer) -> dict:
 
 def _ser_tx(t: DealerTransaction) -> dict:
     return {
-        "id": str(t.id), "amount": float(t.amount), "kind": t.kind,
+        "id": str(t.id), "amount": float(t.amount), "kind": t.kind, "currency": getattr(t, "currency", "TRY") or "TRY",
         "description": t.description, "balance_after": float(t.balance_after),
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "ref_order_id": str(t.ref_order_id) if t.ref_order_id else None,
@@ -200,12 +201,18 @@ def add_payment(dealer_id: uuid.UUID, req: PaymentIn, user: User = Depends(requi
     delta = Decimal(str(req.amount))
     if req.direction == "payment":
         delta = -delta  # odeme: borc azalir
-    new_balance = Decimal(str(d.balance or 0)) + delta
-    d.balance = new_balance
+    cur = (req.currency or "TRY").upper()
+    if cur == "USD":
+        new_balance = Decimal(str(d.balance_usd or 0)) + delta
+        d.balance_usd = new_balance
+    else:
+        cur = "TRY"
+        new_balance = Decimal(str(d.balance or 0)) + delta
+        d.balance = new_balance
     tx = DealerTransaction(
         tenant_id=user.tenant_id, dealer_id=d.id,
         amount=delta, kind=req.kind, description=req.description,
-        balance_after=new_balance,
+        balance_after=new_balance, currency=cur,
     )
     db.add(tx)
     db.commit(); db.refresh(d)

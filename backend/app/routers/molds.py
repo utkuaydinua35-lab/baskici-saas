@@ -872,6 +872,44 @@ from datetime import datetime as _dt, UTC as _UTC
 _PRINT_STATUSES = {"bekliyor", "basildi", "eksik_var", "hatali_basildi"}
 
 
+@router.get("/print/total-missing")
+def total_missing(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tum (basilmamis) kaliplarin stok eksiklerini model bazinda topla."""
+    from app.services import stock as stock_svc
+    from collections import defaultdict
+
+    molds = db.scalars(
+        select(Mold).where(Mold.tenant_id == user.tenant_id).options(selectinload(Mold.items))
+    ).all()
+
+    agg = defaultdict(lambda: {"total_missing": 0, "mold_count": 0, "not_in_system": False})
+    mold_set = defaultdict(set)
+    for mo in molds:
+        if mo.print_status == "basildi":
+            continue
+        res = stock_svc.analyze_mold_stock(db, user.tenant_id, mo)
+        for ms in res["missing_stock"]:
+            key = (ms["variation"], ms["model"])
+            agg[key]["total_missing"] += ms["missing"]
+            if ms.get("not_in_system"):
+                agg[key]["not_in_system"] = True
+            mold_set[key].add(str(mo.id))
+
+    items = []
+    for (var, model), v in agg.items():
+        items.append({
+            "variation": var, "model": model,
+            "total_missing": v["total_missing"],
+            "mold_count": len(mold_set[(var, model)]),
+            "not_in_system": v["not_in_system"],
+        })
+    items.sort(key=lambda x: (-x["total_missing"], x["model"] or ""))
+    return {"items": items, "total_models": len(items), "total_missing": sum(i["total_missing"] for i in items)}
+
+
 @router.get("/{mold_id}/analyze")
 def analyze_mold(
     mold_id: uuid.UUID,

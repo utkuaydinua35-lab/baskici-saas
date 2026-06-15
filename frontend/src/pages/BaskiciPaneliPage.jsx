@@ -18,6 +18,9 @@ export default function BaskiciPaneliPage() {
   const [search, setSearch] = useState('')
   const [analyzing, setAnalyzing] = useState({})    // { moldId: true }
   const [busyStatus, setBusyStatus] = useState({})
+  const [totalMissing, setTotalMissing] = useState(null)   // modal verisi
+  const [tmBusy, setTmBusy] = useState(false)
+  const [preview, setPreview] = useState(null)             // buyuk onizleme {url, title}
 
   const load = async () => {
     setLoading(true)
@@ -70,6 +73,15 @@ export default function BaskiciPaneliPage() {
     finally { setBusyStatus(s => ({ ...s, [mold.id]: false })) }
   }
 
+  const loadTotalMissing = async () => {
+    setTmBusy(true)
+    try {
+      const r = await api.get('/api/molds/print/total-missing')
+      setTotalMissing(r)
+    } catch { toast.error('Toplam eksik hesaplanamadı') }
+    finally { setTmBusy(false) }
+  }
+
   const analyzeAll = async () => {
     const pending = molds.filter(m => (m.print_status || 'bekliyor') !== 'basildi')
     if (!pending.length) { toast.info('Analiz edilecek kalıp yok'); return }
@@ -87,6 +99,7 @@ export default function BaskiciPaneliPage() {
         </div>
         <div className="flex gap-2">
           <a href="/stok" className="btn-secondary !text-sm whitespace-nowrap">🗃️ Stok</a>
+          <button onClick={loadTotalMissing} disabled={tmBusy} className="btn-secondary !text-sm whitespace-nowrap">{tmBusy ? '…' : '📊 Toplam Eksik'}</button>
           <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
         </div>
       </div>
@@ -114,8 +127,48 @@ export default function BaskiciPaneliPage() {
           {filtered.map(m => (
             <MoldCard key={m.id} mold={m}
               analyzing={!!analyzing[m.id]} busyStatus={!!busyStatus[m.id]}
-              onAnalyze={analyze} onSetStatus={setStatus} />
+              onAnalyze={analyze} onSetStatus={setStatus} onPreview={setPreview} />
           ))}
+        </div>
+      )}
+
+      {totalMissing && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setTotalMissing(null)}>
+          <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 max-h-[85vh] overflow-y-auto animate-popin">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-100">📊 Toplam Stok Eksiği</h2>
+              <button onClick={() => setTotalMissing(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+            </div>
+            {totalMissing.items.length === 0 ? (
+              <div className="text-center py-8 text-emerald-300">✓ Hiç stok eksiği yok — tüm kalıplar için yeterli.</div>
+            ) : (
+              <>
+                <div className="text-xs text-gray-500 mb-3">{totalMissing.total_models} model · toplam {totalMissing.total_missing} adet eksik</div>
+                <div className="space-y-1.5">
+                  {totalMissing.items.map((it, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">
+                      <span className="text-red-400 font-bold tabular-nums text-sm w-12">-{it.total_missing}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-200 truncate">{it.model}</div>
+                        <div className="text-[10px] text-gray-500">{it.variation} · {it.mold_count} kalıpta</div>
+                      </div>
+                      {it.not_in_system && <span className="text-[10px] text-red-400/80 whitespace-nowrap">📦 stokta yok</span>}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onMouseDown={() => setPreview(null)}>
+          <div className="max-w-2xl max-h-[85vh] flex flex-col items-center" onMouseDown={e => e.stopPropagation()}>
+            <img src={preview.url} alt={preview.title} className="max-w-full max-h-[75vh] object-contain rounded-lg" />
+            <div className="mt-2 text-sm text-gray-300">{preview.title}</div>
+            <button onClick={() => setPreview(null)} className="mt-2 btn-secondary !text-xs">Kapat</button>
+          </div>
         </div>
       )}
     </div>
@@ -131,7 +184,7 @@ function FilterBtn({ active, onClick, label, count, cls }) {
   )
 }
 
-function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
+function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPreview }) {
   const st = STATUS_MAP[mold.print_status || 'bekliyor']
   const an = mold.print_analysis
   const [open, setOpen] = useState(false)
@@ -221,7 +274,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {items.map((it, i) => (
                 <div key={i} className="flex items-center gap-2 bg-brand-card rounded-md p-1.5 border border-brand-border/50">
-                  <div className="shrink-0 w-9 h-9 rounded bg-brand-input overflow-hidden flex items-center justify-center">
+                  <div className="shrink-0 w-9 h-9 rounded bg-brand-input overflow-hidden flex items-center justify-center cursor-pointer hover:ring-1 hover:ring-accent"
+                    onClick={() => it.thumbnail_url && onPreview?.({ url: it.thumbnail_url, title: `${it.model || ''} ${it.design_code || ''}`.trim() })}>
                     {it.thumbnail_url
                       ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-contain" />
                       : <span className="text-[9px] text-gray-600">{it.slot_index != null ? `#${it.slot_index + 1}` : '—'}</span>}

@@ -258,6 +258,15 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
     finally { setPdfBusy(false) }
   }
 
+  const removeSlot = async (it) => {
+    if (!it.id) return
+    if (!confirm(`Bu kılıfı kalıptan çıkar? (${it.model || ''} ${it.design_code || ''})\nSlot yeniden planlanacak.`)) return
+    try {
+      await api.post(`/api/molds/${mold.id}/items/${it.id}/remove`, { action: 'replan' })
+      window.location.reload()
+    } catch { /* sessiz */ }
+  }
+
   return (
     <div className={`card !p-4 ${mold.print_status === 'eksik_var' ? 'ring-1 ring-red-500/30' : ''} ${mold.print_status === 'hatali_basildi' ? 'ring-1 ring-rose-500/40' : ''}`}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -321,6 +330,10 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
                     <div className="text-[10px] text-gray-500 truncate">{it.design_code || it.kalip_rengi || '—'}</div>
                     {it.order_number && <div className="text-[9px] text-gray-600 truncate">#{it.order_number}</div>}
                   </div>
+                  {it.id && (
+                    <button onClick={() => removeSlot(it)} title="Kılıfı çıkar"
+                      className="shrink-0 text-gray-600 hover:text-rose-400 text-xs leading-none px-1">✕</button>
+                  )}
                 </div>
               ))}
             </div>

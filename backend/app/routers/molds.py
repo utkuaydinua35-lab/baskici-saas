@@ -173,7 +173,7 @@ def list_molds(
                 "created_at": mo.created_at.isoformat() if mo.created_at else None,
                 "items": [
                     {
-                        "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
+                        "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
                         "design_code": it.design_code, "model": it.model,
                         "order_number": it.order_number,
                         "design_id": str(it.design_id) if it.design_id else None,

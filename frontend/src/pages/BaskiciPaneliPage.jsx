@@ -30,7 +30,9 @@ export default function BaskiciPaneliPage() {
     setLoading(true)
     try {
       const r = await api.get('/api/molds')
-      setMolds(Array.isArray(r) ? r : (r?.items || []))
+      const all = Array.isArray(r) ? r : (r?.items || [])
+      // Bos (hic kilif yok) + taslak (stage 1, henuz kaydedilmemis) kaliplar panele dusmez
+      setMolds(all.filter(m => (m.kilif_sayisi || 0) > 0 && (m.current_stage == null || m.current_stage > 1)))
     } catch { toast.error('Kalıplar yüklenemedi') }
     finally { setLoading(false) }
   }
@@ -318,10 +320,13 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
           {items.length === 0 ? (
             <div className="text-xs text-gray-500 text-center py-2">Bu kalıpta slot bilgisi yok.</div>
           ) : (
-<div className="grid grid-cols-9 gap-1 min-w-[560px]">
-              {Array.from({ length: 27 }).map((_, cell) => {
-                const slot = 26 - cell  // 27 sol-ust, 1 sag-alt
-                const it = items.find(x => x.slot_index === slot)
+<div className="space-y-1 min-w-[560px]">
+              {[0, 1, 2].map(ri => (
+                <div key={ri} className="grid grid-cols-9 gap-1">
+              {Array.from({ length: 9 }).map((_, ci) => {
+                const slotNo = 27 - (ri * 9 + ci)        // MoldDetailPage ile ayni: 27 sol-ust, 1 sag-alt
+                const it = items.find(x => (x.slot_index + 1) === slotNo)
+                const slot = slotNo - 1
                 if (!it) {
                   return (
                     <div key={slot} className="rounded border border-dashed border-brand-border/40 bg-brand-input/10 overflow-hidden opacity-50">
@@ -352,6 +357,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
                   </div>
                 )
               })}
+                </div>
+              ))}
             </div>
           )}
         </div>

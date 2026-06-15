@@ -314,45 +314,40 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
 
       {/* Kalip icerigi — slotlar */}
       {showItems && (
-        <div className="rounded-lg border border-brand-border bg-brand-input/30 p-2 my-2">
+        <div className="rounded-lg border border-brand-border bg-brand-input/30 p-2 my-2 overflow-x-auto">
           {items.length === 0 ? (
             <div className="text-xs text-gray-500 text-center py-2">Bu kalıpta slot bilgisi yok.</div>
           ) : (
-<div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+<div className="grid grid-cols-9 gap-1 min-w-[560px]">
               {Array.from({ length: 27 }).map((_, cell) => {
                 const slot = 26 - cell  // 27 sol-ust, 1 sag-alt
                 const it = items.find(x => x.slot_index === slot)
                 if (!it) {
                   return (
-                    <div key={slot} className="rounded-lg border border-dashed border-brand-border/40 bg-brand-input/10 overflow-hidden opacity-60">
+                    <div key={slot} className="rounded border border-dashed border-brand-border/40 bg-brand-input/10 overflow-hidden opacity-50">
                       <div className="relative aspect-square flex items-center justify-center">
-                        <span className="absolute top-0 left-0 text-[8px] bg-black/30 text-gray-500 px-1 rounded-br">slot {slot + 1}</span>
-                        <span className="text-[9px] text-gray-700">boş</span>
+                        <span className="absolute top-0 left-0 text-[6px] bg-black/30 text-gray-500 px-0.5 rounded-br leading-none">{slot + 1}</span>
                       </div>
-                      <div className="px-1.5 py-1">
-                        <div className="text-[11px] text-gray-600">—</div>
-                        <div className="text-[10px] text-gray-700">—</div>
-                      </div>
+                      <div className="px-0.5 py-0.5 h-6"></div>
                     </div>
                   )
                 }
                 return (
-                  <div key={slot} className="group relative bg-brand-card rounded-lg border border-brand-border/50 overflow-hidden">
+                  <div key={slot} className="group relative bg-brand-card rounded border border-brand-border/50 overflow-hidden">
                     <div className="relative aspect-square bg-brand-input/30 cursor-pointer hover:ring-1 hover:ring-accent"
                       onClick={() => it.thumbnail_url && onPreview?.({ url: it.thumbnail_url, title: `${it.model || ''} ${it.design_code || ''}`.trim() })}>
                       {it.thumbnail_url
                         ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-contain" />
-                        : <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-600 text-center px-1 leading-tight">{it.model || 'görsel yok'}</div>}
-                      <span className="absolute top-0 left-0 text-[8px] bg-black/55 text-gray-200 px-1 rounded-br">slot {slot + 1}</span>
+                        : <div className="w-full h-full flex items-center justify-center text-[7px] text-gray-600 text-center px-0.5 leading-tight">{it.model || ''}</div>}
+                      <span className="absolute top-0 left-0 text-[6px] bg-black/55 text-gray-200 px-0.5 rounded-br leading-none">{slot + 1}</span>
                       {it.id && (
                         <button onClick={(e) => { e.stopPropagation(); removeSlot(it) }} title="Kılıfı çıkar"
-                          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-rose-300 hover:text-rose-200 text-xs leading-none px-1.5 py-1 rounded-bl">✕</button>
+                          className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-rose-300 hover:text-rose-200 text-[10px] leading-none px-1 py-0.5 rounded-bl">✕</button>
                       )}
                     </div>
-                    <div className="px-1.5 py-1">
-                      <div className="text-[11px] text-gray-200 font-medium truncate" title={it.model || ''}>{it.model || '—'}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{it.kilif_rengi || it.kalip_tipi || mold.variation || '—'}</div>
-                      {it.order_number && <div className="text-[9px] text-gray-600 truncate">#{it.order_number}</div>}
+                    <div className="px-0.5 py-0.5">
+                      <div className="text-[8px] text-gray-200 font-medium truncate leading-tight" title={it.model || ''}>{it.model || '—'}</div>
+                      <div className="text-[7px] text-gray-500 truncate leading-tight">{it.kilif_rengi || it.kalip_tipi || mold.variation || '—'}</div>
                     </div>
                   </div>
                 )

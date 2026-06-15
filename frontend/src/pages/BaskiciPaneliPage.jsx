@@ -132,6 +132,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
   const st = STATUS_MAP[mold.print_status || 'bekliyor']
   const an = mold.print_analysis
   const [open, setOpen] = useState(false)
+  const [showItems, setShowItems] = useState(false)
+  const items = mold.items || []
 
   return (
     <div className={`card !p-4 ${mold.print_status === 'eksik_var' ? 'ring-1 ring-red-500/30' : ''} ${mold.print_status === 'hatali_basildi' ? 'ring-1 ring-rose-500/40' : ''}`}>
@@ -141,7 +143,10 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
             <span className="text-sm font-semibold text-gray-100 break-all">{mold.kod}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-400">{mold.variation}</span>
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">{mold.kilif_sayisi} kılıf · {(mold.kalip_kodlari || []).length} kalıp kodu</div>
+          <button onClick={() => setShowItems(v => !v)} className="text-xs text-gray-500 mt-0.5 hover:text-gray-300 transition-colors">
+            {mold.kilif_sayisi} kılıf · {(mold.kalip_kodlari || []).length} kalıp kodu
+            <span className="ml-1 text-accent">{showItems ? '▲ içeriği gizle' : '▼ içeriği gör'}</span>
+          </button>
         </div>
         <span className={`text-[11px] px-2 py-1 rounded-lg border whitespace-nowrap ${st.cls}`}>{st.icon} {st.label}</span>
       </div>
@@ -169,6 +174,32 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
             </div>
           ) : (
             <div className="text-emerald-300">✓ Tüm modeller için stok yeterli</div>
+          )}
+        </div>
+      )}
+
+      {/* Kalip icerigi — slotlar */}
+      {showItems && (
+        <div className="rounded-lg border border-brand-border bg-brand-input/30 p-2 my-2">
+          {items.length === 0 ? (
+            <div className="text-xs text-gray-500 text-center py-2">Bu kalıpta slot bilgisi yok.</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {items.map((it, i) => (
+                <div key={i} className="flex items-center gap-2 bg-brand-card rounded-md p-1.5 border border-brand-border/50">
+                  <div className="shrink-0 w-9 h-9 rounded bg-brand-input overflow-hidden flex items-center justify-center">
+                    {it.thumbnail_url
+                      ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-contain" />
+                      : <span className="text-[9px] text-gray-600">{it.slot_index != null ? `#${it.slot_index + 1}` : '—'}</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] text-gray-200 truncate font-medium">{it.model || '—'}</div>
+                    <div className="text-[10px] text-gray-500 truncate">{it.design_code || it.kalip_rengi || '—'}</div>
+                    {it.order_number && <div className="text-[9px] text-gray-600 truncate">#{it.order_number}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

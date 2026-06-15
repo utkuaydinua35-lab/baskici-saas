@@ -319,7 +319,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
             <div className="text-xs text-gray-500 text-center py-2">Bu kalıpta slot bilgisi yok.</div>
           ) : (
 <div className="grid grid-cols-9 gap-1">
-              {Array.from({ length: 27 }).map((_, slot) => {
+              {Array.from({ length: 27 }).map((_, cell) => {
+                const slot = 26 - cell  // 27 sol-ust, 1 sag-alt (fiziksel kalip duzeni)
                 const it = items.find(x => x.slot_index === slot)
                 if (!it) {
                   return (

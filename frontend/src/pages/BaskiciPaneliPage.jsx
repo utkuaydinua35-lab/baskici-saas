@@ -21,6 +21,8 @@ export default function BaskiciPaneliPage() {
   const [totalMissing, setTotalMissing] = useState(null)   // modal verisi
   const [tmBusy, setTmBusy] = useState(false)
   const [preview, setPreview] = useState(null)             // buyuk onizleme {url, title}
+  const [confirmPrint, setConfirmPrint] = useState(null)   // eksik stoklu basildi onayi {mold}
+  const [clearBusy, setClearBusy] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -63,6 +65,25 @@ export default function BaskiciPaneliPage() {
     finally { setAnalyzing(s => ({ ...s, [mold.id]: false })) }
   }
 
+  const requestStatus = (mold, status) => {
+    if (status === 'basildi' && (mold.print_status === 'eksik_var' || (mold.print_analysis && mold.print_analysis.has_stock_issues))) {
+      setConfirmPrint({ mold, status })
+      return
+    }
+    setStatus(mold, status)
+  }
+
+  const clearPrinted = async () => {
+    if (!confirm('Basılmış tüm kalıpları silmek istiyor musun? (Geri alınamaz — slotlar yeniden planlanır)')) return
+    setClearBusy(true)
+    try {
+      const r = await api.post('/api/molds/print/bulk-delete', { only_printed: true })
+      toast.success(`${r.deleted_count} basılmış kalıp silindi`)
+      load()
+    } catch { toast.error('Temizlenemedi') }
+    finally { setClearBusy(false) }
+  }
+
   const setStatus = async (mold, status) => {
     setBusyStatus(s => ({ ...s, [mold.id]: true }))
     try {
@@ -100,6 +121,7 @@ export default function BaskiciPaneliPage() {
         <div className="flex gap-2">
           <a href="/stok" className="btn-secondary !text-sm whitespace-nowrap">🗃️ Stok</a>
           <button onClick={loadTotalMissing} disabled={tmBusy} className="btn-secondary !text-sm whitespace-nowrap">{tmBusy ? '…' : '📊 Toplam Eksik'}</button>
+          <button onClick={clearPrinted} disabled={clearBusy} className="!text-sm px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 border border-rose-500/25 whitespace-nowrap">{clearBusy ? '…' : '🗑️ Basılanları Temizle'}</button>
           <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
         </div>
       </div>
@@ -127,7 +149,7 @@ export default function BaskiciPaneliPage() {
           {filtered.map(m => (
             <MoldCard key={m.id} mold={m}
               analyzing={!!analyzing[m.id]} busyStatus={!!busyStatus[m.id]}
-              onAnalyze={analyze} onSetStatus={setStatus} onPreview={setPreview} />
+              onAnalyze={analyze} onSetStatus={requestStatus} onPreview={setPreview} />
           ))}
         </div>
       )}
@@ -158,6 +180,20 @@ export default function BaskiciPaneliPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {confirmPrint && (
+        <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setConfirmPrint(null)}>
+          <div className="bg-brand-card border border-red-500/30 rounded-xl w-full max-w-sm p-5 animate-popin">
+            <h3 className="text-base font-semibold text-gray-100 mb-2">⚠️ Stok Eksiği Var</h3>
+            <p className="text-sm text-gray-400 mb-4"><span className="text-gray-200 font-medium">{confirmPrint.mold.kod}</span> kalıbında stok eksiği görünüyor. Stok tedariği sağlandıysa basıldı olarak işaretleyebilirsin.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmPrint(null)} className="btn-secondary !text-sm">Vazgeç</button>
+              <button onClick={() => { setStatus(confirmPrint.mold, confirmPrint.status); setConfirmPrint(null) }}
+                className="btn-primary !text-sm">📦 Stok sağlandı, basıldı</button>
+            </div>
           </div>
         </div>
       )}

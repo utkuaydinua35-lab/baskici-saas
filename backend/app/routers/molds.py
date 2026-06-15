@@ -474,33 +474,60 @@ def delete_mold(
     if not mold:
         raise HTTPException(404, "Kalıp bulunamadı")
 
+    kalip_kodu, items_count = _delete_mold_inner(db, mold, user)
+    db.commit()
+    return {"ok": True, "deleted_mold": kalip_kodu, "released_items": items_count}
+
+
+def _delete_mold_inner(db: Session, mold, user) -> tuple[str, int]:
+    """Kalip silme cekirdek mantigi (commit yapMAZ). delete_mold + toplu silme paylasir."""
     kalip_kodu = mold.kod
     stage_at_delete = mold.current_stage
     items_count = len(mold.items)
-
-    # her item için: line item'ı geri çevir + design.kilif_sayisi düş
     for mi in list(mold.items):
         if mi.line_item_id:
             li = db.query(LineItem).filter(LineItem.id == mi.line_item_id).first()
             if li:
                 li.is_kaliba_eklendi = False
-
-    # audit kaydı (mold_id artık nullable + SET NULL — silmeden ÖNCE log at,
-    # sonra mold silinince mold_id NULL'a düşer ama log korunur)
     db.add(MoldStatusHistory(
-        tenant_id=user.tenant_id,
-        mold_id=mold.id,
-        from_stage=stage_at_delete,
-        to_stage=None,
-        action="deleted",
-        note=f"Kalıp '{kalip_kodu}' silindi ({items_count} slot geri planlandı)",
+        tenant_id=user.tenant_id, mold_id=mold.id,
+        from_stage=stage_at_delete, to_stage=None, action="deleted",
+        note=f"Kalip '{kalip_kodu}' silindi ({items_count} slot geri planlandi)",
         created_by=user.email if hasattr(user, "email") else None,
     ))
     db.flush()
+    db.delete(mold)
+    db.flush()
+    return kalip_kodu, items_count
 
-    db.delete(mold)  # cascade: MoldItem'lar silinir; history mold_id -> NULL
+
+class BulkDeleteIn(BaseModel):
+    ids: list[uuid.UUID] | None = None
+    only_printed: bool = False
+
+
+@router.post("/print/bulk-delete")
+def bulk_delete_molds(
+    body: BulkDeleteIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Toplu kalip sil. ids verilirse o kaliplari; only_printed=True ise
+    print_status='basildi' olan TUM kaliplari siler."""
+    q = select(Mold).where(Mold.tenant_id == user.tenant_id)
+    if body.only_printed:
+        q = q.where(Mold.print_status == "basildi")
+    elif body.ids:
+        q = q.where(Mold.id.in_(body.ids))
+    else:
+        raise HTTPException(400, "ids veya only_printed gerekli")
+    molds = db.scalars(q.options(selectinload(Mold.items))).all()
+    deleted = []
+    for mo in molds:
+        kod, _ = _delete_mold_inner(db, mo, user)
+        deleted.append(kod)
     db.commit()
-    return {"ok": True, "deleted_mold": kalip_kodu, "released_items": items_count}
+    return {"ok": True, "deleted_count": len(deleted), "deleted": deleted}
 
 # ═════════════════════════════════════════════════════════════════════
 # Paket 17/sonrası — Slot Ataması (manuel ve siparişten)

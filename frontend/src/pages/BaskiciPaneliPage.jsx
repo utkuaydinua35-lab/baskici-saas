@@ -85,7 +85,10 @@ export default function BaskiciPaneliPage() {
           <h1 className="text-2xl font-semibold text-gray-100">🖨️ Baskıcı Paneli</h1>
           <p className="text-sm text-gray-500 mt-1">Kalıpları analiz et, stok eksiklerini gör, baskı durumlarını yönet.</p>
         </div>
-        <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
+        <div className="flex gap-2">
+          <a href="/stok" className="btn-secondary !text-sm whitespace-nowrap">🗃️ Stok</a>
+          <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
+        </div>
       </div>
 
       {/* Durum filtreleri */}
@@ -134,6 +137,37 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
   const [open, setOpen] = useState(false)
   const [showItems, setShowItems] = useState(false)
   const items = mold.items || []
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [note, setNote] = useState(mold.print_note || '')
+  const [noteBusy, setNoteBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+
+  const saveNote = async () => {
+    setNoteBusy(true)
+    try {
+      await api.patch(`/api/molds/${mold.id}/print-status`, { note })
+      mold.print_note = note
+      setNoteOpen(false)
+    } catch { /* sessiz */ }
+    finally { setNoteBusy(false) }
+  }
+
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const res = await fetch(`/api/molds/${mold.id}/pdf`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
+      })
+      if (!res.ok) throw new Error('PDF üretilemedi')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `kalip_${mold.kod || mold.id}.pdf`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch { /* sessiz */ }
+    finally { setPdfBusy(false) }
+  }
 
   return (
     <div className={`card !p-4 ${mold.print_status === 'eksik_var' ? 'ring-1 ring-red-500/30' : ''} ${mold.print_status === 'hatali_basildi' ? 'ring-1 ring-rose-500/40' : ''}`}>
@@ -204,10 +238,28 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus }) {
         </div>
       )}
 
+      {/* Not */}
+      {(noteOpen || mold.print_note) && (
+        <div className="my-2">
+          {noteOpen ? (
+            <div className="flex gap-1.5">
+              <input className="input flex-1 !text-xs" value={note} onChange={e => setNote(e.target.value)} placeholder="Kalıp notu…" />
+              <button onClick={saveNote} disabled={noteBusy} className="btn-primary !text-xs">{noteBusy ? '…' : 'Kaydet'}</button>
+            </div>
+          ) : (
+            <div className="text-xs text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1 flex items-center gap-1">
+              📝 {mold.print_note}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Aksiyonlar */}
       <div className="flex items-center gap-1.5 flex-wrap mt-2">
         <button onClick={() => onAnalyze(mold, true)} disabled={analyzing}
           className="btn-secondary !text-xs">{analyzing ? 'Analiz…' : (an ? '↻ Yeniden Analiz' : '🔍 Analiz Et')}</button>
+        <button onClick={downloadPdf} disabled={pdfBusy} className="btn-secondary !text-xs">{pdfBusy ? 'PDF…' : '⬇️ PDF'}</button>
+        <button onClick={() => setNoteOpen(v => !v)} className={`btn-secondary !text-xs ${mold.print_note ? '!text-amber-300' : ''}`}>📝 Not</button>
         <div className="flex-1" />
         {mold.print_status !== 'basildi' && (
           <button onClick={() => onSetStatus(mold, 'basildi')} disabled={busyStatus}

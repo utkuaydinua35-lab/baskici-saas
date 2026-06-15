@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -12,6 +13,7 @@ const STATUS_MAP = Object.fromEntries(PRINT_STATUSES.map(s => [s.value, s]))
 
 export default function BaskiciPaneliPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [molds, setMolds] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -149,7 +151,7 @@ export default function BaskiciPaneliPage() {
           {filtered.map(m => (
             <MoldCard key={m.id} mold={m}
               analyzing={!!analyzing[m.id]} busyStatus={!!busyStatus[m.id]}
-              onAnalyze={analyze} onSetStatus={requestStatus} onPreview={setPreview} />
+              onAnalyze={analyze} onSetStatus={requestStatus} onPreview={setPreview} onOpen={(id) => navigate(`/kalip/${id}`)} />
           ))}
         </div>
       )}
@@ -220,7 +222,7 @@ function FilterBtn({ active, onClick, label, count, cls }) {
   )
 }
 
-function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPreview }) {
+function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPreview, onOpen }) {
   const st = STATUS_MAP[mold.print_status || 'bekliyor']
   const an = mold.print_analysis
   const [open, setOpen] = useState(false)
@@ -272,7 +274,7 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-gray-100 break-all">{mold.kod}</span>
+            <button onClick={() => onOpen?.(mold.id)} className="text-sm font-semibold text-gray-100 break-all hover:text-accent transition-colors text-left" title="Kalıp detayını aç">{mold.kod}</button>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-400">{mold.variation}</span>
           </div>
           <button onClick={() => setShowItems(v => !v)} className="text-xs text-gray-500 mt-0.5 hover:text-gray-300 transition-colors">
@@ -359,6 +361,7 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
 
       {/* Aksiyonlar */}
       <div className="flex items-center gap-1.5 flex-wrap mt-2">
+        <button onClick={() => onOpen?.(mold.id)} className="btn-secondary !text-xs">📋 Detay</button>
         <button onClick={() => onAnalyze(mold, true)} disabled={analyzing}
           className="btn-secondary !text-xs">{analyzing ? 'Analiz…' : (an ? '↻ Yeniden Analiz' : '🔍 Analiz Et')}</button>
         <button onClick={downloadPdf} disabled={pdfBusy} className="btn-secondary !text-xs">{pdfBusy ? 'PDF…' : '⬇️ PDF'}</button>

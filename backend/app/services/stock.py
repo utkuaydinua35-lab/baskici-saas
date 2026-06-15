@@ -131,6 +131,53 @@ def deduct_for_mold(db: Session, tenant_id, mold, user=None) -> dict:
     return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}
 
 
+def analyze_mold_stock(db: Session, tenant_id, mold) -> dict:
+    """Kalibi stok acisindan analiz et (DUSMEZ, sadece raporlar).
+
+    Donus (eski Baskici Paneli formatiyla uyumlu):
+      {
+        total_cases: int,
+        has_stock_issues: bool,
+        missing_stock: [{variation, model, need, in_stock, missing, not_in_system}],
+        stock_check:   [{variation, model, count, in_stock}],
+      }
+    """
+    need: Counter = Counter()
+    variation = mold.variation
+    for it in mold.items:
+        if it.model:
+            need[(variation, it.model)] += 1
+
+    total_cases = sum(need.values())
+    missing_stock = []
+    stock_check = []
+
+    for (var, model), qty in sorted(need.items(), key=lambda x: (x[0][1] or "")):
+        si = _find_bos_kilif(db, tenant_id, var, model)
+        in_stock = (si.quantity or 0) if si else 0
+        if si is None:
+            missing_stock.append({
+                "variation": var, "model": model, "need": qty,
+                "in_stock": 0, "missing": qty, "not_in_system": True,
+            })
+        elif in_stock < qty:
+            missing_stock.append({
+                "variation": var, "model": model, "need": qty,
+                "in_stock": in_stock, "missing": qty - in_stock, "not_in_system": False,
+            })
+        else:
+            stock_check.append({
+                "variation": var, "model": model, "count": qty, "in_stock": in_stock,
+            })
+
+    return {
+        "total_cases": total_cases,
+        "has_stock_issues": len(missing_stock) > 0,
+        "missing_stock": missing_stock,
+        "stock_check": stock_check,
+    }
+
+
 def _extract_model_for_shipment(li) -> str | None:
     """Line item'tan telefon modeli cikar (mold_planner ile ayni heuristic)."""
     try:

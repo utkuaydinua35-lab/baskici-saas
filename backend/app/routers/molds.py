@@ -164,6 +164,12 @@ def list_molds(
                 "is_multi_store": mo.store_id is None,
                 "kalip_kodlari": mo.kalip_kodlari, "kilif_sayisi": mo.kilif_sayisi,
                 "rows_used": mo.rows_used, "status": mo.status,
+                "print_status": mo.print_status,
+                "print_note": mo.print_note,
+                "print_analysis": mo.print_analysis,
+                "print_analyzed_at": mo.print_analyzed_at.isoformat() if mo.print_analyzed_at else None,
+                "current_stage": mo.current_stage,
+                "is_hatali": mo.is_hatali,
                 "created_at": mo.created_at.isoformat() if mo.created_at else None,
                 "items": [
                     {

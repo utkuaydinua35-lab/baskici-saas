@@ -318,23 +318,22 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
           {items.length === 0 ? (
             <div className="text-xs text-gray-500 text-center py-2">Bu kalıpta slot bilgisi yok.</div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-5 sm:grid-cols-7 gap-1">
               {items.map((it, i) => (
-                <div key={i} className="flex items-center gap-2 bg-brand-card rounded-md p-1.5 border border-brand-border/50">
-                  <div className="shrink-0 w-9 h-9 rounded bg-brand-input overflow-hidden flex items-center justify-center cursor-pointer hover:ring-1 hover:ring-accent"
-                    onClick={() => it.thumbnail_url && onPreview?.({ url: it.thumbnail_url, title: `${it.model || ''} ${it.design_code || ''}`.trim() })}>
-                    {it.thumbnail_url
-                      ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-contain" />
-                      : <span className="text-[9px] text-gray-600">{it.slot_index != null ? `#${it.slot_index + 1}` : '—'}</span>}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] text-gray-200 truncate font-medium">{it.model || '—'}</div>
-                    <div className="text-[10px] text-gray-500 truncate">{it.design_code || it.kalip_rengi || '—'}</div>
-                    {it.order_number && <div className="text-[9px] text-gray-600 truncate">#{it.order_number}</div>}
-                  </div>
+                <div key={i} className="group relative aspect-square rounded bg-brand-card border border-brand-border/50 overflow-hidden cursor-pointer hover:ring-1 hover:ring-accent"
+                  onClick={() => it.thumbnail_url && onPreview?.({ url: it.thumbnail_url, title: `${it.model || ''} ${it.design_code || ''}`.trim() })}
+                  title={`${it.slot_index != null ? '#' + (it.slot_index + 1) + ' · ' : ''}${it.model || ''}${it.design_code ? ' · ' + it.design_code : ''}${it.order_number ? ' · #' + it.order_number : ''}`}>
+                  {it.thumbnail_url
+                    ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-contain" />
+                    : <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-600 text-center px-0.5 leading-tight">{it.model || (it.slot_index != null ? `#${it.slot_index + 1}` : '—')}</div>}
+                  {/* slot no rozeti */}
+                  {it.slot_index != null && (
+                    <span className="absolute top-0 left-0 text-[7px] bg-black/50 text-gray-300 px-1 rounded-br">{it.slot_index + 1}</span>
+                  )}
+                  {/* cikar butonu (hover) */}
                   {it.id && (
-                    <button onClick={() => removeSlot(it)} title="Kılıfı çıkar"
-                      className="shrink-0 text-gray-600 hover:text-rose-400 text-xs leading-none px-1">✕</button>
+                    <button onClick={(e) => { e.stopPropagation(); removeSlot(it) }} title="Kılıfı çıkar"
+                      className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-rose-300 hover:text-rose-200 text-[10px] leading-none px-1 py-0.5 rounded-bl">✕</button>
                   )}
                 </div>
               ))}

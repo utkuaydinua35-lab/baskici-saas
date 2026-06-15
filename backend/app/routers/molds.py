@@ -858,3 +858,73 @@ def assign_slot(
 
     db.commit()
     return {"ok": True, "mold_id": str(mo.id), "slot_index": next_slot_index}
+
+
+# ─── Baskici Paneli: analiz + durum ──────────────────────────
+from datetime import datetime as _dt, UTC as _UTC
+
+_PRINT_STATUSES = {"bekliyor", "basildi", "eksik_var", "hatali_basildi"}
+
+
+@router.get("/{mold_id}/analyze")
+def analyze_mold(
+    mold_id: uuid.UUID,
+    force: bool = Query(False),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kalibi stok acisindan analiz et (dusmeden). Sonucu cache'ler.
+    Stok yetersizse print_status'u otomatik 'eksik_var' yapar;
+    yeterliyse ve mevcut durum 'eksik_var' ise 'bekliyor'a geri alir."""
+    from app.services import stock as stock_svc
+
+    mold = db.scalar(select(Mold).where(Mold.id == mold_id, Mold.tenant_id == user.tenant_id))
+    if not mold:
+        raise HTTPException(404, "Kalip bulunamadi")
+
+    if not force and mold.print_analysis:
+        return mold.print_analysis
+
+    result = stock_svc.analyze_mold_stock(db, user.tenant_id, mold)
+    mold.print_analysis = result
+    mold.print_analyzed_at = _dt.now(_UTC)
+
+    # Otomatik durum: basilmamis kaliplar icin stok durumuna gore
+    if mold.print_status in ("bekliyor", "eksik_var"):
+        mold.print_status = "eksik_var" if result["has_stock_issues"] else "bekliyor"
+
+    db.commit()
+    return result
+
+
+class PrintStatusIn(BaseModel):
+    status: str | None = None
+    note: str | None = None
+
+
+@router.patch("/{mold_id}/print-status")
+def set_print_status(
+    mold_id: uuid.UUID,
+    body: PrintStatusIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kalibin baski durumunu / notunu guncelle."""
+    mold = db.scalar(select(Mold).where(Mold.id == mold_id, Mold.tenant_id == user.tenant_id))
+    if not mold:
+        raise HTTPException(404, "Kalip bulunamadi")
+
+    if body.status is not None:
+        if body.status not in _PRINT_STATUSES:
+            raise HTTPException(400, f"Gecersiz durum. Izinli: {', '.join(sorted(_PRINT_STATUSES))}")
+        mold.print_status = body.status
+    if body.note is not None:
+        mold.print_note = body.note.strip() or None
+
+    db.commit()
+    return {
+        "ok": True,
+        "id": str(mold.id),
+        "print_status": mold.print_status,
+        "print_note": mold.print_note,
+    }

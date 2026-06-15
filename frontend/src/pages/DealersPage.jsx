@@ -59,6 +59,11 @@ export default function DealersPage() {
                 <div className={`text-sm font-bold tabular-nums ${d.balance > 0 ? 'text-red-300' : d.balance < 0 ? 'text-emerald-300' : 'text-gray-300'}`}>
                   {fmt(d.balance)}
                 </div>
+                {(d.balance_usd || 0) !== 0 && (
+                  <div className={`text-xs font-semibold tabular-nums ${d.balance_usd > 0 ? 'text-red-300/80' : 'text-emerald-300/80'}`}>
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(d.balance_usd || 0)}
+                  </div>
+                )}
               </div>
               <div className="flex gap-1.5">
                 <button onClick={() => setOrdering(d)} className="btn-primary !text-xs">🛒 Sipariş</button>
@@ -156,8 +161,13 @@ function CariDialog({ dealer, onClose, onChanged }) {
   const [desc, setDesc] = useState('')
   const [busy, setBusy] = useState(false)
   const [bal, setBal] = useState(dealer.balance)
+  const [balUsd, setBalUsd] = useState(dealer.balance_usd || 0)
+  const [cur, setCur] = useState('TRY')
 
-  const fmt = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+  const fmtTRY = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+  const fmtUSD = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
+  const fmtCur = (n, c) => (c === 'USD' ? fmtUSD : fmtTRY)(n)
+  const fmt = fmtTRY
 
   const load = async () => {
     setLoading(true)
@@ -175,8 +185,9 @@ function CariDialog({ dealer, onClose, onChanged }) {
       const d = await api.post(`/api/dealers/${dealer.id}/payment`, {
         amount: amt, kind: direction === 'payment' ? 'odeme' : 'duzeltme',
         description: desc || (direction === 'payment' ? 'Ödeme alındı' : 'Borç eklendi'), direction,
+        currency: cur,
       })
-      setBal(d.balance); setAmount(''); setDesc(''); load(); onChanged?.()
+      setBal(d.balance); setBalUsd(d.balance_usd || 0); setAmount(''); setDesc(''); load(); onChanged?.()
       toast.success(direction === 'payment' ? 'Ödeme işlendi' : 'Borç eklendi')
     } catch (e) { toast.error('İşlenemedi') } finally { setBusy(false) }
   }
@@ -188,15 +199,26 @@ function CariDialog({ dealer, onClose, onChanged }) {
           <h2 className="text-lg font-semibold text-gray-100">{dealer.name} — Cari Hesap</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
-        <div className="mb-4">
-          <span className="text-xs text-gray-500">Güncel bakiye: </span>
-          <span className={`text-base font-bold tabular-nums ${bal > 0 ? 'text-red-300' : bal < 0 ? 'text-emerald-300' : 'text-gray-300'}`}>{fmt(bal)}</span>
-          <span className="text-[11px] text-gray-600 ml-2">{bal > 0 ? '(bayi borçlu)' : bal < 0 ? '(alacaklı)' : ''}</span>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-brand-input/40 rounded-lg p-2.5">
+            <div className="text-[10px] text-gray-500 mb-0.5">TL Bakiye</div>
+            <div className={`text-base font-bold tabular-nums ${bal > 0 ? 'text-red-300' : bal < 0 ? 'text-emerald-300' : 'text-gray-300'}`}>{fmtTRY(bal)}</div>
+            <div className="text-[10px] text-gray-600">{bal > 0 ? 'bayi borçlu' : bal < 0 ? 'alacaklı' : '—'}</div>
+          </div>
+          <div className="bg-brand-input/40 rounded-lg p-2.5">
+            <div className="text-[10px] text-gray-500 mb-0.5">USD Bakiye</div>
+            <div className={`text-base font-bold tabular-nums ${balUsd > 0 ? 'text-red-300' : balUsd < 0 ? 'text-emerald-300' : 'text-gray-300'}`}>{fmtUSD(balUsd)}</div>
+            <div className="text-[10px] text-gray-600">{balUsd > 0 ? 'bayi borçlu' : balUsd < 0 ? 'alacaklı' : '—'}</div>
+          </div>
         </div>
 
         <div className="bg-brand-input/40 rounded-lg p-3 mb-4">
           <div className="flex gap-2 mb-2">
-            <input className="input flex-1" type="number" inputMode="decimal" placeholder="Tutar ₺" value={amount} onChange={e => setAmount(e.target.value)} />
+            <select className="input !w-20 shrink-0" value={cur} onChange={e => setCur(e.target.value)}>
+              <option value="TRY">₺ TL</option>
+              <option value="USD">$ USD</option>
+            </select>
+            <input className="input flex-1" type="number" inputMode="decimal" placeholder={cur === 'USD' ? 'Tutar $' : 'Tutar ₺'} value={amount} onChange={e => setAmount(e.target.value)} />
             <input className="input flex-1" placeholder="Açıklama (ops.)" value={desc} onChange={e => setDesc(e.target.value)} />
           </div>
           <div className="flex gap-2">
@@ -217,7 +239,7 @@ function CariDialog({ dealer, onClose, onChanged }) {
                     <div className="text-[10px] text-gray-600">{t.created_at ? new Date(t.created_at).toLocaleString('tr-TR') : ''}</div>
                   </div>
                   <div className={`tabular-nums font-medium ${t.amount > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                    {t.amount > 0 ? '+' : ''}{fmt(t.amount)}
+                    {t.amount > 0 ? '+' : ''}{fmtCur(t.amount, t.currency || 'TRY')}
                   </div>
                 </div>
               ))}

@@ -392,6 +392,7 @@ function NavLinks({ onNavigate }) {
       <I to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" perm="kalip" />
       <I to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" perm="kalip" />
       <I to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" perm="kalip" />
+      <I to="/baskici-paneli" label="Baskıcı Paneli" icon="🖨️" perm="kalip" />
 
       <Section label="STOK YÖNETİMİ" perms={['stok']} />
       <I to="/stok" label="Stok" icon="🗃️" perm="stok" />

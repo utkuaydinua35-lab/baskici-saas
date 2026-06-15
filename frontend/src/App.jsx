@@ -10,6 +10,7 @@ import AskiPage from './pages/AskiPage'
 import MoldDetailPage from './pages/MoldDetailPage'
 import MoldTemplatePage from './pages/MoldTemplatePage'
 import MoldGeneratorPage from './pages/MoldGeneratorPage'
+import BaskiciPaneliPage from './pages/BaskiciPaneliPage'
 import OrdersPage from './pages/OrdersPage'
 import PhoneModelsPage from './pages/PhoneModelsPage'
 import StockPage from './pages/StockPage'
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
           <Route path="/kalip-sablon" element={<MoldTemplatePage />} />
           <Route path="/kalip-olustur" element={<MoldGeneratorPage />} />
+          <Route path="/baskici-paneli" element={<BaskiciPaneliPage />} />
           <Route path="/kalip/:moldId" element={<MoldDetailPage />} />
           <Route path="/shortcuts" element={<ShortcutsPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />

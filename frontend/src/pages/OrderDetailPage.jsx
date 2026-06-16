@@ -34,6 +34,19 @@ function resolveDeviceModel(item) {
   return null
 }
 
+/** Couple ürünlerde 2. telefon modeli (örn 'Apple Model copy' / 'Model 2').
+ * Sadece 2. bir model kaydı varsa döner, yoksa null. */
+function resolveSecondModel(item) {
+  const props = item.properties || []
+  const marka = props.find(p => (p?.name || '').toLowerCase() === 'mark' || (p?.name || '').toLowerCase() === 'marka 2')?.value
+  const second = props.find(p => {
+    const n = (p?.name || '').toLowerCase()
+    return n.includes('model') && (n.endsWith('copy') || n.includes('copy') || n.endsWith(' 2') || n.endsWith('2'))
+  })?.value
+  if (second) return marka ? `${marka} ${second}` : second
+  return null
+}
+
 export default function OrderDetailPage() {
   const { orderId } = useParams()
   const navigate = useNavigate()
@@ -498,7 +511,8 @@ function ProductRow({ item, onPatch, onZoom }) {
           <div className="text-sm text-gray-200 font-medium leading-tight">{item.title}</div>
           {(() => {
             const model = resolveDeviceModel(item)
-            return model ? <div className="text-xs text-accent font-medium mt-0.5">📱 {model}</div> : null
+            const model2 = resolveSecondModel(item)
+            return model ? <div className="text-xs text-accent font-medium mt-0.5">📱 {model}{model2 ? <span className="text-pink-300"> + {model2}</span> : null}</div> : null
           })()}
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {item.variant_title && <span className="text-[10px] bg-gray-700/40 text-gray-300 px-1.5 py-0.5 rounded">{item.variant_title}</span>}

@@ -276,6 +276,30 @@ class MoldStageUpdate(BaseModel):
     note: str | None = None
 
 
+class MoldRenameIn(BaseModel):
+    kod: str
+    set_ready: bool = True  # isimlendirince taslaktan cikar (stage 2 hazir)
+
+
+@router.patch("/{mold_id}/rename", response_model=None)
+def rename_mold(mold_id: uuid.UUID, payload: MoldRenameIn,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalip adini (kod) guncelle. Bos kalip isimlendirilince hazir(stage2) yapilir."""
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    yeni = (payload.kod or "").strip()
+    if not yeni:
+        raise HTTPException(400, "Kalip adi bos olamaz")
+    eski = mo.kod
+    mo.kod = yeni
+    if payload.set_ready and (mo.current_stage is None or mo.current_stage < 2):
+        mo.current_stage = 2  # hazir -> Baskici Paneli'ne duser
+        mo.status = "olusturuldu"
+    _log_mold(db, mo, user, action="rename", note=f"'{eski}' -> '{yeni}'")
+    db.commit()
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    return _serialize_mold_detail(mo, db)
+
+
 @router.patch("/{mold_id}/stage", response_model=None)
 def update_mold_stage(mold_id: uuid.UUID, payload: MoldStageUpdate,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):

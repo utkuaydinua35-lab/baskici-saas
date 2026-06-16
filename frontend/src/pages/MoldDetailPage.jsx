@@ -20,6 +20,9 @@ export default function MoldDetailPage() {
   const navigate = useNavigate()
   const [showDelete, setShowDelete] = useState(false)
   const [assignTarget, setAssignTarget] = useState(null)  // { kalip_kodu }
+  const [renamePrompt, setRenamePrompt] = useState(false)
+  const [renameVal, setRenameVal] = useState('')
+  const [renameBusy, setRenameBusy] = useState(false)
   const [mold, setMold] = useState(null)
   const [stages, setStages] = useState([])
   const [history, setHistory] = useState([])
@@ -62,6 +65,19 @@ export default function MoldDetailPage() {
   }
 
   const [pdfBusy, setPdfBusy] = useState(false)
+  const doRename = async () => {
+    const v = renameVal.trim()
+    if (!v) return
+    setRenameBusy(true)
+    try {
+      await api.patch(`/api/molds/${moldId}/rename`, { kod: v })
+      setRenamePrompt(false)
+      load()
+      toast.success('Kalıp adlandırıldı, hazır')
+    } catch { toast.error('İsimlendirilemedi') }
+    finally { setRenameBusy(false) }
+  }
+
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
@@ -145,8 +161,29 @@ export default function MoldDetailPage() {
         mold={mold}
         kalipKodu={assignTarget?.kalip_kodu}
         onClose={() => setAssignTarget(null)}
-        onAssigned={() => { setAssignTarget(null); load() }}
+        onAssigned={() => {
+          const wasEmpty = mold && mold.kod === 'BOS'
+          setAssignTarget(null)
+          load()
+          if (wasEmpty) { setRenameVal(''); setRenamePrompt(true) }
+        }}
       />
+
+      {renamePrompt && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5 animate-popin">
+            <h3 className="text-base font-semibold text-gray-100 mb-1">Kalıba isim ver</h3>
+            <p className="text-xs text-gray-500 mb-3">İsim verince kalıp hazır olur ve baskıcı paneline düşer.</p>
+            <input autoFocus className="input w-full mb-3" placeholder="Kalıp adı (örn A1-B2)"
+              value={renameVal} onChange={e => setRenameVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') doRename() }} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRenamePrompt(false)} className="btn-secondary !text-sm">Sonra</button>
+              <button onClick={doRename} disabled={renameBusy || !renameVal.trim()} className="btn-primary !text-sm">{renameBusy ? '…' : 'Kaydet'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stage timeline */}
       <div className="card mb-5">

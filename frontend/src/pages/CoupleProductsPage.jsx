@@ -223,13 +223,16 @@ export default function CoupleProductsPage() {
                 </div>
 
                 {(marked || hasDraft) && (
-                  <div className="flex gap-2 mt-3">
-                    <DesignSlot label="1. Tasarım" design={sel.design_1} productImgMap={productImgMap}
-                      onPick={() => setPicker({ productId: p.id, slot: 'design_1' })}
-                      onClear={() => setSlot(p.id, 'design_1', null)} />
-                    <DesignSlot label="2. Tasarım" design={sel.design_2} productImgMap={productImgMap}
-                      onPick={() => setPicker({ productId: p.id, slot: 'design_2' })}
-                      onClear={() => setSlot(p.id, 'design_2', null)} />
+                  <div className="flex flex-col gap-2 mt-3">
+                    <div className="text-[10px] text-gray-500">Müşterinin seçtiği <span className="text-gray-300">1. telefon → Erkek tasarım</span>, <span className="text-gray-300">2. telefon → Kadın tasarım</span> ile basılır.</div>
+                    <div className="flex gap-2">
+                      <DesignSlot label="👨 1. Tasarım (Erkek)" design={sel.design_1} productImgMap={productImgMap}
+                        onPick={() => setPicker({ productId: p.id, slot: 'design_1' })}
+                        onClear={() => setSlot(p.id, 'design_1', null)} />
+                      <DesignSlot label="👩 2. Tasarım (Kadın)" design={sel.design_2} productImgMap={productImgMap}
+                        onPick={() => setPicker({ productId: p.id, slot: 'design_2' })}
+                        onClear={() => setSlot(p.id, 'design_2', null)} />
+                    </div>
                   </div>
                 )}
 
@@ -257,7 +260,7 @@ export default function CoupleProductsPage() {
       {picker && (
         <DesignPicker
           storeId={selectedStore}
-          title={picker.slot === 'design_1' ? '1. Tasarımı seç' : '2. Tasarımı seç'}
+          title={picker.slot === 'design_1' ? '👨 1. Tasarımı seç (Erkek)' : '👩 2. Tasarımı seç (Kadın)'}
           productImgMap={productImgMap}
           onPick={(d) => { setSlot(picker.productId, picker.slot, d); setPicker(null) }}
           onClose={() => setPicker(null)}

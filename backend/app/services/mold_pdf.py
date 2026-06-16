@@ -32,30 +32,33 @@ def _abs_path(relative_path: str) -> Path:
 
 
 def _ordered_slots(items, cols, rows):
-    """Panel düzeniyle aynı sıra: gruplar kendi satır(lar)ında, sağa yaslı."""
-    order = []
-    by_kod = {}
+    """Web önizleme (MoldDetailPage / Baskıcı Paneli) ile BİREBİR aynı yerleşim.
+    Web: hücre idx (0=sol-üst .. N-1=sağ-alt) -> slotNo = N - idx -> slot_index = N-1 - idx.
+    Yani boxes[idx] kutusuna slot_index == (N-1 - idx) olan item yerleşir.
+    Böylece PDF == web == fiziksel kalıp (ters simetri düzeltildi)."""
+    n = cols * rows
+    # slot_index -> item haritası (slot_index'i olanlar kesin yerine oturur)
+    by_si = {}
+    no_si = []
     for it in items:
-        kod = it.get("kalip_kodu") or it.get("kod") or "?"
-        if kod not in by_kod:
-            by_kod[kod] = []
-            order.append(kod)
-        by_kod[kod].append(it)
+        si = it.get("slot_index")
+        if isinstance(si, int) and 0 <= si < n:
+            by_si[si] = it
+        else:
+            no_si.append(it)
 
-    grid_rows = []
-    for kod in order:
-        g = by_kod[kod]
-        for i in range(0, len(g), cols):
-            grid_rows.append(g[i:i + cols])
-    while len(grid_rows) < rows:
-        grid_rows.append([])
+    slots = [None] * n
+    for idx in range(n):
+        want_si = (n - 1) - idx
+        if want_si in by_si:
+            slots[idx] = by_si[want_si]
 
-    slots = []
-    for r in range(rows):
-        row = grid_rows[r] if r < len(grid_rows) else []
-        pad = [None] * max(0, cols - len(row)) + list(row)
-        slots.extend(pad[:cols])
-    return slots[:cols * rows]
+    # slot_index'i olmayan (eski/eksik veri) item'lari bos kutulara sirayla koy
+    if no_si:
+        empties = [i for i in range(n) if slots[i] is None]
+        for it, i in zip(no_si, empties):
+            slots[i] = it
+    return slots
 
 
 def _placement_rect(box, model):

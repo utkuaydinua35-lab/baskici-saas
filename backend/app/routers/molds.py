@@ -393,6 +393,7 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
     for it in mo.items:
         d = dmap.get(it.design_id)
         slot_items.append({
+            "slot_index": it.slot_index,
             "kalip_kodu": it.kalip_kodu,
             "model": it.model,
             "design_file_path": d.file_path if d else None,

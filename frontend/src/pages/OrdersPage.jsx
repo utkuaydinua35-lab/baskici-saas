@@ -47,7 +47,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(null)
   const [error, setError] = useState('')
-  const [filters, setFilters] = useState({ store_id: '', search: '' })
+  const [filters, setFilters] = useState({ store_id: localStorage.getItem('orders_store_id') || '', search: '' })
   const [tab, setTab] = useState('tumu')
   const [page, setPage] = useState(1)
   const [fetchMessage, setFetchMessage] = useState(null)
@@ -228,7 +228,7 @@ export default function OrdersPage() {
           <div className="card mb-4 flex flex-wrap gap-2 !p-3">
             <select
               value={filters.store_id}
-              onChange={e => { setFilters(f => ({ ...f, store_id: e.target.value })); setPage(1) }}
+              onChange={e => { localStorage.setItem('orders_store_id', e.target.value); setFilters(f => ({ ...f, store_id: e.target.value })); setPage(1) }}
               className="input !text-xs !py-1.5"
             >
               <option value="">Tüm mağazalar</option>

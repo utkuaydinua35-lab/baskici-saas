@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const [storeId, setStoreId] = useState('')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [showCiro, setShowCiro] = useState(true)
+  const [showCiro, setShowCiro] = useState(() => localStorage.getItem('dash_show_ciro') !== '0')
 
   useEffect(() => {
     (async () => {
@@ -65,7 +65,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 mb-2">
               <h2 className="text-sm font-semibold text-gray-300">💰 Ciro</h2>
               <span className="text-[10px] text-gray-600">(iptal + iade hariç)</span>
-              <button onClick={() => setShowCiro(v => !v)} className="ml-auto text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1">
+              <button onClick={() => setShowCiro(v => { const nv = !v; localStorage.setItem('dash_show_ciro', nv ? '1' : '0'); return nv })} className="ml-auto text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1">
                 {showCiro ? '🙈 Gizle' : '👁️ Göster'}
               </button>
             </div>

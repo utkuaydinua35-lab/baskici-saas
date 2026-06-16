@@ -32,7 +32,7 @@ export default function BaskiciPaneliPage() {
       const r = await api.get('/api/molds')
       const all = Array.isArray(r) ? r : (r?.items || [])
       // Bos (hic kilif yok) + taslak (stage 1, henuz kaydedilmemis) kaliplar panele dusmez
-      setMolds(all.filter(m => (m.kilif_sayisi || 0) > 0 && (m.current_stage == null || m.current_stage > 1)))
+      setMolds(all.filter(m => (m.kilif_sayisi || 0) > 0 && (m.current_stage == null || (m.current_stage > 1 && m.current_stage < 5))))
     } catch { toast.error('Kalıplar yüklenemedi') }
     finally { setLoading(false) }
   }

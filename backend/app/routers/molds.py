@@ -102,7 +102,7 @@ def create_molds(
             tenant_id=user.tenant_id, store_id=store_id,
             kod=kod, variation=m["variation"],
             kalip_kodlari=m["kodlar"], kilif_sayisi=m["count"], rows_used=m["rows_used"],
-            status="olusturuldu",
+            status="olusturuldu", current_stage=2,  # hazir -> Baskici Paneli'ne duser
         )
         db.add(mold)
         db.flush()

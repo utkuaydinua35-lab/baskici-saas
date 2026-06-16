@@ -34,7 +34,8 @@ export default function MoldGeneratorPage() {
   const [error, setError] = useState('')
   const [msg, setMsg] = useState(null)
   const [searchParams] = useSearchParams()
-  const _urlTab = searchParams.get('tab') === 'existing' ? 'existing' : 'plan'
+  const _qtab = searchParams.get('tab')
+  const _urlTab = (_qtab === 'existing' || _qtab === 'old') ? _qtab : 'plan'
   const [tab, setTab] = useState(_urlTab)
   useEffect(() => { setTab(_urlTab) }, [_urlTab])
   const [skipMissing, setSkipMissing] = useState(false)

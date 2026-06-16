@@ -42,6 +42,33 @@ def extract_phone_model(line_item: LineItem) -> str | None:
     return None
 
 
+def extract_couple_models(line_item: LineItem) -> tuple[str | None, str | None]:
+    """Couple urun: properties'ten 2 telefon modeli cikar.
+    1. model (erkek) = ' Model' ile biten ilk kayit (orn 'Apple Model').
+    2. model (kadin) = ' Model copy' / ' Model 2' gibi ikinci model kaydi.
+    Donus: (model1, model2). model2 yoksa None."""
+    model1 = None
+    model2 = None
+    for p in (line_item.properties or []):
+        if not isinstance(p, dict):
+            continue
+        name = (p.get("name") or "")
+        if name.startswith("_"):
+            continue
+        val = (p.get("value") or "").strip()
+        if not val:
+            continue
+        low = name.lower()
+        # 2. model: 'model copy', 'model 2', 'model2', 'model (2)' vb.
+        if "model" in low and (low.endswith("copy") or low.rstrip().endswith("2") or "copy" in low or " 2" in low):
+            if model2 is None:
+                model2 = val
+        elif name.endswith("Model"):
+            if model1 is None:
+                model1 = val
+    return model1, model2
+
+
 def plan_molds(
     db: Session,
     *,
@@ -176,31 +203,35 @@ def plan_molds(
                 if not d1 or not d2:
                     add_eksik("couple_tasarim_eksik", li, order, model)
                     continue
-                if not model:
+                # Couple: 2 telefon modeli — model1 (erkek)=design_id_1, model2 (kadin)=design_id_2
+                _m1, _m2 = extract_couple_models(li)
+                _m1 = _m1 or model
+                _m2 = _m2 or _m1   # 2. model yoksa 1. modele dus (geriye uyum)
+                if not _m1:
                     add_eksik("model_belirsiz", li, order, model)
                     continue
                 qty = li.quantity or 1
                 _ok = True
                 _pending = []
-                for _cd in (d1, d2):
+                for (_cd, _cm) in ((d1, _m1), (d2, _m2)):
                     _var = pr.normalize_variation(_cd.kalip_tipi)
-                    _var = pr.effective_variation(pr.get_model_group(model), _var)
-                    _kod = pr.resolve_kalip_kodu(model, _var, k)
+                    _var = pr.effective_variation(pr.get_model_group(_cm), _var)
+                    _kod = pr.resolve_kalip_kodu(_cm, _var, k)
                     if not _kod:
-                        add_eksik("model_taninmadi", li, order, model)
+                        add_eksik("model_taninmadi", li, order, _cm)
                         _ok = False
                         break
-                    _pending.append((_cd, _var, _kod))
+                    _pending.append((_cd, _var, _kod, _cm))
                 if not _ok:
                     continue
                 for _ in range(qty):
-                    for (_cd, _var, _kod) in _pending:
+                    for (_cd, _var, _kod, _cm) in _pending:
                         units.append({
                             "line_item_id": str(li.id),
                             "order_id": str(order.id),
                             "order_number": order.order_number,
                             "store_id": str(order_store_id),
-                            "model": model,
+                            "model": _cm,
                             "product_id": pid,
                             "design_id": str(_cd.id),
                             "design_code": _cd.code,

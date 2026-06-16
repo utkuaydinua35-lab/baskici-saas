@@ -59,12 +59,28 @@ export default function MoldGeneratorPage() {
   }
   const loadExisting = async (sid = storeId) => {
     try {
-      const url = sid ? `/api/molds?store_id=${sid}` : `/api/molds`
-      const r = await api.get(url)
+      const p = new URLSearchParams({ archived: 'false' })
+      if (sid) p.set('store_id', sid)
+      const r = await api.get(`/api/molds?${p}`)
       setMolds(r.items || [])
     } catch { setMolds([]) }
   }
+
+  const [oldMolds, setOldMolds] = useState([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const loadOld = async (sid = storeId) => {
+    try {
+      const p = new URLSearchParams({ archived: 'true' })
+      if (sid) p.set('store_id', sid)
+      if (dateFrom) p.set('date_from', dateFrom)
+      if (dateTo) p.set('date_to', dateTo)
+      const r = await api.get(`/api/molds?${p}`)
+      setOldMolds(r.items || [])
+    } catch { setOldMolds([]) }
+  }
   useEffect(() => { loadPlan(storeId); loadExisting(storeId) }, [storeId])
+  useEffect(() => { if (tab === 'old') loadOld(storeId) }, [tab, storeId, dateFrom, dateTo])
 
   const [harfler, setHarfler] = useState('GHJ')
   const handleCreateEmpty = async () => {
@@ -115,8 +131,8 @@ export default function MoldGeneratorPage() {
       <MoldTabs />
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-100">{tab === 'existing' ? '📦 Oluşturulan Kalıplar' : '🎯 Kalıp Oluşturucu'}</h1>
-          <p className="text-sm text-gray-500 mt-1">{tab === 'existing' ? 'Daha önce oluşturulan kalıplar' : 'Bekleyen siparişleri otomatik kalıplara böler'}</p>
+          <h1 className="text-2xl font-semibold text-gray-100">{tab === 'old' ? '🗄️ Eski Kalıplar' : tab === 'existing' ? '📦 Oluşturulan Kalıplar' : '🎯 Kalıp Oluşturucu'}</h1>
+          <p className="text-sm text-gray-500 mt-1">{tab === 'old' ? 'Tamamlanıp 24 saat geçmiş kalıplar (arşiv)' : tab === 'existing' ? 'Daha önce oluşturulan kalıplar' : 'Bekleyen siparişleri otomatik kalıplara böler'}</p>
         </div>
         <div className="flex items-center gap-2">
           <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 w-full sm:w-auto sm:min-w-[200px]">
@@ -204,6 +220,35 @@ export default function MoldGeneratorPage() {
                 </div>
               )}
             </>
+          )}
+        </>
+      )}
+
+      {tab === 'old' && (
+        <>
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-xs text-gray-500">Tarih aralığı:</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="input !text-sm !py-1" />
+            <span className="text-gray-600">–</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="input !text-sm !py-1" />
+            {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-xs text-gray-500 hover:text-gray-300">temizle</button>}
+          </div>
+          {oldMolds.length === 0 ? (
+            <div className="card text-center py-12 text-gray-500"><div className="text-4xl mb-2">🗄️</div>Bu aralıkta eski kalıp yok.</div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {oldMolds.map(m => (
+                <div key={m.id} className="card !p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono text-sm text-gray-200">{m.kod}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-400">{m.variation}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">{m.kilif_sayisi} kılıf</div>
+                  <div className="text-[10px] text-gray-600 mt-1">Tamamlandı: {m.tamamlandi_at ? new Date(m.tamamlandi_at).toLocaleString('tr-TR') : '—'}</div>
+                  <button onClick={() => navigate(`/kalip/${m.id}`)} className="btn-secondary !text-xs mt-2 w-full">📋 Detay</button>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

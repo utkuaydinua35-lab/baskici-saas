@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from sqlalchemy import desc, func as sql_func, select
+from sqlalchemy import desc, func as sql_func, or_ as sa_or, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user
@@ -142,12 +142,30 @@ def create_molds(
 @router.get("", response_model=None)
 def list_molds(
     store_id: uuid.UUID | None = Query(None),
+    archived: bool | None = Query(None),  # None=hepsi, False=aktif(24s ici), True=eski(24s gecmis)
+    date_from: str | None = Query(None),  # YYYY-MM-DD (eski liste tarih filtresi)
+    date_to: str | None = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from datetime import datetime as _dtl, timezone as _tzl, timedelta as _tdl
     q = select(Mold).where(Mold.tenant_id == user.tenant_id)
     if store_id:
         q = q.where(Mold.store_id == store_id)
+    if archived is not None:
+        _esik = _dtl.now(_tzl.utc) - _tdl(hours=24)
+        if archived:
+            # Eski: tamamlanmis (stage 5) VE tamamlandi_at 24 saatten eski
+            q = q.where(Mold.current_stage == 5, Mold.tamamlandi_at.isnot(None), Mold.tamamlandi_at < _esik)
+            if date_from:
+                try: q = q.where(Mold.tamamlandi_at >= _dtl.fromisoformat(date_from).replace(tzinfo=_tzl.utc))
+                except Exception: pass
+            if date_to:
+                try: q = q.where(Mold.tamamlandi_at < (_dtl.fromisoformat(date_to).replace(tzinfo=_tzl.utc) + _tdl(days=1)))
+                except Exception: pass
+        else:
+            # Aktif: tamamlanmamis VEYA (tamamlanmis ama 24 saat gecmemis)
+            q = q.where(sa_or(Mold.current_stage != 5, Mold.tamamlandi_at.is_(None), Mold.tamamlandi_at >= _esik))
     molds = db.scalars(
         q.order_by(desc(Mold.created_at)).options(selectinload(Mold.items))
     ).all()
@@ -168,6 +186,7 @@ def list_molds(
                 "print_note": mo.print_note,
                 "print_analysis": mo.print_analysis,
                 "print_analyzed_at": mo.print_analyzed_at.isoformat() if mo.print_analyzed_at else None,
+                "tamamlandi_at": mo.tamamlandi_at.isoformat() if mo.tamamlandi_at else None,
                 "current_stage": mo.current_stage,
                 "is_hatali": mo.is_hatali,
                 "created_at": mo.created_at.isoformat() if mo.created_at else None,

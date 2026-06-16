@@ -48,7 +48,7 @@ export default function OrdersPage() {
   const [fetching, setFetching] = useState(null)
   const [error, setError] = useState('')
   const [filters, setFilters] = useState({ store_id: localStorage.getItem('orders_store_id') || '', search: '' })
-  const [tab, setTab] = useState('tumu')
+  const [tab, setTab] = useState(() => localStorage.getItem('orders_tab') || 'tumu')
   const [page, setPage] = useState(1)
   const [fetchMessage, setFetchMessage] = useState(null)
   const [expanded, setExpanded] = useState(new Set())   // expand edilmiş satır id'leri
@@ -94,6 +94,7 @@ export default function OrdersPage() {
   useEffect(() => { loadStores() }, [])
   useEffect(() => { loadTabCounts() }, [filters.store_id])
   useEffect(() => { loadOrders() }, [filters.store_id, tab, page])
+  useEffect(() => { localStorage.setItem('orders_tab', tab) }, [tab])
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); loadOrders() }, 400)
     return () => clearTimeout(t)

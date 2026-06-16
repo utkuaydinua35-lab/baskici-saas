@@ -58,6 +58,25 @@ export default function OrderDetailPage() {
   const [error, setError] = useState('')
   const [rightTab, setRightTab] = useState('musteri')
   const [lightbox, setLightbox] = useState(null)  // büyütülen görsel url
+  const [neighbors, setNeighbors] = useState({ prev: null, next: null })
+
+  // Komsu siparisleri (onceki/sonraki) ayni filtreyle hesapla
+  useEffect(() => {
+    const sid = localStorage.getItem('orders_store_id') || ''
+    const tb = localStorage.getItem('orders_tab') || 'tumu'
+    const params = new URLSearchParams({ page: 1, per_page: 200, tab: tb })
+    if (sid) params.set('store_id', sid)
+    api.get(`/api/orders?${params}`).then(r => {
+      const ids = (r.items || []).map(o => o.id)
+      const idx = ids.indexOf(orderId)
+      if (idx === -1) { setNeighbors({ prev: null, next: null }); return }
+      // Liste en yeni -> eski sirali. "next/sonraki" = listede asagi (daha eski), "prev/onceki" = yukari (daha yeni)
+      setNeighbors({
+        prev: idx > 0 ? ids[idx - 1] : null,
+        next: idx < ids.length - 1 ? ids[idx + 1] : null,
+      })
+    }).catch(() => setNeighbors({ prev: null, next: null }))
+  }, [orderId])
 
   const load = async () => {
     try {
@@ -137,7 +156,15 @@ export default function OrderDetailPage() {
           <button onClick={() => navigate('/orders')} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
+                <div className="flex flex-col gap-0.5">
+                  <button onClick={() => neighbors.next && navigate(`/orders/${neighbors.next}`)} disabled={!neighbors.next}
+                    title="Sonraki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
+                  <button onClick={() => neighbors.prev && navigate(`/orders/${neighbors.prev}`)} disabled={!neighbors.prev}
+                    title="Önceki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
+                </div>
+              </div>
               {detail.is_acil && <Badge color="red">⚠ ACİL</Badge>}
               {detail.is_iptal && <Badge color="gray">İPTAL</Badge>}
               {detail.is_hatali_gonderildi && <Badge color="amber">HATALI GÖNDERİLDİ</Badge>}

@@ -314,6 +314,11 @@ def update_mold_stage(mold_id: uuid.UUID, payload: MoldStageUpdate,
         old = mo.current_stage
         mo.current_stage = payload.stage
         mo.status = "tamamlandi" if payload.stage == 5 else "olusturuldu"
+        if payload.stage == 5:
+            from datetime import datetime as _dt5, timezone as _tz5
+            mo.tamamlandi_at = _dt5.now(_tz5.utc)
+        elif old == 5:
+            mo.tamamlandi_at = None  # tamamlanmadan geri alindi
         _log_mold(db, mo, user, action="stage_change", from_stage=old, to_stage=payload.stage, note=payload.note)
         if payload.stage == 5 and old != 5:
             from app.services import stock as stock_svc
@@ -455,6 +460,8 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
         _old_stage = _prev.current_stage
         _prev.current_stage = 5  # tamamlandi
         _prev.status = "tamamlandi"
+        from datetime import datetime as _dtp, timezone as _tzp
+        _prev.tamamlandi_at = _dtp.now(_tzp.utc)
         _log_mold(db, _prev, user, action="stage_change", from_stage=_old_stage, to_stage=5,
                   note="Yeni kalip baskiya gonderildi (otomatik tamamlandi)")
         try:

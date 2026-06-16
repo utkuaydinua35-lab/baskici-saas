@@ -630,6 +630,7 @@ class Mold(Base):
     print_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     print_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     print_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tamamlandi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # stage 5'e gecis zamani (arsiv hesabi)
 
     items: Mapped[list["MoldItem"]] = relationship(back_populates="mold", cascade="all, delete-orphan")
 

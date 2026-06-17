@@ -57,6 +57,7 @@ class DealerIn(BaseModel):
     note: str | None = None
     unit_price: float | None = None
     shipping_fee: float | None = None
+    currency: str | None = Field("TRY", max_length=3)  # TRY | USD
 
 
 class DealerUpdate(BaseModel):
@@ -67,6 +68,7 @@ class DealerUpdate(BaseModel):
     note: str | None = None
     unit_price: float | None = None
     shipping_fee: float | None = None
+    currency: str | None = Field(None, max_length=3)  # TRY | USD
     is_active: bool | None = None
 
 
@@ -82,7 +84,7 @@ def _ser(d: Dealer) -> dict:
     return {
         "id": str(d.id), "name": d.name, "phone": d.phone, "email": d.email,
         "address": d.address, "note": d.note, "balance": float(d.balance or 0), "balance_usd": float(d.balance_usd or 0),
-        "unit_price": float(d.unit_price or 0), "shipping_fee": float(d.shipping_fee or 0),
+        "unit_price": float(d.unit_price or 0), "shipping_fee": float(d.shipping_fee or 0), "currency": getattr(d, "currency", "TRY") or "TRY",
         "is_active": d.is_active, "store_id": str(d.store_id) if d.store_id else None,
     }
 
@@ -137,6 +139,7 @@ def create_dealer(req: DealerIn, user: User = Depends(require_permission("bayii"
         name=req.name, phone=req.phone, email=req.email,
         address=req.address, note=req.note, balance=0, is_active=True,
         unit_price=req.unit_price or 0, shipping_fee=req.shipping_fee or 0,
+        currency=(req.currency or "TRY").upper(),
     )
     db.add(dealer)
     try:
@@ -161,7 +164,7 @@ def update_dealer(dealer_id: uuid.UUID, req: DealerUpdate, user: User = Depends(
     d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
     if not d:
         raise HTTPException(404, "Bayii bulunamadi")
-    for f in ("name", "phone", "email", "address", "note", "unit_price", "shipping_fee", "is_active"):
+    for f in ("name", "phone", "email", "address", "note", "unit_price", "shipping_fee", "currency", "is_active"):
         v = getattr(req, f)
         if v is not None:
             setattr(d, f, v)
@@ -278,7 +281,7 @@ def create_dealer_order(
         current_stage=1,
         raw={
             "total_price": str(toplam),
-            "currency": "TRY",
+            "currency": (getattr(d, "currency", "TRY") or "TRY").upper(),
             "source": "bayii",
             "dealer_id": str(d.id),
             "shipping_fee": str(shipping),
@@ -311,15 +314,22 @@ def create_dealer_order(
         )
         db.add(li)
 
-    # Cari borc: siparis tutari kadar bakiye artar
-    new_balance = Decimal(str(d.balance or 0)) + toplam
-    d.balance = new_balance
+    # Cari borc: siparis tutari kadar bakiye artar (bayi para birimine gore)
+    _cur = (getattr(d, "currency", "TRY") or "TRY").upper()
+    _sym = "$" if _cur == "USD" else "₺"
+    if _cur == "USD":
+        new_balance = Decimal(str(d.balance_usd or 0)) + toplam
+        d.balance_usd = new_balance
+    else:
+        new_balance = Decimal(str(d.balance or 0)) + toplam
+        d.balance = new_balance
     tx = DealerTransaction(
         tenant_id=user.tenant_id,
         dealer_id=d.id,
         amount=toplam,
         kind="siparis",
-        description=f"Sipariş #{order_number} — {total_qty} adet" + (f" (+kargo ₺{shipping})" if shipping else ""),
+        currency=_cur,
+        description=f"Sipariş #{order_number} — {total_qty} adet" + (f" (+kargo {_sym}{shipping})" if shipping else ""),
         ref_order_id=order.id,
         balance_after=new_balance,
     )

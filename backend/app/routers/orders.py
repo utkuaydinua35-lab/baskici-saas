@@ -705,11 +705,16 @@ def create_manual_order(
             _unit = _Dec(str(_d.unit_price or 0))
             _ship = _Dec(str(_d.shipping_fee or 0)) if (req.apply_shipping and _d.shipping_fee) else _Dec("0")
             _toplam = _unit * _Dec(_qty) + _ship
-            _newbal = _Dec(str(_d.balance or 0)) + _toplam
-            _d.balance = _newbal
-            order.raw = {**(order.raw or {}), "dealer_id": str(_d.id), "total_price": str(_toplam), "source": "bayii"}
+            _cur = (getattr(_d, "currency", "TRY") or "TRY").upper()
+            if _cur == "USD":
+                _newbal = _Dec(str(_d.balance_usd or 0)) + _toplam
+                _d.balance_usd = _newbal
+            else:
+                _newbal = _Dec(str(_d.balance or 0)) + _toplam
+                _d.balance = _newbal
+            order.raw = {**(order.raw or {}), "dealer_id": str(_d.id), "total_price": str(_toplam), "currency": _cur, "source": "bayii"}
             db.add(_DTx(
-                tenant_id=user.tenant_id, dealer_id=_d.id, amount=_toplam, kind="siparis",
+                tenant_id=user.tenant_id, dealer_id=_d.id, amount=_toplam, kind="siparis", currency=_cur,
                 description=f"Sipariş #{order.external_id} — {_qty} adet" + (f" (+kargo)" if _ship else ""),
                 ref_order_id=order.id, balance_after=_newbal,
             ))

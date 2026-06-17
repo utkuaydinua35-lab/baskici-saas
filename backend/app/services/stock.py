@@ -73,9 +73,17 @@ def _find_bos_kilif(db: Session, tenant_id, variation: str | None, model: str | 
     ).all()
     nv = _norm_var(variation)
     nm = pm.normalize_key(model or "")
+    # 1) Once tam model eslesmesi (si.model)
     for si in items:
         if _norm_var(si.variation) == nv and pm.normalize_key(si.model or "") == nm:
             return si
+    # 2) Eslesmezse uyumlu modeller listesinde (si.models) ara — ortak kalip stogu
+    for si in items:
+        if _norm_var(si.variation) != nv:
+            continue
+        for cm in (si.models or []):
+            if pm.normalize_key(cm) == nm:
+                return si
     return None
 
 

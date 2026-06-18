@@ -119,9 +119,15 @@ def plan_molds(
     if store_id:
         design_q = design_q.where(Design.store_id == store_id)
     designs = db.scalars(design_q).all()
-    design_by_key: dict[tuple[uuid.UUID, str], Design] = {
-        (d.store_id, str(d.product_id)): d for d in designs
-    }
+    # Iki seviyeli: (store, product, variant) varyant-ozel + (store, product, None) default
+    design_by_key: dict[tuple, Design] = {}
+    for d in designs:
+        pid = str(d.product_id)
+        vid = str(d.variant_id) if getattr(d, "variant_id", None) else None
+        design_by_key[(d.store_id, pid, vid)] = d
+        # variant'siz default: ilk gelen ya da variant_id None olan (None oncelikli)
+        if vid is None or (d.store_id, pid, None) not in design_by_key:
+            design_by_key[(d.store_id, pid, None)] = d
 
     # Couple (cift kilif) urunleri: (store_id, product_id) -> CoupleProduct
     couple_q = (
@@ -260,7 +266,11 @@ def plan_molds(
                     add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
                     continue
             else:
-                design = design_by_key.get((order_store_id, pid)) if pid else None
+                if pid:
+                    _vid = str(li.variant_id) if getattr(li, "variant_id", None) else None
+                    design = design_by_key.get((order_store_id, pid, _vid)) or design_by_key.get((order_store_id, pid, None))
+                else:
+                    design = None
                 if design is None:
                     add_eksik("urun_tasarima_baglanmamis", li, order, model)
                     continue

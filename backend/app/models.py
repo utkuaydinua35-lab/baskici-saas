@@ -176,6 +176,8 @@ class Design(Base):
     product_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     product_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    variant_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)  # coklu varyasyon: belirli varyant tasarimi
+    variant_title: Mapped[str | None] = mapped_column(String(200), nullable=True)  # ornek: "Black" / "Red"
 
     kalip_tipi: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
 

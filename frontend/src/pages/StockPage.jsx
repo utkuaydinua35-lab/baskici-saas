@@ -226,9 +226,11 @@ function ModelGroupedItems({ items, search, groupId, onReload, onEdit, onAdjust,
 function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   const [sel, setSel] = useState([])
   const [busy, setBusy] = useState(false)
+  const [q, setQ] = useState('')
   // Ana modelle zaten birlesik olanlar haric, secilebilir modeller
   const mevcutSet = new Set(mergeFor.mevcut.map(m => m.toUpperCase()))
-  const secilebilir = allModels.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
+  let secilebilir = allModels.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
+  if (q.trim()) { const ql = q.toLowerCase(); secilebilir = secilebilir.filter(m => m.toLowerCase().includes(ql)) }
   const toggle = (m) => setSel(s => s.includes(m) ? s.filter(x => x !== m) : [...s, m])
   const kaydet = async () => {
     if (sel.length === 0) return
@@ -244,6 +246,8 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
         <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu Model Ekle</h2>
         <p className="text-xs text-gray-500 mb-1"><span className="text-gray-300">{mergeFor.anaKey}</span> ile aynı kalıbı paylaşan modeller:</p>
         <p className="text-[11px] text-gray-600 mb-3">Seçilen modeller bu stok havuzuna eklenir; ayrı kayıtları varsa pasifleşir (stok bu modelden yönetilir).</p>
+        <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Model ara..." className="input w-full !text-sm mb-2" />
+        {sel.length > 0 && <p className="text-[11px] text-blue-300 mb-2">{sel.length} model seçili</p>}
         <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1">
           {secilebilir.length === 0 ? (
             <p className="text-xs text-gray-500 py-4 text-center">Eklenebilecek başka model yok.</p>

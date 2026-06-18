@@ -407,6 +407,78 @@ def create_item(
     return _serialize(it)
 
 
+class MergeModelsIn(BaseModel):
+    ana_model: str                  # stok hangi modelde kalacak (ana havuz)
+    eklenecek_modeller: list[str]   # bu modeller ana ile uyumlu yapilacak (ortak havuz)
+
+
+@router.post("/groups/{group_id}/merge-models", response_model=dict)
+def merge_models(group_id: uuid.UUID, body: MergeModelsIn,
+                 user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Uyumlu model birlestir: ana_model'in tum varyasyon kayitlarina eklenecek_modeller eklenir
+    (ortak havuz). Eklenen modellerin ayri kayitlari pasiflestirilir (stok ana kayittan yonetilir)."""
+    from app.services import phone_models as pm
+    ana = (body.ana_model or "").strip()
+    ekle = [m.strip() for m in (body.eklenecek_modeller or []) if m and m.strip()]
+    if not ana or not ekle:
+        raise HTTPException(400, "Ana model ve en az bir eklenecek model gerekli")
+
+    items = db.scalars(select(StockItem).where(
+        StockItem.group_id == group_id, StockItem.tenant_id == user.tenant_id,
+        StockItem.is_active.is_(True))).all()
+    if not items:
+        raise HTTPException(404, "Grupta stok kalemi yok")
+
+    ana_nk = pm.normalize_key(ana)
+    ekle_nk = {pm.normalize_key(m) for m in ekle}
+
+    # Ana modelin varyasyon kayitlari (models listesinde ana_model olan)
+    def has_model(it, nk):
+        ms = it.models or ([it.model] if it.model else [])
+        return any(pm.normalize_key(m) == nk for m in ms)
+
+    ana_items = [it for it in items if has_model(it, ana_nk)]
+    if not ana_items:
+        raise HTTPException(404, f"Ana model '{ana}' grupta bulunamadi")
+
+    # Eklenecek modellerin ayri kayitlari (ana disindaki, eklenen modeli iceren)
+    eklenen_orijinal_adlar = {}  # nk -> orijinal yazim
+    for it in items:
+        ms = it.models or ([it.model] if it.model else [])
+        for m in ms:
+            if pm.normalize_key(m) in ekle_nk:
+                eklenen_orijinal_adlar[pm.normalize_key(m)] = m
+
+    # 1) Ana kayitlarin models listesine eklenecekleri ekle (varyasyon eslesmesine gore)
+    eklenecek_adlar = [eklenen_orijinal_adlar.get(nk, list(ekle)[i]) for i, nk in enumerate(ekle_nk)]
+    # daha basit: ekle listesini oldugu gibi kullan
+    eklenecek_adlar = ekle
+    guncellenen = 0
+    for it in ana_items:
+        cur = list(it.models or ([it.model] if it.model else []))
+        cur_nk = {pm.normalize_key(m) for m in cur}
+        for m in eklenecek_adlar:
+            if pm.normalize_key(m) not in cur_nk:
+                cur.append(m); cur_nk.add(pm.normalize_key(m))
+        it.models = cur
+        guncellenen += 1
+
+    # 2) Eklenen modellerin AYRI kayitlarini pasiflestir (ana_items disinda, eklenen modeli iceren)
+    ana_ids = {it.id for it in ana_items}
+    pasif = 0
+    for it in items:
+        if it.id in ana_ids:
+            continue
+        ms = it.models or ([it.model] if it.model else [])
+        if all(pm.normalize_key(m) in ekle_nk for m in ms) and ms:
+            it.is_active = False
+            pasif += 1
+
+    db.commit()
+    return {"ok": True, "guncellenen_varyasyon": guncellenen, "pasiflenen_kayit": pasif,
+            "ortak_havuz": ana_items[0].models if ana_items else []}
+
+
 @router.patch("/{item_id}", response_model=dict)
 def update_item(
     item_id: uuid.UUID,

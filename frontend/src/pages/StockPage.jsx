@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api } from '../lib/api'
 
 export default function StockPage() {
@@ -237,7 +238,7 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
       onDone()
     } catch (e) { alert('Birleştirilemedi: ' + (e?.detail || '')); setBusy(false) }
   }
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin max-h-[80vh] flex flex-col">
         <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu Model Ekle</h2>
@@ -259,7 +260,7 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
         </div>
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup, onReload }) {

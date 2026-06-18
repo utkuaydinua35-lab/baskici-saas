@@ -88,60 +88,123 @@ export default function StockPage() {
   )
 }
 
+const VARYASYON_SIRA = ['SİYAH', 'BEYAZ', 'MAGSAFE', 'PARLAK', 'ŞEFFAF']
+
+// Model adindan marka cikar
+function markaBul(modelKey) {
+  const m = (modelKey || '').toUpperCase()
+  if (m.includes('IPHONE')) return 'APPLE'
+  if (m.startsWith('S') && /^S\d/.test(m.replace(/[^A-Z0-9].*/, ''))) return 'SAMSUNG'
+  if (m.includes('SAMSUNG') || m.includes('NOTE') || /\bS\d/.test(m) || m.startsWith('A') || m.startsWith('M') || m.startsWith('J')) return 'SAMSUNG'
+  if (m.includes('XIAOMI') || m.includes('REDMI') || m.includes('POCO') || m.startsWith('MI ')) return 'XIAOMI'
+  if (m.includes('REALME')) return 'REALME'
+  if (m.includes('OPPO')) return 'OPPO'
+  if (m.includes('VIVO')) return 'VIVO'
+  if (m.includes('HUAWEI')) return 'HUAWEI'
+  if (m.includes('TECNO')) return 'TECNO'
+  if (m.includes('INFINIX')) return 'INFINIX'
+  if (m.includes('CASPER')) return 'CASPER'
+  if (m.includes('GENERAL')) return 'GENERAL MOBILE'
+  return 'DİĞER'
+}
+
 function ModelGroupedItems({ items, search, onEdit, onAdjust, onMove }) {
+  const [openBrand, setOpenBrand] = useState(null)
   const [openModel, setOpenModel] = useState(null)
-  // Model bazinda grupla: anahtar = models birlesik (uyumlu modeller tek satir)
-  const groups = {}
+  // Model bazinda grupla (uyumlu modeller tek satir)
+  const mgroups = {}
   for (const it of items) {
     const modelsArr = (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)
     const key = modelsArr.join(' / ') || '—'
-    if (!groups[key]) groups[key] = { key, models: modelsArr, items: [] }
-    groups[key].items.push(it)
+    if (!mgroups[key]) mgroups[key] = { key, models: modelsArr, items: [] }
+    mgroups[key].items.push(it)
   }
-  let modelList = Object.values(groups)
-  // Arama filtresi (model adi)
+  let modelList = Object.values(mgroups)
   if (search) {
     const q = search.toLowerCase()
     modelList = modelList.filter(mg => mg.key.toLowerCase().includes(q))
   }
-  // Model adina gore sirala
-  modelList.sort((a, b) => a.key.localeCompare(b.key, 'tr'))
+  // Marka bazinda grupla
+  const brands = {}
+  for (const mg of modelList) {
+    const b = markaBul(mg.key)
+    if (!brands[b]) brands[b] = []
+    brands[b].push(mg)
+  }
+  // Marka sirasi: APPLE, SAMSUNG, sonra alfabetik
+  const ONCELIK = ['APPLE', 'SAMSUNG', 'XIAOMI', 'REALME', 'OPPO', 'VIVO', 'HUAWEI', 'TECNO', 'INFINIX']
+  const brandList = Object.keys(brands).sort((a, b) => {
+    const ia = ONCELIK.indexOf(a), ib = ONCELIK.indexOf(b)
+    if (ia < 0 && ib < 0) return a.localeCompare(b, 'tr')
+    if (ia < 0) return 1
+    if (ib < 0) return -1
+    return ia - ib
+  })
   if (modelList.length === 0) {
     return <p className="text-xs text-gray-500 py-2">Aramayla eşleşen model yok.</p>
   }
-  const VARYASYON_SIRA = ['SİYAH', 'BEYAZ', 'MAGSAFE', 'PARLAK', 'ŞEFFAF']
   const varSort = (a, b) => {
     const ia = VARYASYON_SIRA.indexOf((a.variation || '').toUpperCase())
     const ib = VARYASYON_SIRA.indexOf((b.variation || '').toUpperCase())
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
   }
+  // Arama varsa markalar+modeller acik gelsin
+  const autoOpen = !!search
   return (
-    <div className="divide-y divide-brand-border/40">
-      {modelList.map(mg => {
-        const toplam = mg.items.reduce((a, it) => a + (it.quantity || 0), 0)
-        const acik = openModel === mg.key
-        const dusuk = mg.items.some(it => it.is_low)
+    <div className="space-y-1">
+      {brandList.map(brand => {
+        const bModels = [...brands[brand]].sort((a, b) => a.key.localeCompare(b.key, 'tr'))
+        const bToplam = bModels.reduce((a, mg) => a + mg.items.reduce((s, it) => s + (it.quantity || 0), 0), 0)
+        const bAcik = autoOpen || openBrand === brand
         return (
-          <div key={mg.key}>
-            <div className="flex items-center gap-2 py-2 cursor-pointer hover:bg-brand-input/20" onClick={() => setOpenModel(acik ? null : mg.key)}>
-              <span className="text-gray-500 text-xs">{acik ? '▾' : '▸'}</span>
-              <span className="flex-1 text-sm text-gray-200 truncate">{mg.key}</span>
-              {dusuk && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
-              <span className="text-[11px] text-gray-500">{mg.items.length} varyasyon</span>
-              <span className="text-sm font-semibold text-gray-200">{toplam} adet</span>
+          <div key={brand} className="border border-brand-border/40 rounded-lg overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 bg-brand-input/30 cursor-pointer hover:bg-brand-input/50" onClick={() => setOpenBrand(bAcik && !autoOpen ? null : brand)}>
+              <span className="text-gray-500 text-xs">{bAcik ? '▾' : '▸'}</span>
+              <span className="flex-1 text-sm font-semibold text-gray-100">{brand}</span>
+              <span className="text-[11px] text-gray-500">{bModels.length} model</span>
+              <span className="text-sm font-semibold text-gray-300">{bToplam} adet</span>
             </div>
-            {acik && (
-              <div className="pl-5 pb-2 space-y-1">
-                {[...mg.items].sort(varSort).map(it => (
-                  <div key={it.id} className="flex items-center gap-3 py-1.5 border-l-2 border-brand-border/40 pl-3">
-                    <span className="flex-1 text-xs text-gray-300">{it.variation || '—'}</span>
-                    {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
-                    <span className={`text-sm font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
-                    <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
-                    <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
-                    <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
-                  </div>
-                ))}
+            {bAcik && (
+              <div className="divide-y divide-brand-border/30 px-2">
+                {bModels.map(mg => {
+                  const toplam = mg.items.reduce((a, it) => a + (it.quantity || 0), 0)
+                  const mAcik = autoOpen || openModel === mg.key
+                  const dusuk = mg.items.some(it => it.is_low)
+                  // 5 varyasyonu doldur (eksik = 0, kayit yok)
+                  const byVar = {}
+                  for (const it of mg.items) byVar[(it.variation || '').toUpperCase()] = it
+                  const tumVar = VARYASYON_SIRA.map(v => byVar[v] || { _bos: true, variation: v, quantity: 0, model: mg.models[0], models: mg.models })
+                  return (
+                    <div key={mg.key}>
+                      <div className="flex items-center gap-2 py-2 pl-4 cursor-pointer hover:bg-brand-input/20" onClick={() => setOpenModel(mAcik && !autoOpen ? null : mg.key)}>
+                        <span className="text-gray-500 text-xs">{mAcik ? '▾' : '▸'}</span>
+                        <span className="flex-1 text-sm text-gray-200 truncate">{mg.key}</span>
+                        {dusuk && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
+                        <span className="text-sm font-semibold text-gray-200">{toplam} adet</span>
+                      </div>
+                      {mAcik && (
+                        <div className="pl-8 pb-2 space-y-1">
+                          {[...tumVar].sort(varSort).map((it, vi) => (
+                            <div key={it.id || ('bos-' + vi)} className="flex items-center gap-3 py-1.5 border-l-2 border-brand-border/40 pl-3">
+                              <span className={`flex-1 text-xs ${it._bos ? 'text-gray-600' : 'text-gray-300'}`}>{it.variation || '—'}</span>
+                              {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
+                              <span className={`text-sm font-semibold ${it._bos ? 'text-gray-600' : it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
+                              {it._bos ? (
+                                <span className="text-[10px] text-gray-600">kayıt yok</span>
+                              ) : (
+                                <>
+                                  <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
+                                  <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
+                                  <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

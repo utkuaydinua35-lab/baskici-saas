@@ -60,7 +60,7 @@ export default function StockPage() {
         <div className="space-y-3">
           {groups.map(g => (
             <GroupCard
-              key={g.id} g={g} search={search}
+              key={g.id} g={g} search={search} onReload={load}
               expanded={expanded === g.id || (!!search && (g.items || []).some(it => ((it.models && it.models.length ? it.models : [it.model]).filter(Boolean).join(' ')).toLowerCase().includes(search.toLowerCase())))}
               onToggle={() => setExpanded(expanded === g.id ? null : g.id)}
               onAddItem={() => setAddItemGroup(g)}
@@ -179,8 +179,11 @@ function ModelGroupedItems({ items, search, onEdit, onAdjust, onMove }) {
                       <div className="flex items-center gap-2 py-2 pl-4 cursor-pointer hover:bg-brand-input/20" onClick={() => setOpenModel(mAcik && !autoOpen ? null : mg.key)}>
                         <span className="text-gray-500 text-xs">{mAcik ? '▾' : '▸'}</span>
                         <span className="flex-1 text-sm text-gray-200 truncate">{mg.key}</span>
+                        {mg.models.length > 1 && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300" title={mg.models.join(' / ')}>🔗 {mg.models.length}</span>}
                         {dusuk && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
                         <span className="text-sm font-semibold text-gray-200">{toplam} adet</span>
+                        <button onClick={(e) => { e.stopPropagation(); setMergeFor({ anaKey: mg.key, anaModel: mg.models[0], mevcut: mg.models }) }}
+                          className="text-[11px] text-blue-300/80 hover:text-blue-200 hover:underline whitespace-nowrap" title="Bu modelle uyumlu (ayni kalip) modeller ekle">🔗 Uyumlu</button>
                       </div>
                       {mAcik && (
                         <div className="pl-8 pb-2 space-y-1">
@@ -210,11 +213,55 @@ function ModelGroupedItems({ items, search, onEdit, onAdjust, onMove }) {
           </div>
         )
       })}
+      {mergeFor && (
+        <MergeModelDialog groupId={groupId} mergeFor={mergeFor} allModels={[...new Set(items.flatMap(it => (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)))]}
+          onClose={() => setMergeFor(null)} onDone={() => { setMergeFor(null); onReload && onReload() }} />
+      )}
     </div>
   )
 }
 
-function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup }) {
+function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
+  const [sel, setSel] = useState([])
+  const [busy, setBusy] = useState(false)
+  // Ana modelle zaten birlesik olanlar haric, secilebilir modeller
+  const mevcutSet = new Set(mergeFor.mevcut.map(m => m.toUpperCase()))
+  const secilebilir = allModels.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
+  const toggle = (m) => setSel(s => s.includes(m) ? s.filter(x => x !== m) : [...s, m])
+  const kaydet = async () => {
+    if (sel.length === 0) return
+    setBusy(true)
+    try {
+      await api.post(`/api/stock/groups/${groupId}/merge-models`, { ana_model: mergeFor.anaModel, eklenecek_modeller: sel })
+      onDone()
+    } catch (e) { alert('Birleştirilemedi: ' + (e?.detail || '')); setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin max-h-[80vh] flex flex-col">
+        <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu Model Ekle</h2>
+        <p className="text-xs text-gray-500 mb-1"><span className="text-gray-300">{mergeFor.anaKey}</span> ile aynı kalıbı paylaşan modeller:</p>
+        <p className="text-[11px] text-gray-600 mb-3">Seçilen modeller bu stok havuzuna eklenir; ayrı kayıtları varsa pasifleşir (stok bu modelden yönetilir).</p>
+        <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1">
+          {secilebilir.length === 0 ? (
+            <p className="text-xs text-gray-500 py-4 text-center">Eklenebilecek başka model yok.</p>
+          ) : secilebilir.map(m => (
+            <label key={m} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-brand-input/30 cursor-pointer">
+              <input type="checkbox" checked={sel.includes(m)} onChange={() => toggle(m)} className="accent-blue-400" />
+              <span className="text-sm text-gray-200">{m}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+          <button onClick={kaydet} disabled={busy || sel.length === 0} className="btn-primary !text-sm">{busy ? '…' : `Birleştir (${sel.length})`}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup, onReload }) {
   return (
     <div className="card !p-0 overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/30 cursor-pointer" onClick={onToggle}>
@@ -235,7 +282,7 @@ function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust,
           {g.items.length === 0 ? (
             <p className="text-xs text-gray-500 py-2">Henüz model eklenmemiş. "Model Ekle" ile telefon modeli + adet gir.</p>
           ) : (
-            <ModelGroupedItems items={g.items} search={search} onEdit={onEdit} onAdjust={onAdjust} onMove={onMove} />
+            <ModelGroupedItems items={g.items} search={search} groupId={g.id} onReload={onReload} onEdit={onEdit} onAdjust={onAdjust} onMove={onMove} />
           )}
         </div>
       )}

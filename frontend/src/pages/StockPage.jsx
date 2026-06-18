@@ -12,6 +12,7 @@ export default function StockPage() {
   const [editItem, setEditItem] = useState(null)          // alt kalem duzenleme
   const [moveItem, setMoveItem] = useState(null)          // hareket gecmisi
   const [msg, setMsg] = useState(null)
+  const [search, setSearch] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -43,6 +44,11 @@ export default function StockPage() {
         <Kpi label="Düşük Stok" value={dusukToplam} color={dusukToplam > 0 ? 'amber' : 'gray'} />
       </div>
 
+      <div className="mb-4">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Model ara (örn. iPhone 13, S21)..."
+          className="input w-full !text-sm" />
+      </div>
+
       {loading ? (
         <div className="card text-center py-12 text-gray-500">Yükleniyor...</div>
       ) : groups.length === 0 ? (
@@ -54,8 +60,8 @@ export default function StockPage() {
         <div className="space-y-3">
           {groups.map(g => (
             <GroupCard
-              key={g.id} g={g}
-              expanded={expanded === g.id}
+              key={g.id} g={g} search={search}
+              expanded={expanded === g.id || (!!search && (g.items || []).some(it => ((it.models && it.models.length ? it.models : [it.model]).filter(Boolean).join(' ')).toLowerCase().includes(search.toLowerCase())))}
               onToggle={() => setExpanded(expanded === g.id ? null : g.id)}
               onAddItem={() => setAddItemGroup(g)}
               onLink={() => setLinkGroup(g)}
@@ -82,7 +88,70 @@ export default function StockPage() {
   )
 }
 
-function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup }) {
+function ModelGroupedItems({ items, search, onEdit, onAdjust, onMove }) {
+  const [openModel, setOpenModel] = useState(null)
+  // Model bazinda grupla: anahtar = models birlesik (uyumlu modeller tek satir)
+  const groups = {}
+  for (const it of items) {
+    const modelsArr = (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)
+    const key = modelsArr.join(' / ') || '—'
+    if (!groups[key]) groups[key] = { key, models: modelsArr, items: [] }
+    groups[key].items.push(it)
+  }
+  let modelList = Object.values(groups)
+  // Arama filtresi (model adi)
+  if (search) {
+    const q = search.toLowerCase()
+    modelList = modelList.filter(mg => mg.key.toLowerCase().includes(q))
+  }
+  // Model adina gore sirala
+  modelList.sort((a, b) => a.key.localeCompare(b.key, 'tr'))
+  if (modelList.length === 0) {
+    return <p className="text-xs text-gray-500 py-2">Aramayla eşleşen model yok.</p>
+  }
+  const VARYASYON_SIRA = ['SİYAH', 'BEYAZ', 'MAGSAFE', 'PARLAK', 'ŞEFFAF']
+  const varSort = (a, b) => {
+    const ia = VARYASYON_SIRA.indexOf((a.variation || '').toUpperCase())
+    const ib = VARYASYON_SIRA.indexOf((b.variation || '').toUpperCase())
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  }
+  return (
+    <div className="divide-y divide-brand-border/40">
+      {modelList.map(mg => {
+        const toplam = mg.items.reduce((a, it) => a + (it.quantity || 0), 0)
+        const acik = openModel === mg.key
+        const dusuk = mg.items.some(it => it.is_low)
+        return (
+          <div key={mg.key}>
+            <div className="flex items-center gap-2 py-2 cursor-pointer hover:bg-brand-input/20" onClick={() => setOpenModel(acik ? null : mg.key)}>
+              <span className="text-gray-500 text-xs">{acik ? '▾' : '▸'}</span>
+              <span className="flex-1 text-sm text-gray-200 truncate">{mg.key}</span>
+              {dusuk && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
+              <span className="text-[11px] text-gray-500">{mg.items.length} varyasyon</span>
+              <span className="text-sm font-semibold text-gray-200">{toplam} adet</span>
+            </div>
+            {acik && (
+              <div className="pl-5 pb-2 space-y-1">
+                {[...mg.items].sort(varSort).map(it => (
+                  <div key={it.id} className="flex items-center gap-3 py-1.5 border-l-2 border-brand-border/40 pl-3">
+                    <span className="flex-1 text-xs text-gray-300">{it.variation || '—'}</span>
+                    {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
+                    <span className={`text-sm font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
+                    <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
+                    <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
+                    <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup }) {
   return (
     <div className="card !p-0 overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/30 cursor-pointer" onClick={onToggle}>
@@ -103,25 +172,7 @@ function GroupCard({ g, expanded, onToggle, onAddItem, onLink, onAdjust, onMove,
           {g.items.length === 0 ? (
             <p className="text-xs text-gray-500 py-2">Henüz model eklenmemiş. "Model Ekle" ile telefon modeli + adet gir.</p>
           ) : (
-            <div className="divide-y divide-brand-border/40">
-              {g.items.map(it => (
-                <div key={it.id} className="flex items-center gap-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap gap-1">
-                      {(it.models && it.models.length ? it.models : [it.model]).filter(Boolean).map((m, mi) => (
-                        <span key={mi} className="text-[11px] px-1.5 py-0.5 rounded bg-brand-input text-gray-300">{m}</span>
-                      ))}
-                    </div>
-                    {it.variation ? <span className="text-[10px] text-gray-500">{it.variation}</span> : null}
-                  </div>
-                  {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
-                  <span className={`text-sm font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
-                  <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
-                  <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
-                  <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
-                </div>
-              ))}
-            </div>
+            <ModelGroupedItems items={g.items} search={search} onEdit={onEdit} onAdjust={onAdjust} onMove={onMove} />
           )}
         </div>
       )}

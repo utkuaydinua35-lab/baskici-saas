@@ -108,9 +108,10 @@ function markaBul(modelKey) {
   return 'DİĞER'
 }
 
-function ModelGroupedItems({ items, search, onEdit, onAdjust, onMove }) {
+function ModelGroupedItems({ items, search, groupId, onReload, onEdit, onAdjust, onMove }) {
   const [openBrand, setOpenBrand] = useState(null)
   const [openModel, setOpenModel] = useState(null)
+  const [mergeFor, setMergeFor] = useState(null)  // { anaKey, anaModel, mevcut }
   // Model bazinda grupla (uyumlu modeller tek satir)
   const mgroups = {}
   for (const it of items) {

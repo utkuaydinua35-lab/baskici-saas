@@ -227,9 +227,12 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   const [sel, setSel] = useState([])
   const [busy, setBusy] = useState(false)
   const [q, setQ] = useState('')
-  // Ana modelle zaten birlesik olanlar haric, secilebilir modeller
+  const [katalog, setKatalog] = useState([])
+  useEffect(() => { api.get('/api/stock/_models').then(r => setKatalog(r.models || [])).catch(() => setKatalog([])) }, [])
+  // Katalog (tum modeller) + gruptaki mevcut modeller, ana ile zaten birlesik olanlar haric
   const mevcutSet = new Set(mergeFor.mevcut.map(m => m.toUpperCase()))
-  let secilebilir = allModels.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
+  const havuz = [...new Set([...(katalog || []), ...(allModels || [])])]
+  let secilebilir = havuz.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
   if (q.trim()) { const ql = q.toLowerCase(); secilebilir = secilebilir.filter(m => m.toLowerCase().includes(ql)) }
   const toggle = (m) => setSel(s => s.includes(m) ? s.filter(x => x !== m) : [...s, m])
   const kaydet = async () => {

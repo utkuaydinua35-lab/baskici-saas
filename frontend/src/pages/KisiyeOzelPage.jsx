@@ -711,7 +711,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
     }
   }
 
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
@@ -806,7 +806,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
         </div>
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 

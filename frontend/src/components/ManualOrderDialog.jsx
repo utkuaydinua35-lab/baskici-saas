@@ -29,6 +29,7 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
   const [lineItems, setLineItems] = useState([])
   const [nextId, setNextId] = useState(1)
   const [designs, setDesigns] = useState([])
+  const [models, setModels] = useState([])
 
   const emptyItem = (id) => ({
     id, title: 'Telefon Kılıfı', design_id: '', device_model: '', quantity: 1, color: '', notes: ''
@@ -52,6 +53,13 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
       .then(r => setDesigns(r?.items || []))
       .catch(() => setDesigns([]))
   }, [storeId])
+
+  useEffect(() => {
+    if (!open) return
+    api.get('/api/phone-models?include_baseline=true')
+      .then(r => setModels(Array.isArray(r) ? r : (r?.items || r?.models || [])))
+      .catch(() => setModels([]))
+  }, [open])
 
   if (!open) return null
 
@@ -278,6 +286,7 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
                   item={li}
                   index={i}
                   designs={designs}
+                  models={models}
                   canDelete={lineItems.length > 1}
                   busy={busy}
                   onUpdate={(patch) => updateLineItem(li.id, patch)}
@@ -303,9 +312,17 @@ export default function ManualOrderDialog({ open, stores, defaultStoreId, onClos
   )
 }
 
-function LineItemRow({ item, index, designs, canDelete, busy, onUpdate, onDelete }) {
+function LineItemRow({ item, index, designs, models = [], canDelete, busy, onUpdate, onDelete }) {
   const [designFilter, setDesignFilter] = useState('')
   const [showDesignList, setShowDesignList] = useState(false)
+  const [modelFilter, setModelFilter] = useState('')
+  const [showModelList, setShowModelList] = useState(false)
+  const modelLabel = (m) => m.display_name || m.spec_key || m.model || m.name || ''
+  const filteredModels = useMemo(() => {
+    const q = modelFilter.trim().toLowerCase()
+    if (!q) return models.slice(0, 50)
+    return models.filter(m => modelLabel(m).toLowerCase().includes(q)).slice(0, 50)
+  }, [models, modelFilter])
 
   const filteredDesigns = useMemo(() => {
     if (!designFilter) return designs.slice(0, 50)
@@ -419,15 +436,31 @@ function LineItemRow({ item, index, designs, canDelete, busy, onUpdate, onDelete
           />
         </div>
 
-        <div className="col-span-2">
+        <div className="col-span-2 relative">
           <label className="text-xs text-gray-500 mb-1 block">Telefon Modeli *</label>
           <input
-            value={item.device_model}
-            onChange={(e) => onUpdate({ device_model: e.target.value })}
+            value={showModelList ? modelFilter : (item.device_model || '')}
+            onChange={(e) => { setModelFilter(e.target.value); setShowModelList(true); onUpdate({ device_model: e.target.value }) }}
+            onFocus={() => { setModelFilter(''); setShowModelList(true) }}
+            onBlur={() => setTimeout(() => setShowModelList(false), 150)}
             className="input w-full !text-sm"
-            placeholder="iPhone 15 Pro Max"
+            placeholder="Model ara… (örn iPhone 15, S24)"
             disabled={busy}
           />
+          {showModelList && filteredModels.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-brand-card border border-brand-border rounded-lg max-h-48 overflow-y-auto shadow-2xl">
+              {filteredModels.map((m, mi) => (
+                <button
+                  key={mi}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); onUpdate({ device_model: modelLabel(m) }); setShowModelList(false); setModelFilter('') }}
+                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-brand-input"
+                >
+                  {modelLabel(m)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

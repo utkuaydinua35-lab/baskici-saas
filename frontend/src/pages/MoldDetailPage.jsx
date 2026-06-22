@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
@@ -18,6 +18,8 @@ export default function MoldDetailPage() {
   const toast = useToast()
   const { moldId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const geriDon = () => navigate(location.state?.from || '/kalip-olustur')
   const [showDelete, setShowDelete] = useState(false)
   const [assignTarget, setAssignTarget] = useState(null)  // { kalip_kodu }
   const [renamePrompt, setRenamePrompt] = useState(false)
@@ -108,7 +110,7 @@ export default function MoldDetailPage() {
   if (loading) return <div className="text-gray-500 text-sm text-center py-16">Yükleniyor...</div>
   if (error) return (
     <div className="max-w-2xl">
-      <button onClick={() => navigate('/kalip-olustur')} className="text-accent text-sm hover:underline mb-3">← Kalıplar</button>
+      <button onClick={geriDon} className="text-accent text-sm hover:underline mb-3">← Geri</button>
       <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
     </div>
   )
@@ -121,7 +123,7 @@ export default function MoldDetailPage() {
       {/* Üst bar */}
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-start gap-3">
-          <button onClick={() => navigate('/kalip-olustur')} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
+          <button onClick={geriDon} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-semibold text-gray-100 font-mono">{mold.kod}</h1>
@@ -153,7 +155,7 @@ export default function MoldDetailPage() {
         open={showDelete}
         mold={mold}
         onClose={() => setShowDelete(false)}
-        onDeleted={() => { setShowDelete(false); navigate('/kalip-olustur') }}
+        onDeleted={() => { setShowDelete(false); geriDon() }}
       />
 
       <SlotAssignDialog

@@ -153,7 +153,7 @@ export default function BaskiciPaneliPage() {
           {filtered.map(m => (
             <MoldCard key={m.id} mold={m}
               analyzing={!!analyzing[m.id]} busyStatus={!!busyStatus[m.id]}
-              onAnalyze={analyze} onSetStatus={requestStatus} onPreview={setPreview} onOpen={(id) => navigate(`/kalip/${id}`)} />
+              onAnalyze={analyze} onSetStatus={requestStatus} onPreview={setPreview} onOpen={(id) => navigate(`/kalip/${id}`, { state: { from: '/baskici-paneli' } })} />
           ))}
         </div>
       )}

@@ -113,6 +113,16 @@ export default function OrderDetailPage() {
     }
   }
 
+  const toggleKalipHaric = async () => {
+    try {
+      await api.patch(`/api/orders/${orderId}/kalip-haric`, { haric: !detail.kalip_haric })
+      setDetail(d => ({ ...d, kalip_haric: !d.kalip_haric }))
+      toast.success(detail.kalip_haric ? 'Sipariş kalıba dahil edilecek' : 'Sipariş kalıptan hariç tutuldu')
+    } catch (e) {
+      toast.error(errMsg(e, 'Güncellenemedi'))
+    }
+  }
+
   const patchLineItem = async (liId, body) => {
     try {
       await api.patch(`/api/orders/${orderId}/line-items/${liId}`, body)
@@ -167,6 +177,7 @@ export default function OrderDetailPage() {
               </div>
               {detail.is_acil && <Badge color="red">⚠ ACİL</Badge>}
               {detail.is_iptal && <Badge color="gray">İPTAL</Badge>}
+              {detail.kalip_haric && <Badge color="amber">🚫 KALIP DIŞI</Badge>}
               {detail.is_hatali_gonderildi && <Badge color="amber">HATALI GÖNDERİLDİ</Badge>}
               {detail.is_tedarik_bekleme && <Badge color="purple">⏸ TEDARİK BEKLİYOR</Badge>}
             </div>
@@ -179,6 +190,11 @@ export default function OrderDetailPage() {
             value={detail.is_tedarik_bekleme}
             onChange={v => patchFlags({ is_tedarik_bekleme: v })}
           />
+          <button onClick={toggleKalipHaric}
+            className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${detail.kalip_haric ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'bg-brand-input border-brand-border text-gray-400 hover:text-gray-200'}`}
+            title="Bu siparisi kalip olusturucuya dahil etme">
+            {detail.kalip_haric ? '🚫 Kalıp Dışı' : '🚫 Kalıba Dahil Etme'}
+          </button>
           <IsaretleDropdown detail={detail} onFlag={patchFlags} onStage={patchStage} />
           <StatusDropdown
             stages={stages}

@@ -83,6 +83,7 @@ class OrderListItem(BaseModel):
     total_li_count: int = 0
     mold_kodlari: list[str] = []
     is_acil: bool = False
+    kalip_haric: bool = False
 
 
 class OrderDetail(OrderListItem):

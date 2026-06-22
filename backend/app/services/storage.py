@@ -69,11 +69,24 @@ def _generate_pdf_thumbnail(pdf_path: Path, thumb_path: Path, dpi: int = 100) ->
         return False
 
 
+def generate_design_thumbnail(tenant_id, design_id) -> bool:
+    """PDF tasarim icin thumbnail'i arka planda uret. Dosya zaten kayitli olmali."""
+    dir_path = _tenant_design_dir(tenant_id)
+    pdf_path = dir_path / f"{design_id}.pdf"
+    if not pdf_path.exists():
+        return False
+    thumb_full = dir_path / f"{design_id}_thumb.png"
+    if thumb_full.exists():
+        return True
+    return _generate_pdf_thumbnail(pdf_path, thumb_full)
+
+
 def save_design_file(
     tenant_id,
     design_id,
     file_data: bytes,
     original_filename: str,
+    skip_thumbnail: bool = False,
 ) -> dict:
     """
     Tasarım dosyasını diske kaydet. PDF ise otomatik thumbnail üret.
@@ -103,9 +116,9 @@ def save_design_file(
 
     relative_path = f"tenants/{tenant_id}/designs/{filename}"
 
-    # PDF için thumbnail üret
+    # PDF için thumbnail üret (skip_thumbnail=True ise atla — background'da uretilecek)
     thumbnail_relative_path: str | None = None
-    if ext == "pdf":
+    if ext == "pdf" and not skip_thumbnail:
         thumb_filename = f"{design_id}_thumb.png"
         thumb_full = dir_path / thumb_filename
         if _generate_pdf_thumbnail(full_path, thumb_full):

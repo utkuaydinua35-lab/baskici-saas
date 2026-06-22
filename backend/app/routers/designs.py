@@ -7,6 +7,7 @@ import uuid
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -232,6 +233,7 @@ def get_design(
 
 @router.post("", response_model=None, status_code=status.HTTP_201_CREATED)
 async def create_design(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     store_id: uuid.UUID = Form(...),
     code: str = Form(..., min_length=1, max_length=50),
@@ -315,6 +317,7 @@ async def create_design(
         file_info = storage.save_design_file(
             tenant_id=user.tenant_id, design_id=design.id,
             file_data=file_data, original_filename=file.filename or "design",
+            skip_thumbnail=True,  # thumbnail arka planda uretilecek (hizli donus)
         )
     except ValueError as e:
         db.rollback()
@@ -333,6 +336,11 @@ async def create_design(
 
     db.commit()
     db.refresh(design)
+
+    # PDF thumbnail'i arka planda uret (yukleme bekletmesin)
+    if file_info["format"] == "pdf":
+        background_tasks.add_task(storage.generate_design_thumbnail, user.tenant_id, design.id)
+
     return _serialize(design)
 
 

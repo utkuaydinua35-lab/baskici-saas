@@ -259,12 +259,13 @@ def plan_molds(
             is_ko = (order_store_id, pid) in kop_keys if pid else False
 
             design = None
-            if is_ko:
-                if li.assigned_design_id and li.assigned_design:
-                    design = li.assigned_design
-                else:
-                    add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
-                    continue
+            # 1) Manuel/bayii/kisiye ozel: tasarim dogrudan atanmissa onu kullan
+            if li.assigned_design_id and li.assigned_design:
+                design = li.assigned_design
+            elif is_ko:
+                # Kisiye ozel ama tasarim henuz yuklenmemis
+                add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
+                continue
             else:
                 if pid:
                     _vid = str(li.variant_id) if getattr(li, "variant_id", None) else None

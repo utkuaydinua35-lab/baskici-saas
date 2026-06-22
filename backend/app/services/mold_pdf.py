@@ -119,6 +119,41 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
     return out
 
 
+def _make_clipped_image(src_path, w_pt, h_pt, radius):
+    """Ham gorseli (PNG/JPG) w×h sayfaya tam doldurarak koy + yuvarlak kose VEKTOR
+    clip uygula. Kisiye ozel tasarimlar (gorsel) icin — PDF'lerle ayni olcu/ovallik.
+    Donus: pdf bytes."""
+    tmp = fitz.open()
+    pg = tmp.new_page(width=w_pt, height=h_pt)
+    # Gorseli rect'i TAM doldur (keep_proportion=False) — sag-alt yaslama + dogru olcu
+    pg.insert_image(pg.rect, filename=str(src_path), keep_proportion=False)
+
+    if radius > 0:
+        rr = min(radius, w_pt / 2, h_pt / 2)
+        k = 0.5523 * rr
+        x0, x1 = 0.0, w_pt
+        pb, pt = 0.0, h_pt
+        ops = (
+            f"{x0+rr:.3f} {pb:.3f} m {x1-rr:.3f} {pb:.3f} l "
+            f"{x1-rr+k:.3f} {pb:.3f} {x1:.3f} {pb+rr-k:.3f} {x1:.3f} {pb+rr:.3f} c "
+            f"{x1:.3f} {pt-rr:.3f} l {x1:.3f} {pt-rr+k:.3f} {x1-rr+k:.3f} {pt:.3f} {x1-rr:.3f} {pt:.3f} c "
+            f"{x0+rr:.3f} {pt:.3f} l {x0+rr-k:.3f} {pt:.3f} {x0:.3f} {pt-rr+k:.3f} {x0:.3f} {pt-rr:.3f} c "
+            f"{x0:.3f} {pb+rr:.3f} l {x0:.3f} {pb+rr-k:.3f} {x0+rr-k:.3f} {pb:.3f} {x0+rr:.3f} {pb:.3f} c h W n "
+        )
+        xref = pg.get_contents()[0]
+        c = tmp.xref_stream(xref).decode("latin-1")
+        # Gorsel icin operator: " q ... /Im0 Do Q" — image XObject Do'dan once clip ekle
+        m = re.search(r" q\b", c)
+        if m:
+            ins = m.start() + len(" q")
+            c = c[:ins] + " " + ops + c[ins:]
+            tmp.update_stream(xref, c.encode("latin-1"))
+
+    out = tmp.tobytes(garbage=4, deflate=True)
+    tmp.close()
+    return out
+
+
 def render_mold_pdf(mold_items, template=None):
     """
     Kalıp slotlarından baskıya hazır PDF üret. Kalıcı vektör clip ile pürüzsüz
@@ -174,7 +209,11 @@ def render_mold_pdf(mold_items, template=None):
                 page.show_pdf_page(rect, clipped, 0)
                 clipped.close()
             else:
-                page.insert_image(rect, filename=str(path))
+                # Gorsel (PNG/JPG, kisiye ozel) — PDF ile ayni olcu/ovallik/yaslama
+                clipped_bytes = _make_clipped_image(path, rect.width, rect.height, radius)
+                clipped = fitz.open(stream=clipped_bytes, filetype="pdf")
+                page.show_pdf_page(rect, clipped, 0)
+                clipped.close()
             placed += 1
         except Exception as e:
             skipped.append({"slot": idx, "model": model, "reason": f"yerlestirme_hatasi: {e}"})

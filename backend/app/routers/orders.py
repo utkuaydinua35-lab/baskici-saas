@@ -582,6 +582,26 @@ def store_designs(
     }
 
 
+class KalipHaricIn(BaseModel):
+    haric: bool
+
+
+@router.patch("/{order_id}/kalip-haric", response_model=dict)
+def toggle_kalip_haric(
+    order_id: uuid.UUID,
+    body: KalipHaricIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparisi kalip olusturucudan haric tut / tekrar dahil et."""
+    o = db.scalar(select(Order).where(Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(status_code=404, detail="Siparis bulunamadi")
+    o.kalip_haric = bool(body.haric)
+    db.commit()
+    return {"ok": True, "kalip_haric": o.kalip_haric}
+
+
 @router.post("/manual", response_model=dict)
 def create_manual_order(
     req: ManualOrderRequest,

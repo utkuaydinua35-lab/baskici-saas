@@ -349,6 +349,10 @@ class Order(Base):
     is_iptal: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False, index=True
     )
+    # Kullanici tarafindan kalip olusturucuya dahil edilmesin diye isaretlendi
+    kalip_haric: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False, index=True
+    )
     internal_lists: Mapped[list] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
     )

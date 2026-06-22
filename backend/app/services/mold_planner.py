@@ -157,6 +157,7 @@ def plan_molds(
         .where(
             Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
+            Order.kalip_haric == False,  # noqa: E712  kullanici kaliptan haric tuttu
             # Sadece ACIK siparisler: kargoya verilmis (fulfilled) olanlar plana girmez
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
             # Iptal/iade edilenler plana girmez

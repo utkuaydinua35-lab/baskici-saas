@@ -744,8 +744,8 @@ def assignable_models(
         return " ".join(out)
 
     keys = []
-    if hasattr(cd, "MODEL_SPECS"):
-        keys = list(cd.MODEL_SPECS.keys())
+    if hasattr(cd, "_MODEL_SPECS"):
+        keys = list(cd._MODEL_SPECS.keys())
 
     seen = set()
     names = []

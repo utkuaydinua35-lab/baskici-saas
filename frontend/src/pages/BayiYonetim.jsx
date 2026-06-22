@@ -68,6 +68,7 @@ function BayiDialog({ dealer, onClose, onSaved }) {
     name: dealer.name || '', phone: dealer.phone || '', email: dealer.email || '',
     address: dealer.address || '', note: dealer.note || '',
     unit_price: dealer.unit_price ?? '', shipping_fee: dealer.shipping_fee ?? '',
+    currency: dealer.currency || 'TRY',
   })
   const [busy, setBusy] = useState(false)
   const set = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
@@ -102,12 +103,20 @@ function BayiDialog({ dealer, onClose, onSaved }) {
               : <input className="input w-full" value={f[k]} onChange={set(k)} />}
           </label>
         ))}
+        <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">Para Birimi</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setF(s => ({ ...s, currency: 'TRY' }))}
+              className={`flex-1 px-3 py-1.5 rounded text-sm border ${f.currency === 'TRY' ? 'bg-accent/20 border-accent text-accent' : 'bg-brand-input border-brand-border text-gray-400'}`}>₺ TL</button>
+            <button type="button" onClick={() => setF(s => ({ ...s, currency: 'USD' }))}
+              className={`flex-1 px-3 py-1.5 rounded text-sm border ${f.currency === 'USD' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'bg-brand-input border-brand-border text-gray-400'}`}>$ USD</button>
+          </div>
+        </label>
         <div className="grid grid-cols-2 gap-3 mb-2">
-          <label className="block"><span className="block text-xs text-gray-400 mb-1">Birim Fiyat ₺ *</span>
-            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01" value={f.unit_price} onChange={set('unit_price')} placeholder="örn. 120" />
+          <label className="block"><span className="block text-xs text-gray-400 mb-1">Birim Fiyat {f.currency === 'USD' ? '$' : '₺'} *</span>
+            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01" value={f.unit_price} onChange={set('unit_price')} placeholder={f.currency === 'USD' ? 'örn. 5' : 'örn. 120'} />
           </label>
-          <label className="block"><span className="block text-xs text-gray-400 mb-1">Kargo ₺ (0 = yok)</span>
-            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01" value={f.shipping_fee} onChange={set('shipping_fee')} placeholder="örn. 93" />
+          <label className="block"><span className="block text-xs text-gray-400 mb-1">Kargo {f.currency === 'USD' ? '$' : '₺'} (0 = yok)</span>
+            <input className="input w-full" type="number" inputMode="decimal" min="0" step="0.01" value={f.shipping_fee} onChange={set('shipping_fee')} placeholder={f.currency === 'USD' ? 'örn. 3' : 'örn. 93'} />
           </label>
         </div>
         <p className="text-[11px] text-gray-600 mb-3">Birim fiyat: ürün başına bayi fiyatı. Kargo sipariş başına eklenir (0 ise eklenmez).</p>

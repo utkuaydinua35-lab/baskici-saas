@@ -14,6 +14,8 @@ export default function NotesPage() {
   const [search, setSearch] = useState('')
   const saveTimer = useRef(null)
   const inputRefs = useRef({})
+  const [noteQuery, setNoteQuery] = useState('')
+  const [activeMatch, setActiveMatch] = useState(0)
 
   const load = async () => {
     try {
@@ -129,6 +131,28 @@ export default function NotesPage() {
     catch (e) { toast.error(e?.detail || 'Silinemedi') }
   }
 
+  const matches = useMemo(() => {
+    if (!noteQuery.trim()) return []
+    const q = noteQuery.toLowerCase()
+    return lines.map((l, i) => ((l.text || '').toLowerCase().includes(q) ? i : -1)).filter(i => i >= 0)
+  }, [lines, noteQuery])
+
+  useEffect(() => { setActiveMatch(0) }, [noteQuery, selId])
+
+  // Aktif eslesmeye scroll
+  useEffect(() => {
+    if (matches.length && matches[activeMatch] != null) {
+      const l = lines[matches[activeMatch]]
+      const el = l?.key && inputRefs.current[l.key]
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }
+  }, [activeMatch, matches])
+
+  const gotoMatch = (dir) => {
+    if (!matches.length) return
+    setActiveMatch(m => (m + dir + matches.length) % matches.length)
+  }
+
   const filtered = useMemo(() => {
     if (!search) return notes
     const q = search.toLowerCase()
@@ -194,6 +218,25 @@ export default function NotesPage() {
                   Guncelleme: {new Date(detail.updated_at).toLocaleString('tr-TR')}
                 </p>
               )}
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  value={noteQuery}
+                  onChange={e => setNoteQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); gotoMatch(e.shiftKey ? -1 : 1) } }}
+                  placeholder="Not icinde ara..."
+                  className="input !text-xs !py-1 w-48" />
+                {noteQuery.trim() && (
+                  <div className="flex items-center gap-1 text-[11px] text-gray-400">
+                    <span>{matches.length ? `${activeMatch + 1}/${matches.length}` : '0/0'}</span>
+                    <button onClick={() => gotoMatch(-1)} disabled={!matches.length}
+                      className="px-1.5 py-0.5 rounded bg-brand-input hover:text-gray-100 disabled:opacity-30" title="Onceki">↑</button>
+                    <button onClick={() => gotoMatch(1)} disabled={!matches.length}
+                      className="px-1.5 py-0.5 rounded bg-brand-input hover:text-gray-100 disabled:opacity-30" title="Sonraki">↓</button>
+                    <button onClick={() => setNoteQuery('')}
+                      className="px-1.5 py-0.5 rounded bg-brand-input hover:text-gray-100" title="Temizle">×</button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-0.5">
@@ -201,11 +244,17 @@ export default function NotesPage() {
                 <div onClick={() => addLineAfter(-1)}
                   className="text-sm text-gray-600 cursor-text py-2">Yazmaya basla...</div>
               ) : (
-                lines.map((l, idx) => (
-                  <LineRow key={l.key || idx} line={l} idx={idx}
-                    onToggle={toggleCheck} onEdit={editText} onKeyDown={onKeyDown}
-                    inputRef={el => { if (l.key) inputRefs.current[l.key] = el }} />
-                ))
+                lines.map((l, idx) => {
+                  const mi = matches.indexOf(idx)
+                  const isMatch = mi >= 0
+                  const isActive = isMatch && mi === activeMatch
+                  return (
+                    <LineRow key={l.key || idx} line={l} idx={idx}
+                      highlight={isActive ? 'active' : isMatch ? 'match' : null}
+                      onToggle={toggleCheck} onEdit={editText} onKeyDown={onKeyDown}
+                      inputRef={el => { if (l.key) inputRefs.current[l.key] = el }} />
+                  )
+                })
               )}
             </div>
           </div>
@@ -215,7 +264,7 @@ export default function NotesPage() {
   )
 }
 
-function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef }) {
+function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef, highlight }) {
   const isTarih = line.kind === 'tarih'
   const isSiparis = line.kind === 'siparis'
   const isAyrac = line.kind === 'ayrac'
@@ -233,8 +282,9 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef }) {
   if (isAyrac && !line.text) {
     return <div className="h-2" />
   }
+  const hlClass = highlight === 'active' ? 'bg-amber-400/30 rounded' : highlight === 'match' ? 'bg-amber-400/10 rounded' : ''
   return (
-    <div className="flex items-start gap-2 group">
+    <div className={`flex items-start gap-2 group ${hlClass}`}>
       <button onClick={() => onToggle(idx)}
         className={`mt-0.5 shrink-0 w-4 text-center cursor-pointer hover:scale-110 transition-transform ${line.checked ? 'text-emerald-400' : 'text-gray-600'}`}
         title={line.checked ? 'Isaretli (tikla: kaldir)' : 'Isaretle'}>

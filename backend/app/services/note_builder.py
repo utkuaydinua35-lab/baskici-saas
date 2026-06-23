@@ -191,12 +191,34 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
         # ana magaza notu: bayii siparislerini disla
         orders = [o for o in orders if not (o.raw or {}).get("dealer_id")]
 
-    # MoldItem kalip kodlarini topla (line_item_id -> kalip_kodu)
-    li_ids = [li.id for o in orders for li in (o.line_items or [])]
-    mold_map: dict = {}
-    if li_ids:
-        for mi in db.scalars(select(MoldItem).where(MoldItem.line_item_id.in_(li_ids))).all():
-            mold_map[mi.line_item_id] = mi.kalip_kodu
+    # Kalip kodu eslestirme: MoldItem (line_item_id COGU ZAMAN None) -> order_number + design_code ile esle.
+    # Kisa kod (K3/L6): Mold.kod "K3-K7-L6" + Mold.kalip_kodlari [grup1,grup2,grup3] paralel listeler.
+    # MoldItem.kalip_kodu (grup) -> Mold.kalip_kodlari index -> Mold.kod.split("-")[index].
+    from app.models import Mold as _Mold
+    order_numbers = [o.order_number for o in orders if o.order_number]
+    mold_map: dict = {}          # (order_number, design_code) -> kisa kod
+    mold_map_om: dict = {}       # order_number -> herhangi bir kisa kod (design eslesmezse)
+    if order_numbers:
+        mis = db.scalars(select(MoldItem).where(MoldItem.order_number.in_(order_numbers))).all()
+        # mold_id -> (kod_listesi, grup_listesi) cache
+        mold_cache: dict = {}
+        for mi in mis:
+            if mi.mold_id not in mold_cache:
+                md = db.get(_Mold, mi.mold_id)
+                kodlar = (md.kod or "").split("-") if md and md.kod else []
+                gruplar = md.kalip_kodlari if md and md.kalip_kodlari else []
+                mold_cache[mi.mold_id] = (kodlar, gruplar)
+            kodlar, gruplar = mold_cache[mi.mold_id]
+            kisa = None
+            if mi.kalip_kodu in gruplar:
+                idx = gruplar.index(mi.kalip_kodu)
+                if idx < len(kodlar):
+                    kisa = kodlar[idx]
+            if kisa:
+                if mi.order_number and mi.design_code:
+                    mold_map[(str(mi.order_number), str(mi.design_code))] = kisa
+                if mi.order_number:
+                    mold_map_om[str(mi.order_number)] = kisa
 
     # gune gore grupla
     gunler_map: dict = {}  # sira_key -> {"tarih": gorunen, "siparisler": []}
@@ -222,7 +244,17 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
             sira += 1
             model = _model_from_props(li) or "?"
             tasarim, uyari = _tasarim_str(li, li.assigned_design)
-            kk = mold_map.get(li.id)
+            # Kalip kodu: once (order_number, design_code), sonra order_number fallback
+            _dcode = None
+            if li.assigned_design and li.assigned_design.code:
+                _dcode = str(li.assigned_design.code)
+            kk = None
+            if _dcode:
+                kk = mold_map.get((str(o.order_number), _dcode))
+            if not kk:
+                kk = mold_map_om.get(str(o.order_number))
+            # Siparis gonderildi mi (✅ = fulfilled)
+            gonderildi = (o.fulfillment_status == "fulfilled")
             kalemler.append({
                 "line_item_id": str(li.id),
                 "sira": sira,
@@ -230,7 +262,7 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                 "tasarim": tasarim,
                 "kalip_kodu": kk,  # None ise "henuz kaliba eklenmedi"
                 "kaliba_eklendi": bool(li.is_kaliba_eklendi),
-                "hazir": bool(li.is_hazir),
+                "hazir": gonderildi,  # ✅ = siparis gonderildi
                 "uyari": uyari,
             })
 

@@ -77,16 +77,16 @@ export default function NotesPage() {
     } catch (e) { toast.error('Guncellenemedi') }
   }
 
-  // Satir metni degis
-  const editText = (idx, text) => {
-    updateLines(lines.map((l, i) => i === idx ? { ...l, text } : l))
+  // Satir metni degis (html: zengin icerik, text: duz metin arama icin)
+  const editText = (idx, html, text) => {
+    updateLines(lines.map((l, i) => i === idx ? { ...l, html, text } : l))
   }
 
   // Enter -> yeni elle satir (idx'ten sonra)
   const addLineAfter = (idx) => {
     const newKey = `elle:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`
     const nl = [...lines]
-    nl.splice(idx + 1, 0, { key: newKey, text: '', checked: false, kind: 'elle', line_item_id: null, order_id: null, uyari: null })
+    nl.splice(idx + 1, 0, { key: newKey, text: '', html: '', checked: false, kind: 'elle', line_item_id: null, order_id: null, uyari: null })
     updateLines(nl)
     setTimeout(() => inputRefs.current[newKey]?.focus(), 30)
   }
@@ -99,7 +99,7 @@ export default function NotesPage() {
     updateLines(nl)
     if (prev?.key) setTimeout(() => {
       const el = inputRefs.current[prev.key]
-      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length) }
+      if (el) { el.focus(); const sel = window.getSelection(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.removeAllRanges(); sel.addRange(r) }
     }, 30)
   }
 
@@ -107,7 +107,7 @@ export default function NotesPage() {
     if (e.key === 'Enter') {
       e.preventDefault()
       addLineAfter(idx)
-    } else if (e.key === 'Backspace' && lines[idx].text === '') {
+    } else if (e.key === 'Backspace' && !(lines[idx].text || '').trim()) {
       e.preventDefault()
       removeLine(idx)
     }
@@ -237,6 +237,7 @@ export default function NotesPage() {
                   </div>
                 )}
               </div>
+              <FormatToolbar onSaveSoon={() => scheduleSave(lines)} />
             </div>
 
             <div className="space-y-0.5">
@@ -264,21 +265,25 @@ export default function NotesPage() {
   )
 }
 
+function escapeHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef, highlight }) {
   const isTarih = line.kind === 'tarih'
   const isSiparis = line.kind === 'siparis'
   const isAyrac = line.kind === 'ayrac'
   const taRef = useRef(null)
+  const focused = useRef(false)
 
-  // Auto-resize: icerik kadar yukseklik (uzun metin alt satira sarar)
-  const autoSize = (el) => {
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = el.scrollHeight + 'px'
-  }
-  useEffect(() => { autoSize(taRef.current) }, [line.text])
+  // Dis kaynak degisince (Yenile vb.) innerHTML guncelle — odakta degilse
+  useEffect(() => {
+    const el = taRef.current
+    if (!el || focused.current) return
+    const html = line.html || escapeHtml(line.text)
+    if (el.innerHTML !== html) el.innerHTML = html
+  }, [line.html, line.text])
 
-  // Ayrac (bos satir) — ince bosluk
   if (isAyrac && !line.text) {
     return <div className="h-2" />
   }
@@ -288,20 +293,54 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef, highlight }
       <button onClick={() => onToggle(idx)}
         className={`mt-0.5 shrink-0 w-4 text-center cursor-pointer hover:scale-110 transition-transform ${line.checked ? 'text-emerald-400' : 'text-gray-600'}`}
         title={line.checked ? 'Isaretli (tikla: kaldir)' : 'Isaretle'}>
-        {line.checked ? '\u2611' : '\u2610'}
+        {line.checked ? '☑' : '☐'}
       </button>
       {line.uyari && (
         <span className="mt-1 text-[11px] text-amber-500/80 shrink-0" title={line.uyari}>!</span>
       )}
-      <textarea
+      <div
         ref={el => { taRef.current = el; if (inputRef) inputRef(el) }}
-        value={line.text}
-        rows={1}
-        onChange={e => { onEdit(idx, e.target.value); autoSize(e.target) }}
+        contentEditable
+        suppressContentEditableWarning
+        onFocus={() => { focused.current = true }}
+        onBlur={() => { focused.current = false }}
+        onInput={e => onEdit(idx, e.currentTarget.innerHTML, e.currentTarget.textContent)}
         onKeyDown={e => onKeyDown(e, idx)}
-        className={`flex-1 min-w-0 bg-transparent border-none outline-none resize-none overflow-hidden text-sm leading-relaxed py-0.5 break-words
+        className={`flex-1 min-w-0 bg-transparent border-none outline-none text-sm leading-relaxed py-0.5 break-words
           ${isTarih ? 'font-bold text-gray-100' : isSiparis ? 'font-medium text-gray-100' : 'text-gray-300'}
           ${line.checked ? 'line-through text-gray-500' : ''}`} />
+    </div>
+  )
+}
+
+function FormatToolbar({ onSaveSoon }) {
+  const btn = (cmd, arg, label, title) => (
+    <button
+      onMouseDown={e => { e.preventDefault(); document.execCommand(cmd, false, arg); onSaveSoon?.() }}
+      className="px-2 py-0.5 rounded text-xs hover:bg-brand-input text-gray-400 hover:text-gray-100"
+      title={title}>{label}</button>
+  )
+  const clr = (color) => (
+    <button
+      onMouseDown={e => { e.preventDefault(); document.execCommand('foreColor', false, color); onSaveSoon?.() }}
+      className="w-4 h-4 rounded-full border border-brand-border hover:scale-110 transition-transform"
+      style={{ background: color }} />
+  )
+  return (
+    <div className="flex items-center gap-1 flex-wrap mt-2 p-1.5 rounded-lg bg-brand-bg/60 border border-brand-border">
+      {btn('bold', null, 'B', 'Kalin')}
+      {btn('underline', null, 'U', 'Altcizgi')}
+      {btn('italic', null, 'I', 'Italik')}
+      {btn('fontSize', '5', 'A+', 'Buyut')}
+      {btn('fontSize', '2', 'A-', 'Kucult')}
+      <div className="w-px h-4 bg-brand-border mx-0.5" />
+      {clr('#f87171')}
+      {clr('#fb923c')}
+      {clr('#facc15')}
+      {clr('#4ade80')}
+      {clr('#60a5fa')}
+      <div className="w-px h-4 bg-brand-border mx-0.5" />
+      {btn('removeFormat', null, 'T', 'Bicimi temizle')}
     </div>
   )
 }

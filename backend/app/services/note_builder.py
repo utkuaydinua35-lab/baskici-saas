@@ -199,10 +199,11 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
             mold_map[mi.line_item_id] = mi.kalip_kodu
 
     # gune gore grupla
-    gunler_map: dict = defaultdict(list)
+    gunler_map: dict = {}  # sira_key -> {"tarih": gorunen, "siparisler": []}
     for o in orders:
         dt = o.created_at_platform
         tarih = dt.strftime("%d.%m") if dt else "??.??"
+        sira_key = dt.date().isoformat() if dt else "9999-99-99"  # gercek tarih siralamasi icin
         raw = o.raw or {}
         cust = raw.get("customer") or {}
         musteri = ""
@@ -233,7 +234,9 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                 "uyari": uyari,
             })
 
-        gunler_map[tarih].append({
+        if sira_key not in gunler_map:
+            gunler_map[sira_key] = {"tarih": tarih, "siparisler": []}
+        gunler_map[sira_key]["siparisler"].append({
             "order_id": str(o.id),
             "order_number": o.order_number,
             "musteri": musteri,
@@ -244,8 +247,8 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
 
     # gunleri sirali liste yap (tarihe gore — string ama gun.ay formatinda)
     gunler = []
-    for tarih in sorted(gunler_map.keys()):
-        gunler.append({"tarih": tarih, "siparisler": gunler_map[tarih]})
+    for sk in sorted(gunler_map.keys()):  # ISO tarih -> eskiden yeniye dogru
+        gunler.append({"tarih": gunler_map[sk]["tarih"], "siparisler": gunler_map[sk]["siparisler"]})
 
     return {"gunler": gunler, "siparis_sayisi": len(orders)}
 

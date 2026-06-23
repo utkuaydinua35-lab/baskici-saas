@@ -269,7 +269,7 @@ function NoteGroup({ title, items, selId, onSel, onPin, onDel }) {
             }`}>
             <div className="min-w-0">
               <div className="text-xs font-medium truncate flex items-center gap-1">
-                {n.pinned && <span className="text-amber-400">*</span>}
+                {n.pinned && <span className="text-amber-400">📌</span>}
                 {n.baslik}
               </div>
               {n.siparis_sayisi != null && !n.is_serbest && (
@@ -278,10 +278,10 @@ function NoteGroup({ title, items, selId, onSel, onPin, onDel }) {
             </div>
             <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
               <button onClick={(e) => { e.stopPropagation(); onPin(n) }}
-                className="text-[10px] px-1 hover:text-amber-400" title="Sabitle">P</button>
+                className="text-xs px-1 hover:text-amber-400" title="Sabitle">📌</button>
               {onDel && (
                 <button onClick={(e) => { e.stopPropagation(); onDel(n) }}
-                  className="text-[10px] px-1 hover:text-red-400" title="Sil">X</button>
+                  className="text-xs px-1 hover:text-red-400" title="Sil">🗑️</button>
               )}
             </div>
           </div>

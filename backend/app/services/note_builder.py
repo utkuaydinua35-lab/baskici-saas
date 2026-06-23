@@ -97,6 +97,74 @@ def _tasarim_str(li: LineItem, design: Design | None) -> tuple[str, str | None]:
     return "", "tasarim atanmadi"
 
 
+def _kalem_satir_text(k: dict) -> str:
+    """Kalem dict -> tek satir metin: '1 - Galaxy S23 \"reverentia - b325\"-L9'."""
+    if k.get("kalip_kodu"):
+        kk = f'-{k["kalip_kodu"]}'
+    else:
+        kk = " (henuz kaliba eklenmedi)"
+    tas = k.get("tasarim") or ""
+    tas_part = f' "{tas}"' if tas else ' "?"'
+    return f'{k["sira"]} - {k.get("model","?")}{tas_part}{kk}'
+
+
+def build_note_lines(db: Session, tenant_id, store_id=None, dealer_id=None, gonderilmis: bool = False) -> list:
+    """Siparisleri SATIR listesine cevir (checklist editoru icin).
+    Her satir: {key, text, checked, kind, line_item_id, order_id, uyari}.
+    kind: 'tarih' | 'siparis' | 'kalem' | 'ayrac'. (elle satirlar frontend/merge'de eklenir)
+    key: auto satirlar icin stabil kimlik (merge'de checked korumak icin)."""
+    content = build_note_content(db, tenant_id, store_id=store_id, dealer_id=dealer_id, gonderilmis=gonderilmis)
+    lines = []
+    for gun in content.get("gunler", []):
+        lines.append({
+            "key": f'tarih:{gun["tarih"]}',
+            "text": gun["tarih"], "checked": False, "kind": "tarih",
+            "line_item_id": None, "order_id": None, "uyari": None,
+        })
+        for sip in gun["siparisler"]:
+            basl = f'{sip["order_number"]} - {sip["musteri"]} - {sip["toplam"]} ADET'
+            if sip.get("not"):
+                basl += f' ({sip["not"]})'
+            lines.append({
+                "key": f'siparis:{sip["order_id"]}',
+                "text": basl, "checked": False, "kind": "siparis",
+                "line_item_id": None, "order_id": sip["order_id"], "uyari": None,
+            })
+            for k in sip["kalemler"]:
+                lines.append({
+                    "key": f'kalem:{k["line_item_id"]}',
+                    "text": _kalem_satir_text(k),
+                    "checked": bool(k.get("hazir")),
+                    "kind": "kalem",
+                    "line_item_id": k["line_item_id"],
+                    "order_id": sip["order_id"],
+                    "uyari": k.get("uyari"),
+                })
+            lines.append({
+                "key": f'ayrac:{sip["order_id"]}',
+                "text": "", "checked": False, "kind": "ayrac",
+                "line_item_id": None, "order_id": None, "uyari": None,
+            })
+    return lines
+
+
+def merge_lines(yeni_auto: list, mevcut: list) -> list:
+    """Yenile mantigi: auto satirlari guncelle (text yenilensin), elle satirlari koru.
+    checked: auto kalemlerde line_item is_hazir'dan gelir (yeni_auto'da hazir); elle satirlar kendi checked'ini korur.
+    Sira: auto satirlar once (yeni siralamayla), elle satirlar sona eklenir (var olan sirayla)."""
+    if not mevcut:
+        return yeni_auto
+    # mevcut'taki elle (kind='elle') satirlari topla
+    elle = [l for l in mevcut if l.get("kind") == "elle"]
+    # mevcut auto satirlarin checked durumunu key ile esle (elle isaretledikleri korunsun)
+    mevcut_checked = {l.get("key"): l.get("checked") for l in mevcut if l.get("kind") != "elle"}
+    # yeni auto: kalem checked'i is_hazir'dan gelir (yeni_auto zaten dogru); diger satirlar mevcut checked korunur
+    for l in yeni_auto:
+        if l["kind"] != "kalem" and l.get("key") in mevcut_checked:
+            l["checked"] = mevcut_checked[l["key"]]
+    return yeni_auto + elle
+
+
 def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, gonderilmis: bool = False) -> dict:
     """Bir magaza/bayii icin not icerigini (auto_content) uret.
     gonderilmis=False -> acik siparisler, True -> gonderilmis siparisler."""

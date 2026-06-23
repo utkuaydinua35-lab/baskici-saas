@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardPage from './pages/DashboardPage'
 import DesignsPage from './pages/DesignsPage'
+import NotesPage from './pages/NotesPage'
 import KisiyeOzelPage from './pages/KisiyeOzelPage'
 import LoginPage from './pages/LoginPage'
 import OrderDetailPage from './pages/OrderDetailPage'
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/ayarlar" element={<SettingsPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+          <Route path="/notlar" element={<NotesPage />} />
           <Route path="/aski" element={<AskiPage />} />
           <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />
           <Route path="/stok" element={<StockPage />} />

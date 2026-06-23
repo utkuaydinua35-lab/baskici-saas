@@ -378,6 +378,7 @@ function NavLinks({ onNavigate }) {
       <I to="/orders" label="Siparişler" icon="📦" perm="siparisler" />
       <I to="/paketleme" label="Paketleme" icon="🏷️" perm="paketleme" />
       <I to="/destek" label="Destek" icon="🎧" perm="destek" />
+      <I to="/notlar" label="Notlar" icon="📝" perm="siparisler" />
 
       <Section label="BAYİ YÖNETİMİ" perms={['bayii']} />
       <I to="/bayiler" label="Bayiler" icon="🤝" perm="bayii" />

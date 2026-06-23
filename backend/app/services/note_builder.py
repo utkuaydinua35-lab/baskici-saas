@@ -52,6 +52,9 @@ def _model_from_props(li: LineItem) -> str | None:
     for key in ("Apple Model", "Samsung Model", "Xiaomi Model", "Model", "Telefon Modeli"):
         if by_name.get(key):
             return by_name[key]
+    # variant_title fallback (Lunera/Casiva: model variant_title'da, orn "iPhone 16 Pro")
+    if li.variant_title and li.variant_title.strip():
+        return li.variant_title.strip()
     # device_model_override fallback
     if li.device_model_override:
         return li.device_model_override
@@ -148,6 +151,7 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
             tasarim, uyari = _tasarim_str(li, li.assigned_design)
             kk = mold_map.get(li.id)
             kalemler.append({
+                "line_item_id": str(li.id),
                 "sira": sira,
                 "model": model,
                 "tasarim": tasarim,

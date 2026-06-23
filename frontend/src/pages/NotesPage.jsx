@@ -48,9 +48,46 @@ export default function NotesPage() {
   const saveManual = async () => {
     try {
       const d = await api.patch(`/api/notes/${selId}`, { manual_content: manualDraft })
-      setDetail(d); setEditMode(false)
+      setDetail(d)
       toast.success('Not kaydedildi')
     } catch (e) { toast.error('Kaydedilemedi') }
+  }
+
+  // Otomatik kaydet (debounce yok, blur'da) — elle not her zaman acik
+  const saveManualSilent = async (val) => {
+    try {
+      await api.patch(`/api/notes/${selId}`, { manual_content: val })
+    } catch (e) { /* sessiz */ }
+  }
+
+  // Kaleme tikla -> o urunun is_hazir durumunu degistir (✅)
+  const toggleHazir = async (orderId, lineItemId, mevcut) => {
+    // optimistik UI: detail'i guncelle
+    setDetail(d => {
+      if (!d?.auto_content?.gunler) return d
+      const nd = JSON.parse(JSON.stringify(d))
+      for (const g of nd.auto_content.gunler)
+        for (const s of g.siparisler)
+          for (const k of s.kalemler)
+            if (k.line_item_id === lineItemId) k.hazir = !mevcut
+      return nd
+    })
+    try {
+      await api.patch(`/api/orders/${orderId}/line-items/${lineItemId}`, {
+        fields_to_update: ['is_hazir'], is_hazir: !mevcut,
+      })
+    } catch (e) {
+      toast.error('Guncellenemedi')
+      // geri al
+      setDetail(d => {
+        const nd = JSON.parse(JSON.stringify(d))
+        for (const g of nd.auto_content.gunler)
+          for (const s of g.siparisler)
+            for (const k of s.kalemler)
+              if (k.line_item_id === lineItemId) k.hazir = mevcut
+        return nd
+      })
+    }
   }
 
   const togglePin = async (n) => {
@@ -167,7 +204,7 @@ export default function NotesPage() {
                     </div>
                     <div className="space-y-3 pl-1">
                       {gun.siparisler.map((sip, si) => (
-                        <SiparisBlok key={si} sip={sip} />
+                        <SiparisBlok key={si} sip={sip} onToggleHazir={toggleHazir} />
                       ))}
                     </div>
                   </div>
@@ -242,7 +279,7 @@ function NoteGroup({ title, items, selId, onSel, onPin, onDel }) {
   )
 }
 
-function SiparisBlok({ sip }) {
+function SiparisBlok({ sip, onToggleHazir }) {
   return (
     <div className="text-sm">
       <div className="text-gray-100 font-medium mb-1">
@@ -252,9 +289,12 @@ function SiparisBlok({ sip }) {
       <div className="space-y-0.5 pl-1">
         {sip.kalemler.map((k, ki) => (
           <div key={ki} className="flex items-center gap-1.5 text-[13px]">
-            <span className={`shrink-0 ${k.kaliba_eklendi ? 'text-emerald-400' : 'text-gray-600'}`}>
-              {k.kaliba_eklendi ? '☑' : '☐'}
-            </span>
+            <button
+              onClick={() => onToggleHazir?.(sip.order_id, k.line_item_id, k.hazir)}
+              className={`shrink-0 cursor-pointer hover:scale-110 transition-transform ${k.hazir ? 'text-emerald-400' : 'text-gray-600'}`}
+              title={k.hazir ? 'Hazir (tikla: geri al)' : 'Hazir degil (tikla: hazir isaretle)'}>
+              {k.hazir ? '☑' : '☐'}
+            </button>
             <span className="text-gray-400">{k.sira} -</span>
             <span className="text-gray-200">{k.model}</span>
             {k.tasarim && <span className="text-accent">"{k.tasarim}"</span>}

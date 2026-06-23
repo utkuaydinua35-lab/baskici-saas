@@ -219,7 +219,17 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef }) {
   const isTarih = line.kind === 'tarih'
   const isSiparis = line.kind === 'siparis'
   const isAyrac = line.kind === 'ayrac'
-  // Ayrac (bos satir) — ince bosluk, checkbox yok ama yine de satir
+  const taRef = useRef(null)
+
+  // Auto-resize: icerik kadar yukseklik (uzun metin alt satira sarar)
+  const autoSize = (el) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }
+  useEffect(() => { autoSize(taRef.current) }, [line.text])
+
+  // Ayrac (bos satir) — ince bosluk
   if (isAyrac && !line.text) {
     return <div className="h-2" />
   }
@@ -230,16 +240,18 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef }) {
         title={line.checked ? 'Isaretli (tikla: kaldir)' : 'Isaretle'}>
         {line.checked ? '\u2611' : '\u2610'}
       </button>
-      <input
-        ref={inputRef}
+      {line.uyari && (
+        <span className="mt-1 text-[11px] text-amber-500/80 shrink-0" title={line.uyari}>!</span>
+      )}
+      <textarea
+        ref={el => { taRef.current = el; if (inputRef) inputRef(el) }}
         value={line.text}
-        onChange={e => onEdit(idx, e.target.value)}
+        rows={1}
+        onChange={e => { onEdit(idx, e.target.value); autoSize(e.target) }}
         onKeyDown={e => onKeyDown(e, idx)}
-        className={`flex-1 bg-transparent border-none outline-none text-sm leading-relaxed py-0.5
+        className={`flex-1 min-w-0 bg-transparent border-none outline-none resize-none overflow-hidden text-sm leading-relaxed py-0.5 break-words
           ${isTarih ? 'font-bold text-gray-100' : isSiparis ? 'font-medium text-gray-100' : 'text-gray-300'}
-          ${line.checked ? 'line-through text-gray-500' : ''}`}
-        placeholder={line.kind === 'elle' ? '' : ''} />
-      {line.uyari && <span className="mt-0.5 text-[11px] text-amber-500/80 shrink-0" title={line.uyari}>!</span>}
+          ${line.checked ? 'line-through text-gray-500' : ''}`} />
     </div>
   )
 }

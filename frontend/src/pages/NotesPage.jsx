@@ -56,8 +56,9 @@ export default function NotesPage() {
   // Otomatik kaydet (debounce yok, blur'da) — elle not her zaman acik
   const saveManualSilent = async (val) => {
     try {
-      await api.patch(`/api/notes/${selId}`, { manual_content: val })
-    } catch (e) { /* sessiz */ }
+      const d = await api.patch(`/api/notes/${selId}`, { manual_content: val })
+      setDetail(prev => prev ? { ...prev, manual_content: val } : prev)
+    } catch (e) { toast.error('Not kaydedilemedi') }
   }
 
   // Kaleme tikla -> o urunun is_hazir durumunu degistir (✅)
@@ -185,12 +186,7 @@ export default function NotesPage() {
                   </p>
                 )}
               </div>
-              {!detail.is_serbest && (
-                <button onClick={() => setEditMode(m => !m)}
-                  className="text-xs px-2.5 py-1 rounded bg-brand-input text-gray-300 hover:text-gray-100 shrink-0">
-                  {editMode ? 'Vazgec' : '✏️ Elle Not Ekle'}
-                </button>
-              )}
+              {/* APPLE_NOTES_INLINE_EDIT: buton kaldirildi, asagida her zaman duzenlenebilir */}
             </div>
 
             {/* Otomatik icerik (siparisler) */}
@@ -212,30 +208,19 @@ export default function NotesPage() {
               </div>
             )}
 
-            {detail.is_serbest && !detail.auto_content?.gunler?.length && !editMode && (
-              <div className="whitespace-pre-wrap text-sm text-gray-300 leading-relaxed mb-4">
-                {detail.manual_content || <span className="text-gray-600">Bos not. Duzenlemek icin asagidan yaz.</span>}
-              </div>
-            )}
-
-            {/* Elle eklenen not (manual_content) */}
-            {!detail.is_serbest && detail.manual_content && !editMode && (
-              <div className="border-t border-brand-border pt-4 mt-4">
-                <p className="text-[11px] text-gray-500 mb-2 uppercase tracking-wide">Elle Eklenen Not</p>
-                <div className="whitespace-pre-wrap text-sm text-gray-300 leading-relaxed">{detail.manual_content}</div>
-              </div>
-            )}
-
-            {(editMode || (detail.is_serbest && !detail.auto_content?.gunler?.length)) && (
-              <div className="border-t border-brand-border pt-4 mt-4">
-                <textarea value={manualDraft} onChange={e => setManualDraft(e.target.value)}
-                  rows={8} placeholder="Elle not ekle..."
-                  className="input w-full !text-sm font-mono leading-relaxed" />
-                <div className="flex justify-end gap-2 mt-2">
-                  <button onClick={saveManual} className="btn-primary !text-sm">Kaydet</button>
-                </div>
-              </div>
-            )}
+            {/* APPLE_NOTES_TEXTAREA: her zaman acik, blur'da otomatik kaydet */}
+            <div className={detail.auto_content?.gunler?.length ? "border-t border-brand-border pt-4 mt-4" : ""}>
+              {!detail.is_serbest && (
+                <p className="text-[11px] text-gray-500 mb-2 uppercase tracking-wide">Elle Not (otomatik kaydedilir)</p>
+              )}
+              <textarea
+                value={manualDraft}
+                onChange={e => setManualDraft(e.target.value)}
+                onBlur={() => { if (manualDraft !== (detail.manual_content || '')) saveManualSilent(manualDraft) }}
+                rows={detail.is_serbest && !detail.auto_content?.gunler?.length ? 14 : 6}
+                placeholder={detail.is_serbest ? "Notunu yaz..." : "Bu nota elle ekleme yap (tikla ve yaz)..."}
+                className="input w-full !text-sm leading-relaxed" />
+            </div>
           </div>
         )}
       </main>

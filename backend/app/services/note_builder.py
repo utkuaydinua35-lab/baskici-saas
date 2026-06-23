@@ -48,8 +48,12 @@ def _model_from_props(li: LineItem) -> str | None:
         n = p.get("name") if isinstance(p, dict) else None
         if n and not n.startswith("_"):
             by_name[n] = p.get("value")
-    # Once spesifik model alanlari
-    for key in ("Apple Model", "Samsung Model", "Xiaomi Model", "Model", "Telefon Modeli"):
+    # 1) "X Model" formatindaki herhangi bir anahtar (Apple/Samsung/Xiaomi/Poco/Huawei/Oppo/vivo/Realme...)
+    for name, val in by_name.items():
+        if name.strip().lower().endswith("model") and val and str(val).strip():
+            return str(val).strip()
+    # 2) genel "Model"/"Telefon Modeli"
+    for key in ("Model", "Telefon Modeli", "Telefon", "Phone Model"):
         if by_name.get(key):
             return by_name[key]
     # variant_title fallback (Lunera/Casiva: model variant_title'da, orn "iPhone 16 Pro")

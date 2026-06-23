@@ -1033,6 +1033,8 @@ class Note(Base):
     auto_content: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     # Kullanicinin elle ekledigi serbest metin (korunur, otomatik ureten ezmez)
     manual_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Satir-tabanli checklist icerigi: [{key,text,checked,kind,line_item_id,order_id,uyari}]
+    lines: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     is_serbest: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 

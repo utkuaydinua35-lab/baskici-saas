@@ -33,13 +33,12 @@ def _ser(n: Note, detay: bool = False) -> dict:
         "updated_at": n.updated_at.isoformat() if n.updated_at else None,
     }
     if detay:
-        d["auto_content"] = n.auto_content or {}
+        d["lines"] = n.lines or []
         d["manual_content"] = n.manual_content
-        d["auto_text"] = note_builder.render_note_text(n.auto_content or {})
     else:
-        # ozet: siparis sayisi
-        ac = n.auto_content or {}
-        d["siparis_sayisi"] = ac.get("siparis_sayisi", 0)
+        # ozet: kalem (sipari urunu) sayisi
+        ln = n.lines or []
+        d["siparis_sayisi"] = sum(1 for l in ln if l.get("kind") == "siparis")
     return d
 
 
@@ -81,7 +80,7 @@ def refresh_notes(
 
     def upsert(store_id, dealer_id, note_type, baslik, gonderilmis):
         nonlocal olusturulan, guncellenen
-        content = note_builder.build_note_content(
+        yeni_lines = note_builder.build_note_lines(
             db, tid, store_id=store_id, dealer_id=dealer_id, gonderilmis=gonderilmis
         )
         q = select(Note).where(Note.tenant_id == tid, Note.note_type == note_type, Note.is_serbest == False)  # noqa: E712
@@ -95,13 +94,13 @@ def refresh_notes(
             q = q.where(Note.dealer_id.is_(None))
         existing = db.scalar(q)
         if existing:
-            existing.auto_content = content
+            existing.lines = note_builder.merge_lines(yeni_lines, existing.lines or [])
             existing.baslik = baslik
             guncellenen += 1
         else:
             db.add(Note(
                 tenant_id=tid, store_id=store_id, dealer_id=dealer_id,
-                note_type=note_type, baslik=baslik, auto_content=content, is_serbest=False,
+                note_type=note_type, baslik=baslik, lines=yeni_lines, is_serbest=False,
             ))
             olusturulan += 1
 
@@ -121,6 +120,63 @@ def refresh_notes(
 
     db.commit()
     return {"ok": True, "olusturulan": olusturulan, "guncellenen": guncellenen}
+
+
+class LinesIn(BaseModel):
+    lines: list
+
+
+@router.patch("/{note_id}/lines", response_model=None)
+def update_lines(
+    note_id: uuid.UUID,
+    body: LinesIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kullanicinin duzenledigi satir listesini kaydet (serbest yazi + checkbox)."""
+    n = db.scalar(select(Note).where(Note.id == note_id, Note.tenant_id == user.tenant_id))
+    if not n:
+        raise HTTPException(status_code=404, detail="Not bulunamadi")
+    n.lines = body.lines or []
+    db.commit()
+    return _ser(n, detay=True)
+
+
+class ToggleLineIn(BaseModel):
+    key: str
+    checked: bool
+
+
+@router.patch("/{note_id}/toggle-line", response_model=None)
+def toggle_line(
+    note_id: uuid.UUID,
+    body: ToggleLineIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bir satirin checkbox'ini degistir. Kalem satiriysa (line_item_id) is_hazir senkron."""
+    from app.models import LineItem
+    n = db.scalar(select(Note).where(Note.id == note_id, Note.tenant_id == user.tenant_id))
+    if not n:
+        raise HTTPException(status_code=404, detail="Not bulunamadi")
+    lines = n.lines or []
+    li_id = None
+    for l in lines:
+        if l.get("key") == body.key:
+            l["checked"] = bool(body.checked)
+            li_id = l.get("line_item_id")
+            break
+    # kalem satiriysa is_hazir senkron
+    if li_id:
+        li = db.scalar(select(LineItem).where(LineItem.id == li_id, LineItem.tenant_id == user.tenant_id))
+        if li:
+            li.is_hazir = bool(body.checked)
+    n.lines = lines
+    # SQLAlchemy JSONB mutasyon tespiti icin flag
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(n, "lines")
+    db.commit()
+    return {"ok": True}
 
 
 class NoteManualIn(BaseModel):

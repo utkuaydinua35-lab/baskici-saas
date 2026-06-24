@@ -1,8 +1,11 @@
 """Sabah Telegram özeti — her sabah otomatik üretim/operasyon özeti.
 
-Scheduler (08:00 Europe/Istanbul) çağırır. Her tenant için sayımları hesaplar
-ve Telegram'a gönderir (telegram servisi tek global chat'e gönderir — BERNZ).
-Veri yoksa / token yoksa sessiz geçer.
+Scheduler (08:00 Europe/Istanbul) çağırır.
+Sadece _SUMMARY_SLUGS içindeki tenant'lara gönderilir (bernz, lunera).
+Mesaj sırası:
+  1. bernz özeti
+  2. lunera özeti
+  3. Birleşik günlük üretim özeti
 """
 from __future__ import annotations
 
@@ -19,6 +22,9 @@ logger = logging.getLogger("daily_summary")
 
 _TR = ZoneInfo("Europe/Istanbul")
 
+# Sabah özetini alacak tenant slug'ları (diğerleri atlanır)
+_SUMMARY_SLUGS = {"bernz", "lunera"}
+
 
 def _counts(db, tid) -> dict:
     """Bir tenant için özet sayılar (soft-delete global filtre otomatik dışlar)."""
@@ -34,7 +40,6 @@ def _counts(db, tid) -> dict:
             select(sql_func.count(Order.id)).where(Order.tenant_id == tid, not_telafi, *conds)
         ) or 0
 
-    # "Bugün" = Istanbul günü başlangıcı (UTC'ye çevrilmiş)
     bugun_tr = datetime.now(_TR).date()
     start_today = datetime.combine(bugun_tr, time.min, tzinfo=_TR).astimezone(timezone.utc)
 
@@ -72,6 +77,36 @@ def _counts(db, tid) -> dict:
     }
 
 
+def _counts_combined(db, tids: list) -> dict:
+    """Birden fazla tenant için birleşik üretim sayıları (3. mesaj)."""
+    not_telafi = Order.is_telafi.is_(False)
+    not_cancelled = Order.cancelled_at.is_(None)
+    acik_kosul_ek = (
+        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+    )
+    bugun_tr = datetime.now(_TR).date()
+    start_today = datetime.combine(bugun_tr, time.min, tzinfo=_TR).astimezone(timezone.utc)
+
+    def oc(*conds) -> int:
+        return db.scalar(
+            select(sql_func.count(Order.id)).where(
+                Order.tenant_id.in_(tids), not_telafi, *conds
+            )
+        ) or 0
+
+    return {
+        "bugun": oc(not_cancelled, Order.created_at_platform >= start_today),
+        # Stage 1-5: yeni→baskıda (basılması gereken)
+        "uretimde": oc(not_cancelled, *acik_kosul_ek, Order.current_stage.between(1, 5)),
+        # Stage 6: baskı tamam, paketleme bekliyor
+        "paketleme": oc(not_cancelled, Order.current_stage == 6),
+        # Stage 7: paketlendi, kargo bekliyor
+        "kargo": oc(not_cancelled, Order.current_stage == 7),
+        "acil": oc(not_cancelled, Order.is_acil.is_(True), Order.current_stage < 9),
+    }
+
+
 def _build_text(tenant_name: str, c: dict) -> str:
     tarih = datetime.now(_TR).strftime("%d.%m.%Y %A")
     lines = [
@@ -96,17 +131,52 @@ def _build_text(tenant_name: str, c: dict) -> str:
     return "\n".join(lines)
 
 
+def _build_production_text(c: dict) -> str:
+    """3. mesaj: tüm markaların birleşik günlük üretim özeti."""
+    tarih = datetime.now(_TR).strftime("%d.%m.%Y")
+    lines = [
+        f"🏭 <b>Günlük Üretim Özeti — {tarih}</b>",
+        "",
+        f"🆕 Bugün gelen sipariş: <b>{c['bugun']}</b>",
+        f"🖨️ Basılması gereken: <b>{c['uretimde']}</b>",
+    ]
+    if c["paketleme"]:
+        lines.append(f"🏷️ Paketleme bekleyen: <b>{c['paketleme']}</b>")
+    if c["kargo"]:
+        lines.append(f"🚚 Kargo bekleyen: <b>{c['kargo']}</b>")
+    if c["acil"]:
+        lines.append(f"🚨 Acil sipariş: <b>{c['acil']}</b>")
+    return "\n".join(lines)
+
+
 def send_daily_summary(db) -> int:
-    """Tüm tenant'lar için sabah özetini Telegram'a gönder. Gönderilen mesaj sayısı."""
+    """Bernz ve Lunera tenant'ları için sabah özetini Telegram'a gönder.
+    1. mesaj: bernz  |  2. mesaj: lunera  |  3. mesaj: birleşik üretim özeti
+    """
     sent = 0
-    tenants = db.scalars(select(Tenant)).all()
+    tenants = db.scalars(
+        select(Tenant).where(Tenant.slug.in_(list(_SUMMARY_SLUGS)))
+    ).all()
+
+    included_ids = []
     for t in tenants:
         try:
             c = _counts(db, t.id)
-            # Tamamen boş gün (hiç açık iş yok) -> yine de gönder, "her şey temiz" bilgisi degerli
-            text = _build_text(t.name or "Atölye", c)
+            text = _build_text(t.name or t.slug, c)
             if telegram.send_message(text):
                 sent += 1
+            included_ids.append(t.id)
         except Exception as e:
             logger.warning(f"[daily_summary] tenant={t.id} hata: {e}")
+
+    # 3. mesaj: birleşik üretim özeti
+    if included_ids:
+        try:
+            c2 = _counts_combined(db, included_ids)
+            text3 = _build_production_text(c2)
+            if telegram.send_message(text3):
+                sent += 1
+        except Exception as e:
+            logger.warning(f"[daily_summary] uretim ozeti hata: {e}")
+
     return sent

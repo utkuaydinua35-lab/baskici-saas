@@ -27,6 +27,8 @@ export default function AskiItemDialog({ open, mode, item, storeId, stores, onCl
   const [designs, setDesigns] = useState([])
   const [designFilter, setDesignFilter] = useState('')
   const [showDesignList, setShowDesignList] = useState(false)
+  const [models, setModels] = useState([])
+  const [showModelList, setShowModelList] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -53,6 +55,20 @@ export default function AskiItemDialog({ open, mode, item, storeId, stores, onCl
       .then(r => setDesigns(r?.items || []))
       .catch(() => setDesigns([]))
   }, [selectedStoreId, mode])
+
+  useEffect(() => {
+    if (!open) return
+    api.get('/api/phone-models?include_baseline=true')
+      .then(r => setModels(Array.isArray(r) ? r : (r?.items || r?.models || [])))
+      .catch(() => setModels([]))
+  }, [open])
+
+  const modelLabel = (m) => m.display_name || m.spec_key || m.model || m.name || ''
+  const filteredModels = useMemo(() => {
+    const q = (model || '').trim().toLowerCase()
+    const list = q ? models.filter(m => modelLabel(m).toLowerCase().includes(q)) : models
+    return list.slice(0, 50)
+  }, [models, model])
 
   const selectedDesign = designs.find(d => d.id === designId)
 
@@ -203,15 +219,32 @@ export default function AskiItemDialog({ open, mode, item, storeId, stores, onCl
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="relative">
                   <label className="text-xs text-gray-500 mb-1 block">Telefon Modeli *</label>
                   <input
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={(e) => { setModel(e.target.value); setShowModelList(true) }}
+                    onFocus={() => setShowModelList(true)}
+                    onBlur={() => setTimeout(() => setShowModelList(false), 150)}
                     placeholder="iPhone 15 Pro Max"
                     className="input w-full !text-sm"
                     disabled={busy}
+                    autoComplete="off"
                   />
+                  {showModelList && filteredModels.length > 0 && (
+                    <div className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-brand-border bg-brand-card shadow-xl">
+                      {filteredModels.map((m, j) => {
+                        const lbl = modelLabel(m)
+                        return (
+                          <button key={j} type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setModel(lbl); setShowModelList(false) }}
+                            className={`w-full text-left px-2 py-1.5 text-sm hover:bg-brand-input ${lbl === model ? 'text-accent' : 'text-gray-200'}`}>
+                            {lbl}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Varyasyon</label>

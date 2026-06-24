@@ -13,12 +13,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Note, Store, Dealer, User
 from app.services import note_builder
 
-router = APIRouter(prefix="/api/notes", tags=["notes"])
+router = APIRouter(prefix="/api/notes", tags=["notes"],
+    dependencies=[Depends(require_permission("siparisler"))],
+)
 
 
 def _ser(n: Note, detay: bool = False) -> dict:

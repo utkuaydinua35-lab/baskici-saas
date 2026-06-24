@@ -21,11 +21,13 @@ from sqlalchemy import case, desc, func as sql_func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.adapters import get_adapter
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.models import LineItem, Mold, MoldItem, Order, Store, User
 
-router = APIRouter(prefix="/api/orders", tags=["orders"])
+router = APIRouter(prefix="/api/orders", tags=["orders"],
+    dependencies=[Depends(require_any_permission("siparisler", "bayii", "stok"))],
+)
 
 # Acil eşik: kaç gün geçince "Acil" sayılır
 ACIL_THRESHOLD_DAYS = 5

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters import PLATFORM_REGISTRY, get_adapter
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Store, User
 
@@ -126,7 +126,7 @@ def list_stores(
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_store(
     req: StoreCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Tenant'a yeni mağaza ekle."""
@@ -179,7 +179,7 @@ def get_store(
 def update_store(
     store_id: uuid.UUID,
     req: StoreUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """
@@ -220,7 +220,7 @@ def update_store(
 @router.delete("/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_store(
     store_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     store = db.scalar(
@@ -239,7 +239,7 @@ def delete_store(
 @router.post("/{store_id}/test", response_model=TestConnectionResponse)
 def test_connection(
     store_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """API bağlantısını test et — gerçek bir çağrı yapar."""
@@ -333,7 +333,7 @@ def _normalize_shop_domain(s: str) -> str:
 @router.post("/oauth/start", response_model=OAuthStartResponse)
 def oauth_start(
     body: OAuthStartRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Shopify install URL üret. Frontend bu URL'e yönlendirip kullanıcının
@@ -384,7 +384,7 @@ def oauth_start(
 @router.post("/{store_id}/reauth", response_model=OAuthStartResponse)
 def oauth_reauth(
     store_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Mevcut OAuth magazasini yeniden yetkilendir (yeni kalici/offline token al)."""

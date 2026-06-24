@@ -113,3 +113,16 @@ def require_permission(perm: str):
             )
         return user
     return dep
+
+
+def require_any_permission(*perms: str):
+    """Verilen yetkilerden EN AZ BIRI yeterli (paneller-arasi paylasilan endpoint'ler).
+    Orn: require_any_permission('siparisler', 'bayii')."""
+    def dep(user: User = Depends(get_current_user)) -> User:
+        if not _perms.has_any_permission(user, perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Bu islem icin yetkin yok: {' / '.join(perms)}",
+            )
+        return user
+    return dep

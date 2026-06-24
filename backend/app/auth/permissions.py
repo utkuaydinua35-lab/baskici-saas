@@ -54,3 +54,11 @@ def has_permission(user, perm: str) -> bool:
     if is_admin(user):
         return True
     return perm in (getattr(user, "permissions", None) or [])
+
+
+def has_any_permission(user, perms) -> bool:
+    """Kullanicinin verilen yetkilerden EN AZ BIRINE sahip olup olmadigi."""
+    if is_admin(user):
+        return True
+    have = getattr(user, "permissions", None) or []
+    return any(p in have for p in perms)

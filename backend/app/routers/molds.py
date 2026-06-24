@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func as sql_func, or_ as sa_or, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 
 from app.database import get_db
 
@@ -21,7 +21,9 @@ from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, Mold
 from app.services import mold_planner, mold_pdf, storage, kisa_kod
 from app.services import placement_rules as pr
 
-router = APIRouter(prefix="/api/molds", tags=["molds"])
+router = APIRouter(prefix="/api/molds", tags=["molds"],
+    dependencies=[Depends(require_any_permission("kalip", "tasarim"))],
+)
 
 @router.get("/plan", response_model=None)
 

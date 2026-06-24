@@ -21,12 +21,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.adapters import get_adapter
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store, User
 from app.services import storage
 
-router = APIRouter(prefix="/api/designs", tags=["designs"])
+router = APIRouter(prefix="/api/designs", tags=["designs"],
+    dependencies=[Depends(require_any_permission("tasarim", "kisiye_ozel", "aksesuar", "couple", "bayii"))],
+)
 
 
 def _serialize(d: Design) -> dict:

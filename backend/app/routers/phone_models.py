@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import PhoneModel, User
 from app.services import phone_models as pm
@@ -127,7 +127,7 @@ def list_models(
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_model(
     body: PhoneModelCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("telefon_modelleri")),
     db: Session = Depends(get_db),
 ):
     key = (body.spec_key or "").strip().upper() or pm.normalize_key(body.display_name)
@@ -173,7 +173,7 @@ def create_model(
 def update_model(
     model_id: uuid.UUID,
     body: PhoneModelUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("telefon_modelleri")),
     db: Session = Depends(get_db),
 ):
     m = db.scalar(
@@ -208,7 +208,7 @@ def update_model(
 @router.delete("/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_model(
     model_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("telefon_modelleri")),
     db: Session = Depends(get_db),
 ):
     m = db.scalar(

@@ -15,14 +15,16 @@ from pydantic import BaseModel
 from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.adapters import get_adapter
 from app.database import get_db
 from app.models import Design, LineItem, MoldItem, Order, OrderStatusHistory, Store, User
 from app.services import label_pdf, packaging as pkg, storage, surat
 from app import stages as stage_defs
 
-router = APIRouter(prefix="/api/packaging", tags=["packaging"])
+router = APIRouter(prefix="/api/packaging", tags=["packaging"],
+    dependencies=[Depends(require_permission("paketleme"))],
+)
 
 
 def _resolve_order(db: Session, ref: str, tenant_id) -> Order:

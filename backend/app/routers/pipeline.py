@@ -12,13 +12,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.models import User
 from app.services.pipeline_helpers import parse_order_numbers
 from app.services.pipeline_service import process_pipeline
 
-router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
+router = APIRouter(prefix="/api/pipeline", tags=["pipeline"],
+    dependencies=[Depends(require_any_permission("siparisler", "kalip"))],
+)
 
 
 class ProcessRequest(BaseModel):

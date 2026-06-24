@@ -17,13 +17,15 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import SupportMessage, SupportThread, User
 from app.services import support as sup
 from app.services import uploads as uploads_service
 
-router = APIRouter(prefix="/api/support", tags=["support"])
+router = APIRouter(prefix="/api/support", tags=["support"],
+    dependencies=[Depends(require_permission("destek"))],
+)
 
 
 def _thread_summary(db: Session, t: SupportThread) -> dict:

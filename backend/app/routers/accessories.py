@@ -15,11 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import AccessoryProduct, Store, User
 
-router = APIRouter(prefix="/api/accessories", tags=["accessories"])
+router = APIRouter(prefix="/api/accessories", tags=["accessories"],
+    dependencies=[Depends(require_permission("aksesuar"))],
+)
 
 
 def _get_store(db: Session, store_id: uuid.UUID, tenant_id: uuid.UUID) -> Store:

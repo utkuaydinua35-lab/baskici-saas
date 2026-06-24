@@ -22,14 +22,16 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.models import (
     AskiItem, Design, LineItem, Order, OrderStatusHistory, Store, User,
 )
 from app.services import storage
 
-router = APIRouter(prefix="/api/aski", tags=["aski"])
+router = APIRouter(prefix="/api/aski", tags=["aski"],
+    dependencies=[Depends(require_any_permission("stok", "siparisler"))],
+)
 
 
 # ─── Schemas ─────────────────────────────────────────────────

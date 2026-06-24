@@ -22,12 +22,14 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func as sql_func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Design, LineItem, Order, OrderStatusHistory, Store, User
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
-router = APIRouter(prefix="/api/telafiler", tags=["telafiler"])
+router = APIRouter(prefix="/api/telafiler", tags=["telafiler"],
+    dependencies=[Depends(require_permission("siparisler"))],
+)
 
 
 # ───────────────────────── Serializer ─────────────────────────

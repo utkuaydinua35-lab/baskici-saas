@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import MoldTemplate, User
 from app.services import storage, template_parser
 
-router = APIRouter(prefix="/api/templates", tags=["templates"])
+router = APIRouter(prefix="/api/templates", tags=["templates"],
+    dependencies=[Depends(require_permission("kalip"))],
+)
 
 
 def _serialize(t: MoldTemplate) -> dict:

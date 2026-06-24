@@ -19,12 +19,14 @@ from sqlalchemy import desc, exists, func as sql_func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store, User
 from app.services import storage
 
-router = APIRouter(prefix="/api/kisiye-ozel", tags=["kisiye_ozel"])
+router = APIRouter(prefix="/api/kisiye-ozel", tags=["kisiye_ozel"],
+    dependencies=[Depends(require_permission("kisiye_ozel"))],
+)
 
 
 # ─── Helpers ────────────────────────────────────────────────

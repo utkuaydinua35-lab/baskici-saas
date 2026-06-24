@@ -8,12 +8,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Tenant, User
 from app.services import storage
 
-router = APIRouter(prefix="/api/tenant", tags=["tenant"])
+router = APIRouter(prefix="/api/tenant", tags=["tenant"],
+    dependencies=[Depends(require_permission("ayarlar"))],
+)
 
 
 class TenantSettings(BaseModel):

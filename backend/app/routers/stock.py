@@ -18,12 +18,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import StockItem, StockMovement, StockGroup, Order, LineItem, User
 from app.services import stock as stock_svc
 
-router = APIRouter(prefix="/api/stock", tags=["stock"])
+router = APIRouter(prefix="/api/stock", tags=["stock"],
+    dependencies=[Depends(require_permission("stok"))],
+)
 
 
 # ─── Schemas ─────────────────────────────────────────────────

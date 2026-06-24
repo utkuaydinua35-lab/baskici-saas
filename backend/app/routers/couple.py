@@ -14,12 +14,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import CoupleProduct, Design, Store, User
 from app.services import storage
 
-router = APIRouter(prefix="/api/couple", tags=["couple"])
+router = APIRouter(prefix="/api/couple", tags=["couple"],
+    dependencies=[Depends(require_permission("couple"))],
+)
 
 
 def _get_store(db: Session, store_id: uuid.UUID, tenant_id: uuid.UUID) -> Store:

@@ -12,14 +12,16 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
 from app.services import storage
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
-router = APIRouter(prefix="/api/orders", tags=["order_detail"])
+router = APIRouter(prefix="/api/orders", tags=["order_detail"],
+    dependencies=[Depends(require_any_permission("siparisler", "stok"))],
+)
 
 VALID_LISTS = {
     "isaretlenenler", "bugun", "sonra", "kontrol", "export", "baski",

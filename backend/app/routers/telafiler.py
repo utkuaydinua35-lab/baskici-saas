@@ -32,6 +32,20 @@ router = APIRouter(prefix="/api/telafiler", tags=["telafiler"])
 
 # ───────────────────────── Serializer ─────────────────────────
 
+def _li_thumbnail(li: LineItem) -> str | None:
+    """Urun gorseli: once atanmis tasarimin thumbnail'i, sonra shopify urun gorseli."""
+    d = li.assigned_design
+    if d and getattr(d, "file_path", None):
+        try:
+            from app.services import storage
+            t = storage.get_thumbnail_url(d.file_path, d.file_format)
+            if t:
+                return t
+        except Exception:
+            pass
+    return getattr(li, "product_image_url", None)
+
+
 def _ser_li(li: LineItem) -> dict:
     return {
         "id": str(li.id),
@@ -45,6 +59,8 @@ def _ser_li(li: LineItem) -> dict:
             None,
         ),
         "design_code": (li.assigned_design.code if li.assigned_design else None),
+        "design_name": (li.assigned_design.name if li.assigned_design else None),
+        "thumbnail_url": _li_thumbnail(li),
         "is_kaliba_eklendi": bool(li.is_kaliba_eklendi),
     }
 

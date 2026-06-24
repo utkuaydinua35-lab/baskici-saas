@@ -264,8 +264,18 @@ function CloneModal({ onClose, onDone }) {
             {selOrder.line_items.map(li => (
               <label key={li.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selLis[li.id] ? 'bg-accent/10' : 'hover:bg-brand-input'}`}>
                 <input type="checkbox" checked={!!selLis[li.id]} onChange={() => toggle(li.id)} />
-                <span className="text-sm text-gray-200 flex-1 min-w-0 truncate">{li.title}</span>
-                <span className="text-[11px] text-gray-500 shrink-0">{li.device_model || '?'}{li.design_code ? ` · ${li.design_code}` : ''} ×{li.quantity}</span>
+                <div className="w-11 h-11 shrink-0 rounded overflow-hidden bg-brand-input border border-brand-border flex items-center justify-center">
+                  {li.thumbnail_url
+                    ? <img src={li.thumbnail_url} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none' }} />
+                    : <span className="text-[8px] text-gray-600">görsel yok</span>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gray-200 truncate">{li.title}</div>
+                  <div className="text-[11px] text-gray-500 truncate">
+                    {li.device_model || '?'}{li.design_name ? ` · ${li.design_name}` : ''}{li.design_code ? ` (${li.design_code})` : ''}
+                  </div>
+                </div>
+                <span className="text-[11px] text-gray-400 shrink-0">×{li.quantity}</span>
               </label>
             ))}
           </div>

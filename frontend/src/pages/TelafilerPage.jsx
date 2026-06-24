@@ -153,23 +153,50 @@ function MatchPicker({ telafiId, onClose, onDone }) {
   )
 }
 
+function fmtDate(iso) {
+  if (!iso) return ''
+  try { return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit' }) } catch { return '' }
+}
+
 function CloneModal({ onClose, onDone }) {
   const [q, setQ] = useState('')
+  const [storeId, setStoreId] = useState('')
+  const [durum, setDurum] = useState('all')
+  const [stores, setStores] = useState([])
   const [rows, setRows] = useState([])
+  const [searching, setSearching] = useState(false)
   const [selOrder, setSelOrder] = useState(null)
   const [selLis, setSelLis] = useState({}) // id -> bool
   const [sebep, setSebep] = useState('')
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => { api.get('/api/telafiler/_meta/stores').then(r => setStores(r.items || [])).catch(() => {}) }, [])
+
   useEffect(() => {
     if (selOrder) return
+    setSearching(true)
     const h = setTimeout(async () => {
-      try { const r = await api.get(`/api/telafiler/searchable-orders?q=${encodeURIComponent(q)}`); setRows(r.items || []) } catch {}
+      try {
+        const params = new URLSearchParams()
+        if (q.trim()) params.set('q', q.trim())
+        if (storeId) params.set('store_id', storeId)
+        if (durum !== 'all') params.set('durum', durum)
+        const r = await api.get(`/api/telafiler/searchable-orders?${params.toString()}`)
+        setRows(r.items || [])
+      } catch {} finally { setSearching(false) }
     }, 250)
     return () => clearTimeout(h)
-  }, [q, selOrder])
+  }, [q, storeId, durum, selOrder])
 
   const toggle = (id) => setSelLis(s => ({ ...s, [id]: !s[id] }))
+  const allChecked = selOrder && selOrder.line_items.length > 0 && selOrder.line_items.every(li => selLis[li.id])
+  const toggleAll = () => {
+    if (!selOrder) return
+    if (allChecked) setSelLis({})
+    else setSelLis(Object.fromEntries(selOrder.line_items.map(li => [li.id, true])))
+  }
+  const selCount = Object.values(selLis).filter(Boolean).length
+
   const create = async () => {
     const ids = Object.keys(selLis).filter(k => selLis[k])
     if (!ids.length) { alert('En az bir ürün seç'); return }
@@ -181,43 +208,72 @@ function CloneModal({ onClose, onDone }) {
   }
 
   return (
-    <Overlay onClose={onClose} title="Siparişten Telafi Oluştur">
+    <Overlay onClose={onClose} title="Siparişten Telafi Oluştur" wide>
       {!selOrder ? (
         <>
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Sipariş no / müşteri ara..."
-            className="input w-full !text-sm mb-2" />
-          <div className="max-h-80 overflow-y-auto space-y-1">
+          <div className="flex gap-2 mb-2">
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Sipariş no / müşteri ara..."
+              className="input flex-1 !text-sm" />
+            <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm w-40">
+              <option value="">Tüm mağazalar</option>
+              {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select value={durum} onChange={e => setDurum(e.target.value)} className="input !text-sm w-36">
+              <option value="all">Tüm durumlar</option>
+              <option value="acik">Açık</option>
+              <option value="gonderilmis">Gönderilmiş</option>
+            </select>
+          </div>
+          <div className="text-[11px] text-gray-500 mb-1">{searching ? 'Aranıyor...' : `${rows.length} sipariş`}</div>
+          <div className="max-h-96 overflow-y-auto divide-y divide-brand-border/50 border border-brand-border rounded-lg">
             {rows.map(o => (
               <button key={o.id} onClick={() => { setSelOrder(o); setSelLis({}) }}
-                className="w-full text-left px-2 py-1.5 rounded hover:bg-brand-input text-sm flex justify-between">
-                <span className="text-gray-200">{o.order_number} <span className="text-gray-500">({o.line_items.length} ürün)</span></span>
-                <span className="text-gray-500">{o.customer_name}</span>
+                className="w-full text-left px-3 py-2 hover:bg-brand-input flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-100">{o.order_number}</span>
+                    {o.fulfillment_status === 'fulfilled'
+                      ? <span className="text-[10px] px-1.5 rounded bg-emerald-500/15 text-emerald-300">gönderilmiş</span>
+                      : <span className="text-[10px] px-1.5 rounded bg-blue-500/15 text-blue-300">açık</span>}
+                  </div>
+                  <div className="text-xs text-gray-400 truncate">{o.customer_name || '—'}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[11px] text-gray-400">{o.store_name || ''}</div>
+                  <div className="text-[11px] text-gray-500">{fmtDate(o.created_at_platform)} · {o.item_count} ürün</div>
+                </div>
               </button>
             ))}
-            {rows.length === 0 && <div className="text-xs text-gray-500 py-4 text-center">Sonuç yok</div>}
+            {!searching && rows.length === 0 && <div className="text-xs text-gray-500 py-6 text-center">Sonuç yok</div>}
           </div>
         </>
       ) : (
         <>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm text-gray-200">{selOrder.order_number} — {selOrder.customer_name}</div>
+            <div>
+              <div className="text-sm font-medium text-gray-100">{selOrder.order_number} — {selOrder.customer_name}</div>
+              <div className="text-[11px] text-gray-500">{selOrder.store_name || ''} · {fmtDate(selOrder.created_at_platform)}</div>
+            </div>
             <button onClick={() => setSelOrder(null)} className="text-[11px] text-gray-500 hover:text-gray-200">← başka sipariş</button>
           </div>
-          <div className="text-[12px] text-gray-500 mb-1">Telafi gönderilecek ürünleri seç (hepsi olmak zorunda değil):</div>
-          <div className="max-h-60 overflow-y-auto space-y-1 mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-[12px] text-gray-500">Telafi gönderilecek ürünleri seç ({selCount} seçili):</div>
+            <button onClick={toggleAll} className="text-[11px] text-accent hover:underline">{allChecked ? 'hiçbirini' : 'tümünü'} seç</button>
+          </div>
+          <div className="max-h-72 overflow-y-auto space-y-1 mb-3 border border-brand-border rounded-lg p-1">
             {selOrder.line_items.map(li => (
-              <label key={li.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-brand-input cursor-pointer">
+              <label key={li.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selLis[li.id] ? 'bg-accent/10' : 'hover:bg-brand-input'}`}>
                 <input type="checkbox" checked={!!selLis[li.id]} onChange={() => toggle(li.id)} />
                 <span className="text-sm text-gray-200 flex-1 min-w-0 truncate">{li.title}</span>
-                <span className="text-[11px] text-gray-500">{li.device_model || '?'}{li.design_code ? ` · ${li.design_code}` : ''} ×{li.quantity}</span>
+                <span className="text-[11px] text-gray-500 shrink-0">{li.device_model || '?'}{li.design_code ? ` · ${li.design_code}` : ''} ×{li.quantity}</span>
               </label>
             ))}
           </div>
           <SebepInput value={sebep} onChange={setSebep} />
           <div className="flex justify-end gap-2 mt-3">
             <button onClick={onClose} className="text-xs px-3 py-1.5 rounded bg-brand-input text-gray-300">Vazgeç</button>
-            <button onClick={create} disabled={busy} className="text-xs px-3 py-1.5 rounded bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-50">
-              {busy ? '...' : 'Telafi Oluştur'}</button>
+            <button onClick={create} disabled={busy || selCount === 0} className="text-xs px-3 py-1.5 rounded bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-50">
+              {busy ? '...' : `Telafi Oluştur (${selCount})`}</button>
           </div>
         </>
       )}
@@ -301,10 +357,10 @@ function SebepInput({ value, onChange }) {
   )
 }
 
-function Overlay({ title, onClose, children }) {
+function Overlay({ title, onClose, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-xl border border-brand-border bg-brand-card p-4 shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-brand-border bg-brand-card p-4 shadow-xl`} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-100">{title}</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-200">×</button>

@@ -105,25 +105,53 @@ def list_telafiler(
     return {"items": [_ser_telafi(o) for o in rows]}
 
 
-@router.get("/searchable-orders", response_model=None)
-def searchable_orders(
-    q: str = Query("", min_length=0),
+@router.get("/_meta/stores", response_model=None)
+def telafi_stores(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Klonlama/eslestirme icin normal (telafi olmayan) siparis ara."""
+    """Klonlama panelinde magaza filtresi icin magaza listesi (bayii haric)."""
+    stores = db.scalars(select(Store).where(Store.tenant_id == user.tenant_id)).all()
+    return {"items": [
+        {"id": str(s.id), "name": s.name}
+        for s in stores if getattr(s, "platform", None) != "bayii"
+    ]}
+
+
+@router.get("/searchable-orders", response_model=None)
+def searchable_orders(
+    q: str = Query("", min_length=0),
+    store_id: uuid.UUID | None = Query(None),
+    durum: str = Query("all"),  # all | acik | gonderilmis
+    limit: int = Query(30, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Klonlama/eslestirme icin normal (telafi olmayan) siparis ara.
+    Filtreler: q (no/musteri), store_id, durum (acik/gonderilmis)."""
     query = (
         select(Order)
         .where(Order.tenant_id == user.tenant_id, Order.is_telafi == False)  # noqa: E712
-        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .options(
+            selectinload(Order.line_items).selectinload(LineItem.assigned_design),
+            selectinload(Order.store),
+        )
     )
+    if store_id:
+        query = query.where(Order.store_id == store_id)
+    if durum == "gonderilmis":
+        query = query.where(Order.fulfillment_status == "fulfilled")
+    elif durum == "acik":
+        query = query.where(
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None))
+        )
     s = (q or "").strip()
     if s:
         like = f"%{s}%"
         query = query.where(
             or_(Order.order_number.ilike(like), Order.customer_name.ilike(like))
         )
-    query = query.order_by(desc(Order.created_at_platform)).limit(20)
+    query = query.order_by(desc(Order.created_at_platform)).limit(limit)
     rows = db.scalars(query).all()
     return {
         "items": [
@@ -132,6 +160,10 @@ def searchable_orders(
                 "order_number": o.order_number,
                 "customer_name": o.customer_name,
                 "store_id": str(o.store_id),
+                "store_name": (o.store.name if o.store else None),
+                "fulfillment_status": o.fulfillment_status,
+                "created_at_platform": o.created_at_platform.isoformat() if o.created_at_platform else None,
+                "item_count": len(o.line_items or []),
                 "line_items": [_ser_li(li) for li in (o.line_items or [])],
             }
             for o in rows

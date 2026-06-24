@@ -36,8 +36,11 @@ def summary(
         (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
     )
 
+    # Telafiler ayri panelde — normal siparis KPI'larina dahil edilmez
+    _not_telafi = Order.is_telafi.is_(False)
+
     def ocount(*conds) -> int:
-        q = select(sql_func.count(Order.id)).where(Order.tenant_id == tid, *conds)
+        q = select(sql_func.count(Order.id)).where(Order.tenant_id == tid, _not_telafi, *conds)
         if store_id:
             q = q.where(Order.store_id == store_id)
         return db.scalar(q) or 0
@@ -55,7 +58,7 @@ def summary(
     # ─── Üretim hattı (stage dağılımı) ───
     fq = (
         select(Order.current_stage, sql_func.count(Order.id))
-        .where(Order.tenant_id == tid, *_acik_kosul)
+        .where(Order.tenant_id == tid, _not_telafi, *_acik_kosul)
         .group_by(Order.current_stage)
     )
     if store_id:
@@ -74,7 +77,7 @@ def summary(
     def _ciro(*conds) -> float:
         q = select(sql_func.coalesce(sql_func.sum(
             cast(Order.raw["total_price"].astext, Numeric)
-        ), 0)).where(Order.tenant_id == tid, *conds)
+        ), 0)).where(Order.tenant_id == tid, _not_telafi, *conds)
         if store_id:
             q = q.where(Order.store_id == store_id)
         try:
@@ -93,7 +96,7 @@ def summary(
     _gun_col = sql_func.date_trunc("day", Order.created_at_platform)
     _gq = (
         select(_gun_col.label("gun"), sql_func.coalesce(sql_func.sum(cast(Order.raw["total_price"].astext, Numeric)), 0).label("tutar"))
-        .where(Order.tenant_id == tid, *_ciro_kosul, Order.created_at_platform >= _start_30)
+        .where(Order.tenant_id == tid, _not_telafi, *_ciro_kosul, Order.created_at_platform >= _start_30)
         .group_by(_gun_col)
     )
     if store_id:
@@ -122,6 +125,30 @@ def summary(
     if store_id:
         mq = mq.where((Mold.store_id == store_id) | (Mold.store_id.is_(None)))
     acik_kalip = db.scalar(mq) or 0
+
+    # ─── Telafiler (ayri panel) ───
+    def tcount(*conds) -> int:
+        q = select(sql_func.count(Order.id)).where(
+            Order.tenant_id == tid, Order.is_telafi.is_(True), *conds)
+        if store_id:
+            q = q.where(Order.store_id == store_id)
+        return db.scalar(q) or 0
+
+    telafi_toplam = tcount()
+    telafi_acik = tcount(Order.cancelled_at.is_(None), Order.current_stage < 9)
+    # En sik telafi sebepleri (ilk 5)
+    _sq = (
+        select(Order.telafi_sebep, sql_func.count(Order.id).label("adet"))
+        .where(Order.tenant_id == tid, Order.is_telafi.is_(True), Order.telafi_sebep.isnot(None))
+        .group_by(Order.telafi_sebep)
+        .order_by(desc(sql_func.count(Order.id)))
+        .limit(5)
+    )
+    if store_id:
+        _sq = _sq.where(Order.store_id == store_id)
+    telafi_sebepler = [
+        {"sebep": row[0], "adet": int(row[1])} for row in db.execute(_sq).all()
+    ]
 
     # ─── Düşük stok (tenant geneli) ───
     low_items = db.scalars(
@@ -164,6 +191,12 @@ def summary(
             "aski_adet": aski_adet,
             "acik_kalip": acik_kalip,
             "dusuk_stok": len(low_stock),
+            "telafi_acik": telafi_acik,
+        },
+        "telafi": {
+            "toplam": telafi_toplam,
+            "acik": telafi_acik,
+            "sebepler": telafi_sebepler,
         },
         "ciro": {
             "bugun": round(ciro_bugun, 2),

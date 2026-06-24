@@ -86,6 +86,7 @@ export default function DashboardPage() {
             <Kpi label="KARGO BEKLEYEN" value={k.kargo_bekleyen} color="amber" />
             <Kpi label="ASKIDA (ADET)" value={k.aski_adet} onClick={() => navigate('/aski')} />
             <Kpi label="DÜŞÜK STOK" value={k.dusuk_stok} color={k.dusuk_stok > 0 ? 'red' : 'gray'} onClick={() => navigate('/stok')} />
+            <Kpi label="AÇIK TELAFİ" value={k.telafi_acik} color={k.telafi_acik > 0 ? 'amber' : 'gray'} onClick={() => navigate('/telafiler')} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -134,6 +135,31 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Telafi sebepleri */}
+          {(data.telafi?.sebepler || []).length > 0 && (
+            <div className="card mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-200">♻️ En Sık Telafi Sebepleri</h2>
+                <button onClick={() => navigate('/telafiler')} className="text-[11px] text-accent hover:underline">Telafiler →</button>
+              </div>
+              <div className="space-y-1.5">
+                {(() => {
+                  const maxS = Math.max(1, ...data.telafi.sebepler.map(s => s.adet))
+                  return data.telafi.sebepler.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-40 text-xs text-gray-300 shrink-0 truncate">{s.sebep}</div>
+                      <div className="flex-1 bg-brand-input rounded-full h-5 overflow-hidden relative">
+                        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all"
+                             style={{ width: `${(s.adet / maxS) * 100}%`, minWidth: '8px' }} />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-200">{s.adet}</span>
+                      </div>
+                    </div>
+                  ))
+                })()}
+              </div>
+            </div>
+          )}
 
           {/* Son hareketler */}
           <div className="card mt-4">

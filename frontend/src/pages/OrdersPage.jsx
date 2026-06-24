@@ -4,6 +4,69 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import ManualOrderDialog from '../components/ManualOrderDialog'
 
+function ExportButton({ storeId }) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const download = async (format) => {
+    setOpen(false)
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ format })
+      if (storeId) params.set('store_id', storeId)
+      const token = localStorage.getItem('baskici_token')
+      const res = await fetch(`/api/orders/_export?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error('İndirme hatası')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = format === 'xlsx' ? 'siparisler.xlsx' : 'siparisler.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // toast kullanamıyoruz burada, sessiz geç
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={loading}
+        className="btn-secondary !text-xs disabled:opacity-50"
+        title="Siparişleri dışa aktar"
+      >
+        {loading ? '⏳' : '📥'} İndir
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 bg-brand-card border border-brand-border rounded-lg shadow-xl py-1 min-w-[140px]">
+          <button
+            onClick={() => download('xlsx')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-brand-hover"
+          >📊 Excel (.xlsx)</button>
+          <button
+            onClick={() => download('csv')}
+            className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-brand-hover"
+          >📄 CSV (.csv)</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const STATUS_LABELS = {
   null: { label: 'Bekliyor', color: 'bg-amber-500/15 text-amber-400' },
   unfulfilled: { label: 'Hazırlanıyor', color: 'bg-amber-500/15 text-amber-400' },
@@ -167,6 +230,7 @@ export default function OrdersPage() {
               className="btn-secondary !text-xs"
               title="Silinen siparişler (geri al)"
             >🗑 Çöp Kutusu</button>
+            <ExportButton storeId={filters.store_id} />
             {stores.map(s => (
               <button
                 key={s.id}

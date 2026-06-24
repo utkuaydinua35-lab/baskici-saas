@@ -495,6 +495,38 @@ def list_trash(
     ]}
 
 
+@router.get("/_export")
+def export_orders(
+    format: str = Query("xlsx", pattern="^(xlsx|csv)$"),
+    store_id: uuid.UUID | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparişleri Excel (.xlsx) veya CSV olarak indir."""
+    import io
+    from fastapi.responses import StreamingResponse
+    from app.services.export_service import build_xlsx, build_csv
+
+    tid = user.tenant_id
+    kwargs = dict(store_id=store_id, date_from=date_from, date_to=date_to)
+
+    if format == "xlsx":
+        data = build_xlsx(db, tid, **kwargs)
+        return StreamingResponse(
+            io.BytesIO(data),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=siparisler.xlsx"},
+        )
+    data = build_csv(db, tid, **kwargs)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=siparisler.csv"},
+    )
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order(
     order_id: uuid.UUID,

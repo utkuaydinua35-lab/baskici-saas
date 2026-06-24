@@ -467,48 +467,66 @@ function ManualLineRow({ item, designs, models, canDelete, onChange, onDelete })
     <div className="rounded-lg border border-brand-border p-2 space-y-1.5">
       <div className="flex gap-1.5 items-start">
         {/* Tasarim secici (urun) */}
-        <div className="relative flex-1 min-w-0">
-          <button type="button" onClick={() => { setDesignOpen(o => !o); setModelOpen(false) }}
-            className="input !text-sm w-full text-left flex items-center gap-2">
-            {selDesign?.thumbnail_url && <img src={selDesign.thumbnail_url} alt="" className="w-6 h-6 rounded object-cover" />}
-            <span className="truncate">{selDesign ? `${selDesign.code}${selDesign.name ? ' · ' + selDesign.name : ''}` : (item.title || 'Ürün seç...')}</span>
-          </button>
-          {designOpen && (
-            <div className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-brand-border bg-brand-card shadow-xl p-1">
-              <input autoFocus value={designQ} onChange={e => setDesignQ(e.target.value)} placeholder="Tasarım ara..."
-                className="input !text-xs w-full mb-1" />
-              <button onClick={() => { onChange({ design_id: '', title: 'Telefon Kılıfı' }); setDesignOpen(false) }}
-                className="w-full text-left px-2 py-1 rounded text-xs text-gray-400 hover:bg-brand-input">— tasarımsız (elle başlık) —</button>
-              {fDesigns.map(d => (
-                <button key={d.id} onClick={() => { onChange({ design_id: d.id, title: d.name || d.code }); setDesignOpen(false); setDesignQ('') }}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-brand-input flex items-center gap-2">
-                  {d.thumbnail_url
-                    ? <img src={d.thumbnail_url} alt="" className="w-7 h-7 rounded object-cover" onError={e => { e.target.style.display = 'none' }} />
-                    : <span className="w-7 h-7 rounded bg-brand-input flex items-center justify-center text-[7px] text-gray-600">yok</span>}
-                  <span className="text-sm text-gray-200 truncate">{d.code}{d.name ? ` · ${d.name}` : ''}</span>
-                </button>
-              ))}
-              {fDesigns.length === 0 && <div className="text-xs text-gray-500 py-2 text-center">Tasarım yok</div>}
-            </div>
-          )}
-        </div>
-        {/* Model secici */}
-        <div className="relative w-44">
-          <input value={item.device_model} onChange={e => { onChange({ device_model: e.target.value }); setModelQ(e.target.value); setModelOpen(true) }}
-            onFocus={() => { setModelOpen(true); setModelQ(item.device_model) }}
-            placeholder="Model" className="input !text-sm w-full" />
-          {modelOpen && fModels.length > 0 && (
-            <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-brand-border bg-brand-card shadow-xl p-1">
-              {fModels.map((m, j) => (
-                <button key={j} onClick={() => { onChange({ device_model: modelLabel(m) }); setModelOpen(false) }}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-brand-input text-sm text-gray-200">{modelLabel(m)}</button>
-              ))}
-            </div>
-          )}
-        </div>
-        <input type="number" min="1" value={item.quantity} onChange={e => onChange({ quantity: e.target.value })} className="input !text-sm w-14" />
-        {canDelete && <button onClick={onDelete} className="text-gray-500 hover:text-red-400 px-1">×</button>}
+        <button type="button" onClick={() => { setDesignOpen(o => !o); setModelOpen(false) }}
+          className="input !text-sm flex-1 min-w-0 text-left flex items-center gap-2">
+          {selDesign?.thumbnail_url && <img src={selDesign.thumbnail_url} alt="" className="w-6 h-6 rounded object-cover shrink-0" />}
+          <span className="truncate flex-1">{selDesign ? `${selDesign.code}${selDesign.name ? ' · ' + selDesign.name : ''}` : (item.title || 'Ürün seç...')}</span>
+          <span className={`text-gray-500 transition-transform ${designOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+        {/* Model secici (toggle) */}
+        <button type="button" onClick={() => { setModelOpen(o => !o); setDesignOpen(false); setModelQ('') }}
+          className="input !text-sm w-36 sm:w-44 text-left flex items-center gap-1">
+          <span className={`truncate flex-1 ${item.device_model ? 'text-gray-100' : 'text-gray-500'}`}>{item.device_model || 'Model seç...'}</span>
+          <span className={`text-gray-500 transition-transform ${modelOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+        <input type="number" min="1" value={item.quantity} onChange={e => onChange({ quantity: e.target.value })} className="input !text-sm w-14 shrink-0" />
+        {canDelete && <button onClick={onDelete} className="text-gray-500 hover:text-red-400 px-1 shrink-0">×</button>}
       </div>
+
+      {/* Tasarim paneli — akis ici (modal kaydirir) */}
+      {designOpen && (
+        <div className="rounded-lg border border-brand-border bg-brand-bg/50 p-1.5 animate-fadein">
+          <input autoFocus value={designQ} onChange={e => setDesignQ(e.target.value)} placeholder="Tasarım ara (kod / isim)..."
+            className="input !text-xs w-full mb-1.5" />
+          <button onClick={() => { onChange({ design_id: '', title: 'Telefon Kılıfı' }); setDesignOpen(false) }}
+            className="w-full text-left px-2 py-1.5 rounded text-xs text-gray-400 hover:bg-brand-input">— tasarımsız (elle başlık) —</button>
+          <div className="max-h-72 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1 mt-1">
+            {fDesigns.map(d => {
+              const active = d.id === item.design_id
+              return (
+                <button key={d.id} onClick={() => { onChange({ design_id: d.id, title: d.name || d.code }); setDesignOpen(false); setDesignQ('') }}
+                  className={`rounded-lg border p-1 flex flex-col items-center gap-1 transition-all hover:border-accent/50 ${active ? 'border-accent bg-accent/10' : 'border-brand-border'}`}>
+                  {d.thumbnail_url
+                    ? <img src={d.thumbnail_url} alt="" className="w-full aspect-square rounded object-cover" onError={e => { e.target.style.opacity = 0 }} />
+                    : <span className="w-full aspect-square rounded bg-brand-input flex items-center justify-center text-[8px] text-gray-600">görsel yok</span>}
+                  <span className="text-[10px] text-gray-200 leading-tight text-center truncate w-full">{d.code}</span>
+                  {d.name && <span className="text-[9px] text-gray-500 leading-tight text-center truncate w-full">{d.name}</span>}
+                </button>
+              )
+            })}
+          </div>
+          {fDesigns.length === 0 && <div className="text-xs text-gray-500 py-3 text-center">Tasarım yok</div>}
+        </div>
+      )}
+
+      {/* Model paneli — akis ici */}
+      {modelOpen && (
+        <div className="rounded-lg border border-brand-border bg-brand-bg/50 p-1.5 animate-fadein">
+          <input autoFocus value={modelQ} onChange={e => setModelQ(e.target.value)} placeholder="Model ara..."
+            className="input !text-xs w-full mb-1.5" />
+          <div className="max-h-64 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1">
+            {fModels.map((m, j) => {
+              const lbl = modelLabel(m)
+              const active = lbl === item.device_model
+              return (
+                <button key={j} onClick={() => { onChange({ device_model: lbl }); setModelOpen(false) }}
+                  className={`px-2 py-1.5 rounded-lg border text-xs text-left transition-all hover:border-accent/50 ${active ? 'border-accent bg-accent/10 text-accent' : 'border-brand-border text-gray-200'}`}>{lbl}</button>
+              )
+            })}
+          </div>
+          {fModels.length === 0 && <div className="text-xs text-gray-500 py-3 text-center">Model bulunamadı</div>}
+        </div>
+      )}
     </div>
   )
 }

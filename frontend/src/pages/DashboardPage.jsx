@@ -3,6 +3,65 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
+// ── Worklist yardımcıları ─────────────────────────────────────────────────────
+const WL_KEY = 'wl_state'
+
+function wlGetState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(WL_KEY) || '{}')
+    const today = new Date().toISOString().slice(0, 10)
+    if (s.date !== today) return { date: today, count: 0, dismissed: false }
+    return s
+  } catch { return { date: new Date().toISOString().slice(0, 10), count: 0, dismissed: false } }
+}
+
+function wlSave(s) { localStorage.setItem(WL_KEY, JSON.stringify(s)) }
+
+function isMorning() {
+  const h = parseInt(
+    new Intl.DateTimeFormat('tr-TR', { hour: 'numeric', hour12: false, timeZone: 'Europe/Istanbul' })
+      .format(new Date()), 10,
+  )
+  return h >= 6 && h < 12
+}
+
+function WorklistBanner({ data, onDismiss }) {
+  const colors = {
+    urgent: 'border-red-500/40 bg-red-500/10 text-red-300',
+    warning: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+    normal: 'border-brand-border bg-brand-input text-gray-200',
+  }
+  return (
+    <div className="card mb-5 border-l-4 border-accent animate-fadein">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="text-base font-semibold text-gray-100">{data.greeting}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{data.role_label} · Bugünün görev listesi</div>
+        </div>
+        <button onClick={onDismiss} className="text-gray-500 hover:text-gray-300 text-sm leading-none ml-3">✕</button>
+      </div>
+      {data.items.length === 0 ? (
+        <p className="text-sm text-emerald-400">✓ Her şey yolunda, bugün bekleyen görev yok!</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {data.items.map(item => (
+            <a key={item.key} href={item.link}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm transition-opacity hover:opacity-80 ${colors[item.severity] || colors.normal}`}
+            >
+              <span className="text-xl shrink-0">{item.icon}</span>
+              <div className="min-w-0">
+                <div className="font-bold text-lg leading-none">{item.count}</div>
+                <div className="text-[10px] leading-tight opacity-80 mt-0.5">{item.label}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const { user, tenant } = useAuth()
   const navigate = useNavigate()
@@ -11,11 +70,30 @@ export default function DashboardPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showCiro, setShowCiro] = useState(() => localStorage.getItem('dash_show_ciro') !== '0')
+  const [worklist, setWorklist] = useState(null)
+  const [showWorklist, setShowWorklist] = useState(false)
 
   useEffect(() => {
     (async () => {
       try { const s = await api.get('/api/stores'); setStores(Array.isArray(s) ? s : []) } catch {}
     })()
+  }, [])
+
+  // Sabah worklist — ilk 5 dashboard ziyaretinde banner göster
+  useEffect(() => {
+    const state = wlGetState()
+    if (!state.dismissed && state.count < 5) {
+      api.get('/api/dashboard/worklist').then(wl => {
+        setWorklist(wl)
+        setShowWorklist(true)
+        const newState = { ...state, count: state.count + 1 }
+        wlSave(newState)
+        // 5. görüntülemede bell'e sinyal ver
+        if (newState.count >= 5) {
+          window.dispatchEvent(new CustomEvent('worklist:ready', { detail: wl }))
+        }
+      }).catch(() => {})
+    }
   }, [])
 
   const load = async () => {
@@ -44,6 +122,13 @@ export default function DashboardPage() {
           {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
+
+      {showWorklist && worklist && (
+        <WorklistBanner
+          data={worklist}
+          onDismiss={() => { setShowWorklist(false); wlSave({ ...wlGetState(), dismissed: true }) }}
+        />
+      )}
 
       {loading && (
         <div className="animate-fadein">

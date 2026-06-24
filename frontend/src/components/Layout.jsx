@@ -119,10 +119,19 @@ function SyncButton() {
   )
 }
 
+function wlBellState() {
+  try {
+    const s = JSON.parse(localStorage.getItem('wl_state') || '{}')
+    const today = new Date().toISOString().slice(0, 10)
+    return s.date === today && s.count >= 5 && !s.bellDismissed
+  } catch { return false }
+}
+
 function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
   const [unread, setUnread] = useState(0)
+  const [wlBadge, setWlBadge] = useState(() => wlBellState())
   const ref = useRef(null)
   const seenSupportIds = useRef(null)
 
@@ -166,8 +175,14 @@ function NotificationBell() {
   useEffect(() => {
     const t = setInterval(load, 20000)
     const onRefresh = () => load()
+    const onWl = () => setWlBadge(true)
     window.addEventListener('notifications:refresh', onRefresh)
-    return () => { clearInterval(t); window.removeEventListener('notifications:refresh', onRefresh) }
+    window.addEventListener('worklist:ready', onWl)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('notifications:refresh', onRefresh)
+      window.removeEventListener('worklist:ready', onWl)
+    }
   }, [])
   useEffect(() => {
     if (!open) return
@@ -185,16 +200,26 @@ function NotificationBell() {
     try { await api.post('/api/notifications/read-all', {}); load() } catch {}
   }
 
-  const icon = k => k === 'error' ? '⚠' : k === 'info' ? 'ℹ' : '🔄'
+  const icon = k => k === 'error' ? '⚠' : k === 'info' ? 'ℹ' : k === 'worklist' ? '📋' : '🔄'
+
+  const dismissWlBadge = () => {
+    setWlBadge(false)
+    try {
+      const s = JSON.parse(localStorage.getItem('wl_state') || '{}')
+      localStorage.setItem('wl_state', JSON.stringify({ ...s, bellDismissed: true }))
+    } catch {}
+  }
+
+  const totalUnread = unread + (wlBadge ? 1 : 0)
 
   return (
     <div className="relative" ref={ref}>
       <button onClick={openPanel} title="Bildirimler"
         className="relative p-2 rounded-lg hover:bg-brand-input text-gray-400 hover:text-gray-200">
         <span className="text-lg">🔔</span>
-        {unread > 0 && (
+        {totalUnread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-semibold flex items-center justify-center">
-            {unread > 9 ? '9+' : unread}
+            {totalUnread > 9 ? '9+' : totalUnread}
           </span>
         )}
       </button>
@@ -207,7 +232,17 @@ function NotificationBell() {
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {items.length === 0 ? (
+            {wlBadge && (
+              <button onClick={() => { dismissWlBadge(); window.location.href = '/dashboard' }}
+                className="w-full text-left px-3 py-2.5 border-b border-brand-border/50 hover:bg-brand-input flex gap-2 bg-accent/5">
+                <span className="text-base shrink-0">📋</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-gray-100 leading-snug font-medium">☀️ Günaydın! Bugünün worklist'i hazır</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">Dashboard'a git →</div>
+                </div>
+              </button>
+            )}
+            {items.length === 0 && !wlBadge ? (
               <div className="px-3 py-8 text-center text-xs text-gray-500">Bildirim yok</div>
             ) : items.map(n => (
               <button key={n.id} onClick={() => markRead(n.id)}

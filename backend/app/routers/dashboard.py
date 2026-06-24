@@ -21,6 +21,16 @@ from app.stages import all_stages_payload
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+@router.get("/worklist", response_model=dict)
+def worklist(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kullanıcının rol/izin bazlı sabah görev listesi."""
+    from app.services.worklist_service import build_worklist
+    return build_worklist(db, user)
+
+
 @router.post("/_test-daily-summary", response_model=dict)
 def test_daily_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Sabah Telegram ozetini hemen gonder (test). 08:00 cron'u beklemeden."""

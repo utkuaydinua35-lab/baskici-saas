@@ -32,21 +32,51 @@ router = APIRouter(prefix="/api/telafiler", tags=["telafiler"])
 
 # ───────────────────────── Serializer ─────────────────────────
 
-def _li_thumbnail(li: LineItem) -> str | None:
-    """Urun gorseli: once atanmis tasarimin thumbnail'i, sonra shopify urun gorseli."""
+def _li_thumbnail(li: LineItem, db: Session | None = None) -> str | None:
+    """Urun gorseli — order_detail._serialize_line_item ile ayni mantik:
+    raw image -> Design/KisiyeOzel product_id -> atanmis tasarim thumbnail."""
+    from app.services import storage
+    from app.models import KisiyeOzelProduct
+
+    raw = li.raw or {}
+    for path in [("image",), ("image_url",), ("product", "image")]:
+        v = raw
+        ok = True
+        for p in path:
+            if isinstance(v, dict):
+                v = v.get(p)
+            else:
+                ok = False
+                break
+        if ok and isinstance(v, str) and v.startswith("http"):
+            return v
+
+    if db is not None and li.product_id:
+        pid = str(li.product_id)
+        d = db.scalar(select(Design).where(
+            Design.product_id == pid, Design.product_image_url.isnot(None)))
+        if d and d.product_image_url:
+            return d.product_image_url
+        kop = db.scalar(select(KisiyeOzelProduct).where(
+            KisiyeOzelProduct.product_id == pid,
+            KisiyeOzelProduct.product_image_url.isnot(None)))
+        if kop and kop.product_image_url:
+            return kop.product_image_url
+
+    if getattr(li, "product_image_url", None):
+        return li.product_image_url
     d = li.assigned_design
     if d and getattr(d, "file_path", None):
         try:
-            from app.services import storage
             t = storage.get_thumbnail_url(d.file_path, d.file_format)
             if t:
                 return t
         except Exception:
             pass
-    return getattr(li, "product_image_url", None)
+    return None
 
 
-def _ser_li(li: LineItem) -> dict:
+def _ser_li(li: LineItem, db: Session | None = None) -> dict:
     return {
         "id": str(li.id),
         "title": li.title,
@@ -60,12 +90,12 @@ def _ser_li(li: LineItem) -> dict:
         ),
         "design_code": (li.assigned_design.code if li.assigned_design else None),
         "design_name": (li.assigned_design.name if li.assigned_design else None),
-        "thumbnail_url": _li_thumbnail(li),
+        "thumbnail_url": _li_thumbnail(li, db),
         "is_kaliba_eklendi": bool(li.is_kaliba_eklendi),
     }
 
 
-def _ser_telafi(o: Order, detay: bool = False) -> dict:
+def _ser_telafi(o: Order, detay: bool = False, db: Session | None = None) -> dict:
     si = stage_info(o.current_stage)
     kaynak = o.telafi_kaynak
     d = {
@@ -91,7 +121,7 @@ def _ser_telafi(o: Order, detay: bool = False) -> dict:
         "item_count": len(o.line_items or []),
     }
     if detay:
-        d["line_items"] = [_ser_li(li) for li in (o.line_items or [])]
+        d["line_items"] = [_ser_li(li, db) for li in (o.line_items or [])]
         d["note"] = o.note
     return d
 
@@ -180,7 +210,7 @@ def searchable_orders(
                 "fulfillment_status": o.fulfillment_status,
                 "created_at_platform": o.created_at_platform.isoformat() if o.created_at_platform else None,
                 "item_count": len(o.line_items or []),
-                "line_items": [_ser_li(li) for li in (o.line_items or [])],
+                "line_items": [_ser_li(li, db) for li in (o.line_items or [])],
             }
             for o in rows
         ]
@@ -203,7 +233,7 @@ def get_telafi(
     )
     if not o:
         raise HTTPException(status_code=404, detail="Telafi bulunamadi")
-    return _ser_telafi(o, detay=True)
+    return _ser_telafi(o, detay=True, db=db)
 
 
 # ───────────────────────── Olusturma ─────────────────────────
@@ -294,7 +324,7 @@ def create_from_order(
 
     db.commit()
     db.refresh(telafi)
-    return _ser_telafi(telafi, detay=True)
+    return _ser_telafi(telafi, detay=True, db=db)
 
 
 class ManualLI(BaseModel):
@@ -386,7 +416,7 @@ def create_manual_telafi(
 
     db.commit()
     db.refresh(telafi)
-    return _ser_telafi(telafi, detay=True)
+    return _ser_telafi(telafi, detay=True, db=db)
 
 
 # ───────────────────────── Eslestirme / asama / sil ─────────────────────────
@@ -422,7 +452,7 @@ def match_telafi(
         o.telafi_kaynak_order_id = kaynak.id
     db.commit()
     db.refresh(o)
-    return _ser_telafi(o, detay=True)
+    return _ser_telafi(o, detay=True, db=db)
 
 
 class StageIn(BaseModel):

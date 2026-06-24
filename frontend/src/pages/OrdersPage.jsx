@@ -54,6 +54,7 @@ export default function OrdersPage() {
   const [expanded, setExpanded] = useState(new Set())   // expand edilmiş satır id'leri
   const [menuOrderId, setMenuOrderId] = useState(null)
   const [showManualOrder, setShowManualOrder] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
   const navigate = useNavigate()  // 3 nokta menüsü açık olan sipariş
 
   const loadStores = async () => {
@@ -161,6 +162,11 @@ export default function OrdersPage() {
               className="btn-primary !text-xs"
               title="WhatsApp/telefon siparişlerini elle ekle"
             >+ Manuel Sipariş</button>
+            <button
+              onClick={() => setShowTrash(true)}
+              className="btn-secondary !text-xs"
+              title="Silinen siparişler (geri al)"
+            >🗑 Çöp Kutusu</button>
             {stores.map(s => (
               <button
                 key={s.id}
@@ -418,7 +424,66 @@ export default function OrdersPage() {
           loadTabCounts()
         }}
       />
+
+      {showTrash && (
+        <TrashDialog
+          onClose={() => setShowTrash(false)}
+          onRestored={() => { loadOrders(); loadTabCounts() }}
+        />
+      )}
 </div>
+  )
+}
+
+function TrashDialog({ onClose, onRestored }) {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    try { const r = await api.get('/api/orders/_trash'); setItems(r.items || []) }
+    catch { setItems([]) } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  const restore = async (id) => {
+    setBusy(id)
+    try { await api.post(`/api/orders/${id}/restore`); setItems(prev => prev.filter(o => o.id !== id)); onRestored?.() }
+    catch (e) { alert(e?.detail || e?.message || 'Geri alma başarısız') }
+    finally { setBusy(null) }
+  }
+
+  const fmt = (iso) => { try { return new Date(iso).toLocaleString('tr-TR') } catch { return '' } }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-card p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-100">🗑 Çöp Kutusu — Silinen Siparişler</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 w-7 h-7 rounded-lg hover:bg-brand-input">✕</button>
+        </div>
+        {loading ? (
+          <div className="text-sm text-gray-500 py-10 text-center">Yükleniyor...</div>
+        ) : items.length === 0 ? (
+          <div className="text-sm text-gray-500 py-10 text-center">Çöp kutusu boş.</div>
+        ) : (
+          <div className="space-y-1.5">
+            {items.map(o => (
+              <div key={o.id} className="flex items-center justify-between gap-3 rounded-lg border border-brand-border bg-brand-input/40 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm text-gray-200">{o.order_number} <span className="text-gray-400">{o.customer_name || ''}</span></div>
+                  <div className="text-[11px] text-gray-500">Silindi: {fmt(o.deleted_at)}</div>
+                </div>
+                <button onClick={() => restore(o.id)} disabled={busy === o.id}
+                  className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50 transition-all font-medium">
+                  {busy === o.id ? '...' : '↩ Geri Al'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

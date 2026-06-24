@@ -155,9 +155,9 @@ function ChangePasswordModal({ onClose }) {
         {ok ? <div className="text-sm text-emerald-300 py-4 text-center">✓ Şifre güncellendi</div> : (
           <>
             {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
-            <Field label="Mevcut şifre"><input type="password" className="input w-full" value={cur} onChange={e => setCur(e.target.value)} /></Field>
-            <Field label="Yeni şifre"><input type="password" className="input w-full" value={nw} onChange={e => setNw(e.target.value)} /></Field>
-            <Field label="Yeni şifre (tekrar)"><input type="password" className="input w-full" value={nw2} onChange={e => setNw2(e.target.value)} /></Field>
+            <Field label="Mevcut şifre"><SecretInput value={cur} onChange={e => setCur(e.target.value)} autoComplete="current-password" /></Field>
+            <Field label="Yeni şifre"><SecretInput value={nw} onChange={e => setNw(e.target.value)} autoComplete="new-password" /></Field>
+            <Field label="Yeni şifre (tekrar)"><SecretInput value={nw2} onChange={e => setNw2(e.target.value)} autoComplete="new-password" /></Field>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
               <button onClick={save} disabled={busy} className="btn-primary !text-sm">{busy ? '...' : 'Kaydet'}</button>

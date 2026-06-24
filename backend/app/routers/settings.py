@@ -13,9 +13,9 @@ from app.database import get_db
 from app.models import Tenant, User
 from app.services import storage
 
-router = APIRouter(prefix="/api/tenant", tags=["tenant"],
-    dependencies=[Depends(require_permission("ayarlar"))],
-)
+# NOT: router-seviyesi gate YOK — avatar endpoint'leri (self-servis, kullaniciya ozel)
+# herkese acik olmali. Tenant-admin endpoint'leri (settings/brand-logo) tek tek ayarlar ister.
+router = APIRouter(prefix="/api/tenant", tags=["tenant"])
 
 
 class TenantSettings(BaseModel):
@@ -35,7 +35,7 @@ def _get_tenant(db: Session, tenant_id) -> Tenant:
 
 @router.get("/settings", response_model=None)
 def get_settings(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Mevcut tenant ayarlarını döndür."""
@@ -48,7 +48,7 @@ def get_settings(
 @router.patch("/settings", response_model=None)
 def update_settings(
     payload: UpdateTenantSettings,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Tenant ayarlarını güncelle (şimdilik sadece custom_design_keywords)."""
@@ -90,7 +90,7 @@ async def _read_logo(file: UploadFile) -> tuple[bytes, str]:
 @router.post("/brand-logo", response_model=dict)
 async def upload_brand_logo(
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
     """Marka (tenant) logosu yukle. Sol ust + markalama icin."""
@@ -105,7 +105,7 @@ async def upload_brand_logo(
 
 
 @router.delete("/brand-logo", response_model=dict)
-def delete_brand_logo(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def delete_brand_logo(user: User = Depends(require_permission("ayarlar")), db: Session = Depends(get_db)):
     tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
     if tenant:
         tenant.logo_url = None

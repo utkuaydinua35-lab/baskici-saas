@@ -156,12 +156,23 @@ def telafi_stores(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Klonlama panelinde magaza filtresi icin magaza listesi (bayii haric)."""
+    """Magaza + bayii listesi. stores: gercek magazalar; dealers: bayiler
+    (her birinin sanal store_id'si ile)."""
+    from app.models import Dealer
     stores = db.scalars(select(Store).where(Store.tenant_id == user.tenant_id)).all()
-    return {"items": [
-        {"id": str(s.id), "name": s.name}
-        for s in stores if getattr(s, "platform", None) != "bayii"
-    ]}
+    dealers = db.scalars(
+        select(Dealer).where(Dealer.tenant_id == user.tenant_id, Dealer.is_active == True)  # noqa: E712
+    ).all()
+    return {
+        "stores": [
+            {"id": str(s.id), "name": s.name}
+            for s in stores if getattr(s, "platform", None) != "bayii"
+        ],
+        "dealers": [
+            {"id": str(de.id), "name": de.name, "store_id": str(de.store_id)}
+            for de in dealers if de.store_id
+        ],
+    }
 
 
 @router.get("/searchable-orders", response_model=None)
@@ -338,6 +349,7 @@ class ManualLI(BaseModel):
 
 class ManualTelafiIn(BaseModel):
     store_id: uuid.UUID
+    dealer_id: uuid.UUID | None = None
     customer_name: str
     customer_email: str | None = None
     customer_phone: str | None = None
@@ -377,7 +389,8 @@ def create_manual_telafi(
         tags="telafi",
         is_telafi=True,
         telafi_sebep=(body.telafi_sebep or "").strip() or None,
-        raw={"telafi": True, "manual": True, "customer_phone": body.customer_phone},
+        raw={"telafi": True, "manual": True, "customer_phone": body.customer_phone,
+             **({"dealer_id": str(body.dealer_id)} if body.dealer_id else {})},
     )
     db.add(telafi)
     db.flush()

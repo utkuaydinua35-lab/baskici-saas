@@ -170,7 +170,7 @@ function CloneModal({ onClose, onDone }) {
   const [sebep, setSebep] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { api.get('/api/telafiler/_meta/stores').then(r => setStores(r.items || [])).catch(() => {}) }, [])
+  useEffect(() => { api.get('/api/telafiler/_meta/stores').then(r => setStores(r.stores || [])).catch(() => {}) }, [])
 
   useEffect(() => {
     if (selOrder) return
@@ -187,6 +187,25 @@ function CloneModal({ onClose, onDone }) {
     }, 250)
     return () => clearTimeout(h)
   }, [q, storeId, durum, selOrder])
+
+  const [liLoading, setLiLoading] = useState(false)
+  const pickOrder = async (o) => {
+    setSelLis({}); setLiLoading(true)
+    // Gorseller siparis detayindan cozulur (order_detail mantigi — adapter dahil)
+    try {
+      const d = await api.get(`/api/orders/${o.id}/detail`)
+      const lis = (d.line_items || []).map(li => ({
+        id: li.id, title: li.title, quantity: li.quantity,
+        device_model: li.device_model_override || (li.properties || []).find(p => (p.name || '').endsWith('Model'))?.value || null,
+        design_code: li.assigned_design?.code || null,
+        design_name: li.assigned_design?.name || null,
+        thumbnail_url: li.image_url || li.assigned_design?.thumbnail_url || null,
+      }))
+      setSelOrder({ ...o, line_items: lis })
+    } catch {
+      setSelOrder(o) // detay alinamazsa arama sonucundaki line_items
+    } finally { setLiLoading(false) }
+  }
 
   const toggle = (id) => setSelLis(s => ({ ...s, [id]: !s[id] }))
   const allChecked = selOrder && selOrder.line_items.length > 0 && selOrder.line_items.every(li => selLis[li.id])
@@ -227,7 +246,7 @@ function CloneModal({ onClose, onDone }) {
           <div className="text-[11px] text-gray-500 mb-1">{searching ? 'Aranıyor...' : `${rows.length} sipariş`}</div>
           <div className="max-h-96 overflow-y-auto divide-y divide-brand-border/50 border border-brand-border rounded-lg">
             {rows.map(o => (
-              <button key={o.id} onClick={() => { setSelOrder(o); setSelLis({}) }}
+              <button key={o.id} onClick={() => pickOrder(o)}
                 className="w-full text-left px-3 py-2 hover:bg-brand-input flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -261,6 +280,7 @@ function CloneModal({ onClose, onDone }) {
             <button onClick={toggleAll} className="text-[11px] text-accent hover:underline">{allChecked ? 'hiçbirini' : 'tümünü'} seç</button>
           </div>
           <div className="max-h-72 overflow-y-auto space-y-1 mb-3 border border-brand-border rounded-lg p-1">
+            {liLoading && <div className="text-xs text-gray-500 py-3 text-center">Ürünler yükleniyor...</div>}
             {selOrder.line_items.map(li => (
               <label key={li.id} className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${selLis[li.id] ? 'bg-accent/10' : 'hover:bg-brand-input'}`}>
                 <input type="checkbox" checked={!!selLis[li.id]} onChange={() => toggle(li.id)} />
@@ -293,54 +313,85 @@ function CloneModal({ onClose, onDone }) {
 
 function ManualModal({ onClose, onDone }) {
   const [stores, setStores] = useState([])
-  const [storeId, setStoreId] = useState('')
+  const [dealers, setDealers] = useState([])
+  const [sel, setSel] = useState('')        // "store:<id>" | "dealer:<id>"
   const [customer, setCustomer] = useState('')
   const [sebep, setSebep] = useState('')
-  const [lis, setLis] = useState([{ title: '', device_model: '', quantity: 1 }])
+  const [designs, setDesigns] = useState([])
+  const [models, setModels] = useState([])
+  const [lis, setLis] = useState([{ title: 'Telefon Kılıfı', design_id: '', device_model: '', quantity: 1 }])
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { api.get('/api/stores').then(s => {
-    const arr = Array.isArray(s) ? s.filter(x => x.platform !== 'bayii') : []
-    setStores(arr); if (arr[0]) setStoreId(arr[0].id)
-  }).catch(() => {}) }, [])
+  // store_id + dealer_id cozumle
+  const resolved = (() => {
+    if (sel.startsWith('store:')) return { store_id: sel.slice(6), dealer_id: null }
+    if (sel.startsWith('dealer:')) {
+      const de = dealers.find(d => d.id === sel.slice(7))
+      return { store_id: de?.store_id || '', dealer_id: de?.id || null }
+    }
+    return { store_id: '', dealer_id: null }
+  })()
 
-  const setLi = (i, k, v) => setLis(p => p.map((x, j) => j === i ? { ...x, [k]: v } : x))
-  const addLi = () => setLis(p => [...p, { title: '', device_model: '', quantity: 1 }])
+  useEffect(() => {
+    api.get('/api/telafiler/_meta/stores').then(r => {
+      const st = r.stores || [], de = r.dealers || []
+      setStores(st); setDealers(de)
+      if (st[0]) setSel(`store:${st[0].id}`)
+      else if (de[0]) setSel(`dealer:${de[0].id}`)
+    }).catch(() => {})
+    api.get('/api/phone-models?include_baseline=true')
+      .then(r => setModels(Array.isArray(r) ? r : (r?.items || r?.models || []))).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!resolved.store_id) { setDesigns([]); return }
+    api.get(`/api/orders/_meta/store-designs?store_id=${resolved.store_id}`)
+      .then(r => setDesigns(r.items || [])).catch(() => setDesigns([]))
+  }, [resolved.store_id])
+
+  const setLi = (i, patch) => setLis(p => p.map((x, j) => j === i ? { ...x, ...patch } : x))
+  const addLi = () => setLis(p => [...p, { title: 'Telefon Kılıfı', design_id: '', device_model: '', quantity: 1 }])
   const rmLi = (i) => setLis(p => p.filter((_, j) => j !== i))
 
   const create = async () => {
-    if (!storeId) { alert('Mağaza seç'); return }
+    if (!resolved.store_id) { alert('Mağaza/bayii seç'); return }
     if (!customer.trim()) { alert('Müşteri adı gir'); return }
-    const valid = lis.filter(l => l.title.trim())
-    if (!valid.length) { alert('En az bir ürün gir'); return }
+    const valid = lis.filter(l => l.title.trim() && l.device_model.trim())
+    if (!valid.length) { alert('En az bir ürün (başlık + model) gir'); return }
     setBusy(true)
     try {
       await api.post('/api/telafiler/manual', {
-        store_id: storeId, customer_name: customer, telafi_sebep: sebep,
-        line_items: valid.map(l => ({ title: l.title, device_model: l.device_model || null, quantity: Number(l.quantity) || 1 })),
+        store_id: resolved.store_id, dealer_id: resolved.dealer_id,
+        customer_name: customer, telafi_sebep: sebep,
+        line_items: valid.map(l => ({
+          title: l.title, design_id: l.design_id || null,
+          device_model: l.device_model || null, quantity: Number(l.quantity) || 1,
+        })),
       })
       onDone()
     } catch (e) { alert(e.message) } finally { setBusy(false) }
   }
 
   return (
-    <Overlay onClose={onClose} title="Elle Telafi Ekle">
+    <Overlay onClose={onClose} title="Elle Telafi Ekle" wide>
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
-          <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm">
-            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <select value={sel} onChange={e => setSel(e.target.value)} className="input !text-sm">
+            {stores.length > 0 && <optgroup label="Mağazalar">
+              {stores.map(s => <option key={s.id} value={`store:${s.id}`}>{s.name}</option>)}
+            </optgroup>}
+            {dealers.length > 0 && <optgroup label="Bayiler">
+              {dealers.map(d => <option key={d.id} value={`dealer:${d.id}`}>🤝 {d.name}</option>)}
+            </optgroup>}
           </select>
           <input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Müşteri adı" className="input !text-sm" />
         </div>
         <SebepInput value={sebep} onChange={setSebep} />
         <div className="text-[12px] text-gray-500 pt-1">Ürünler:</div>
         {lis.map((l, i) => (
-          <div key={i} className="flex gap-1.5">
-            <input value={l.title} onChange={e => setLi(i, 'title', e.target.value)} placeholder="Ürün başlığı" className="input !text-sm flex-1" />
-            <input value={l.device_model} onChange={e => setLi(i, 'device_model', e.target.value)} placeholder="Model (örn iPhone 14)" className="input !text-sm w-40" />
-            <input type="number" min="1" value={l.quantity} onChange={e => setLi(i, 'quantity', e.target.value)} className="input !text-sm w-16" />
-            {lis.length > 1 && <button onClick={() => rmLi(i)} className="text-gray-500 hover:text-red-400 px-1">×</button>}
-          </div>
+          <ManualLineRow key={i} item={l} designs={designs} models={models}
+            canDelete={lis.length > 1}
+            onChange={patch => setLi(i, patch)} onDelete={() => rmLi(i)} />
         ))}
         <button onClick={addLi} className="text-[12px] text-accent hover:underline">+ ürün ekle</button>
       </div>
@@ -350,6 +401,73 @@ function ManualModal({ onClose, onDone }) {
           {busy ? '...' : 'Telafi Oluştur'}</button>
       </div>
     </Overlay>
+  )
+}
+
+function ManualLineRow({ item, designs, models, canDelete, onChange, onDelete }) {
+  const [designOpen, setDesignOpen] = useState(false)
+  const [designQ, setDesignQ] = useState('')
+  const [modelOpen, setModelOpen] = useState(false)
+  const [modelQ, setModelQ] = useState('')
+
+  const modelLabel = (m) => m.display_name || m.spec_key || m.model || m.name || ''
+  const selDesign = designs.find(d => d.id === item.design_id)
+  const fDesigns = (() => {
+    const q = designQ.trim().toLowerCase()
+    return (q ? designs.filter(d => `${d.code} ${d.name}`.toLowerCase().includes(q)) : designs).slice(0, 40)
+  })()
+  const fModels = (() => {
+    const q = modelQ.trim().toLowerCase()
+    return (q ? models.filter(m => modelLabel(m).toLowerCase().includes(q)) : models).slice(0, 40)
+  })()
+
+  return (
+    <div className="rounded-lg border border-brand-border p-2 space-y-1.5">
+      <div className="flex gap-1.5 items-start">
+        {/* Tasarim secici (urun) */}
+        <div className="relative flex-1 min-w-0">
+          <button type="button" onClick={() => { setDesignOpen(o => !o); setModelOpen(false) }}
+            className="input !text-sm w-full text-left flex items-center gap-2">
+            {selDesign?.thumbnail_url && <img src={selDesign.thumbnail_url} alt="" className="w-6 h-6 rounded object-cover" />}
+            <span className="truncate">{selDesign ? `${selDesign.code}${selDesign.name ? ' · ' + selDesign.name : ''}` : (item.title || 'Ürün seç...')}</span>
+          </button>
+          {designOpen && (
+            <div className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-lg border border-brand-border bg-brand-card shadow-xl p-1">
+              <input autoFocus value={designQ} onChange={e => setDesignQ(e.target.value)} placeholder="Tasarım ara..."
+                className="input !text-xs w-full mb-1" />
+              <button onClick={() => { onChange({ design_id: '', title: 'Telefon Kılıfı' }); setDesignOpen(false) }}
+                className="w-full text-left px-2 py-1 rounded text-xs text-gray-400 hover:bg-brand-input">— tasarımsız (elle başlık) —</button>
+              {fDesigns.map(d => (
+                <button key={d.id} onClick={() => { onChange({ design_id: d.id, title: d.name || d.code }); setDesignOpen(false); setDesignQ('') }}
+                  className="w-full text-left px-2 py-1 rounded hover:bg-brand-input flex items-center gap-2">
+                  {d.thumbnail_url
+                    ? <img src={d.thumbnail_url} alt="" className="w-7 h-7 rounded object-cover" onError={e => { e.target.style.display = 'none' }} />
+                    : <span className="w-7 h-7 rounded bg-brand-input flex items-center justify-center text-[7px] text-gray-600">yok</span>}
+                  <span className="text-sm text-gray-200 truncate">{d.code}{d.name ? ` · ${d.name}` : ''}</span>
+                </button>
+              ))}
+              {fDesigns.length === 0 && <div className="text-xs text-gray-500 py-2 text-center">Tasarım yok</div>}
+            </div>
+          )}
+        </div>
+        {/* Model secici */}
+        <div className="relative w-44">
+          <input value={item.device_model} onChange={e => { onChange({ device_model: e.target.value }); setModelQ(e.target.value); setModelOpen(true) }}
+            onFocus={() => { setModelOpen(true); setModelQ(item.device_model) }}
+            placeholder="Model" className="input !text-sm w-full" />
+          {modelOpen && fModels.length > 0 && (
+            <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-brand-border bg-brand-card shadow-xl p-1">
+              {fModels.map((m, j) => (
+                <button key={j} onClick={() => { onChange({ device_model: modelLabel(m) }); setModelOpen(false) }}
+                  className="w-full text-left px-2 py-1 rounded hover:bg-brand-input text-sm text-gray-200">{modelLabel(m)}</button>
+              ))}
+            </div>
+          )}
+        </div>
+        <input type="number" min="1" value={item.quantity} onChange={e => onChange({ quantity: e.target.value })} className="input !text-sm w-14" />
+        {canDelete && <button onClick={onDelete} className="text-gray-500 hover:text-red-400 px-1">×</button>}
+      </div>
+    </div>
   )
 }
 

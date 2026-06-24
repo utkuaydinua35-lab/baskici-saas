@@ -173,6 +173,29 @@ function Field({ label, children }) {
   return <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">{label}</span>{children}</label>
 }
 
+// Sifre/PIN girisi — goz simgesi ile gizle/goster
+function SecretInput({ value, onChange, placeholder, inputMode, autoComplete }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative">
+      <input
+        className="input w-full !pr-9"
+        type={show ? 'text' : 'password'}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+      />
+      <button type="button" onClick={() => setShow(s => !s)} tabIndex={-1}
+        title={show ? 'Gizle' : 'Göster'}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 text-sm">
+        {show ? '🙈' : '👁'}
+      </button>
+    </div>
+  )
+}
+
 function TabBtn({ active, onClick, children }) {
   return (
     <button onClick={onClick}
@@ -316,7 +339,7 @@ function UserDialog({ user, meta, onClose, onSaved }) {
             <input className="input w-full" type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
         )}
         <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">{isNew ? 'Şifre' : 'Yeni şifre (boş = değişmez)'}</span>
-          <input className="input w-full" type="password" value={password} onChange={e => setPassword(e.target.value)} /></label>
+          <SecretInput value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /></label>
 
         <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">Rol</span>
           <select className="input w-full" value={role} onChange={e => applyTemplate(e.target.value)}>
@@ -340,7 +363,8 @@ function UserDialog({ user, meta, onClose, onSaved }) {
         </div>
 
         <label className="block mb-1"><span className="block text-xs text-gray-400 mb-1">PIN (4-8 hane, opsiyonel — profil kilidi)</span>
-          <input className="input w-full" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder={user.has_pin ? '•••• (mevcut)' : 'PIN yok'} /></label>
+          <SecretInput value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            inputMode="numeric" placeholder={user.has_pin ? '•••• (mevcut)' : 'PIN yok'} /></label>
         {!isNew && user.has_pin && <button onClick={clearPin} className="text-xs text-red-400/70 hover:text-red-300 mb-2">PIN'i kaldır</button>}
 
         <div className="flex justify-end gap-2 mt-4">

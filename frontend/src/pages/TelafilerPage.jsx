@@ -26,31 +26,54 @@ export default function TelafilerPage() {
 
   return (
     <div className="p-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-100 flex items-center gap-2">♻️ Telafiler</h1>
-          <p className="text-[12px] text-gray-500 mt-0.5">
-            Hatalı model / yanlış hazırlama nedeniyle yeniden gönderilecek siparişler. Kalıp oluşturucuya dahildir.
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5 animate-fadein">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-amber-500/30 to-accent/30 border border-amber-500/20 flex items-center justify-center text-xl shadow-lg shadow-amber-500/5">♻️</div>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-100">Telafiler</h1>
+            <p className="text-[12px] text-gray-500 mt-0.5 max-w-md">
+              Hatalı model / yanlış hazırlama nedeniyle yeniden gönderilecek siparişler. Kalıp oluşturucuya dahildir.
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button onClick={() => setModal('clone')}
-            className="text-xs px-3 py-1.5 rounded bg-accent/15 text-accent hover:bg-accent/25">Siparişten Klonla</button>
+            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
+            <span>⧉</span> Siparişten Klonla</button>
           <button onClick={() => setModal('manual')}
-            className="text-xs px-3 py-1.5 rounded bg-brand-input text-gray-200 hover:text-white">Elle Ekle</button>
+            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-brand-input text-gray-200 hover:text-white hover:bg-brand-border active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
+            <span>＋</span> Elle Ekle</button>
         </div>
       </div>
 
+      {/* özet çubuğu */}
+      {!loading && items.length > 0 && (
+        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 animate-fadein">
+          <SummaryChip label="Toplam" value={items.length} accent />
+          <SummaryChip label="Eşleşmemiş" value={items.filter(t => !t.kaynak).length} />
+          <SummaryChip label="Tamamlanan" value={items.filter(t => t.progress_percent >= 100).length} />
+        </div>
+      )}
+
       {loading ? (
-        <div className="text-sm text-gray-500 py-12 text-center">Yükleniyor...</div>
+        <div className="space-y-2">
+          {[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-brand-card/60 border border-brand-border animate-pulse" />)}
+        </div>
       ) : items.length === 0 ? (
-        <div className="text-sm text-gray-500 py-12 text-center border border-dashed border-brand-border rounded-xl">
-          Henüz telafi siparişi yok. "Siparişten Klonla" veya "Elle Ekle" ile başla.
+        <div className="flex flex-col items-center gap-3 py-16 text-center border border-dashed border-brand-border rounded-2xl animate-fadeinup">
+          <div className="text-4xl opacity-50">♻️</div>
+          <div className="text-sm text-gray-400">Henüz telafi siparişi yok.</div>
+          <div className="flex gap-2">
+            <button onClick={() => setModal('clone')} className="text-xs px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-all">Siparişten Klonla</button>
+            <button onClick={() => setModal('manual')} className="text-xs px-3 py-1.5 rounded-lg bg-brand-input text-gray-200 hover:text-white transition-all">Elle Ekle</button>
+          </div>
         </div>
       ) : (
-        <div className="space-y-2">
-          {items.map(t => (
-            <TelafiCard key={t.id} t={t} stages={stages} onChanged={load} />
+        <div className="space-y-2.5">
+          {items.map((t, i) => (
+            <div key={t.id} className="animate-fadeinup" style={{ animationDelay: `${Math.min(i * 50, 400)}ms` }}>
+              <TelafiCard t={t} stages={stages} onChanged={load} />
+            </div>
           ))}
         </div>
       )}
@@ -61,8 +84,13 @@ export default function TelafilerPage() {
   )
 }
 
-function StageBadge({ info }) {
-  return <span className="text-[11px] px-1.5 py-0.5 rounded bg-brand-input text-gray-300">{info?.label || '—'}</span>
+function SummaryChip({ label, value, accent }) {
+  return (
+    <div className={`shrink-0 rounded-xl border px-3 py-2 ${accent ? 'border-accent/30 bg-accent/10' : 'border-brand-border bg-brand-card'}`}>
+      <div className={`text-lg font-semibold leading-none ${accent ? 'text-accent' : 'text-gray-100'}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">{label}</div>
+    </div>
+  )
 }
 
 function TelafiCard({ t, stages, onChanged }) {
@@ -86,35 +114,47 @@ function TelafiCard({ t, stages, onChanged }) {
     catch (e) { alert(e.message) } finally { setBusy(false) }
   }
 
+  const done = t.progress_percent >= 100
   return (
-    <div className="rounded-xl border border-brand-border bg-brand-card p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+    <div className={`group relative rounded-xl border bg-brand-card p-3 transition-all duration-200 hover:border-accent/40 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 overflow-hidden ${busy ? 'opacity-60' : ''}`}>
+      {/* sol kenar aksan şeridi */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${done ? 'bg-emerald-500/70' : 'bg-amber-500/60'}`} />
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pl-1.5">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium">TELAFİ</span>
-            <span className="text-sm font-medium text-gray-100">{t.order_number}</span>
-            <span className="text-sm text-gray-300">{t.customer_name || '—'}</span>
-            <span className="text-[11px] text-gray-500">{t.item_count} ürün</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gradient-to-r from-amber-500/30 to-amber-600/20 text-amber-200 font-semibold tracking-wide">TELAFİ</span>
+            <span className="text-sm font-semibold text-gray-100">{t.order_number}</span>
+            <span className="text-sm text-gray-300 truncate">{t.customer_name || '—'}</span>
+            <span className="text-[11px] text-gray-500 bg-brand-input/60 px-1.5 py-0.5 rounded">{t.item_count} ürün</span>
           </div>
-          {t.telafi_sebep && <div className="text-[12px] text-amber-400/90 mt-1">Sebep: {t.telafi_sebep}</div>}
-          <div className="text-[12px] text-gray-500 mt-1">
+          {t.telafi_sebep && (
+            <div className="text-[12px] text-amber-400/90 mt-1.5 flex items-center gap-1">
+              <span className="opacity-70">⚠</span> {t.telafi_sebep}
+            </div>
+          )}
+          <div className="text-[12px] text-gray-500 mt-1.5">
             {t.kaynak
-              ? <>Kaynak sipariş: <span className="text-gray-300">{t.kaynak.order_number}</span> ({t.kaynak.customer_name})
-                  <button onClick={unmatch} disabled={busy} className="ml-2 text-[11px] text-gray-500 hover:text-red-400">eşi kaldır</button></>
+              ? <>🔗 Kaynak: <span className="text-gray-300">{t.kaynak.order_number}</span> <span className="text-gray-600">({t.kaynak.customer_name})</span>
+                  <button onClick={unmatch} disabled={busy} className="ml-2 text-[11px] text-gray-600 hover:text-red-400 transition-colors">eşi kaldır</button></>
               : <button onClick={() => setMatchOpen(true)} className="text-[11px] text-accent hover:underline">+ siparişle eşleştir</button>}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <select value={t.current_stage} disabled={busy} onChange={e => setStage(e.target.value)}
-            className="input !text-xs !py-1">
+            className="input !text-xs !py-1.5 flex-1 sm:flex-none cursor-pointer hover:border-accent/40 transition-colors">
             {stages.map(s => <option key={s.no} value={s.no}>{s.no}. {s.label}</option>)}
           </select>
-          <button onClick={del} disabled={busy} className="text-[11px] text-gray-500 hover:text-red-400 px-1">Sil</button>
+          <button onClick={del} disabled={busy} title="Sil"
+            className="text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg p-1.5 transition-all">🗑</button>
         </div>
       </div>
       {/* ilerleme */}
-      <div className="mt-2 h-1 rounded bg-brand-input overflow-hidden">
-        <div className="h-full bg-accent/70" style={{ width: `${t.progress_percent || 0}%` }} />
+      <div className="mt-2.5 ml-1.5 flex items-center gap-2">
+        <div className="flex-1 h-1.5 rounded-full bg-brand-input overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ease-out ${done ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' : 'bg-gradient-to-r from-accent to-accent/60'}`}
+            style={{ width: `${t.progress_percent || 0}%` }} />
+        </div>
+        <span className={`text-[10px] font-medium tabular-nums ${done ? 'text-emerald-400' : 'text-gray-500'}`}>{t.current_stage_info?.label} · %{t.progress_percent || 0}</span>
       </div>
 
       {matchOpen && <MatchPicker telafiId={t.id} onClose={() => setMatchOpen(false)} onDone={() => { setMatchOpen(false); onChanged() }} />}
@@ -230,18 +270,20 @@ function CloneModal({ onClose, onDone }) {
     <Overlay onClose={onClose} title="Siparişten Telafi Oluştur" wide>
       {!selOrder ? (
         <>
-          <div className="flex gap-2 mb-2">
+          <div className="flex flex-col sm:flex-row gap-2 mb-2">
             <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Sipariş no / müşteri ara..."
               className="input flex-1 !text-sm" />
-            <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm w-40">
-              <option value="">Tüm mağazalar</option>
-              {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <select value={durum} onChange={e => setDurum(e.target.value)} className="input !text-sm w-36">
-              <option value="all">Tüm durumlar</option>
-              <option value="acik">Açık</option>
-              <option value="gonderilmis">Gönderilmiş</option>
-            </select>
+            <div className="flex gap-2">
+              <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm flex-1 sm:w-40">
+                <option value="">Tüm mağazalar</option>
+                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <select value={durum} onChange={e => setDurum(e.target.value)} className="input !text-sm flex-1 sm:w-36">
+                <option value="all">Tüm durumlar</option>
+                <option value="acik">Açık</option>
+                <option value="gonderilmis">Gönderilmiş</option>
+              </select>
+            </div>
           </div>
           <div className="text-[11px] text-gray-500 mb-1">{searching ? 'Aranıyor...' : `${rows.length} sipariş`}</div>
           <div className="max-h-96 overflow-y-auto divide-y divide-brand-border/50 border border-brand-border rounded-lg">
@@ -487,11 +529,12 @@ function SebepInput({ value, onChange }) {
 
 function Overlay({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} rounded-xl border border-brand-border bg-brand-card p-4 shadow-xl`} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fadein" onClick={onClose}>
+      <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-card p-4 shadow-2xl animate-popin`}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 sticky -top-4 -mt-4 pt-4 pb-2 bg-brand-card z-10">
           <h3 className="text-sm font-semibold text-gray-100">{title}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-200">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 hover:bg-brand-input rounded-lg w-7 h-7 flex items-center justify-center transition-all">✕</button>
         </div>
         {children}
       </div>

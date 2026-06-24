@@ -369,6 +369,12 @@ class Order(Base):
     )
     telafi_sebep: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
+    # Soft-delete: dolu ise silinmis sayilir (geri alinabilir). Global ORM filtresi
+    # (database.py do_orm_execute) silinmisleri otomatik gizler; cop/restore opt-out eder.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     store: Mapped[Store] = relationship(back_populates="orders")

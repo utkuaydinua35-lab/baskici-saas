@@ -232,6 +232,34 @@ def searchable_orders(
     }
 
 
+@router.get("/_trash", response_model=None)
+def list_telafi_trash(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Silinmis telafiler (cop kutusu)."""
+    rows = db.scalars(
+        select(Order)
+        .where(
+            Order.tenant_id == user.tenant_id,
+            Order.is_telafi == True,  # noqa: E712
+            Order.deleted_at.isnot(None),
+        )
+        .options(selectinload(Order.line_items), selectinload(Order.telafi_kaynak))
+        .order_by(desc(Order.deleted_at))
+        .execution_options(include_deleted=True)
+    ).all()
+    return {"items": [
+        {
+            "id": str(o.id), "order_number": o.order_number,
+            "customer_name": o.customer_name, "telafi_sebep": o.telafi_sebep,
+            "item_count": len(o.line_items or []),
+            "deleted_at": o.deleted_at.isoformat() if o.deleted_at else None,
+        }
+        for o in rows
+    ]}
+
+
 @router.get("/{telafi_id}", response_model=None)
 def get_telafi(
     telafi_id: uuid.UUID,
@@ -505,6 +533,26 @@ def delete_telafi(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Soft-delete: cop kutusundan geri alinabilir."""
     o = _get_telafi(db, telafi_id, user.tenant_id)
-    db.delete(o)
+    o.deleted_at = datetime.now(timezone.utc)
     db.commit()
+
+
+@router.post("/{telafi_id}/restore", response_model=None)
+def restore_telafi(
+    telafi_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Silinmis telafiyi geri al."""
+    o = db.scalar(
+        select(Order)
+        .where(Order.id == telafi_id, Order.tenant_id == user.tenant_id, Order.is_telafi == True)  # noqa: E712
+        .execution_options(include_deleted=True)
+    )
+    if not o:
+        raise HTTPException(status_code=404, detail="Telafi bulunamadi")
+    o.deleted_at = None
+    db.commit()
+    return {"ok": True}

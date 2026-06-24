@@ -8,6 +8,8 @@ export default function TelafilerPage() {
   const [stages, setStages] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(null) // 'clone' | 'manual' | null
+  const [view, setView] = useState('list') // 'list' | 'trash'
+  const [trash, setTrash] = useState([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -22,7 +24,18 @@ export default function TelafilerPage() {
     setLoading(false)
   }, [])
 
+  const loadTrash = useCallback(async () => {
+    try { const r = await api.get('/api/telafiler/_trash'); setTrash(r.items || []) }
+    catch (e) { console.error(e) }
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (view === 'trash') loadTrash() }, [view, loadTrash])
+
+  const restore = async (id) => {
+    try { await api.post(`/api/telafiler/${id}/restore`); await Promise.all([loadTrash(), load()]) }
+    catch (e) { alert(e.message) }
+  }
 
   return (
     <div className="p-4 max-w-5xl mx-auto">
@@ -37,45 +50,80 @@ export default function TelafilerPage() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button onClick={() => setModal('clone')}
-            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
-            <span>⧉</span> Siparişten Klonla</button>
-          <button onClick={() => setModal('manual')}
-            className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-brand-input text-gray-200 hover:text-white hover:bg-brand-border active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
-            <span>＋</span> Elle Ekle</button>
+          <button onClick={() => setView(v => v === 'trash' ? 'list' : 'trash')}
+            className={`text-xs px-3 py-2 rounded-lg active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5 ${view === 'trash' ? 'bg-accent/20 text-accent' : 'bg-brand-input text-gray-300 hover:text-white'}`}>
+            {view === 'trash' ? '← Geri' : '🗑 Çöp Kutusu'}</button>
+          {view === 'list' && <>
+            <button onClick={() => setModal('clone')}
+              className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
+              <span>⧉</span> Siparişten Klonla</button>
+            <button onClick={() => setModal('manual')}
+              className="flex-1 sm:flex-none text-xs px-3 py-2 rounded-lg bg-brand-input text-gray-200 hover:text-white hover:bg-brand-border active:scale-95 transition-all font-medium flex items-center justify-center gap-1.5">
+              <span>＋</span> Elle Ekle</button>
+          </>}
         </div>
       </div>
 
-      {/* özet çubuğu */}
-      {!loading && items.length > 0 && (
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 animate-fadein">
-          <SummaryChip label="Toplam" value={items.length} accent />
-          <SummaryChip label="Eşleşmemiş" value={items.filter(t => !t.kaynak).length} />
-          <SummaryChip label="Tamamlanan" value={items.filter(t => t.progress_percent >= 100).length} />
+      {view === 'trash' && (
+        <div className="animate-fadein">
+          {trash.length === 0 ? (
+            <div className="text-sm text-gray-500 py-16 text-center border border-dashed border-brand-border rounded-2xl">Çöp kutusu boş.</div>
+          ) : (
+            <div className="space-y-2">
+              {trash.map(t => (
+                <div key={t.id} className="rounded-xl border border-brand-border bg-brand-card p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400">SİLİNDİ</span>
+                      <span className="text-sm font-medium text-gray-200">{t.order_number}</span>
+                      <span className="text-sm text-gray-400 truncate">{t.customer_name || '—'}</span>
+                      <span className="text-[11px] text-gray-600">{t.item_count} ürün</span>
+                    </div>
+                    {t.telafi_sebep && <div className="text-[11px] text-gray-500 mt-0.5">{t.telafi_sebep}</div>}
+                  </div>
+                  <button onClick={() => restore(t.id)}
+                    className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 active:scale-95 transition-all font-medium">↩ Geri Al</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-2">
-          {[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-brand-card/60 border border-brand-border animate-pulse" />)}
-        </div>
-      ) : items.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center border border-dashed border-brand-border rounded-2xl animate-fadeinup">
-          <div className="text-4xl opacity-50">♻️</div>
-          <div className="text-sm text-gray-400">Henüz telafi siparişi yok.</div>
-          <div className="flex gap-2">
-            <button onClick={() => setModal('clone')} className="text-xs px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-all">Siparişten Klonla</button>
-            <button onClick={() => setModal('manual')} className="text-xs px-3 py-1.5 rounded-lg bg-brand-input text-gray-200 hover:text-white transition-all">Elle Ekle</button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {items.map((t, i) => (
-            <div key={t.id} className="animate-fadeinup" style={{ animationDelay: `${Math.min(i * 50, 400)}ms` }}>
-              <TelafiCard t={t} stages={stages} onChanged={load} />
+      {view === 'list' && (
+        <>
+          {/* özet çubuğu */}
+          {!loading && items.length > 0 && (
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1 animate-fadein">
+              <SummaryChip label="Toplam" value={items.length} accent />
+              <SummaryChip label="Eşleşmemiş" value={items.filter(t => !t.kaynak).length} />
+              <SummaryChip label="Tamamlanan" value={items.filter(t => t.progress_percent >= 100).length} />
             </div>
-          ))}
-        </div>
+          )}
+
+          {loading ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map(i => <div key={i} className="h-24 rounded-xl bg-brand-card/60 border border-brand-border animate-pulse" />)}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-center border border-dashed border-brand-border rounded-2xl animate-fadeinup">
+              <div className="text-4xl opacity-50">♻️</div>
+              <div className="text-sm text-gray-400">Henüz telafi siparişi yok.</div>
+              <div className="flex gap-2">
+                <button onClick={() => setModal('clone')} className="text-xs px-3 py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-all">Siparişten Klonla</button>
+                <button onClick={() => setModal('manual')} className="text-xs px-3 py-1.5 rounded-lg bg-brand-input text-gray-200 hover:text-white transition-all">Elle Ekle</button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {items.map((t, i) => (
+                <div key={t.id} className="animate-fadeinup" style={{ animationDelay: `${Math.min(i * 50, 400)}ms` }}>
+                  <TelafiCard t={t} stages={stages} onChanged={load} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {modal === 'clone' && <CloneModal stages={stages} onClose={() => setModal(null)} onDone={() => { setModal(null); load() }} />}

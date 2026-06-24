@@ -468,6 +468,33 @@ def stats(
     return {"total": total, "by_status": by_status, "by_store": by_store}
 
 
+@router.get("/_trash", response_model=dict)
+def list_trash(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Silinmis (cop kutusu) siparisler — telafiler haric."""
+    rows = db.scalars(
+        select(Order)
+        .where(
+            Order.tenant_id == user.tenant_id,
+            Order.deleted_at.isnot(None),
+            Order.is_telafi == False,  # noqa: E712
+        )
+        .order_by(desc(Order.deleted_at))
+        .limit(200)
+        .execution_options(include_deleted=True)
+    ).all()
+    return {"items": [
+        {
+            "id": str(o.id), "order_number": o.order_number,
+            "customer_name": o.customer_name,
+            "deleted_at": o.deleted_at.isoformat() if o.deleted_at else None,
+        }
+        for o in rows
+    ]}
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order(
     order_id: uuid.UUID,
@@ -521,14 +548,34 @@ def delete_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Soft-delete: kalici silmek yerine deleted_at isaretler (cop kutusundan geri alinabilir)."""
     order = db.scalar(
         select(Order).where(Order.id == order_id, Order.tenant_id == user.tenant_id)
     )
     if not order:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
-    db.delete(order)
+    order.deleted_at = datetime.now(UTC)
     db.commit()
     return None
+
+
+@router.post("/{order_id}/restore", response_model=dict)
+def restore_order(
+    order_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Silinmis siparisi geri al (deleted_at temizle)."""
+    order = db.scalar(
+        select(Order)
+        .where(Order.id == order_id, Order.tenant_id == user.tenant_id)
+        .execution_options(include_deleted=True)
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
+    order.deleted_at = None
+    db.commit()
+    return {"ok": True}
 
 # ═════════════════════════════════════════════════════════════════════
 # Paket 18 — Manuel Sipariş (WhatsApp/telefon vb.)

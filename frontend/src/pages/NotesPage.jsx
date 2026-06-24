@@ -211,7 +211,7 @@ export default function NotesPage() {
           <div className="h-full flex items-center justify-center text-gray-600 text-sm">Bir not sec</div>
         ) : (
           <div className="p-5 max-w-3xl">
-            <div className="mb-4">
+            <div className="mb-4 sticky top-0 z-20 bg-brand-card -mx-5 px-5 -mt-5 pt-5 pb-3 border-b border-brand-border">
               <h2 className="text-lg font-semibold text-gray-100">{detail.baslik}</h2>
               {detail.updated_at && (
                 <p className="text-[11px] text-gray-500 mt-0.5">

@@ -223,7 +223,9 @@ def searchable_orders(
                 "fulfillment_status": o.fulfillment_status,
                 "created_at_platform": o.created_at_platform.isoformat() if o.created_at_platform else None,
                 "item_count": len(o.line_items or []),
-                "line_items": [_ser_li(li, db) for li in (o.line_items or [])],
+                # Arama listesinde thumbnail kullanilmiyor (klonlamada gorseller /detail'den
+                # gelir) -> db=None ile satir basina Design/KisiyeOzel sorgularini atla (N+1 onler)
+                "line_items": [_ser_li(li) for li in (o.line_items or [])],
             }
             for o in rows
         ]

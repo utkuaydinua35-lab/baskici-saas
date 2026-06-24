@@ -688,6 +688,7 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
   const [ucuncu, setUcuncu] = useState('')
   const [isKisiyeOzel, setIsKisiyeOzel] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [progress, setProgress] = useState(0)   // 0-100 yukleme ilerlemesi
   const [error, setError] = useState('')
 
   const handleFile = (f) => {
@@ -728,20 +729,32 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
       if (ucuncu) fd.append('ucuncu_renk', ucuncu)
       fd.append('is_kisiye_ozel', String(isKisiyeOzel))
 
-      const res = await fetch('/api/designs', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-        body: fd,
+      // XHR — gercek yukleme ilerlemesi (fetch progress vermez)
+      setProgress(0)
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', '/api/designs')
+        xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else {
+            let detail = `HTTP ${xhr.status}`
+            try { detail = JSON.parse(xhr.responseText).detail || detail } catch { /* yok */ }
+            reject(new Error(detail))
+          }
+        }
+        xhr.onerror = () => reject(new Error('Ağ hatası — yükleme başarısız'))
+        xhr.send(fd)
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || `HTTP ${res.status}`)
-      }
       onSaved()
     } catch (err) {
       setError(err.message || 'Kaydedilemedi')
     } finally {
       setSaving(false)
+      setProgress(0)
     }
   }
 
@@ -868,11 +881,23 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
           </form>
         </div>
 
-        <div className="flex gap-2 justify-end p-5 pt-3 border-t border-brand-border shrink-0">
-          <button type="button" onClick={onClose} className="btn-secondary">İptal</button>
-          <button type="submit" form="upload-form" disabled={saving || !file} className="btn-primary">
-            {saving ? 'Yükleniyor...' : 'Yükle'}
-          </button>
+        <div className="p-5 pt-3 border-t border-brand-border shrink-0">
+          {saving && (
+            <div className="mb-2">
+              <div className="h-1.5 rounded-full bg-brand-input overflow-hidden">
+                <div className="h-full bg-accent rounded-full transition-all duration-150" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="text-[11px] text-gray-500 mt-1 text-right">
+                {progress < 100 ? `Yükleniyor… %${progress}` : 'İşleniyor…'}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={onClose} className="btn-secondary">İptal</button>
+            <button type="submit" form="upload-form" disabled={saving || !file} className="btn-primary">
+              {saving ? (progress < 100 ? `%${progress}` : 'İşleniyor…') : 'Yükle'}
+            </button>
+          </div>
         </div>
       </div>
 

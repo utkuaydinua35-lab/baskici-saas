@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.services.sync_service import sync_all_stores
 from app.services.uploads import cleanup_old as _cleanup_uploads
 from app.services import stage_automation
+from app.services import daily_summary
 
 logger = logging.getLogger("scheduler")
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,18 @@ def _sync_job(reason="interval"):
         logger.info(f"[scheduler] tamamlandı: {ok}/{len(results)} mağaza, {new} yeni sipariş")
     except Exception as e:
         logger.exception(f"[scheduler] hata: {e}")
+    finally:
+        db.close()
+
+
+def _daily_summary_job():
+    logger.info("[scheduler] sabah ozeti gonderiliyor")
+    db = SessionLocal()
+    try:
+        sent = daily_summary.send_daily_summary(db)
+        logger.info(f"[scheduler] sabah ozeti: {sent} mesaj gonderildi")
+    except Exception as e:
+        logger.exception(f"[scheduler] sabah ozeti hata: {e}")
     finally:
         db.close()
 
@@ -61,6 +74,9 @@ def start_scheduler():
     # Asama otomasyonu — her 10 dk (zaman bazli gecisler)
     _scheduler.add_job(_stage_job, "interval", minutes=10,
                        id="stage_automation", max_instances=1, coalesce=True)
+    # Sabah ozeti — her gun 08:00 (Europe/Istanbul)
+    _scheduler.add_job(_daily_summary_job, "cron", hour=8, minute=0,
+                       id="daily_summary", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

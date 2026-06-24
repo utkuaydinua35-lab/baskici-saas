@@ -21,6 +21,14 @@ from app.stages import all_stages_payload
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+@router.post("/_test-daily-summary", response_model=dict)
+def test_daily_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sabah Telegram ozetini hemen gonder (test). 08:00 cron'u beklemeden."""
+    from app.services import daily_summary
+    sent = daily_summary.send_daily_summary(db)
+    return {"ok": True, "sent": sent}
+
+
 @router.get("/summary", response_model=dict)
 def summary(
     store_id: uuid.UUID | None = Query(None),

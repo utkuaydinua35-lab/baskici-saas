@@ -247,6 +247,33 @@ def _get_mold(db, mold_id, tenant_id):
     return mo
 
 
+def _replan_mold_item(db: Session, tenant_id, mi) -> None:
+    """Kalip slot'unu plana geri dondur: kaynak line item'in is_kaliba_eklendi=False yap.
+    line_item_id varsa onu; YOKSA (cogu MoldItem'da None) order_number + design_code ile esle.
+    Aksi halde item kalici olarak planlamadan dislanir (uretilemez)."""
+    if mi.line_item_id:
+        li = db.scalar(select(LineItem).where(LineItem.id == mi.line_item_id))
+        if li:
+            li.is_kaliba_eklendi = False
+        return
+    # Fallback: line_item_id yok -> order_number + design_code ile esle
+    if not (mi.order_number and mi.design_code):
+        return
+    cands = db.scalars(
+        select(LineItem)
+        .join(Order, LineItem.order_id == Order.id)
+        .join(Design, LineItem.assigned_design_id == Design.id)
+        .where(
+            Order.tenant_id == tenant_id,
+            Order.order_number == str(mi.order_number),
+            Design.code == str(mi.design_code),
+            LineItem.is_kaliba_eklendi == True,  # noqa: E712
+        )
+    ).all()
+    for c in cands:
+        c.is_kaliba_eklendi = False
+
+
 def _serialize_mold_detail(mo, db):
     design_ids = {it.design_id for it in mo.items if it.design_id}
     dmap = {}
@@ -396,6 +423,41 @@ def mold_history(mold_id: uuid.UUID, user: User = Depends(get_current_user), db:
     ]}
 
 
+@router.post("/_resync-flags", response_model=None)
+def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bakim: hicbir aktif kalipta OLMAYAN ama is_kaliba_eklendi=True isaretli line item'lari
+    sifirla (plana geri dondur). Gecmiste line_item_id'siz MoldItem silinince takili kalanlari kurtarir."""
+    tid = user.tenant_id
+    # Aktif kaliplardaki line item kimlikleri (id + order_number/design_code cifti)
+    mis = db.scalars(
+        select(MoldItem).join(Mold, Mold.id == MoldItem.mold_id).where(Mold.tenant_id == tid)
+    ).all()
+    in_mold_ids = {mi.line_item_id for mi in mis if mi.line_item_id}
+    in_mold_pairs = {
+        (str(mi.order_number), str(mi.design_code))
+        for mi in mis if not mi.line_item_id and mi.order_number and mi.design_code
+    }
+    # is_kaliba_eklendi=True olan tum line item'lar
+    lis = db.scalars(
+        select(LineItem)
+        .join(Order, LineItem.order_id == Order.id)
+        .where(Order.tenant_id == tid, LineItem.is_kaliba_eklendi == True)  # noqa: E712
+        .options(selectinload(LineItem.order), selectinload(LineItem.assigned_design))
+    ).all()
+    fixed = 0
+    for li in lis:
+        if li.id in in_mold_ids:
+            continue
+        code = li.assigned_design.code if li.assigned_design else None
+        onum = li.order.order_number if li.order else None
+        if code and onum and (str(onum), str(code)) in in_mold_pairs:
+            continue
+        li.is_kaliba_eklendi = False
+        fixed += 1
+    db.commit()
+    return {"ok": True, "fixed": fixed}
+
+
 class RemoveItemRequest(BaseModel):
     action: str  # "replan" (geri planla) | "cancel" (iptal et)
 
@@ -414,8 +476,8 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
     if payload.action == "replan":
         # line item tekrar kalıba eklenmemiş -> sonraki planda çıkar
-        if li:
-            li.is_kaliba_eklendi = False
+        # (line_item_id yoksa order_number+design_code fallback'i ile esle)
+        _replan_mold_item(db, user.tenant_id, it)
         _log_mold(db, mo, user, action="item_replan", note=note)
     elif payload.action == "cancel":
         # line item kalıba eklendi kalır ama plana dönmez (iptal)
@@ -548,10 +610,7 @@ def _delete_mold_inner(db: Session, mold, user) -> tuple[str, int]:
     stage_at_delete = mold.current_stage
     items_count = len(mold.items)
     for mi in list(mold.items):
-        if mi.line_item_id:
-            li = db.query(LineItem).filter(LineItem.id == mi.line_item_id).first()
-            if li:
-                li.is_kaliba_eklendi = False
+        _replan_mold_item(db, user.tenant_id, mi)
     db.add(MoldStatusHistory(
         tenant_id=user.tenant_id, mold_id=mold.id,
         from_stage=stage_at_delete, to_stage=None, action="deleted",

@@ -3,33 +3,49 @@ import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 
+// Yeni deploy sonrasi eski index.html cache'liyse chunk adlari degisir ve
+// dynamic import 404 -> bos ekran. Chunk yuklenemezse bir kez otomatik reload
+// (taze index.html alir). 10sn guard sonsuz reload dongusunu onler.
+function lazyWithReload(factory) {
+  return lazy(() => factory().catch((err) => {
+    const KEY = '__chunk_reload_at'
+    const last = Number(sessionStorage.getItem(KEY)) || 0
+    if (Date.now() - last > 10000) {
+      sessionStorage.setItem(KEY, String(Date.now()))
+      window.location.reload()
+      return new Promise(() => {}) // reload'a kadar bekle
+    }
+    throw err
+  }))
+}
+
 // Route bazli code-splitting — her sayfa ayri chunk, ilk yuk kucuk.
-const DashboardPage = lazy(() => import('./pages/DashboardPage'))
-const DesignsPage = lazy(() => import('./pages/DesignsPage'))
-const NotesPage = lazy(() => import('./pages/NotesPage'))
-const TelafilerPage = lazy(() => import('./pages/TelafilerPage'))
-const KisiyeOzelPage = lazy(() => import('./pages/KisiyeOzelPage'))
-const LoginPage = lazy(() => import('./pages/LoginPage'))
-const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'))
-const AskiPage = lazy(() => import('./pages/AskiPage'))
-const MoldDetailPage = lazy(() => import('./pages/MoldDetailPage'))
-const MoldTemplatePage = lazy(() => import('./pages/MoldTemplatePage'))
-const MoldGeneratorPage = lazy(() => import('./pages/MoldGeneratorPage'))
-const BaskiciPaneliPage = lazy(() => import('./pages/BaskiciPaneliPage'))
-const OrdersPage = lazy(() => import('./pages/OrdersPage'))
-const PhoneModelsPage = lazy(() => import('./pages/PhoneModelsPage'))
-const StockPage = lazy(() => import('./pages/StockPage'))
-const PackagingPage = lazy(() => import('./pages/PackagingPage'))
-const PipelinePage = lazy(() => import('./pages/PipelinePage'))
-const RegisterPage = lazy(() => import('./pages/RegisterPage'))
-const ShortcutsPage = lazy(() => import('./pages/ShortcutsPage'))
-const StoresPage = lazy(() => import('./pages/StoresPage'))
-const SettingsPage = lazy(() => import('./pages/SettingsPage'))
-const ProfileSelectPage = lazy(() => import('./pages/ProfileSelectPage'))
-const DestekPage = lazy(() => import('./pages/DestekPage'))
-const AccessoriesPage = lazy(() => import('./pages/AccessoriesPage'))
-const CoupleProductsPage = lazy(() => import('./pages/CoupleProductsPage'))
-const DealersPage = lazy(() => import('./pages/DealersPage'))
+const DashboardPage = lazyWithReload(() => import('./pages/DashboardPage'))
+const DesignsPage = lazyWithReload(() => import('./pages/DesignsPage'))
+const NotesPage = lazyWithReload(() => import('./pages/NotesPage'))
+const TelafilerPage = lazyWithReload(() => import('./pages/TelafilerPage'))
+const KisiyeOzelPage = lazyWithReload(() => import('./pages/KisiyeOzelPage'))
+const LoginPage = lazyWithReload(() => import('./pages/LoginPage'))
+const OrderDetailPage = lazyWithReload(() => import('./pages/OrderDetailPage'))
+const AskiPage = lazyWithReload(() => import('./pages/AskiPage'))
+const MoldDetailPage = lazyWithReload(() => import('./pages/MoldDetailPage'))
+const MoldTemplatePage = lazyWithReload(() => import('./pages/MoldTemplatePage'))
+const MoldGeneratorPage = lazyWithReload(() => import('./pages/MoldGeneratorPage'))
+const BaskiciPaneliPage = lazyWithReload(() => import('./pages/BaskiciPaneliPage'))
+const OrdersPage = lazyWithReload(() => import('./pages/OrdersPage'))
+const PhoneModelsPage = lazyWithReload(() => import('./pages/PhoneModelsPage'))
+const StockPage = lazyWithReload(() => import('./pages/StockPage'))
+const PackagingPage = lazyWithReload(() => import('./pages/PackagingPage'))
+const PipelinePage = lazyWithReload(() => import('./pages/PipelinePage'))
+const RegisterPage = lazyWithReload(() => import('./pages/RegisterPage'))
+const ShortcutsPage = lazyWithReload(() => import('./pages/ShortcutsPage'))
+const StoresPage = lazyWithReload(() => import('./pages/StoresPage'))
+const SettingsPage = lazyWithReload(() => import('./pages/SettingsPage'))
+const ProfileSelectPage = lazyWithReload(() => import('./pages/ProfileSelectPage'))
+const DestekPage = lazyWithReload(() => import('./pages/DestekPage'))
+const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
+const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
+const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
 
 function PageLoader() {
   return (

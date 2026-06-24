@@ -183,8 +183,8 @@ export default function NotesPage() {
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-0 rounded-xl overflow-hidden border border-brand-border bg-brand-card">
-      {/* Sol: not listesi */}
-      <aside className="w-72 shrink-0 border-r border-brand-border flex flex-col bg-brand-bg/40">
+      {/* Sol: not listesi — mobilde not secilince gizlenir */}
+      <aside className={`w-full sm:w-72 shrink-0 border-r border-brand-border flex-col bg-brand-bg/40 ${selId ? 'hidden sm:flex' : 'flex'}`}>
         <div className="p-3 border-b border-brand-border space-y-2">
           <div className="flex items-center justify-between">
             <h1 className="text-sm font-semibold text-gray-100">Notlar</h1>
@@ -217,13 +217,15 @@ export default function NotesPage() {
         </div>
       </aside>
 
-      {/* Sag: satir editoru */}
-      <main className="flex-1 overflow-y-auto">
+      {/* Sag: satir editoru — mobilde sadece not secilince gorunur */}
+      <main className={`flex-1 overflow-y-auto ${selId ? 'block' : 'hidden sm:block'}`}>
         {!detail ? (
           <div className="h-full flex items-center justify-center text-gray-600 text-sm">Bir not sec</div>
         ) : (
           <div className="p-5 max-w-3xl">
             <div className="mb-4 sticky top-0 z-20 bg-brand-card -mx-5 px-5 -mt-5 pt-5 pb-3 border-b border-brand-border">
+              <button onClick={() => setSelId(null)}
+                className="sm:hidden mb-2 text-xs text-accent flex items-center gap-1 hover:underline">← Notlar</button>
               <h2 className="text-lg font-semibold text-gray-100">{detail.baslik}</h2>
               {detail.updated_at && (
                 <p className="text-[11px] text-gray-500 mt-0.5">

@@ -1,6 +1,18 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import DOMPurify from 'dompurify'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
+
+// Notlar zengin metni — sadece bicimlendirme etiketlerine izin (XSS korumasi).
+// FormatToolbar execCommand ciktilari: b/strong/u/i/em/span/font/br + renk/boyut.
+const SANITIZE_CFG = {
+  ALLOWED_TAGS: ['b', 'strong', 'u', 'i', 'em', 'span', 'font', 'br', 'div'],
+  ALLOWED_ATTR: ['style', 'color', 'size', 'face'],
+  ALLOW_DATA_ATTR: false,
+}
+function sanitizeHtml(html) {
+  return DOMPurify.sanitize(html || '', SANITIZE_CFG)
+}
 
 // APPLE_NOTES_LINE_EDITOR — satir-tabanli checklist editoru
 export default function NotesPage() {
@@ -280,7 +292,7 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef, highlight }
   useEffect(() => {
     const el = taRef.current
     if (!el || focused.current) return
-    const html = line.html || escapeHtml(line.text)
+    const html = sanitizeHtml(line.html || escapeHtml(line.text))
     if (el.innerHTML !== html) el.innerHTML = html
   }, [line.html, line.text])
 
@@ -304,7 +316,7 @@ function LineRow({ line, idx, onToggle, onEdit, onKeyDown, inputRef, highlight }
         suppressContentEditableWarning
         onFocus={() => { focused.current = true }}
         onBlur={() => { focused.current = false }}
-        onInput={e => onEdit(idx, e.currentTarget.innerHTML, e.currentTarget.textContent)}
+        onInput={e => onEdit(idx, sanitizeHtml(e.currentTarget.innerHTML), e.currentTarget.textContent)}
         onKeyDown={e => onKeyDown(e, idx)}
         className={`flex-1 min-w-0 bg-transparent border-none outline-none text-sm leading-relaxed py-0.5 break-words
           ${isTarih ? 'font-bold text-gray-100' : isSiparis ? 'font-medium text-gray-100' : 'text-gray-300'}

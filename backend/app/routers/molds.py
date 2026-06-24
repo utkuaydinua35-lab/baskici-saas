@@ -251,6 +251,15 @@ def _serialize_mold_detail(mo, db):
     if design_ids:
         for d in db.scalars(select(Design).where(Design.id.in_(design_ids))).all():
             dmap[d.id] = d
+    # Telafi siparis numaralarini isaretle (kalip olusturucu rozeti)
+    onums = {it.order_number for it in mo.items if it.order_number}
+    telafi_onums = set()
+    if onums:
+        telafi_onums = set(db.scalars(
+            select(Order.order_number).where(
+                Order.order_number.in_(onums), Order.is_telafi == True  # noqa: E712
+            )
+        ).all())
     items = []
     for it in sorted(mo.items, key=lambda x: x.slot_index):
         d = dmap.get(it.design_id)
@@ -258,6 +267,7 @@ def _serialize_mold_detail(mo, db):
             "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
             "design_code": it.design_code, "model": it.model, "order_number": it.order_number,
             "is_hazir": it.is_hazir,
+            "is_telafi": it.order_number in telafi_onums,
             "design_id": str(it.design_id) if it.design_id else None,
             "thumbnail_url": storage.get_thumbnail_url(d.file_path, d.file_format) if d else None,
             "birincil_renk": d.birincil_renk if d else None,

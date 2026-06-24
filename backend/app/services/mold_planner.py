@@ -254,6 +254,7 @@ def plan_molds(
                             "birincil_renk": getattr(_cd, "birincil_renk", None),
                             "kalip_tipi": getattr(_cd, "kalip_tipi", None),
                             "is_couple": True,
+                            "is_telafi": bool(getattr(order, "is_telafi", False)),
                         })
                 continue
 
@@ -310,6 +311,7 @@ def plan_molds(
                     ),
                     "birincil_renk": getattr(design, "birincil_renk", None),
                     "kalip_tipi": getattr(design, "kalip_tipi", None),
+                    "is_telafi": bool(getattr(order, "is_telafi", False)),
                 })
 
     # (kod, variation) grupla, 27 üstü parçala

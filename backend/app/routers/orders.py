@@ -368,7 +368,10 @@ def list_orders(
     db: Session = Depends(get_db),
 ):
     """Siparişleri listele. Filtreler: store_id, status, tab (Paket 18), search."""
-    q = select(Order).where(Order.tenant_id == user.tenant_id)
+    q = select(Order).where(
+        Order.tenant_id == user.tenant_id,
+        Order.is_telafi == False,  # noqa: E712  telafiler kendi panelinde
+    )
     if store_id:
         q = q.where(Order.store_id == store_id)
     if status_filter:

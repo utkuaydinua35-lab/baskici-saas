@@ -28,6 +28,7 @@ from app.routers.support import router as support_router
 from app.routers.templates import router as templates_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.notes import router as notes_router
+from app.routers.telafiler import router as telafiler_router
 from app.routers.settings import router as tenant_settings_router
 from app.routers.shortcuts import router as shortcuts_router
 from app.routers.stores import router as stores_router
@@ -71,6 +72,7 @@ app.include_router(order_detail_router)
 app.include_router(shortcuts_router)
 app.include_router(pipeline_router)
 app.include_router(notes_router)
+app.include_router(telafiler_router)
 app.include_router(designs_router)
 app.include_router(tenant_settings_router)
 app.include_router(kisiye_ozel_router)

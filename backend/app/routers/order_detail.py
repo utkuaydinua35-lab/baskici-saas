@@ -235,6 +235,21 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         "current_stage": order.current_stage,
         "current_stage_info": si,
         "progress_percent": progress_percent(order.current_stage),
+        # Telafi bilgisi: bu siparis bir telafi mi + ona bagli telafiler
+        "is_telafi": bool(getattr(order, "is_telafi", False)),
+        "telafi_sebep": getattr(order, "telafi_sebep", None),
+        "telafiler": [
+            {
+                "id": str(t.id),
+                "order_number": t.order_number,
+                "telafi_sebep": t.telafi_sebep,
+                "current_stage": t.current_stage,
+                "current_stage_label": stage_info(t.current_stage)["label"],
+                "progress_percent": progress_percent(t.current_stage),
+                "item_count": len(t.line_items or []),
+            }
+            for t in (getattr(order, "telafiler", None) or [])
+        ],
         "is_acil": order.is_acil,
         "is_tedarik_bekleme": order.is_tedarik_bekleme,
         "is_hatali_gonderildi": order.is_hatali_gonderildi,

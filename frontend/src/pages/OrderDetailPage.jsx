@@ -228,6 +228,32 @@ export default function OrderDetailPage() {
         )}
       </div>
 
+      {/* Telafi durumu */}
+      {detail.is_telafi && (
+        <div className="card mb-5 border-amber-500/30 bg-amber-500/5">
+          <div className="text-sm text-amber-300 font-medium">♻️ Bu bir TELAFİ siparişidir</div>
+          {detail.telafi_sebep && <div className="text-xs text-amber-400/80 mt-1">Sebep: {detail.telafi_sebep}</div>}
+        </div>
+      )}
+      {detail.telafiler && detail.telafiler.length > 0 && (
+        <div className="card mb-5">
+          <div className="text-sm font-medium text-gray-200 mb-2">♻️ Bu siparişin telafileri</div>
+          <div className="space-y-2">
+            {detail.telafiler.map(t => (
+              <a key={t.id} href={`/telafiler`}
+                className="flex items-center justify-between gap-3 px-2 py-1.5 rounded bg-brand-input/50 hover:bg-brand-input text-sm">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">TELAFİ</span>
+                  <span className="text-gray-200">{t.order_number}</span>
+                  <span className="text-gray-500 text-xs">{t.item_count} ürün{t.telafi_sebep ? ` · ${t.telafi_sebep}` : ''}</span>
+                </div>
+                <span className="text-xs text-gray-300 shrink-0">{t.current_stage_label} · %{t.progress_percent}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* İki kolon */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Sol: ürünler */}

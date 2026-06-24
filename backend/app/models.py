@@ -358,11 +358,32 @@ class Order(Base):
     )
     barkod_kodu: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # ─── Telafiler: hatali model/yanlis hazirlama yuzunden tekrar gonderilecek siparisler ───
+    is_telafi: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False, index=True
+    )
+    # Klonlanan telafilerin kaynak (orijinal) siparisi; elle girilen telafilerde None,
+    # sonradan normal siparisle eslestirilebilir.
+    telafi_kaynak_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    telafi_sebep: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     store: Mapped[Store] = relationship(back_populates="orders")
     line_items: Mapped[list[LineItem]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by="LineItem.position"
+    )
+    # Telafi self-ref: bir normal siparisin ona bagli telafileri (telafiler),
+    # bir telafinin kaynak siparisi (telafi_kaynak).
+    telafiler: Mapped[list["Order"]] = relationship(
+        "Order", back_populates="telafi_kaynak",
+        foreign_keys=[telafi_kaynak_order_id],
+    )
+    telafi_kaynak: Mapped["Order | None"] = relationship(
+        "Order", back_populates="telafiler",
+        foreign_keys=[telafi_kaynak_order_id], remote_side=[id],
     )
     status_history: Mapped[list[OrderStatusHistory]] = relationship(
         back_populates="order", cascade="all, delete-orphan",

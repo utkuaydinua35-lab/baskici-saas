@@ -527,6 +527,9 @@ function Slot({ item, no, onAssign, assignKod, harfler }) {
       <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
       <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[7px]">✓</div>
       <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{kisaKod(item.kod, harfler)}</div>
+      {item.is_telafi && (
+        <div className="absolute bottom-1 left-1 z-20 text-[7px] font-bold text-amber-200 bg-amber-600/80 rounded px-1 leading-tight">TELAFİ</div>
+      )}
       <div className="relative z-10 h-full flex flex-col justify-end p-1 text-center gap-0.5">
         <div className="text-[9px] font-semibold text-white leading-none truncate drop-shadow">{item.design_code || ''}</div>
         <div className="text-[8px] text-gray-200 leading-none drop-shadow">{shortModel(item.model)}</div>

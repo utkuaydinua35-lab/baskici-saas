@@ -199,7 +199,11 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
     gonderilmis=False -> acik siparisler, True -> gonderilmis siparisler."""
     q = (
         select(Order)
-        .where(Order.tenant_id == tenant_id, Order.is_iptal == False)  # noqa: E712
+        .where(
+            Order.tenant_id == tenant_id,
+            Order.is_iptal == False,  # noqa: E712
+            Order.is_telafi == False,  # noqa: E712  telafiler notlara girmez
+        )
         .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
         .order_by(Order.created_at_platform.asc())
     )

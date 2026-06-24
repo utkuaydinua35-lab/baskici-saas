@@ -42,12 +42,77 @@ def _ser(n: Note, detay: bool = False) -> dict:
     return d
 
 
+def _sync_notes(db: Session, tid) -> tuple[int, int]:
+    """Tum magaza + bayiiler icin acik/gonderilmis notlarini siparislerden senkronla.
+    merge_lines KORUMACI: mevcut satirlar (metin/bicim/checked) aynen korunur,
+    sadece notta henuz olmayan yeni siparisler sona eklenir."""
+    olusturulan = 0
+    guncellenen = 0
+    from sqlalchemy.orm.attributes import flag_modified
+
+    def upsert(store_id, dealer_id, note_type, baslik, gonderilmis):
+        nonlocal olusturulan, guncellenen
+        yeni_lines = note_builder.build_note_lines(
+            db, tid, store_id=store_id, dealer_id=dealer_id, gonderilmis=gonderilmis
+        )
+        q = select(Note).where(Note.tenant_id == tid, Note.note_type == note_type, Note.is_serbest == False)  # noqa: E712
+        if store_id:
+            q = q.where(Note.store_id == store_id)
+        else:
+            q = q.where(Note.store_id.is_(None))
+        if dealer_id:
+            q = q.where(Note.dealer_id == dealer_id)
+        else:
+            q = q.where(Note.dealer_id.is_(None))
+        existing = db.scalar(q)
+        if existing:
+            birlesmis = note_builder.merge_lines(yeni_lines, existing.lines or [])
+            # sadece gercekten degisti ise yaz (gereksiz updated_at/IO onler)
+            if birlesmis != (existing.lines or []):
+                existing.lines = birlesmis
+                flag_modified(existing, "lines")
+                guncellenen += 1
+            existing.baslik = baslik
+        else:
+            db.add(Note(
+                tenant_id=tid, store_id=store_id, dealer_id=dealer_id,
+                note_type=note_type, baslik=baslik, lines=yeni_lines, is_serbest=False,
+            ))
+            olusturulan += 1
+
+    # Ana magazalar (platform != bayii)
+    stores = db.scalars(select(Store).where(Store.tenant_id == tid)).all()
+    for s in stores:
+        if getattr(s, "platform", None) == "bayii":
+            continue
+        upsert(s.id, None, "acik", f"{s.name} — Acik Siparisler", False)
+        upsert(s.id, None, "gonderilmis", f"{s.name} — Gonderilmis Siparisler", True)
+
+    # Bayiiler
+    dealers = db.scalars(select(Dealer).where(Dealer.tenant_id == tid)).all()
+    for de in dealers:
+        upsert(None, de.id, "acik", f"{de.name} (Bayii) — Acik Siparisler", False)
+        upsert(None, de.id, "gonderilmis", f"{de.name} (Bayii) — Gonderilmis Siparisler", True)
+
+    return olusturulan, guncellenen
+
+
 @router.get("", response_model=None)
 def list_notes(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Tum notlari listele (pinned once, sonra guncelleme tarihi)."""
+    """Tum notlari listele (pinned once, sonra guncelleme tarihi).
+    Listeleme sirasinda yeni siparisler otomatik sona eklenir (Yenile'ye gerek yok)."""
+    # Otomatik senkron: yeni siparisleri en alta ekle, mevcut duzenlemeleri koru
+    try:
+        olusturulan, guncellenen = _sync_notes(db, user.tenant_id)
+        if olusturulan or guncellenen:
+            db.commit()
+        else:
+            db.rollback()
+    except Exception:
+        db.rollback()
     notes = db.scalars(
         select(Note).where(Note.tenant_id == user.tenant_id)
         .order_by(Note.pinned.desc(), Note.updated_at.desc())
@@ -73,51 +138,8 @@ def refresh_notes(
     db: Session = Depends(get_db),
 ):
     """Tum magaza + bayiiler icin acik/gonderilmis notlarini siparislerden yeniden uret.
-    manual_content korunur, sadece auto_content guncellenir."""
-    tid = user.tenant_id
-    olusturulan = 0
-    guncellenen = 0
-
-    def upsert(store_id, dealer_id, note_type, baslik, gonderilmis):
-        nonlocal olusturulan, guncellenen
-        yeni_lines = note_builder.build_note_lines(
-            db, tid, store_id=store_id, dealer_id=dealer_id, gonderilmis=gonderilmis
-        )
-        q = select(Note).where(Note.tenant_id == tid, Note.note_type == note_type, Note.is_serbest == False)  # noqa: E712
-        if store_id:
-            q = q.where(Note.store_id == store_id)
-        else:
-            q = q.where(Note.store_id.is_(None))
-        if dealer_id:
-            q = q.where(Note.dealer_id == dealer_id)
-        else:
-            q = q.where(Note.dealer_id.is_(None))
-        existing = db.scalar(q)
-        if existing:
-            existing.lines = note_builder.merge_lines(yeni_lines, existing.lines or [])
-            existing.baslik = baslik
-            guncellenen += 1
-        else:
-            db.add(Note(
-                tenant_id=tid, store_id=store_id, dealer_id=dealer_id,
-                note_type=note_type, baslik=baslik, lines=yeni_lines, is_serbest=False,
-            ))
-            olusturulan += 1
-
-    # Ana magazalar (platform != bayii)
-    stores = db.scalars(select(Store).where(Store.tenant_id == tid)).all()
-    for s in stores:
-        if getattr(s, "platform", None) == "bayii":
-            continue
-        upsert(s.id, None, "acik", f"{s.name} — Acik Siparisler", False)
-        upsert(s.id, None, "gonderilmis", f"{s.name} — Gonderilmis Siparisler", True)
-
-    # Bayiiler
-    dealers = db.scalars(select(Dealer).where(Dealer.tenant_id == tid)).all()
-    for de in dealers:
-        upsert(None, de.id, "acik", f"{de.name} (Bayii) — Acik Siparisler", False)
-        upsert(None, de.id, "gonderilmis", f"{de.name} (Bayii) — Gonderilmis Siparisler", True)
-
+    merge_lines korumacı: mevcut satirlar korunur, yeni siparisler sona eklenir."""
+    olusturulan, guncellenen = _sync_notes(db, user.tenant_id)
     db.commit()
     return {"ok": True, "olusturulan": olusturulan, "guncellenen": guncellenen}
 

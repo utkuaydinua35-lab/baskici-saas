@@ -238,6 +238,8 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         "current_stage": order.current_stage,
         "current_stage_info": si,
         "progress_percent": progress_percent(order.current_stage),
+        # Müşteri onayı (en güncel) — header rozeti için
+        "approval_status": (order.approvals[0].status if getattr(order, "approvals", None) else None),
         # Telafi bilgisi: bu siparis bir telafi mi + ona bagli telafiler
         "is_telafi": bool(getattr(order, "is_telafi", False)),
         "telafi_sebep": getattr(order, "telafi_sebep", None),
@@ -433,6 +435,54 @@ def update_flags(
     db.commit()
     order = _resolve_order(db, order_ref, user.tenant_id)
     return _serialize_detail(order, db)
+
+
+# ─── Müşteri tasarım onayı ──────────────────────────────────
+
+class ApprovalCreate(BaseModel):
+    note: str | None = None
+
+
+@router.post("/{order_ref}/approval", response_model=dict)
+def create_design_approval(
+    order_ref: str,
+    payload: ApprovalCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteri onay isteği oluştur (yeni versiyon). Link + hazır mesaj + telefon döner."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    from app.services import approvals as ap_svc
+    ap = ap_svc.create_approval(db, order, user, note=payload.note)
+    _log_history(db, order, user, action="onay_gonderildi", note=f"v{ap.version}")
+    db.commit()
+    db.refresh(ap)
+    data = ap_svc.serialize(ap, with_secrets=True)
+    data["message"] = ap_svc.build_message(order, data["link"])
+    data["phone"] = ap_svc.resolve_phone(order)
+    data["customer_name"] = order.customer_name
+    return data
+
+
+@router.get("/{order_ref}/approvals", response_model=dict)
+def list_design_approvals(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparişin tüm onay istekleri (en yeni önce) + müşteri telefonu/mesajı."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    from app.services import approvals as ap_svc
+    items = []
+    for a in (order.approvals or []):
+        d = ap_svc.serialize(a, with_secrets=True)
+        d["message"] = ap_svc.build_message(order, d["link"])
+        items.append(d)
+    return {
+        "items": items,
+        "phone": ap_svc.resolve_phone(order),
+        "customer_name": order.customer_name,
+    }
 
 
 # ─── Line item güncelleme ───────────────────────────────────

@@ -43,6 +43,9 @@ ACTION_LABELS: dict[str, str] = {
     "paketlendi": "Paketlendi",
     "kargoya_verildi": "Kargoya verildi",
     "askidan_karsilandi": "Askıdan karşılandı",
+    "onay_gonderildi": "Müşteri onayına gönderildi",
+    "musteri_onay": "Müşteri onayladı",
+    "musteri_revizyon": "Müşteri revizyon istedi",
 }
 
 

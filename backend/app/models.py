@@ -418,6 +418,10 @@ class Order(Base):
         back_populates="order", cascade="all, delete-orphan",
         order_by="desc(EmailLog.created_at)",
     )
+    approvals: Mapped[list["DesignApproval"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan",
+        order_by="desc(DesignApproval.created_at)",
+    )
 
 
 class LineItem(Base):
@@ -980,6 +984,40 @@ class SupportMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     thread: Mapped["SupportThread"] = relationship(back_populates="messages")
+
+
+class DesignApproval(Base):
+    """Müşteri tasarım onayı — kişiye özel siparişlerde baskı öncesi onay.
+
+    Token'lı public sayfa (siparistakip/onay/{token}) ile müşteri tasarımı görür,
+    onaylar veya revizyon ister. Sadece bilgi/rozet — baskıyı engellemez.
+    Revizyonda operatör yeni görselle yeni bir kayıt (version+1) oluşturur.
+    """
+    __tablename__ = "design_approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # bekliyor = müşteri henüz karar vermedi | onaylandi | revizyon (müşteri değişiklik istedi)
+    status: Mapped[str] = mapped_column(
+        String(20), default="bekliyor", server_default=text("'bekliyor'"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"), nullable=False)
+    # [{ "image_url": str, "title": str }] — müşteriye gösterilecek tasarımlar
+    items: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)            # operatör notu (müşteriye gösterilir)
+    customer_note: Mapped[str | None] = mapped_column(Text, nullable=True)   # müşterinin revizyon notu
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    order: Mapped["Order"] = relationship(back_populates="approvals")
 
 
 class Dealer(Base):

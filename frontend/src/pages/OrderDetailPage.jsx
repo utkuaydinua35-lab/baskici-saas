@@ -180,6 +180,9 @@ export default function OrderDetailPage() {
               {detail.kalip_haric && <Badge color="amber">🚫 KALIP DIŞI</Badge>}
               {detail.is_hatali_gonderildi && <Badge color="amber">HATALI GÖNDERİLDİ</Badge>}
               {detail.is_tedarik_bekleme && <Badge color="purple">⏸ TEDARİK BEKLİYOR</Badge>}
+              {detail.approval_status === 'bekliyor' && <Badge color="amber">⏳ ONAY BEKLİYOR</Badge>}
+              {detail.approval_status === 'onaylandi' && <Badge color="green">✅ ONAYLANDI</Badge>}
+              {detail.approval_status === 'revizyon' && <Badge color="red">✏️ REVİZYON</Badge>}
             </div>
             <p className="text-xs text-gray-500 mt-1">{formatDate(detail.created_at_platform)}</p>
           </div>
@@ -283,12 +286,14 @@ export default function OrderDetailPage() {
             <RightTab active={rightTab === 'musteri'} onClick={() => setRightTab('musteri')}>👤 Müşteri</RightTab>
             <RightTab active={rightTab === 'finansal'} onClick={() => setRightTab('finansal')}>💳 Finansal</RightTab>
             <RightTab active={rightTab === 'kargo'} onClick={() => setRightTab('kargo')}>🚚 Kargo</RightTab>
+            <RightTab active={rightTab === 'onay'} onClick={() => setRightTab('onay')}>✅ Onay</RightTab>
             <RightTab active={rightTab === 'diger'} onClick={() => setRightTab('diger')}>💬 Diğer</RightTab>
           </div>
 
           {rightTab === 'musteri' && <MusteriTab detail={detail} />}
           {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
           {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} />}
+          {rightTab === 'onay' && <OnayTab orderId={orderId} />}
           {rightTab === 'diger' && <DigerTab detail={detail} />}
         </div>
       </div>
@@ -861,8 +866,120 @@ function actionLabel(h) {
     tedarik_devam: 'Tedarik bekleme kapatıldı',
     list_add: `Listeye eklendi: ${h.note || ''}`,
     list_remove: `Listeden çıkarıldı: ${h.note || ''}`,
+    onay_gonderildi: `📤 Müşteri onayına gönderildi ${h.note ? '(' + h.note + ')' : ''}`,
+    musteri_onay: '✅ Müşteri tasarımı onayladı',
+    musteri_revizyon: `✏️ Müşteri revizyon istedi${h.note ? ': ' + h.note : ''}`,
   }
   return map[h.action] || h.action
+}
+
+const ONAY_STATUS = {
+  bekliyor: { label: 'Onay bekliyor', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  onaylandi: { label: 'Onaylandı', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
+  revizyon: { label: 'Revizyon istendi', cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
+}
+
+function CopyField({ label, value, mono }) {
+  const [copied, setCopied] = useState(false)
+  if (!value) return null
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {}
+  }
+  return (
+    <div>
+      <div className="text-[10px] text-gray-500 mb-1">{label}</div>
+      <div className="flex gap-1.5 items-stretch">
+        <div className={`flex-1 min-w-0 bg-brand-input border border-brand-border rounded-lg px-2.5 py-2 text-xs text-gray-200 ${mono ? 'font-mono break-all' : 'whitespace-pre-line'} max-h-24 overflow-y-auto`}>{value}</div>
+        <button onClick={copy} className={`shrink-0 px-3 rounded-lg text-xs font-medium transition-colors ${copied ? 'bg-emerald-500/20 text-emerald-300' : 'bg-accent/15 text-accent hover:bg-accent/25'}`}>
+          {copied ? '✓' : 'Kopyala'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function OnayTab({ orderId }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const toast = useToast()
+
+  const load = async () => {
+    try { const r = await api.get(`/api/orders/${orderId}/approvals`); setData(r) }
+    catch { setData({ items: [], phone: null }) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [orderId])
+
+  const create = async () => {
+    setCreating(true)
+    try {
+      await api.post(`/api/orders/${orderId}/approval`, {})
+      await load()
+      toast.success('Onay linki oluşturuldu')
+    } catch (e) {
+      toast.error(errMsg(e, 'Oluşturulamadı'))
+    } finally { setCreating(false) }
+  }
+
+  if (loading) return <PanelCard title="Müşteri Onayı" icon="✅"><div className="skeleton h-4 w-32 rounded" /></PanelCard>
+
+  const items = data?.items || []
+  const latest = items[0]
+
+  return (
+    <div className="space-y-3">
+      <PanelCard title="Müşteri Tasarım Onayı" icon="✅">
+        <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+          Baskı öncesi müşteriye tasarım onay linki. Aşağıdaki <b>telefon</b> ve <b>hazır mesajı</b> kopyalayıp
+          WhatsApp/Instagram'dan elle gönder.
+        </p>
+        <button onClick={create} disabled={creating}
+          className="btn-primary !text-xs w-full disabled:opacity-50">
+          {creating ? 'Oluşturuluyor…' : latest ? '🔄 Yeni Versiyon Gönder' : '📤 Onaya Gönder'}
+        </button>
+      </PanelCard>
+
+      {latest && (
+        <PanelCard title={`Güncel Onay (v${latest.version})`} icon="🔗">
+          <div className="space-y-2.5">
+            <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full border ${(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).cls}`}>
+              {(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).label}
+            </span>
+            {latest.status === 'revizyon' && latest.customer_note && (
+              <div className="text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-2 text-red-200">
+                <b>Müşteri notu:</b> {latest.customer_note}
+              </div>
+            )}
+            {latest.status === 'bekliyor' && (
+              <>
+                <CopyField label="Müşteri telefonu" value={data.phone || ''} mono />
+                {!data.phone && <div className="text-[10px] text-amber-400">⚠ Telefon bulunamadı — siparişten kontrol et</div>}
+                <CopyField label="Hazır mesaj (link dahil)" value={latest.message} />
+                <CopyField label="Yalnızca link" value={latest.link} mono />
+              </>
+            )}
+            {latest.status !== 'bekliyor' && (
+              <CopyField label="Onay linki" value={latest.link} mono />
+            )}
+          </div>
+        </PanelCard>
+      )}
+
+      {items.length > 1 && (
+        <PanelCard title="Geçmiş Versiyonlar" icon="🕐">
+          <div className="space-y-1.5">
+            {items.slice(1).map(a => (
+              <div key={a.id} className="text-xs flex items-center justify-between border-l-2 border-brand-border pl-2 py-0.5">
+                <span className="text-gray-400">v{a.version} · {(ONAY_STATUS[a.status] || ONAY_STATUS.bekliyor).label}</span>
+                <span className="text-[10px] text-gray-600">{formatDate(a.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+    </div>
+  )
 }
 
 
@@ -911,6 +1028,7 @@ function Badge({ color, children }) {
     amber: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
     gray: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
     purple: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    green: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   }
   return <span className={`text-[10px] px-2 py-0.5 rounded-full border ${colors[color]}`}>{children}</span>
 }

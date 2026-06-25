@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Tasarım Onayı</title>
+<style>
+  :root{
+    --bg:#0f1117; --card:#171a23; --card2:#1e2230; --border:#2a2f3e;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#863bff; --accent2:#6d28d9;
+    --green:#22c55e; --green-bg:rgba(34,197,94,.12); --amber:#f59e0b; --amber-bg:rgba(245,158,11,.12);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:540px;margin:0 auto;padding:20px 16px 48px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+  .brand img{height:38px;max-width:160px;object-fit:contain;border-radius:8px}
+  .brand .logo{width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:18px}
+  .brand .name{font-weight:600;font-size:15px}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px}
+  .note{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:11px 13px;font-size:13.5px;color:#d7dbe6;margin-bottom:14px}
+  .note b{color:var(--accent)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:380px){.grid{grid-template-columns:1fr}}
+  .item{background:var(--card2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .item .imgbox{aspect-ratio:1/1;background:#0c0e14;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .item img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}
+  .item .noimg{color:var(--muted);font-size:12px}
+  .item .cap{padding:8px 10px;font-size:12.5px}
+  .item .cap .t{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .cap .q{color:var(--muted);font-size:11px}
+  .actions{margin-top:6px}
+  .btn{display:block;width:100%;border:0;border-radius:13px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;transition:transform .08s,opacity .2s}
+  .btn:active{transform:scale(.985)}
+  .btn-approve{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;margin-bottom:10px}
+  .btn-revise{background:transparent;color:var(--amber);border:1.5px solid var(--amber)}
+  .btn-send{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;margin-top:10px}
+  .btn[disabled]{opacity:.55;cursor:default}
+  textarea{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);
+    padding:12px;font:inherit;font-size:14px;resize:vertical;min-height:84px;margin-top:6px}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  .result{text-align:center;padding:26px 16px}
+  .result .ico{font-size:46px;margin-bottom:10px}
+  .result h2{margin:0 0 6px;font-size:19px}
+  .result p{color:var(--muted);margin:0;font-size:14px}
+  .badge{display:inline-block;font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;margin-bottom:14px}
+  .b-wait{background:var(--amber-bg);color:var(--amber)}
+  .b-ok{background:var(--green-bg);color:var(--green)}
+  .center{text-align:center}
+  .hidden{display:none}
+  .foot{color:#5b6373;font-size:11.5px;text-align:center;margin-top:22px;line-height:1.5}
+  .spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;
+    animation:r 0.8s linear infinite;margin:60px auto}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:10px}
+  .fade{animation:f .35s ease both}@keyframes f{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="loading"><div class="spin"></div></div>
+  <div id="app" class="hidden fade"></div>
+  <div class="foot" id="foot"></div>
+</div>
+<div class="lightbox" id="lb" onclick="this.style.display='none'"><img id="lbimg" alt=""/></div>
+
+<script>
+const token = location.pathname.split('/').filter(Boolean).pop();
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let DATA = null;
+
+async function load(){
+  try{
+    const r = await fetch('/approval/'+encodeURIComponent(token));
+    if(!r.ok) throw new Error('404');
+    DATA = await r.json();
+    render();
+  }catch(e){
+    $('loading').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    $('app').innerHTML = '<div class="card center" style="padding:40px 16px"><div style="font-size:40px;margin-bottom:8px">🔗</div><h1>Bağlantı bulunamadı</h1><div class="sub" style="margin:0">Onay bağlantısı geçersiz ya da süresi dolmuş olabilir. Lütfen mağazayla iletişime geçin.</div></div>';
+  }
+}
+
+function brandHtml(){
+  const logo = DATA.logo_url
+    ? `<img src="${esc(DATA.logo_url)}" alt="${esc(DATA.atolye)}"/>`
+    : `<div class="logo">${esc((DATA.atolye||'B').charAt(0).toUpperCase())}</div>`;
+  return `<div class="brand">${logo}<div class="name">${esc(DATA.atolye||'')}</div></div>`;
+}
+
+function itemsHtml(){
+  if(!DATA.items || !DATA.items.length) return '';
+  const cells = DATA.items.map(it=>{
+    const img = it.image_url
+      ? `<img src="${esc(it.image_url)}" alt="" onclick="zoom('${esc(it.image_url)}')"/>`
+      : `<span class="noimg">görsel yok</span>`;
+    const q = (it.quantity && it.quantity>1) ? `<div class="q">${it.quantity} adet</div>` : '';
+    return `<div class="item"><div class="imgbox">${img}</div><div class="cap"><div class="t">${esc(it.title)}</div>${q}</div></div>`;
+  }).join('');
+  return `<div class="grid">${cells}</div>`;
+}
+
+function render(){
+  $('loading').classList.add('hidden');
+  const app = $('app'); app.classList.remove('hidden');
+  $('foot').textContent = `Bu sayfa ${DATA.atolye||''} tarafından oluşturulmuştur. Onayınız baskı öncesi son kontrol içindir.`;
+
+  // Karar verilmişse sonuç ekranı
+  if(DATA.status === 'onaylandi'){
+    app.innerHTML = brandHtml() + resultHtml('✅','Tasarımı onayladınız','Teşekkürler! Siparişiniz baskıya alınacak.','b-ok','Onaylandı');
+    return;
+  }
+  if(DATA.status === 'revizyon'){
+    const n = DATA.customer_note ? `<div class="note" style="text-align:left;margin-top:14px"><b>Notunuz:</b><br>${esc(DATA.customer_note)}</div>`:'';
+    app.innerHTML = brandHtml() + resultHtml('✏️','Revizyon talebiniz alındı','En kısa sürede tasarımı güncelleyip tekrar onayınıza sunacağız.','b-wait','Revizyon istendi') + n;
+    return;
+  }
+
+  // Bekliyor → onay ekranı
+  const noteHtml = DATA.note ? `<div class="note"><b>Mağaza notu:</b> ${esc(DATA.note)}</div>` : '';
+  app.innerHTML = `
+    ${brandHtml()}
+    <span class="badge b-wait">Onayınızı bekliyor</span>
+    <h1>Tasarım Onayı</h1>
+    <div class="sub">${esc(DATA.order_no||'')} numaralı siparişiniz · ${DATA.version>1?('Versiyon '+DATA.version):'Baskı öncesi son kontrol'}</div>
+    ${noteHtml}
+    <div class="card">${itemsHtml() || '<div class="center sub" style="margin:0">Görsel bulunamadı</div>'}</div>
+    <div class="sub center" style="margin:14px 0 8px">Tasarım doğruysa onaylayın; değişiklik gerekiyorsa belirtin.</div>
+    <div class="actions">
+      <button class="btn btn-approve" onclick="approve(this)">✓ Onaylıyorum</button>
+      <button class="btn btn-revise" onclick="showRevise(this)">✏️ Revizyon İstiyorum</button>
+    </div>
+    <div id="reviseBox" class="hidden" style="margin-top:12px">
+      <textarea id="revnote" placeholder="Hangi değişikliği istersiniz? (ör. yazı rengi, isim yazımı...)"></textarea>
+      <button class="btn btn-send" onclick="submitRevise(this)">Revizyon Talebini Gönder</button>
+    </div>
+  `;
+}
+
+function resultHtml(ico,title,desc,bcls,btxt){
+  return `<span class="badge ${bcls}">${btxt}</span>
+    <div class="result"><div class="ico">${ico}</div><h2>${title}</h2><p>${desc}</p></div>`;
+}
+
+function zoom(u){ $('lbimg').src=u; $('lb').style.display='flex'; }
+function showRevise(btn){ $('reviseBox').classList.remove('hidden'); $('reviseBox').classList.add('fade'); btn.style.display='none'; $('revnote').focus(); }
+
+async function decide(decision, note, btn){
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Gönderiliyor…';
+  try{
+    const r = await fetch('/approval/'+encodeURIComponent(token)+'/decision',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({decision, note: note||''})
+    });
+    const j = await r.json();
+    if(!r.ok || !j.ok) throw new Error();
+    DATA.status = j.status; if(decision==='revizyon') DATA.customer_note = note;
+    render();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){
+    btn.disabled = false; btn.textContent = old;
+    alert('Bir hata oluştu, lütfen tekrar deneyin.');
+  }
+}
+function approve(btn){ if(confirm('Tasarımı onaylıyor musunuz? Onay sonrası baskıya alınır.')) decide('onayla','',btn); }
+function submitRevise(btn){
+  const n = $('revnote').value.trim();
+  if(!n){ $('revnote').focus(); return; }
+  decide('revizyon', n, btn);
+}
+
+load();
+</script>
+</body>
+</html>

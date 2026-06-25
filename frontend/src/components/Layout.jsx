@@ -72,6 +72,74 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <InstallPrompt />
+    </div>
+  )
+}
+
+function InstallPrompt() {
+  const [deferred, setDeferred] = useState(null)   // Android beforeinstallprompt eventi
+  const [showIos, setShowIos] = useState(false)
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem('pwa_install_dismissed') === '1' } catch { return false }
+  })
+
+  useEffect(() => {
+    // Zaten standalone (yüklü) ise hiç gösterme
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches
+      || window.navigator.standalone === true
+    if (standalone) { setHidden(true); return }
+
+    const onBip = (e) => { e.preventDefault(); setDeferred(e) }
+    window.addEventListener('beforeinstallprompt', onBip)
+
+    // iOS Safari: beforeinstallprompt yok, elle ipucu göster
+    const ua = window.navigator.userAgent || ''
+    const isIos = /iphone|ipad|ipod/i.test(ua)
+    const isSafari = isIos && /safari/i.test(ua) && !/crios|fxios/i.test(ua)
+    if (isSafari) setShowIos(true)
+
+    return () => window.removeEventListener('beforeinstallprompt', onBip)
+  }, [])
+
+  const dismiss = () => {
+    setHidden(true)
+    try { localStorage.setItem('pwa_install_dismissed', '1') } catch {}
+  }
+
+  const install = async () => {
+    if (!deferred) return
+    deferred.prompt()
+    try { await deferred.userChoice } catch {}
+    setDeferred(null)
+    dismiss()
+  }
+
+  if (hidden) return null
+  if (!deferred && !showIos) return null
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] w-[92%] max-w-md animate-fadein">
+      <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl p-3 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
+        <div className="min-w-0 flex-1">
+          {deferred ? (
+            <>
+              <div className="text-sm text-gray-100 font-medium">Uygulamayı ana ekrana ekle</div>
+              <div className="text-[11px] text-gray-500">Hızlı erişim için telefonuna kur</div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-gray-100 font-medium">Ana ekrana ekle</div>
+              <div className="text-[11px] text-gray-500">Paylaş <span className="font-semibold">⎙</span> → "Ana Ekrana Ekle"</div>
+            </>
+          )}
+        </div>
+        {deferred && (
+          <button onClick={install} className="btn-primary !text-xs px-3 shrink-0">Kur</button>
+        )}
+        <button onClick={dismiss} className="text-gray-500 hover:text-gray-300 text-sm leading-none shrink-0 px-1">✕</button>
+      </div>
     </div>
   )
 }

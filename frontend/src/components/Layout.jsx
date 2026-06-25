@@ -438,6 +438,9 @@ function NavLinks({ onNavigate }) {
 
       <Section label="KATALOG" perms={['telefon_modelleri']} />
       <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" perm="telefon_modelleri" />
+
+      <Section label="SİSTEM" perms={['ayarlar']} />
+      <I to="/denetim" label="Denetim Kaydı" icon="📜" perm="ayarlar" />
     </nav>
   )
 }

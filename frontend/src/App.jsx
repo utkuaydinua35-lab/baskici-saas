@@ -46,6 +46,7 @@ const DestekPage = lazyWithReload(() => import('./pages/DestekPage'))
 const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
 const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
 const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
+const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
 
 function PageLoader() {
   return (
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="/kalip/:moldId" element={<MoldDetailPage />} />
             <Route path="/shortcuts" element={<ShortcutsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
+            <Route path="/denetim" element={<AuditPage />} />
           </Route>
         </Route>
 

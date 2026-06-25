@@ -56,6 +56,8 @@ class Settings(BaseSettings):
 
     # Claude API (AI destek taslak yaniti). Bos ise AI taslak ozelligi kapali.
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+    # AI model degisikligi icin master password. Bos ise model degisikligi engellenir.
+    ai_model_master_password: str = Field("", alias="AI_MODEL_MASTER_PASSWORD")
 
     # Sürat Kargo
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")

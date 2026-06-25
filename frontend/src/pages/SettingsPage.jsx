@@ -22,6 +22,7 @@ export default function SettingsPage() {
         <TabBtn active={tab === 'account'} onClick={() => setTab('account')}>👤 Hesap</TabBtn>
         {_isAdmin && <TabBtn active={tab === 'bayiler'} onClick={() => setTab('bayiler')}>🤝 Bayiler</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'users'} onClick={() => setTab('users')}>👥 Kullanıcılar</TabBtn>}
+        {_isAdmin && <TabBtn active={tab === 'ai'} onClick={() => setTab('ai')}>🤖 AI Destek</TabBtn>}
       </div>
 
       {tab === 'stores' && _isAdmin && <div className="-mt-2"><StoresPage embedded /></div>}
@@ -29,6 +30,7 @@ export default function SettingsPage() {
       {tab === 'account' && <AccountTab />}
       {tab === 'bayiler' && _isAdmin && <BayiYonetim />}
       {tab === 'users' && _isAdmin && <UsersTab />}
+      {tab === 'ai' && _isAdmin && <AISettingsTab />}
     </div>
   )
 }
@@ -204,6 +206,126 @@ function TabBtn({ active, onClick, children }) {
       }`}>
       {children}
     </button>
+  )
+}
+
+const AI_MODELS = [
+  { value: 'haiku', label: 'Haiku', desc: 'En hızlı ve ekonomik — basit yanıtlar' },
+  { value: 'sonnet', label: 'Sonnet', desc: 'Dengeli — hız ve kalite' },
+  { value: 'opus', label: 'Opus', desc: 'En yetenekli — en kaliteli yanıtlar' },
+]
+
+function AISettingsTab() {
+  const toast = useToast()
+  const [loading, setLoading] = useState(true)
+  const [meta, setMeta] = useState({ api_key_configured: false, master_configured: false })
+  const [enabled, setEnabled] = useState(true)
+  const [model, setModel] = useState('opus')
+  const [master, setMaster] = useState('')
+  const [orig, setOrig] = useState({ enabled: true, model: 'opus' })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/api/tenant/ai-settings').then(r => {
+      setEnabled(!!r.enabled)
+      setModel(r.model || 'opus')
+      setOrig({ enabled: !!r.enabled, model: r.model || 'opus' })
+      setMeta({ api_key_configured: !!r.api_key_configured, master_configured: !!r.master_configured })
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  const dirty = enabled !== orig.enabled || model !== orig.model
+
+  const save = async () => {
+    if (!dirty) return
+    if (!master.trim()) { toast.error('Master password gerekli'); return }
+    setSaving(true)
+    try {
+      const r = await api.patch('/api/tenant/ai-settings', { enabled, model, master_password: master })
+      setOrig({ enabled: !!r.enabled, model: r.model })
+      setMaster('')
+      toast.success('AI ayarları kaydedildi')
+    } catch (e) {
+      toast.error(e.detail || 'Kaydedilemedi')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="card animate-fadein"><div className="skeleton h-5 w-40 rounded" /></div>
+
+  return (
+    <div className="space-y-5 animate-fadein max-w-2xl">
+      <div className="card">
+        <h2 className="text-base font-semibold text-gray-100 mb-1">🤖 AI Destek Yanıtı</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Destek konuşmalarında müşteri mesajlarına Claude ile taslak cevap üretir. Operatör düzenleyip gönderir.
+        </p>
+
+        {!meta.api_key_configured && (
+          <div className="text-xs rounded-lg px-3 py-2 mb-4 bg-amber-500/10 border border-amber-500/20 text-amber-300">
+            ⚠️ Sunucuda <span className="font-mono">ANTHROPIC_API_KEY</span> yapılandırılmamış — özellik açık olsa bile çalışmaz.
+          </div>
+        )}
+
+        {/* Açık/Kapalı */}
+        <div className="flex items-center justify-between py-3 border-b border-brand-border">
+          <div>
+            <div className="text-sm text-gray-200">Özellik durumu</div>
+            <div className="text-xs text-gray-500">Kapalıysa "AI Taslak" butonu çalışmaz</div>
+          </div>
+          <button
+            onClick={() => setEnabled(e => !e)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${enabled ? 'bg-accent' : 'bg-brand-input'}`}
+            role="switch" aria-checked={enabled}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+
+        {/* Model seçimi — yalnızca açıkken */}
+        <div className={`py-3 ${enabled ? '' : 'opacity-40 pointer-events-none select-none'}`}>
+          <div className="text-sm text-gray-200 mb-2">Model seçimi</div>
+          <div className="space-y-2">
+            {AI_MODELS.map(m => (
+              <label key={m.value}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                  model === m.value ? 'border-accent bg-accent/10' : 'border-brand-border hover:bg-brand-input'
+                }`}>
+                <input type="radio" name="ai-model" value={m.value}
+                  checked={model === m.value} onChange={() => setModel(m.value)}
+                  className="accent-accent" disabled={!enabled} />
+                <div>
+                  <div className="text-sm text-gray-200">{m.label}</div>
+                  <div className="text-[11px] text-gray-500">{m.desc}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Master password + kaydet */}
+        {dirty && (
+          <div className="pt-3 border-t border-brand-border">
+            <label className="text-xs text-gray-400 block mb-1">Master Password (değişikliği onaylamak için)</label>
+            <div className="flex gap-2">
+              <input type="password" value={master} onChange={e => setMaster(e.target.value)}
+                placeholder="••••••••" autoComplete="off"
+                className="input !text-sm flex-1" />
+              <button onClick={save} disabled={saving || !master.trim()}
+                className="btn-primary !text-sm disabled:opacity-40">
+                {saving ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
+            </div>
+            {!meta.master_configured && (
+              <p className="text-[11px] text-amber-400 mt-1">
+                ⚠️ Sunucuda master password (<span className="font-mono">AI_MODEL_MASTER_PASSWORD</span>) ayarlı değil — kayıt reddedilir.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

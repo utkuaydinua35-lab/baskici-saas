@@ -11,11 +11,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import SupportMessage, SupportThread
+from app.models import SupportMessage, SupportThread, Tenant
 
 logger = logging.getLogger("ai_reply")
 
-MODEL = "claude-opus-4-8"
+# Kullanici secimi -> gercek model ID (settings'te haiku|sonnet|opus tutulur)
+MODEL_MAP = {
+    "haiku": "claude-haiku-4-5",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-8",
+}
+DEFAULT_MODEL_KEY = "opus"
 MAX_TOKENS = 1024
 # Çok uzun konuşmalarda son N mesaj yeterli (taslak için bağlam)
 MAX_HISTORY = 30
@@ -72,6 +78,13 @@ def draft_reply(db: Session, thread: SupportThread) -> str:
     if not settings.anthropic_api_key:
         raise DraftError("AI taslak özelliği yapılandırılmamış (ANTHROPIC_API_KEY yok).")
 
+    # Tenant ayari: AI acik mi + hangi model
+    tenant = db.get(Tenant, thread.tenant_id) if thread.tenant_id else None
+    if tenant is not None and not tenant.ai_reply_enabled:
+        raise DraftError("AI yanıt özelliği kapalı. Ayarlar > AI Destek'ten açın.")
+    model_key = (getattr(tenant, "ai_reply_model", None) or DEFAULT_MODEL_KEY)
+    model = MODEL_MAP.get(model_key, MODEL_MAP[DEFAULT_MODEL_KEY])
+
     history = _history_messages(db, thread)
     if not history:
         raise DraftError("Taslak için müşteri mesajı bulunamadı.")
@@ -93,13 +106,16 @@ def draft_reply(db: Session, thread: SupportThread) -> str:
 
     try:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        resp = client.messages.create(
-            model=MODEL,
+        kwargs = dict(
+            model=model,
             max_tokens=MAX_TOKENS,
             system=system,
             messages=history,
-            output_config={"effort": "low"},
         )
+        # effort yalnizca opus/sonnet'te desteklenir — haiku'da 400 verir
+        if model_key in ("opus", "sonnet"):
+            kwargs["output_config"] = {"effort": "low"}
+        resp = client.messages.create(**kwargs)
     except anthropic.APIError as e:
         logger.warning(f"[ai_reply] API hatası: {e}")
         raise DraftError("AI servisi şu anda yanıt veremedi, lütfen tekrar deneyin.") from e

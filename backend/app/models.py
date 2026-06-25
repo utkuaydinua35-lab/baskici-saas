@@ -44,6 +44,15 @@ class Tenant(Base):
     # LEGACY — artık kullanılmıyor (Paket 11c'de ürün bazlı sisteme geçildi)
     custom_design_keywords: Mapped[list] = mapped_column(JSONB, default=list)
 
+    # AI destek yaniti (Faz 3): acik/kapali + model secimi (haiku|sonnet|opus).
+    # Model degisikligi master password ister (settings router). Yalnizca yonetici.
+    ai_reply_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    ai_reply_model: Mapped[str] = mapped_column(
+        String(20), default="opus", server_default=text("'opus'"), nullable=False
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

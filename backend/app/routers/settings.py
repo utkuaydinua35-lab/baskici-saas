@@ -3,15 +3,20 @@ Tenant ayarları — /api/tenant/settings
 """
 from __future__ import annotations
 
+import hmac
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user, require_permission
+from app.auth.dependencies import get_current_user, require_permission, require_role
+from app.config import get_settings as get_app_settings
 from app.database import get_db
 from app.models import Tenant, User
 from app.services import storage
+
+_AI_MODELS = {"haiku", "sonnet", "opus"}
 
 # NOT: router-seviyesi gate YOK — avatar endpoint'leri (self-servis, kullaniciya ozel)
 # herkese acik olmali. Tenant-admin endpoint'leri (settings/brand-logo) tek tek ayarlar ister.
@@ -73,6 +78,62 @@ def update_settings(
     return {
         "custom_design_keywords": list(t.custom_design_keywords or []),
     }
+# ─── AI Destek Yanıtı ayarları (yalnızca yönetici; model değişikliği master password ister) ───
+
+class UpdateAISettings(BaseModel):
+    enabled: bool
+    model: str
+    master_password: str = ""
+
+
+@router.get("/ai-settings", response_model=dict)
+def get_ai_settings(
+    user: User = Depends(require_role("yonetici", "owner")),
+    db: Session = Depends(get_db),
+):
+    """AI destek yanıtı ayarları (yalnızca yönetici)."""
+    t = _get_tenant(db, user.tenant_id)
+    app_settings = get_app_settings()
+    return {
+        "enabled": bool(t.ai_reply_enabled),
+        "model": t.ai_reply_model or "opus",
+        # Sunucu tarafı hazır mı? (UI bilgilendirme için)
+        "api_key_configured": bool(app_settings.anthropic_api_key),
+        "master_configured": bool(app_settings.ai_model_master_password),
+    }
+
+
+@router.patch("/ai-settings", response_model=dict)
+def update_ai_settings(
+    payload: UpdateAISettings,
+    user: User = Depends(require_role("yonetici", "owner")),
+    db: Session = Depends(get_db),
+):
+    """AI ayarlarını güncelle. Değişiklik master password ister (yalnızca yönetici)."""
+    t = _get_tenant(db, user.tenant_id)
+    app_settings = get_app_settings()
+
+    if payload.model not in _AI_MODELS:
+        raise HTTPException(400, "Geçersiz model (haiku, sonnet veya opus)")
+
+    # Değişiklik var mı?
+    changed = (bool(payload.enabled) != bool(t.ai_reply_enabled)) or (payload.model != (t.ai_reply_model or "opus"))
+    if not changed:
+        return {"enabled": bool(t.ai_reply_enabled), "model": t.ai_reply_model or "opus"}
+
+    # Master password kontrolü
+    if not app_settings.ai_model_master_password:
+        raise HTTPException(422, "Master password sunucuda yapılandırılmamış (AI_MODEL_MASTER_PASSWORD).")
+    if not hmac.compare_digest(payload.master_password or "", app_settings.ai_model_master_password):
+        raise HTTPException(403, "Master password hatalı.")
+
+    t.ai_reply_enabled = bool(payload.enabled)
+    t.ai_reply_model = payload.model
+    db.commit()
+    db.refresh(t)
+    return {"enabled": bool(t.ai_reply_enabled), "model": t.ai_reply_model or "opus"}
+
+
 _LOGO_EXT = {"png", "jpg", "jpeg", "svg", "webp"}
 _LOGO_MAX = 5 * 1024 * 1024  # 5 MB
 

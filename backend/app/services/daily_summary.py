@@ -22,8 +22,15 @@ logger = logging.getLogger("daily_summary")
 
 _TR = ZoneInfo("Europe/Istanbul")
 
-# Sabah özetini alacak tenant slug'ları (diğerleri atlanır)
-_SUMMARY_SLUGS = {"bernz", "lunera"}
+# Sabah özetini alacak markalar — slug VEYA isim içinde bu anahtarları arar
+# (tam slug eşleşmesi yerine esnek; "bernz-company" gibi varyasyonları da yakalar).
+_SUMMARY_KEYS = ("bernz", "lunera")
+
+
+def _is_summary_tenant(t) -> bool:
+    slug = (getattr(t, "slug", "") or "").lower()
+    name = (getattr(t, "name", "") or "").lower()
+    return any(k in slug or k in name for k in _SUMMARY_KEYS)
 
 
 def _counts(db, tid) -> dict:
@@ -170,9 +177,12 @@ def send_daily_summary(db) -> int:
     1. mesaj: bernz  |  2. mesaj: lunera  |  3. mesaj: birleşik üretim özeti
     """
     sent = 0
-    tenants = db.scalars(
-        select(Tenant).where(Tenant.slug.in_(list(_SUMMARY_SLUGS)))
-    ).all()
+    all_tenants = db.scalars(select(Tenant)).all()
+    tenants = [t for t in all_tenants if _is_summary_tenant(t)]
+    logger.info(
+        f"[daily_summary] {len(tenants)}/{len(all_tenants)} tenant eslesti: "
+        f"{[t.slug for t in tenants]}"
+    )
 
     included_ids = []
     for t in tenants:

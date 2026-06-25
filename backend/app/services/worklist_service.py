@@ -137,7 +137,7 @@ def build_worklist(db: Session, user) -> dict:
         if kalip:
             items.append({
                 "key": "acik_kalip", "icon": "🎯", "severity": "normal",
-                "label": "Açık kalıp", "count": kalip, "link": "/kaliplar",
+                "label": "Açık kalıp", "count": kalip, "link": "/baskici-paneli",
             })
 
     # ── stok izni ────────────────────────────────────────────────────

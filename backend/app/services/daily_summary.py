@@ -56,12 +56,15 @@ def _counts(db, tid) -> dict:
     paketleme = oc(Order.cancelled_at.is_(None), Order.current_stage == 6)
     kargo = oc(Order.cancelled_at.is_(None), Order.current_stage == 7)
 
-    # Kargo sözü (SLA): henüz kargoya verilmemiş (stage < 8), iptal değil
+    # Kargo sözü (SLA): GERÇEK açık sipariş — iptal/iade/fulfilled değil + stage<8.
+    # (Sadece stage<8 yetersiz: Shopify'da kargolanmış eski siparisleri saymasin.)
     _now = datetime.now(timezone.utc)
     _end_today = datetime.combine(bugun_tr, time.max, tzinfo=_TR).astimezone(timezone.utc)
     _dl_base = (
         Order.kargo_deadline.isnot(None),
         Order.cancelled_at.is_(None),
+        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         Order.current_stage < 8,
     )
     kargo_sozu_bugun = oc(*_dl_base, Order.kargo_deadline >= _now, Order.kargo_deadline <= _end_today)

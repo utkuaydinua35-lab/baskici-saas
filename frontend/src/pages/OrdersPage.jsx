@@ -623,8 +623,11 @@ export default function OrdersPage() {
 
 function DeadlineBadge({ order }) {
   if (!order.kargo_deadline) return null
-  // Kargoya verilmiş/teslim (stage >= 8) ise uyarı gösterme
+  // Kapanmış sipariş (Shopify'da kargolanmış/iade/iptal) ya da pipeline'da
+  // kargolanmış (stage >= 8) ise uyarı gösterme
   if ((order.current_stage || 1) >= 8) return null
+  if (order.fulfillment_status === 'fulfilled') return null
+  if (order.cancelled_at) return null
 
   const dl = new Date(order.kargo_deadline)
   const now = new Date()

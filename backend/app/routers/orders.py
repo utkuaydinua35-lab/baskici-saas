@@ -415,11 +415,16 @@ def list_orders(
     if tab and tab in TAB_KEYS and tab != "tumu":
         q = _build_tab_filter(q, tab)
     if deadline:
-        # Kargo sözü filtresi — yalnızca kargoya verilmemiş (stage < 8) + iptal değil
+        # Kargo sözü filtresi — yalnızca GERÇEK açık sipariş: iptal/iade değil,
+        # Shopify'da fulfilled (kargolanmış) değil, pipeline'da da stage < 8.
+        # (Sadece stage<8 yetersizdi: pipeline'a hiç girmemis ama Shopify'da
+        #  fulfilled olan eski siparisler yanlislikla sayiliyordu.)
         now = datetime.now(UTC)
         _dl_base = (
             Order.kargo_deadline.isnot(None),
             Order.cancelled_at.is_(None),
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
             Order.current_stage < 8,
         )
         if deadline == "overdue":

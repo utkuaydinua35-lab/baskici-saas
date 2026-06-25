@@ -89,12 +89,14 @@ def build_worklist(db: Session, user) -> dict:
                 "label": "Kargoya verilecek sipariş", "count": kargo, "link": "/paketleme",
             })
 
-        # Kargo sözü (SLA) — kargoya verilmemiş (stage < 8), iptal değil
+        # Kargo sözü (SLA) — GERÇEK açık sipariş: iptal/iade/fulfilled değil + stage<8
         _now = datetime.now(timezone.utc)
         _end_today = datetime.combine(bugun, time.max, tzinfo=_TR).astimezone(timezone.utc)
         _dl_base = (
             Order.kargo_deadline.isnot(None),
             Order.cancelled_at.is_(None),
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
             Order.current_stage < 8,
         )
         kargo_gecti = oc(*_dl_base, Order.kargo_deadline < _now)

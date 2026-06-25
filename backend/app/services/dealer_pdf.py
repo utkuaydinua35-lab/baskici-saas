@@ -65,6 +65,11 @@ def _kind_label(kind: str) -> str:
     return {"siparis": "Sipariş", "odeme": "Ödeme", "duzeltme": "Düzeltme"}.get(kind, kind or "—")
 
 
+def _cur_label(c: str) -> str:
+    c = (c or "TRY").upper()
+    return "TL" if c == "TRY" else c
+
+
 def _parse_day(s: str | None, end: bool = False) -> datetime | None:
     if not s:
         return None
@@ -85,8 +90,7 @@ def build_statement_pdf(
     reg, bold = _ensure_fonts()
     tenant = db.get(Tenant, dealer.tenant_id)
     atolye = (tenant.name if tenant else None) or "Atölye"
-    cur = (getattr(dealer, "currency", "TRY") or "TRY").upper()
-    cur_label = "TL" if cur == "TRY" else cur
+    primary = (getattr(dealer, "currency", "TRY") or "TRY").upper()
 
     dt_from = _parse_day(date_from, end=False)
     dt_to = _parse_day(date_to, end=True)
@@ -98,29 +102,11 @@ def build_statement_pdf(
         .order_by(DealerTransaction.created_at.asc())
     ).all()
 
-    # Devir (açılış bakiyesi): dönem başlangıcından önceki son balance_after
-    opening = 0.0
-    in_period = []
-    for t in all_tx:
-        created = t.created_at
-        if dt_from and created and created < dt_from:
-            opening = float(t.balance_after)
-            continue
-        if dt_to and created and created > dt_to:
-            continue
-        in_period.append(t)
-
-    # Dönem toplamları
-    donem_borc = sum(float(t.amount) for t in in_period if float(t.amount) > 0)   # sipariş/borç
-    donem_alacak = sum(-float(t.amount) for t in in_period if float(t.amount) < 0)  # ödeme/alacak
-    siparis_adedi = sum(1 for t in in_period if t.kind == "siparis")
-    closing = float(in_period[-1].balance_after) if in_period else opening
-
     # ─── Stiller ───
     styles = {
         "title": ParagraphStyle("title", fontName=bold, fontSize=18, textColor=_ACCENT, leading=22),
         "sub": ParagraphStyle("sub", fontName=reg, fontSize=9, textColor=_GREY, leading=12),
-        "h2": ParagraphStyle("h2", fontName=bold, fontSize=11, textColor=colors.HexColor("#111827"), leading=14),
+        "h2": ParagraphStyle("h2", fontName=bold, fontSize=12, textColor=_ACCENT, leading=15),
         "body": ParagraphStyle("body", fontName=reg, fontSize=9, textColor=colors.HexColor("#111827"), leading=12),
         "small": ParagraphStyle("small", fontName=reg, fontSize=8, textColor=_GREY, leading=10),
     }
@@ -171,87 +157,128 @@ def build_statement_pdf(
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     story.append(info_tbl)
-    story.append(Spacer(1, 12))
-
-    # ─── Özet kutuları ───
-    def _summary_cell(label, value, accent=False):
-        col = "#6d28d9" if accent else "#111827"
-        return [
-            Paragraph(label, styles["small"]),
-            Paragraph(f'<font name="{bold}" size="13" color="{col}">{value} {cur_label}</font>', styles["body"]),
-        ]
-
-    summary = Table(
-        [[
-            _summary_cell("Dönem Cirosu (Sipariş)", _fmt_money(donem_borc)),
-            _summary_cell("Dönem Tahsilatı (Ödeme)", _fmt_money(donem_alacak)),
-            _summary_cell("Güncel Bakiye (Borç)", _fmt_money(closing), accent=True),
-        ]],
-        colWidths=[59 * mm, 59 * mm, 60 * mm],
-    )
-    summary.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), _ACCENT_LIGHT),
-        ("BOX", (0, 0), (-1, -1), 0.5, _BORDER),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.white),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    story.append(summary)
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(
-        f"Sipariş adedi: {siparis_adedi}  ·  Açılış bakiyesi (devir): {_fmt_money(opening)} {cur_label}  "
-        f"·  Bakiye pozitif = bayinin borcu",
-        styles["small"]))
     story.append(Spacer(1, 14))
 
-    # ─── Hareket tablosu ───
-    story.append(Paragraph("Hesap Hareketleri", styles["h2"]))
-    story.append(Spacer(1, 6))
+    # ─── Para birimine göre grupla (her birinin ayrı bakiyesi var) ───
+    by_cur: dict[str, list] = {}
+    for t in all_tx:
+        by_cur.setdefault((t.currency or "TRY").upper(), []).append(t)
 
-    header = ["Tarih", "İşlem", "Açıklama", "Borç", "Alacak", "Bakiye"]
-    rows = [header]
-    # Devir satırı
-    if dt_from:
-        rows.append(["", "Devir", "Önceki dönem bakiyesi", "", "", _fmt_money(opening)])
-    for t in in_period:
-        amt = float(t.amount)
-        tarih = t.created_at.astimezone(_TR).strftime("%d.%m.%Y") if t.created_at else "—"
-        rows.append([
-            tarih,
-            _kind_label(t.kind),
-            Paragraph((t.description or "—"), styles["small"]),
-            _fmt_money(amt) if amt > 0 else "",
-            _fmt_money(-amt) if amt < 0 else "",
-            _fmt_money(float(t.balance_after)),
-        ])
-    if not in_period:
-        rows.append(["", "—", "Bu dönemde hareket yok", "", "", ""])
+    # Bayinin ana para birimi önce, sonra diğerleri
+    order = [c for c in [primary] if c in by_cur] + [c for c in sorted(by_cur) if c != primary]
+    if not order:
+        order = [primary]
+        by_cur.setdefault(primary, [])
 
-    tbl = Table(rows, colWidths=[22 * mm, 20 * mm, 70 * mm, 22 * mm, 22 * mm, 22 * mm], repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), reg),
-        ("FONTNAME", (0, 0), (-1, 0), bold),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
-        ("ALIGN", (3, 0), (5, -1), "RIGHT"),
-        ("ALIGN", (0, 0), (1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf9fc")]),
-        ("LINEBELOW", (0, 0), (-1, -1), 0.4, _BORDER),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    story.append(tbl)
+    def _build_currency_section(currency: str, txs: list) -> list:
+        cur_label = _cur_label(currency)
+        # Devir + dönem ayrımı (bu para biriminin hareketleri içinde)
+        opening = 0.0
+        in_period = []
+        for t in txs:
+            created = t.created_at
+            if dt_from and created and created < dt_from:
+                opening = float(t.balance_after)
+                continue
+            if dt_to and created and created > dt_to:
+                continue
+            in_period.append(t)
+
+        donem_borc = sum(float(t.amount) for t in in_period if float(t.amount) > 0)
+        donem_alacak = sum(-float(t.amount) for t in in_period if float(t.amount) < 0)
+        siparis_adedi = sum(1 for t in in_period if t.kind == "siparis")
+        closing = float(in_period[-1].balance_after) if in_period else opening
+
+        out = []
+        out.append(Paragraph(f"{cur_label} Hesabı", styles["h2"]))
+        out.append(Spacer(1, 6))
+
+        def _summary_cell(label, value, accent=False):
+            col = "#6d28d9" if accent else "#111827"
+            return [
+                Paragraph(label, styles["small"]),
+                Paragraph(f'<font name="{bold}" size="13" color="{col}">{value} {cur_label}</font>', styles["body"]),
+            ]
+
+        summary = Table(
+            [[
+                _summary_cell("Dönem Cirosu (Sipariş)", _fmt_money(donem_borc)),
+                _summary_cell("Dönem Tahsilatı (Ödeme)", _fmt_money(donem_alacak)),
+                _summary_cell("Güncel Bakiye (Borç)", _fmt_money(closing), accent=True),
+            ]],
+            colWidths=[59 * mm, 59 * mm, 60 * mm],
+        )
+        summary.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), _ACCENT_LIGHT),
+            ("BOX", (0, 0), (-1, -1), 0.5, _BORDER),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.white),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        out.append(summary)
+        out.append(Spacer(1, 6))
+        out.append(Paragraph(
+            f"Sipariş adedi: {siparis_adedi}  ·  Açılış bakiyesi (devir): {_fmt_money(opening)} {cur_label}  "
+            f"·  Bakiye pozitif = bayinin borcu", styles["small"]))
+        out.append(Spacer(1, 10))
+
+        # Hareket tablosu (tutarlar bu para biriminde)
+        header = ["Tarih", "İşlem", "Açıklama", f"Borç ({cur_label})", f"Alacak ({cur_label})", f"Bakiye ({cur_label})"]
+        rows = [header]
+        if dt_from:
+            rows.append(["", "Devir", "Önceki dönem bakiyesi", "", "", _fmt_money(opening)])
+        for t in in_period:
+            amt = float(t.amount)
+            tarih = t.created_at.astimezone(_TR).strftime("%d.%m.%Y") if t.created_at else "—"
+            rows.append([
+                tarih,
+                _kind_label(t.kind),
+                Paragraph((t.description or "—"), styles["small"]),
+                _fmt_money(amt) if amt > 0 else "",
+                _fmt_money(-amt) if amt < 0 else "",
+                _fmt_money(float(t.balance_after)),
+            ])
+        if not in_period:
+            rows.append(["", "—", "Bu dönemde hareket yok", "", "", ""])
+
+        tbl = Table(rows, colWidths=[20 * mm, 18 * mm, 64 * mm, 25 * mm, 25 * mm, 26 * mm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), reg),
+            ("FONTNAME", (0, 0), (-1, 0), bold),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("ALIGN", (3, 0), (5, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (1, -1), "LEFT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf9fc")]),
+            ("LINEBELOW", (0, 0), (-1, -1), 0.4, _BORDER),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        out.append(tbl)
+        return out, bool(in_period or opening)
+
+    rendered = 0
+    for ci, currency in enumerate(order):
+        section, has_data = _build_currency_section(currency, by_cur.get(currency, []))
+        # Boş para birimi bölümlerini atla (devir de yoksa)
+        if not has_data and currency != primary and len(order) > 1:
+            continue
+        if rendered > 0:
+            story.append(Spacer(1, 18))
+        story.extend(section)
+        rendered += 1
 
     story.append(Spacer(1, 16))
     story.append(Paragraph(
         f"Bu ekstre {atolye} tarafından {bugun} tarihinde otomatik düzenlenmiştir. "
-        "Tutarlar bilgi amaçlıdır.", styles["small"]))
+        "Her para birimi kendi bakiyesiyle ayrı gösterilir; farklı para birimleri "
+        "birbirine çevrilmez. Tutarlar bilgi amaçlıdır.", styles["small"]))
 
     doc.build(story)
     return buf.getvalue()

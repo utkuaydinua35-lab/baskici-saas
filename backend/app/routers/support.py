@@ -124,6 +124,22 @@ def reply_thread(
     return {**_thread_summary(db, t), "messages": sup.messages_payload(db, t)}
 
 
+@router.post("/threads/{thread_id}/ai-draft", response_model=dict)
+def ai_draft(
+    thread_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşterinin son mesajına Claude ile bir yanıt taslağı üret (gönderilmez)."""
+    from app.services import ai_reply
+    t = _get_thread(db, thread_id, user)
+    try:
+        draft = ai_reply.draft_reply(db, t)
+    except ai_reply.DraftError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"draft": draft}
+
+
 @router.post("/threads/{thread_id}/read", response_model=dict)
 def mark_read(
     thread_id: uuid.UUID,

@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # Panel taban URL (Telegram deep-link icin)
     panel_base_url: str = Field("https://baskici.bernzcompany.com", alias="PANEL_BASE_URL")
 
+    # Claude API (AI destek taslak yaniti). Bos ise AI taslak ozelligi kapali.
+    anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+
     # Sürat Kargo
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")
     surat_sifre: str = Field("", alias="SURAT_SIFRE")

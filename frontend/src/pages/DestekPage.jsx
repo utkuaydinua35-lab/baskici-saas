@@ -25,6 +25,7 @@ export default function DestekPage() {
   const [replyImg, setReplyImg] = useState(null)       // File
   const [replyImgPreview, setReplyImgPreview] = useState('')
   const [sending, setSending] = useState(false)
+  const [drafting, setDrafting] = useState(false)
   const msgEndRef = useRef(null)
 
   const loadThreads = async () => {
@@ -93,6 +94,20 @@ export default function DestekPage() {
   }
 
   const clearImage = () => { setReplyImg(null); setReplyImgPreview('') }
+
+  const aiDraft = async () => {
+    if (!active) return
+    setDrafting(true)
+    setError('')
+    try {
+      const r = await api.post(`/api/support/threads/${active.id}/ai-draft`, {})
+      if (r?.draft) setReply(r.draft)
+    } catch (e) {
+      setError(e.detail || e.message || 'AI taslak üretilemedi')
+    } finally {
+      setDrafting(false)
+    }
+  }
 
   const sendReply = async () => {
     if (!active || (reply.trim().length < 1 && !replyImg)) return
@@ -232,10 +247,17 @@ export default function DestekPage() {
                     className="w-full bg-brand-input border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-100 resize-y focus:outline-none focus:border-white/25"
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendReply() }} />
                   <div className="flex justify-between items-center mt-2">
-                    <label className="text-xs text-gray-400 hover:text-gray-200 cursor-pointer">
-                      📎 Görsel
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onPickImage} />
-                    </label>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-400 hover:text-gray-200 cursor-pointer">
+                        📎 Görsel
+                        <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onPickImage} />
+                      </label>
+                      <button onClick={aiDraft} disabled={drafting || sending}
+                        className="text-xs text-accent hover:text-accent/80 disabled:opacity-40 flex items-center gap-1"
+                        title="Müşterinin mesajına Claude ile yanıt taslağı üret">
+                        {drafting ? '✨ Yazılıyor…' : '✨ AI Taslak'}
+                      </button>
+                    </div>
                     <button onClick={sendReply} disabled={sending || (reply.trim().length < 1 && !replyImg)}
                       className="btn-primary !text-xs !py-1.5 !px-3 disabled:opacity-40">
                       {sending ? 'Gönderiliyor...' : 'Cevapla →'}

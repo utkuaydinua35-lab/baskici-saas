@@ -26,6 +26,7 @@ export default function DestekPage() {
   const [replyImgPreview, setReplyImgPreview] = useState('')
   const [sending, setSending] = useState(false)
   const [drafting, setDrafting] = useState(false)
+  const [aiNote, setAiNote] = useState('')
   const msgEndRef = useRef(null)
 
   const loadThreads = async () => {
@@ -56,6 +57,7 @@ export default function DestekPage() {
     try {
       const t = await api.get(`/api/support/threads/${id}`)
       setActive(t)
+      setAiNote('')
       if (t.unread_admin > 0) {
         await api.post(`/api/support/threads/${id}/read`, {})
         loadThreads()
@@ -102,6 +104,7 @@ export default function DestekPage() {
     try {
       const r = await api.post(`/api/support/threads/${active.id}/ai-draft`, {})
       if (r?.draft) setReply(r.draft)
+      setAiNote(r?.note || '')
     } catch (e) {
       setError(e.detail || e.message || 'AI taslak üretilemedi')
     } finally {
@@ -118,6 +121,7 @@ export default function DestekPage() {
       const updated = await api.post(`/api/support/threads/${active.id}/reply`, { message: reply.trim(), image_url })
       setActive(updated)
       setReply('')
+      setAiNote('')
       clearImage()
       loadThreads()
     } catch (e) {
@@ -236,6 +240,19 @@ export default function DestekPage() {
                 <div className="text-xs text-gray-500 text-center py-2 border-t border-white/5">Bu konuşma kapatıldı</div>
               ) : (
                 <div className="border-t border-white/5 pt-3">
+                  {aiNote && (
+                    <div className="mb-2 rounded-lg bg-accent/10 border border-accent/25 px-3 py-2 animate-popin">
+                      <div className="flex items-start gap-2">
+                        <span className="text-sm shrink-0">📝</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-semibold text-accent mb-0.5">Operatöre not — müşteriye gönderilmez</div>
+                          <div className="text-xs text-gray-300 whitespace-pre-line leading-relaxed">{aiNote}</div>
+                        </div>
+                        <button onClick={() => setAiNote('')} title="Notu gizle"
+                          className="text-gray-500 hover:text-gray-300 text-sm leading-none shrink-0">✕</button>
+                      </div>
+                    </div>
+                  )}
                   {replyImgPreview && (
                     <div className="mb-2 flex items-center gap-2">
                       <img src={replyImgPreview} alt="" className="max-w-[80px] max-h-[80px] rounded-lg border border-white/10" />

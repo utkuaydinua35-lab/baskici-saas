@@ -5,6 +5,7 @@ ANTHROPIC_API_KEY .env'de yoksa özellik sessizce kapalıdır (DraftError döner
 """
 from __future__ import annotations
 
+import json
 import logging
 
 from sqlalchemy import select
@@ -27,20 +28,38 @@ MAX_TOKENS = 1024
 MAX_HISTORY = 30
 
 _SYSTEM = """Sen BERNZ adlı telefon kılıfı baskı atölyesinin Türkçe müşteri \
-destek temsilcisisin. Görevin, müşterinin son mesajına gönderilmeye hazır, \
-kibar ve net bir yanıt taslağı yazmak.
+destek temsilcisisin. Müşterinin son mesajı için İKİ şey üretirsin: bir yanıt \
+taslağı (draft) ve operatöre kısa bir not (note).
 
-KURALLAR:
-- Yalnızca Türkçe yaz.
-- Sıcak, profesyonel ve çözüm odaklı bir ton kullan.
-- Kısa ve öz ol; gereksiz dolgu cümleleri kurma.
+DRAFT (müşteriye gönderilmeye hazır yanıt):
+- KARARLI ve NET ol. Tereddüt etme; operatöre ya da müşteriye gereksiz soru sorma.
+- Doğrudan, çözüm odaklı, sıcak ve profesyonel; kısa tut.
 - ASLA uydurma bilgi verme: kesin kargo tarihi, takip numarası, iade onayı, \
-indirim gibi şeyleri kendin uydurma. Bu bilgiler gerekiyorsa "[kargo tarihi]" \
-gibi köşeli parantezli yer tutucu bırak ki operatör doldursun.
-- Müşterinin sorununu anladığını göster, sonra net bir sonraki adım sun.
-- İmza veya "BERNZ Destek" gibi kapanış ekleme; sadece mesaj gövdesini yaz.
-- Çıktında ön söz, açıklama veya tırnak kullanma — DOĞRUDAN müşteriye \
-gönderilecek mesaj metnini yaz."""
+indirim gibi emin olmadığın şeyleri uydurma. Gerekiyorsa "[kargo tarihi]" gibi \
+köşeli parantezli yer tutucu bırak; operatör doldurur.
+- İmza veya "BERNZ Destek" gibi kapanış ekleme; sadece mesaj gövdesi.
+
+NOTE (yalnızca operatöre, müşteriye GÖSTERİLMEZ):
+- draft içinde operatörün doldurması gereken yer tutucuları ve karar vermesi \
+gereken konuları kısa madde madde özetle (ör. "• [kargo tarihi] doldur  • \
+İade onayı verilecek mi karar ver").
+- Doldurulacak veya karar verilecek bir şey yoksa boş string ("") döndür.
+
+Her ikisini de yalnızca Türkçe yaz."""
+
+# Yapılandırılmış çıktı şeması (draft + note garantili JSON)
+_FORMAT = {
+    "type": "json_schema",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "draft": {"type": "string"},
+            "note": {"type": "string"},
+        },
+        "required": ["draft", "note"],
+        "additionalProperties": False,
+    },
+}
 
 
 class DraftError(Exception):
@@ -72,8 +91,12 @@ def _history_messages(db: Session, thread: SupportThread) -> list[dict]:
     return messages
 
 
-def draft_reply(db: Session, thread: SupportThread) -> str:
-    """Konuşma geçmişinden bir admin yanıt taslağı üret. Hata olursa DraftError."""
+def draft_reply(db: Session, thread: SupportThread) -> dict:
+    """Konuşma geçmişinden {draft, note} üret. Hata olursa DraftError.
+
+    draft: müşteriye gönderilmeye hazır yanıt.
+    note:  operatöre kısa not (doldurulacak/karar verilecek konular; yoksa "").
+    """
     settings = get_settings()
     if not settings.anthropic_api_key:
         raise DraftError("AI taslak özelliği yapılandırılmamış (ANTHROPIC_API_KEY yok).")
@@ -106,16 +129,18 @@ def draft_reply(db: Session, thread: SupportThread) -> str:
 
     try:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        kwargs = dict(
+        # Yapılandırılmış çıktı: {draft, note}. effort yalnizca opus/sonnet'te
+        # desteklenir (haiku'da 400 verir) — format ile birlikte gonderiyoruz.
+        output_config = {"format": _FORMAT}
+        if model_key in ("opus", "sonnet"):
+            output_config["effort"] = "low"
+        resp = client.messages.create(
             model=model,
             max_tokens=MAX_TOKENS,
             system=system,
             messages=history,
+            output_config=output_config,
         )
-        # effort yalnizca opus/sonnet'te desteklenir — haiku'da 400 verir
-        if model_key in ("opus", "sonnet"):
-            kwargs["output_config"] = {"effort": "low"}
-        resp = client.messages.create(**kwargs)
     except anthropic.APIError as e:
         logger.warning(f"[ai_reply] API hatası: {e}")
         raise DraftError("AI servisi şu anda yanıt veremedi, lütfen tekrar deneyin.") from e
@@ -126,4 +151,15 @@ def draft_reply(db: Session, thread: SupportThread) -> str:
     text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
     if not text:
         raise DraftError("AI boş bir taslak döndürdü, lütfen tekrar deneyin.")
-    return text
+
+    # output_config.format JSON garantiler; yine de güvenli parse + fallback
+    try:
+        data = json.loads(text)
+        draft = (data.get("draft") or "").strip()
+        note = (data.get("note") or "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        draft, note = text, ""
+
+    if not draft:
+        raise DraftError("AI boş bir taslak döndürdü, lütfen tekrar deneyin.")
+    return {"draft": draft, "note": note}

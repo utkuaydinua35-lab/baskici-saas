@@ -134,10 +134,10 @@ def ai_draft(
     from app.services import ai_reply
     t = _get_thread(db, thread_id, user)
     try:
-        draft = ai_reply.draft_reply(db, t)
+        result = ai_reply.draft_reply(db, t)
     except ai_reply.DraftError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return {"draft": draft}
+    return {"draft": result["draft"], "note": result.get("note", "")}
 
 
 @router.post("/threads/{thread_id}/read", response_model=dict)

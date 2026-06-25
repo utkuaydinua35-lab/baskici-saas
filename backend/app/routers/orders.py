@@ -12,7 +12,7 @@ Endpoint'ler:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -81,12 +81,14 @@ class OrderListItem(BaseModel):
     customer_name: str | None
     created_at_platform: datetime | None
     fetched_at: datetime
+    kargo_deadline: datetime | None = None
     item_count: int = 0
     kalipta_count: int = 0
     total_li_count: int = 0
     mold_kodlari: list[str] = []
     is_acil: bool = False
     kalip_haric: bool = False
+    current_stage: int = 1
 
 
 class OrderDetail(OrderListItem):
@@ -120,11 +122,34 @@ def _parse_iso(s: str | None) -> datetime | None:
         return None
 
 
+def _store_sla_days(store: Store | None) -> int | None:
+    """Mağaza config'inden SLA (kargo sözü) gün sayısı. Yoksa None."""
+    if not store or not isinstance(store.config, dict):
+        return None
+    val = store.config.get("sla_days")
+    try:
+        n = int(val)
+        return n if n > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _compute_deadline(created_at_platform: datetime | None, sla_days: int | None) -> datetime | None:
+    """created_at_platform + sla_days. Eksik veri varsa None."""
+    if not created_at_platform or not sla_days:
+        return None
+    return created_at_platform + timedelta(days=sla_days)
+
+
 def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order, bool, bool]:
     """Raw order dict'ten Order kaydı oluştur veya güncelle."""
     external_id = str(raw.get("id", ""))
     if not external_id:
         raise ValueError("raw order'da id yok")
+
+    # Kargo sözü hesabı için mağaza config (db.get identity-map ile cache'lenir)
+    _store = db.get(Store, store_id)
+    _sla_days = _store_sla_days(_store)
 
     existing = db.scalar(
         select(Order).where(
@@ -151,6 +176,8 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         "raw": raw,
     }
 
+    _deadline = _compute_deadline(order_data["created_at_platform"], _sla_days)
+
     if existing:
         is_new = False
         was_updated = False
@@ -160,6 +187,9 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             if getattr(existing, k) != v:
                 setattr(existing, k, v)
                 was_updated = True
+        # Kargo sözü: yalnızca boşsa doldur (elle override'ı sync ezmesin)
+        if existing.kargo_deadline is None and _deadline is not None:
+            existing.kargo_deadline = _deadline
         order = existing
         # Sync sirasinda line item'lar silinip yeniden olusturuluyor; design bağlamasini
         # (assigned_design_id) Shopify line item id'si (external_id) bazinda koru.
@@ -187,6 +217,8 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         is_new = True
         was_updated = False
         order = Order(**order_data)
+        if _deadline is not None:
+            order.kargo_deadline = _deadline
         db.add(order)
         db.flush()
 
@@ -365,12 +397,13 @@ def list_orders(
     status_filter: str | None = Query(None, alias="status"),
     tab: str | None = Query(None),
     search: str | None = Query(None),
+    deadline: str | None = Query(None),  # bugun | overdue | soon
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Siparişleri listele. Filtreler: store_id, status, tab (Paket 18), search."""
+    """Siparişleri listele. Filtreler: store_id, status, tab (Paket 18), search, deadline."""
     q = select(Order).where(
         Order.tenant_id == user.tenant_id,
         Order.is_telafi == False,  # noqa: E712  telafiler kendi panelinde
@@ -381,6 +414,22 @@ def list_orders(
         q = q.where(Order.fulfillment_status == status_filter)
     if tab and tab in TAB_KEYS and tab != "tumu":
         q = _build_tab_filter(q, tab)
+    if deadline:
+        # Kargo sözü filtresi — yalnızca kargoya verilmemiş (stage < 8) + iptal değil
+        now = datetime.now(UTC)
+        _dl_base = (
+            Order.kargo_deadline.isnot(None),
+            Order.cancelled_at.is_(None),
+            Order.current_stage < 8,
+        )
+        if deadline == "overdue":
+            q = q.where(*_dl_base, Order.kargo_deadline < now)
+        elif deadline == "bugun":
+            _end = datetime.combine(now.date(), time.max, tzinfo=UTC)
+            q = q.where(*_dl_base, Order.kargo_deadline >= now, Order.kargo_deadline <= _end)
+        elif deadline == "soon":
+            _soon = now + timedelta(days=2)
+            q = q.where(*_dl_base, Order.kargo_deadline >= now, Order.kargo_deadline <= _soon)
     if search:
         like = f"%{search}%"
         q = q.where(
@@ -635,6 +684,41 @@ def bulk_action(
 
     db.commit()
     return {"ok": True, "affected": affected, "requested": len(payload.ids)}
+
+
+@router.post("/_recompute-deadlines", response_model=dict)
+def recompute_deadlines(
+    overwrite: bool = Query(False),
+    user: User = Depends(require_permission("siparisler")),
+    db: Session = Depends(get_db),
+):
+    """Mevcut siparişlerin kargo sözü tarihini store SLA'sına göre (yeniden) hesapla.
+
+    overwrite=false (varsayılan): yalnızca kargo_deadline'ı boş olanları doldurur.
+    overwrite=true: tümünü store SLA'sına göre yeniden yazar (elle override'ları da ezer).
+    """
+    # store sla_days haritası (tek query)
+    stores = db.scalars(select(Store).where(Store.tenant_id == user.tenant_id)).all()
+    sla_by_store = {s.id: _store_sla_days(s) for s in stores}
+
+    orders = db.scalars(
+        select(Order).where(Order.tenant_id == user.tenant_id)
+    ).all()
+
+    updated = 0
+    for o in orders:
+        sla = sla_by_store.get(o.store_id)
+        if not sla:
+            continue
+        if o.kargo_deadline is not None and not overwrite:
+            continue
+        new_dl = _compute_deadline(o.created_at_platform, sla)
+        if new_dl and o.kargo_deadline != new_dl:
+            o.kargo_deadline = new_dl
+            updated += 1
+
+    db.commit()
+    return {"ok": True, "updated": updated, "total": len(orders)}
 
 
 @router.get("/{order_id}", response_model=OrderDetail)

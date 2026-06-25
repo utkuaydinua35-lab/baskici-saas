@@ -49,6 +49,17 @@ def _counts(db, tid) -> dict:
     paketleme = oc(Order.cancelled_at.is_(None), Order.current_stage == 6)
     kargo = oc(Order.cancelled_at.is_(None), Order.current_stage == 7)
 
+    # Kargo sözü (SLA): henüz kargoya verilmemiş (stage < 8), iptal değil
+    _now = datetime.now(timezone.utc)
+    _end_today = datetime.combine(bugun_tr, time.max, tzinfo=_TR).astimezone(timezone.utc)
+    _dl_base = (
+        Order.kargo_deadline.isnot(None),
+        Order.cancelled_at.is_(None),
+        Order.current_stage < 8,
+    )
+    kargo_sozu_bugun = oc(*_dl_base, Order.kargo_deadline >= _now, Order.kargo_deadline <= _end_today)
+    kargo_sozu_gecti = oc(*_dl_base, Order.kargo_deadline < _now)
+
     telafi_acik = db.scalar(
         select(sql_func.count(Order.id)).where(
             Order.tenant_id == tid, Order.is_telafi.is_(True),
@@ -72,6 +83,7 @@ def _counts(db, tid) -> dict:
     return {
         "acik": acik, "acil": acil, "bugun": bugun,
         "paketleme": paketleme, "kargo": kargo,
+        "kargo_sozu_bugun": kargo_sozu_bugun, "kargo_sozu_gecti": kargo_sozu_gecti,
         "telafi_acik": telafi_acik, "acik_kalip": acik_kalip,
         "dusuk_stok": dusuk_stok,
     }
@@ -122,6 +134,10 @@ def _build_text(tenant_name: str, c: dict) -> str:
         lines.append(f"🏷️ Paketleme bekleyen: <b>{c['paketleme']}</b>")
     if c["kargo"]:
         lines.append(f"🚚 Kargo bekleyen: <b>{c['kargo']}</b>")
+    if c.get("kargo_sozu_gecti"):
+        lines.append(f"⛔ Kargo sözü GEÇEN: <b>{c['kargo_sozu_gecti']}</b>")
+    if c.get("kargo_sozu_bugun"):
+        lines.append(f"⏰ Kargo sözü bugün dolan: <b>{c['kargo_sozu_bugun']}</b>")
     if c["acik_kalip"]:
         lines.append(f"🎯 Açık kalıp: <b>{c['acik_kalip']}</b>")
     if c["telafi_acik"]:

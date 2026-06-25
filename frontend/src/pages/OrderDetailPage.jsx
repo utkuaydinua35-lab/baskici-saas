@@ -288,7 +288,7 @@ export default function OrderDetailPage() {
 
           {rightTab === 'musteri' && <MusteriTab detail={detail} />}
           {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
-          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} />}
+          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} />}
           {rightTab === 'diger' && <DigerTab detail={detail} />}
         </div>
       </div>
@@ -772,13 +772,32 @@ function FinansalTab({ f, cur }) {
   )
 }
 
-function KargoTab({ detail, onPatchBarkod }) {
+function KargoTab({ detail, onPatchBarkod, onPatchDeadline }) {
   const ship = detail.shipping_address || {}
   const [barkod, setBarkod] = useState(detail.barkod_kodu || '')
+  const dlIso = detail.kargo_deadline ? new Date(detail.kargo_deadline).toISOString().slice(0, 10) : ''
+  const [deadline, setDeadline] = useState(dlIso)
   return (
     <div className="space-y-3">
       <PanelCard title="Kargo Adresi" icon="🚚">
         {(ship.address1 || ship.city) ? <AddressBlock addr={ship} /> : <p className="text-xs text-gray-500 italic">Adres bilgisi yok.</p>}
+      </PanelCard>
+      <PanelCard title="Kargo Sözü (SLA)" icon="⏰">
+        {detail.kargo_deadline && (
+          <p className="text-xs text-gray-400 mb-1.5">
+            Söz tarihi: <span className="text-gray-200 font-medium">{formatDate(detail.kargo_deadline)}</span>
+          </p>
+        )}
+        <div className="flex gap-1">
+          <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                 className="input !text-xs flex-1" />
+          <button onClick={() => onPatchDeadline(deadline)} className="btn-primary !text-xs !px-3">Kaydet</button>
+          {detail.kargo_deadline && (
+            <button onClick={() => { setDeadline(''); onPatchDeadline('') }}
+                    className="btn-secondary !text-xs !px-2" title="Söz tarihini kaldır">✕</button>
+          )}
+        </div>
+        <p className="text-[10px] text-gray-600 mt-1">Mağaza SLA gününden otomatik hesaplanır; buradan elle değiştirilebilir.</p>
       </PanelCard>
       <PanelCard title="BK Kargo Barkodu" icon="🏷">
         <div className="flex gap-1">

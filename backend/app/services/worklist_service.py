@@ -89,6 +89,29 @@ def build_worklist(db: Session, user) -> dict:
                 "label": "Kargoya verilecek sipariş", "count": kargo, "link": "/paketleme",
             })
 
+        # Kargo sözü (SLA) — kargoya verilmemiş (stage < 8), iptal değil
+        _now = datetime.now(timezone.utc)
+        _end_today = datetime.combine(bugun, time.max, tzinfo=_TR).astimezone(timezone.utc)
+        _dl_base = (
+            Order.kargo_deadline.isnot(None),
+            Order.cancelled_at.is_(None),
+            Order.current_stage < 8,
+        )
+        kargo_gecti = oc(*_dl_base, Order.kargo_deadline < _now)
+        if kargo_gecti:
+            items.append({
+                "key": "kargo_sozu_gecti", "icon": "⛔", "severity": "urgent",
+                "label": "Kargo sözü geçen sipariş", "count": kargo_gecti,
+                "link": "/orders?deadline=overdue",
+            })
+        kargo_bugun = oc(*_dl_base, Order.kargo_deadline >= _now, Order.kargo_deadline <= _end_today)
+        if kargo_bugun:
+            items.append({
+                "key": "kargo_sozu_bugun", "icon": "⏰", "severity": "warning",
+                "label": "Kargo sözü bugün dolan", "count": kargo_bugun,
+                "link": "/orders?deadline=bugun",
+            })
+
     # ── destek izni ─────────────────────────────────────────────────
     if "destek" in perms:
         destek = db.scalar(

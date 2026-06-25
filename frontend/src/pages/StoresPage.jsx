@@ -145,15 +145,18 @@ export default function StoresPage({ embedded = false }) {
                   </div>
                   <div className="text-xs text-gray-500 font-mono">{store.slug}</div>
 
-                  {/* Config preview (maskelenmiş) */}
+                  {/* Config preview (maskelenmiş) — sla_days hariç (kendi editörü var) */}
                   <div className="mt-3 space-y-1">
-                    {Object.entries(store.config || {}).map(([k, v]) => (
+                    {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days').map(([k, v]) => (
                       <div key={k} className="text-xs flex gap-2">
                         <span className="text-gray-500 w-32 shrink-0">{k}:</span>
                         <span className="text-gray-300 font-mono truncate">{String(v)}</span>
                       </div>
                     ))}
                   </div>
+
+                  {/* Kargo SLA (söz tarihi gün sayısı) */}
+                  <SlaEditor store={store} onSaved={loadData} />
 
                   {/* Test sonucu */}
                   {result && (
@@ -204,6 +207,48 @@ export default function StoresPage({ embedded = false }) {
           onSaved={() => { setShowAddDialog(false); loadData() }}
         />
       )}
+    </div>
+  )
+}
+
+function SlaEditor({ store, onSaved }) {
+  const toast = useToast()
+  const [val, setVal] = useState(store.config?.sla_days ?? '')
+  const [busy, setBusy] = useState(false)
+  const original = store.config?.sla_days ?? ''
+  const dirty = String(val) !== String(original)
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const n = val === '' ? null : parseInt(val, 10)
+      await api.patch(`/api/stores/${store.id}`, { config: { sla_days: n } })
+      toast.success('Kargo SLA güncellendi')
+      onSaved?.()
+    } catch (e) {
+      toast.error(e.detail || 'Kaydedilemedi')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <span className="text-xs text-gray-500">🚚 Kargo SLA:</span>
+      <input
+        type="number" min="0" max="60"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        placeholder="—"
+        className="input !text-xs !py-1 w-16 text-center"
+      />
+      <span className="text-xs text-gray-500">gün</span>
+      {dirty && (
+        <button onClick={save} disabled={busy} className="btn-primary !text-[11px] !py-1 !px-2 disabled:opacity-50">
+          {busy ? '...' : 'Kaydet'}
+        </button>
+      )}
+      <span className="text-[10px] text-gray-600">(sipariş tarihi + gün = kargo sözü)</span>
     </div>
   )
 }

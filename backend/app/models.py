@@ -375,6 +375,12 @@ class Order(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
 
+    # Kargo soz tarihi (SLA): bu tarihe kadar kargoya verilmeli. store.config.sla_days'ten
+    # created_at_platform + sla_days olarak hesaplanir; elle override edilebilir (sync ezmez).
+    kargo_deadline: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     store: Mapped[Store] = relationship(back_populates="orders")

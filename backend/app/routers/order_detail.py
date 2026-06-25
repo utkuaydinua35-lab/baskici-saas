@@ -231,6 +231,7 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         "fulfillment_status": order.fulfillment_status,
         "financial_status": order.financial_status,
         "created_at_platform": order.created_at_platform.isoformat() if order.created_at_platform else None,
+        "kargo_deadline": order.kargo_deadline.isoformat() if order.kargo_deadline else None,
         "note": order.note,
         "tags": order.tags,
 
@@ -375,6 +376,8 @@ class FlagsUpdate(BaseModel):
     barkod_kodu: str | None = None
     add_to_list: str | None = None
     remove_from_list: str | None = None
+    # Kargo sözü elle override: "YYYY-MM-DD" set eder, "" temizler, None dokunmaz
+    kargo_deadline: str | None = None
 
 
 @router.patch("/{order_ref}/flags", response_model=None)
@@ -402,6 +405,18 @@ def update_flags(
 
     if payload.barkod_kodu is not None:
         order.barkod_kodu = payload.barkod_kodu.strip() or None
+
+    if payload.kargo_deadline is not None:
+        s = payload.kargo_deadline.strip()
+        if not s:
+            order.kargo_deadline = None
+        else:
+            try:
+                from datetime import datetime as _dt
+                from zoneinfo import ZoneInfo as _ZI
+                order.kargo_deadline = _dt.strptime(s, "%Y-%m-%d").replace(tzinfo=_ZI("Europe/Istanbul"))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Geçersiz tarih (YYYY-MM-DD)")
 
     lists = list(order.internal_lists or [])
     if payload.add_to_list:

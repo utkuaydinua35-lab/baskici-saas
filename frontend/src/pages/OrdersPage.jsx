@@ -133,7 +133,11 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(null)
   const [error, setError] = useState('')
-  const [filters, setFilters] = useState({ store_id: localStorage.getItem('orders_store_id') || '', search: '' })
+  const [filters, setFilters] = useState({
+    store_id: localStorage.getItem('orders_store_id') || '',
+    search: '',
+    deadline: new URLSearchParams(window.location.search).get('deadline') || '',
+  })
   const [tab, setTab] = useState(() => localStorage.getItem('orders_tab') || 'tumu')
   const [page, setPage] = useState(1)
   const [fetchMessage, setFetchMessage] = useState(null)
@@ -170,6 +174,7 @@ export default function OrdersPage() {
       const params = new URLSearchParams({ page, per_page: 50, tab })
       if (filters.store_id) params.set('store_id', filters.store_id)
       if (filters.search) params.set('search', filters.search)
+      if (filters.deadline) params.set('deadline', filters.deadline)
       const r = await api.get(`/api/orders?${params}`)
       setOrders(r.items)
       setTotal(r.total)
@@ -182,7 +187,7 @@ export default function OrdersPage() {
 
   useEffect(() => { loadStores() }, [])
   useEffect(() => { loadTabCounts() }, [filters.store_id])
-  useEffect(() => { loadOrders() }, [filters.store_id, tab, page])
+  useEffect(() => { loadOrders() }, [filters.store_id, filters.deadline, tab, page])
   useEffect(() => { localStorage.setItem('orders_tab', tab) }, [tab])
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); loadOrders() }, 400)
@@ -191,7 +196,7 @@ export default function OrdersPage() {
   }, [filters.search])
 
   // Liste değişince seçimi temizle
-  useEffect(() => { setSelected(new Set()) }, [tab, page, filters.store_id, filters.search])
+  useEffect(() => { setSelected(new Set()) }, [tab, page, filters.store_id, filters.search, filters.deadline])
 
   const toggleSelect = (id) => {
     setSelected(prev => {
@@ -379,6 +384,24 @@ export default function OrdersPage() {
               onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
               className="input !text-xs !py-1.5 flex-1 min-w-[200px]"
             />
+            {/* Kargo sözü (SLA) hızlı filtreleri */}
+            <div className="flex gap-1">
+              {[
+                { v: 'overdue', label: '⛔ Sözü geçen' },
+                { v: 'bugun', label: '⏰ Bugün dolan' },
+                { v: 'soon', label: '🚚 Yaklaşan' },
+              ].map(b => (
+                <button
+                  key={b.v}
+                  onClick={() => { setPage(1); setFilters(f => ({ ...f, deadline: f.deadline === b.v ? '' : b.v })) }}
+                  className={`!text-xs px-2 py-1.5 rounded-lg border transition-colors ${
+                    filters.deadline === b.v
+                      ? 'bg-accent/20 text-accent border-accent/40'
+                      : 'bg-brand-input text-gray-400 border-brand-border hover:text-gray-200'
+                  }`}
+                >{b.label}</button>
+              ))}
+            </div>
           </div>
 
           {error && (
@@ -497,7 +520,8 @@ export default function OrdersPage() {
                           </td>
                           <td className="px-3 py-2 text-center text-gray-400">{o.item_count}</td>
                           <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                            {o.created_at_platform ? new Date(o.created_at_platform).toLocaleDateString('tr-TR') : '—'}
+                            <div>{o.created_at_platform ? new Date(o.created_at_platform).toLocaleDateString('tr-TR') : '—'}</div>
+                            <DeadlineBadge order={o} />
                           </td>
                           <td className="px-2 py-2">
                             <div className="flex items-center gap-1 justify-end">
@@ -594,6 +618,43 @@ export default function OrdersPage() {
         />
       )}
 </div>
+  )
+}
+
+function DeadlineBadge({ order }) {
+  if (!order.kargo_deadline) return null
+  // Kargoya verilmiş/teslim (stage >= 8) ise uyarı gösterme
+  if ((order.current_stage || 1) >= 8) return null
+
+  const dl = new Date(order.kargo_deadline)
+  const now = new Date()
+  const msLeft = dl - now
+  const dayMs = 24 * 60 * 60 * 1000
+  const daysLeft = Math.ceil(msLeft / dayMs)
+
+  let cls, text
+  if (msLeft < 0) {
+    cls = 'bg-red-500/20 text-red-300 border-red-500/40'
+    text = `⛔ ${Math.abs(daysLeft)} gün gecikti`
+  } else if (daysLeft <= 0) {
+    cls = 'bg-red-500/15 text-red-300 border-red-500/30'
+    text = '⏰ Bugün son'
+  } else if (daysLeft <= 1) {
+    cls = 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+    text = '⏰ Yarın son'
+  } else if (daysLeft <= 2) {
+    cls = 'bg-amber-500/10 text-amber-300/90 border-amber-500/20'
+    text = `🚚 ${daysLeft} gün`
+  } else {
+    cls = 'bg-brand-input text-gray-500 border-brand-border'
+    text = `🚚 ${daysLeft} gün`
+  }
+
+  return (
+    <span className={`inline-block mt-0.5 text-[9px] px-1.5 py-0.5 rounded-full border ${cls}`}
+      title={`Kargo sözü: ${dl.toLocaleDateString('tr-TR')}`}>
+      {text}
+    </span>
   )
 }
 

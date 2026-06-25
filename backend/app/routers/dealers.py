@@ -5,12 +5,14 @@ require_permission('bayii') ile korumali.
 """
 from __future__ import annotations
 
+import io
 import re
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -193,6 +195,35 @@ def list_transactions(dealer_id: uuid.UUID, user: User = Depends(require_permiss
         .order_by(DealerTransaction.created_at.desc())
     ).all()
     return [_ser_tx(t) for t in rows]
+
+
+def _slug_ascii(s: str) -> str:
+    tr = str.maketrans("şŞğĞıİçÇöÖüÜ", "sSgGiIcCoOuU")
+    s = (s or "bayi").translate(tr)
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
+    return s or "bayi"
+
+
+@router.get("/{dealer_id}/statement.pdf")
+def dealer_statement_pdf(
+    dealer_id: uuid.UUID,
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Bayi cari ekstre + kârlılık özeti PDF'i indir."""
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    from app.services.dealer_pdf import build_statement_pdf
+    data = build_statement_pdf(db, d, date_from=date_from, date_to=date_to)
+    fname = f"cari-ekstre-{_slug_ascii(d.name)}.pdf"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
 
 
 @router.post("/{dealer_id}/payment", response_model=dict)

@@ -189,6 +189,29 @@ function CariDialog({ dealer, onClose, onChanged }) {
   }
   useEffect(() => { load() }, [])
 
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const token = localStorage.getItem('baskici_token')
+      const res = await fetch(`/api/dealers/${dealer.id}/statement.pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `cari-ekstre-${(dealer.name || 'bayi').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('PDF indirilemedi')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const pay = async (direction) => {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { toast.error('Geçerli tutar gir'); return }
@@ -207,9 +230,16 @@ function CariDialog({ dealer, onClose, onChanged }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 animate-popin">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-semibold text-gray-100">{dealer.name} — Cari Hesap</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        <div className="flex items-center justify-between mb-1 gap-2">
+          <h2 className="text-lg font-semibold text-gray-100 min-w-0 truncate">{dealer.name} — Cari Hesap</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            <button onClick={downloadPdf} disabled={pdfBusy}
+              className="btn-secondary !text-xs disabled:opacity-50"
+              title="Cari ekstre PDF indir">
+              {pdfBusy ? '⏳' : '📄'} PDF Ekstre
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2 mb-4">
           <div className="bg-brand-input/40 rounded-lg p-2.5">

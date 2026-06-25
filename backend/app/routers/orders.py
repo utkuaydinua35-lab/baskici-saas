@@ -21,9 +21,10 @@ from sqlalchemy import case, desc, func as sql_func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.adapters import get_adapter
-from app.auth.dependencies import get_current_user, require_any_permission
+from app.auth.dependencies import get_current_user, require_any_permission, require_permission
 from app.database import get_db
-from app.models import LineItem, Mold, MoldItem, Order, Store, User
+from app.models import LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User
+from app.stages import is_valid_stage
 
 router = APIRouter(prefix="/api/orders", tags=["orders"],
     dependencies=[Depends(require_any_permission("siparisler", "bayii", "stok"))],
@@ -525,6 +526,115 @@ def export_orders(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=siparisler.csv"},
     )
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Toplu işlemler — çoklu seçim
+# ═════════════════════════════════════════════════════════════════════
+
+# order_detail.VALID_LISTS ile aynı (iç etiketler)
+_BULK_VALID_LISTS = {"isaretlenenler", "bugun", "sonra", "kontrol", "export", "baski"}
+
+_BULK_ACTIONS = {"stage", "acil", "acil_kaldir", "list_add", "list_remove", "delete"}
+
+
+class BulkRequest(BaseModel):
+    ids: list[uuid.UUID]
+    action: str
+    value: Any | None = None   # stage için int, list_* için etiket adı
+
+
+def _bulk_log(db, order, user, action, from_stage=None, to_stage=None, note=None):
+    db.add(OrderStatusHistory(
+        tenant_id=order.tenant_id, order_id=order.id,
+        from_stage=from_stage, to_stage=to_stage, action=action, note=note,
+        created_by=user.full_name or user.email,
+    ))
+
+
+@router.post("/_bulk", response_model=dict)
+def bulk_action(
+    payload: BulkRequest,
+    user: User = Depends(require_permission("siparisler")),
+    db: Session = Depends(get_db),
+):
+    """Birden çok sipariş üzerinde toplu işlem (aşama/acil/etiket/sil).
+
+    Telafiler bu işlemin dışındadır (kendi panelinde yönetilir).
+    Tüm değişiklikler tek transaction'da uygulanır ve geçmişe loglanır.
+    """
+    if payload.action not in _BULK_ACTIONS:
+        raise HTTPException(status_code=400, detail="Geçersiz işlem")
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="Sipariş seçilmedi")
+    if len(payload.ids) > 500:
+        raise HTTPException(status_code=400, detail="Tek seferde en fazla 500 sipariş")
+
+    # stage doğrulaması
+    stage_val = None
+    if payload.action == "stage":
+        try:
+            stage_val = int(payload.value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Geçersiz aşama")
+        if not is_valid_stage(stage_val):
+            raise HTTPException(status_code=400, detail="Geçersiz aşama numarası")
+
+    # etiket doğrulaması
+    label_val = None
+    if payload.action in ("list_add", "list_remove"):
+        label_val = str(payload.value or "").strip()
+        if label_val not in _BULK_VALID_LISTS:
+            raise HTTPException(status_code=400, detail="Geçersiz etiket")
+
+    orders = db.scalars(
+        select(Order).where(
+            Order.id.in_(payload.ids),
+            Order.tenant_id == user.tenant_id,
+            Order.is_telafi.is_(False),
+        )
+    ).all()
+
+    affected = 0
+    for order in orders:
+        if payload.action == "stage":
+            if order.current_stage != stage_val:
+                old = order.current_stage
+                order.current_stage = stage_val
+                _bulk_log(db, order, user, "stage_change", from_stage=old, to_stage=stage_val,
+                          note="Toplu işlem")
+                affected += 1
+        elif payload.action == "acil":
+            if not order.is_acil:
+                order.is_acil = True
+                _bulk_log(db, order, user, "acil", note="Toplu işlem")
+                affected += 1
+        elif payload.action == "acil_kaldir":
+            if order.is_acil:
+                order.is_acil = False
+                _bulk_log(db, order, user, "acil_kaldir", note="Toplu işlem")
+                affected += 1
+        elif payload.action == "list_add":
+            lists = list(order.internal_lists or [])
+            if label_val not in lists:
+                lists.append(label_val)
+                order.internal_lists = lists
+                _bulk_log(db, order, user, "list_add", note=label_val)
+                affected += 1
+        elif payload.action == "list_remove":
+            lists = list(order.internal_lists or [])
+            if label_val in lists:
+                lists.remove(label_val)
+                order.internal_lists = lists
+                _bulk_log(db, order, user, "list_remove", note=label_val)
+                affected += 1
+        elif payload.action == "delete":
+            if order.deleted_at is None:
+                order.deleted_at = datetime.now(UTC)
+                affected += 1
+
+    db.commit()
+    return {"ok": True, "affected": affected, "requested": len(payload.ids)}
 
 
 @router.get("/{order_id}", response_model=OrderDetail)

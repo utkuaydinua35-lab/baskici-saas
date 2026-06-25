@@ -74,6 +74,29 @@ const STATUS_LABELS = {
   fulfilled: { label: 'Tamamlandı', color: 'bg-emerald-500/15 text-emerald-400' },
 }
 
+// stages.py ile aynı (toplu aşama değiştirme için)
+const STAGES = [
+  { no: 1, label: 'Yeni' },
+  { no: 2, label: 'İşleniyor' },
+  { no: 3, label: 'Barkod Oluştu' },
+  { no: 4, label: 'Kalıba Alındı' },
+  { no: 5, label: 'Baskıda' },
+  { no: 6, label: 'Baskı Tamam' },
+  { no: 7, label: 'Paketlendi' },
+  { no: 8, label: 'Kargoda' },
+  { no: 9, label: 'Teslim' },
+]
+
+// internal_lists etiketleri (order_detail VALID_LISTS ile aynı)
+const BULK_LABELS = [
+  { value: 'isaretlenenler', label: '⭐ İşaretlenenler' },
+  { value: 'bugun', label: '📅 Bugün' },
+  { value: 'sonra', label: '⏰ Sonra' },
+  { value: 'kontrol', label: '🔍 Kontrol' },
+  { value: 'baski', label: '🖨️ Baskı' },
+  { value: 'export', label: '📤 Export' },
+]
+
 const TABS = [
   { key: 'tumu', label: 'Tümü', emoji: '📋' },
   { key: 'acil', label: 'Acil', emoji: '🔥', activeColor: 'text-red-300', activeBorder: 'border-red-500' },
@@ -118,6 +141,8 @@ export default function OrdersPage() {
   const [menuOrderId, setMenuOrderId] = useState(null)
   const [showManualOrder, setShowManualOrder] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
+  const [selected, setSelected] = useState(new Set())   // toplu işlem seçimi
+  const [bulkBusy, setBulkBusy] = useState(false)
   const navigate = useNavigate()  // 3 nokta menüsü açık olan sipariş
 
   const loadStores = async () => {
@@ -164,6 +189,48 @@ export default function OrdersPage() {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search])
+
+  // Liste değişince seçimi temizle
+  useEffect(() => { setSelected(new Set()) }, [tab, page, filters.store_id, filters.search])
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+  const allOnPageSelected = orders.length > 0 && orders.every(o => selected.has(o.id))
+  const toggleSelectAll = () => {
+    setSelected(prev => {
+      if (orders.every(o => prev.has(o.id))) {
+        const next = new Set(prev)
+        orders.forEach(o => next.delete(o.id))
+        return next
+      }
+      const next = new Set(prev)
+      orders.forEach(o => next.add(o.id))
+      return next
+    })
+  }
+
+  const runBulk = async (action, value, confirmMsg) => {
+    const ids = [...selected]
+    if (ids.length === 0) return
+    if (confirmMsg && !confirm(confirmMsg)) return
+    setBulkBusy(true)
+    try {
+      const r = await api.post('/api/orders/_bulk', { ids, action, value })
+      toast.success(`${r.affected} sipariş güncellendi`)
+      setSelected(new Set())
+      loadOrders()
+      loadTabCounts()
+    } catch (e) {
+      toast.error(e.detail || 'Toplu işlem başarısız')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const handleFetch = async (storeId) => {
     setFetching(storeId)
@@ -334,6 +401,15 @@ export default function OrdersPage() {
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
                 <thead className="bg-brand-input border-b border-brand-border">
                   <tr className="text-left text-xs text-gray-500">
+                    <th className="w-8 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        onChange={toggleSelectAll}
+                        className="accent-accent cursor-pointer"
+                        title="Tümünü seç"
+                      />
+                    </th>
                     <th className="w-8 px-2"></th>
                     <th className="px-3 py-2 font-medium">Sipariş</th>
                     <th className="px-3 py-2 font-medium">Mağaza</th>
@@ -359,9 +435,19 @@ export default function OrdersPage() {
                           key={o.id}
                           onClick={() => navigate(`/orders/${o.id}`)}
                           className={`hover:bg-brand-input/50 cursor-pointer ${
+                            selected.has(o.id) ? 'bg-accent/5' : ''
+                          } ${
                             o.is_acil ? 'border-l-2 border-l-red-500/60' : 'border-l-2 border-l-transparent'
                           }`}
                         >
+                          <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(o.id)}
+                              onChange={() => toggleSelect(o.id)}
+                              className="accent-accent cursor-pointer"
+                            />
+                          </td>
                           <td className="px-2 py-2">
                             <button
                               onClick={(e) => { e.stopPropagation(); toggleExpand(o.id) }}
@@ -440,7 +526,7 @@ export default function OrdersPage() {
                         {isExpanded && (
                           <tr className="bg-brand-input/30">
                             <td></td>
-                            <td colSpan={9} className="px-3 py-3">
+                            <td colSpan={10} className="px-3 py-3">
                               <ExpandedRow orderId={o.id} />
                             </td>
                           </tr>
@@ -495,7 +581,100 @@ export default function OrdersPage() {
           onRestored={() => { loadOrders(); loadTabCounts() }}
         />
       )}
+
+      {selected.size > 0 && (
+        <BulkBar
+          count={selected.size}
+          busy={bulkBusy}
+          onClear={() => setSelected(new Set())}
+          onStage={(no) => runBulk('stage', no)}
+          onAcil={(v) => runBulk(v ? 'acil' : 'acil_kaldir')}
+          onLabel={(action, val) => runBulk(action, val)}
+          onDelete={() => runBulk('delete', null, `${selected.size} sipariş çöp kutusuna taşınacak. Emin misin?`)}
+        />
+      )}
 </div>
+  )
+}
+
+function BulkBar({ count, busy, onClear, onStage, onAcil, onLabel, onDelete }) {
+  const [menu, setMenu] = useState(null)   // 'stage' | 'label' | null
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!menu) return
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setMenu(null) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [menu])
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[85] w-[95%] max-w-3xl animate-fadein" ref={ref}>
+      <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl px-3 py-2.5 flex items-center gap-2 flex-wrap">
+        <span className="text-sm text-gray-200 font-medium px-1">
+          <span className="text-accent">{count}</span> seçili
+        </span>
+        <div className="h-5 w-px bg-brand-border mx-1" />
+
+        {/* Aşama */}
+        <div className="relative">
+          <button
+            onClick={() => setMenu(m => m === 'stage' ? null : 'stage')}
+            disabled={busy}
+            className="btn-secondary !text-xs disabled:opacity-50"
+          >🔄 Aşama ▾</button>
+          {menu === 'stage' && (
+            <div className="absolute bottom-full mb-1 left-0 bg-brand-card border border-brand-border rounded-lg shadow-xl py-1 min-w-[160px] max-h-64 overflow-y-auto z-10">
+              {STAGES.map(s => (
+                <button key={s.no} onClick={() => { setMenu(null); onStage(s.no) }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-gray-200 hover:bg-brand-input">
+                  {s.no}. {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Acil */}
+        <button onClick={() => onAcil(true)} disabled={busy}
+          className="btn-secondary !text-xs disabled:opacity-50">🔥 Acil</button>
+        <button onClick={() => onAcil(false)} disabled={busy}
+          className="btn-secondary !text-xs disabled:opacity-50">Acil Kaldır</button>
+
+        {/* Etiket */}
+        <div className="relative">
+          <button
+            onClick={() => setMenu(m => m === 'label' ? null : 'label')}
+            disabled={busy}
+            className="btn-secondary !text-xs disabled:opacity-50"
+          >🏷️ Etiket ▾</button>
+          {menu === 'label' && (
+            <div className="absolute bottom-full mb-1 left-0 bg-brand-card border border-brand-border rounded-lg shadow-xl py-1 min-w-[180px] z-10">
+              {BULK_LABELS.map(l => (
+                <div key={l.value} className="flex items-center justify-between px-1">
+                  <button onClick={() => { setMenu(null); onLabel('list_add', l.value) }}
+                    className="flex-1 text-left px-2 py-1.5 text-xs text-gray-200 hover:bg-brand-input rounded">
+                    {l.label}
+                  </button>
+                  <button onClick={() => { setMenu(null); onLabel('list_remove', l.value) }}
+                    title="Etiketi kaldır"
+                    className="px-2 py-1.5 text-xs text-gray-500 hover:text-red-400">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sil */}
+        <button onClick={onDelete} disabled={busy}
+          className="!text-xs px-3 py-1.5 rounded-lg bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25 disabled:opacity-50">
+          🗑 Sil
+        </button>
+
+        <div className="flex-1" />
+        <button onClick={onClear} className="text-gray-500 hover:text-gray-300 text-sm px-2">✕ Temizle</button>
+      </div>
+    </div>
   )
 }
 

@@ -210,10 +210,30 @@ function TabBtn({ active, onClick, children }) {
 }
 
 const AI_MODELS = [
-  { value: 'haiku', label: 'Haiku', desc: 'En hızlı ve ekonomik — basit yanıtlar' },
-  { value: 'sonnet', label: 'Sonnet', desc: 'Dengeli — hız ve kalite' },
-  { value: 'opus', label: 'Opus', desc: 'En yetenekli — en kaliteli yanıtlar' },
+  { value: 'haiku', label: 'Haiku', icon: '⚡', desc: 'En hızlı ve ekonomik — basit yanıtlar' },
+  { value: 'sonnet', label: 'Sonnet', icon: '⚖️', desc: 'Dengeli — hız ve kalite' },
+  { value: 'opus', label: 'Opus', icon: '💎', desc: 'En yetenekli — en kaliteli yanıtlar' },
 ]
+
+function Toggle({ on, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      role="switch"
+      aria-checked={on}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent/40 ${
+        on ? 'bg-gradient-to-r from-accent to-purple-600' : 'bg-brand-input'
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
+          on ? 'translate-x-[22px]' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  )
+}
 
 function AISettingsTab() {
   const toast = useToast()
@@ -252,73 +272,109 @@ function AISettingsTab() {
     }
   }
 
-  if (loading) return <div className="card animate-fadein"><div className="skeleton h-5 w-40 rounded" /></div>
+  if (loading) {
+    return (
+      <div className="card animate-fadein max-w-2xl space-y-3">
+        <div className="skeleton h-5 w-40 rounded" />
+        <div className="skeleton h-12 w-full rounded-lg" />
+        <div className="skeleton h-10 w-full rounded-lg" />
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-5 animate-fadein max-w-2xl">
-      <div className="card">
-        <h2 className="text-base font-semibold text-gray-100 mb-1">🤖 AI Destek Yanıtı</h2>
-        <p className="text-xs text-gray-500 mb-4">
+    <div className="space-y-5 animate-fadeinup max-w-2xl">
+      <div className="card overflow-hidden">
+        {/* Başlık + durum rozeti */}
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h2 className="text-base font-semibold text-gray-100 flex items-center gap-2">
+            <span className="text-xl">🤖</span> AI Destek Yanıtı
+          </h2>
+          <span className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors duration-300 ${
+            enabled
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              : 'bg-gray-500/15 text-gray-400 border-gray-500/30'
+          }`}>
+            {enabled ? '● Açık' : '○ Kapalı'}
+          </span>
+        </div>
+        <p className="text-xs text-gray-500 mb-4 leading-relaxed">
           Destek konuşmalarında müşteri mesajlarına Claude ile taslak cevap üretir. Operatör düzenleyip gönderir.
         </p>
 
         {!meta.api_key_configured && (
-          <div className="text-xs rounded-lg px-3 py-2 mb-4 bg-amber-500/10 border border-amber-500/20 text-amber-300">
+          <div className="text-xs rounded-lg px-3 py-2 mb-4 bg-amber-500/10 border border-amber-500/20 text-amber-300 animate-fadein">
             ⚠️ Sunucuda <span className="font-mono">ANTHROPIC_API_KEY</span> yapılandırılmamış — özellik açık olsa bile çalışmaz.
           </div>
         )}
 
         {/* Açık/Kapalı */}
-        <div className="flex items-center justify-between py-3 border-b border-brand-border">
+        <div className="flex items-center justify-between gap-4 rounded-xl bg-brand-input/40 border border-brand-border px-4 py-3">
           <div>
-            <div className="text-sm text-gray-200">Özellik durumu</div>
-            <div className="text-xs text-gray-500">Kapalıysa "AI Taslak" butonu çalışmaz</div>
+            <div className="text-sm text-gray-200 font-medium">Özellik durumu</div>
+            <div className="text-xs text-gray-500 mt-0.5">Kapalıysa "AI Taslak" butonu çalışmaz</div>
           </div>
-          <button
-            onClick={() => setEnabled(e => !e)}
-            className={`relative w-12 h-6 rounded-full transition-colors ${enabled ? 'bg-accent' : 'bg-brand-input'}`}
-            role="switch" aria-checked={enabled}
-          >
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
-          </button>
+          <Toggle on={enabled} onChange={() => setEnabled(e => !e)} />
         </div>
 
-        {/* Model seçimi — yalnızca açıkken */}
-        <div className={`py-3 ${enabled ? '' : 'opacity-40 pointer-events-none select-none'}`}>
-          <div className="text-sm text-gray-200 mb-2">Model seçimi</div>
-          <div className="space-y-2">
-            {AI_MODELS.map(m => (
-              <label key={m.value}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                  model === m.value ? 'border-accent bg-accent/10' : 'border-brand-border hover:bg-brand-input'
-                }`}>
-                <input type="radio" name="ai-model" value={m.value}
-                  checked={model === m.value} onChange={() => setModel(m.value)}
-                  className="accent-accent" disabled={!enabled} />
-                <div>
-                  <div className="text-sm text-gray-200">{m.label}</div>
-                  <div className="text-[11px] text-gray-500">{m.desc}</div>
-                </div>
-              </label>
-            ))}
+        {/* Model seçimi — yalnızca AÇIKKEN görünür */}
+        {enabled && (
+          <div className="mt-4 animate-fadeinup">
+            <div className="text-sm text-gray-200 font-medium mb-1">Model seçimi</div>
+            <div className="text-[11px] text-gray-500 mb-3">Yanıtların hızı ve kalitesini belirler</div>
+            <div className="grid gap-2.5">
+              {AI_MODELS.map((m, i) => {
+                const sel = model === m.value
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setModel(m.value)}
+                    style={{ animationDelay: `${i * 60}ms` }}
+                    className={`group relative text-left flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-200 animate-fadeinup hover:-translate-y-0.5 ${
+                      sel
+                        ? 'border-accent bg-accent/10 shadow-[0_0_0_1px_rgba(124,92,255,0.4)]'
+                        : 'border-brand-border hover:border-brand-border/80 hover:bg-brand-input/60'
+                    }`}
+                  >
+                    <span className={`text-2xl transition-transform duration-200 ${sel ? 'scale-110' : 'group-hover:scale-105'}`}>
+                      {m.icon}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-medium ${sel ? 'text-accent' : 'text-gray-200'}`}>{m.label}</div>
+                      <div className="text-[11px] text-gray-500">{m.desc}</div>
+                    </div>
+                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                      sel ? 'border-accent bg-accent scale-100' : 'border-brand-border scale-90'
+                    }`}>
+                      {sel && <span className="text-white text-[11px] leading-none animate-popin">✓</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Master password + kaydet */}
+        {/* Master password + kaydet — değişiklik olunca */}
         {dirty && (
-          <div className="pt-3 border-t border-brand-border">
-            <label className="text-xs text-gray-400 block mb-1">Master Password (değişikliği onaylamak için)</label>
+          <div className="mt-4 pt-4 border-t border-brand-border animate-popin">
+            <label className="text-xs text-gray-300 block mb-1.5 flex items-center gap-1.5">
+              <span>🔒</span> Master Password
+              <span className="text-gray-500 font-normal">— değişikliği onaylamak için</span>
+            </label>
             <div className="flex gap-2">
               <input type="password" value={master} onChange={e => setMaster(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') save() }}
                 placeholder="••••••••" autoComplete="off"
                 className="input !text-sm flex-1" />
               <button onClick={save} disabled={saving || !master.trim()}
-                className="btn-primary !text-sm disabled:opacity-40">
-                {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                className="btn-primary !text-sm disabled:opacity-40 min-w-[110px]">
+                {saving ? 'Kaydediliyor…' : '✓ Kaydet'}
               </button>
             </div>
             {!meta.master_configured && (
-              <p className="text-[11px] text-amber-400 mt-1">
+              <p className="text-[11px] text-amber-400 mt-1.5">
                 ⚠️ Sunucuda master password (<span className="font-mono">AI_MODEL_MASTER_PASSWORD</span>) ayarlı değil — kayıt reddedilir.
               </p>
             )}

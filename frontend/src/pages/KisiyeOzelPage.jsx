@@ -314,6 +314,21 @@ export default function KisiyeOzelPage() {
 // ═══════════════════════════════════════════════════════════
 
 function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
+  const toast = useToast()
+  const [approval, setApproval] = useState(null)
+  const [sending, setSending] = useState(false)
+
+  const sendApproval = async () => {
+    setSending(true)
+    try {
+      const data = await api.post(`/api/kisiye-ozel/orders/${order.id}/approval`, {})
+      setApproval(data)
+      toast.success('Onay linki oluşturuldu')
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Oluşturulamadı')
+    } finally { setSending(false) }
+  }
+
   const statusBadge = order.status === 'hazir'
     ? <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-300 text-[10px] px-2 py-0.5 rounded-full">● {order.hazir_qty} Hazır</span>
     : <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-300 text-[10px] px-2 py-0.5 rounded-full">● {order.bekliyor_qty} Bekliyor</span>
@@ -376,22 +391,84 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
                 </div>
               )
             }
-            return kisiyeItems.map((li, idx) => (
-              <LineItemCard
-                key={li.id}
-                item={li}
-                storeId={storeId}
-                productId={li.product_id}
-                onRefresh={onRefresh}
-                orderNumber={order.order_number}
-                itemIndex={idx}
-                totalKisiyeOzel={kisiyeItems.length}
-              />
-            ))
+            const anyReady = kisiyeItems.some(li => li.assigned_design)
+            return (
+              <>
+                {kisiyeItems.map((li, idx) => (
+                  <LineItemCard
+                    key={li.id}
+                    item={li}
+                    storeId={storeId}
+                    productId={li.product_id}
+                    onRefresh={onRefresh}
+                    orderNumber={order.order_number}
+                    itemIndex={idx}
+                    totalKisiyeOzel={kisiyeItems.length}
+                  />
+                ))}
+                <div className="pt-1">
+                  <button onClick={sendApproval} disabled={sending || !anyReady}
+                    className="btn-primary !text-xs w-full disabled:opacity-50"
+                    title={anyReady ? 'Müşteriye tasarım onay linki oluştur' : 'Önce tasarım (PDF) yükleyin'}>
+                    {sending ? 'Oluşturuluyor…' : '📤 Müşteri Onayına Gönder'}
+                  </button>
+                  {!anyReady && (
+                    <div className="text-[10px] text-gray-500 text-center mt-1">
+                      Onaya göndermek için önce en az bir tasarımı (PDF) yükleyin
+                    </div>
+                  )}
+                </div>
+              </>
+            )
           })()}
         </div>
       )}
+      {approval && <ApprovalModal data={approval} onClose={() => setApproval(null)} />}
     </div>
+  )
+}
+
+function ApprovalCopyField({ label, value, mono }) {
+  const [copied, setCopied] = useState(false)
+  if (!value) return null
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch {}
+  }
+  return (
+    <div>
+      <div className="text-[10px] text-gray-500 mb-1">{label}</div>
+      <div className="flex gap-1.5 items-stretch">
+        <div className={`flex-1 min-w-0 bg-brand-input border border-brand-border rounded-lg px-2.5 py-2 text-xs text-gray-200 ${mono ? 'font-mono break-all' : 'whitespace-pre-line'} max-h-28 overflow-y-auto`}>{value}</div>
+        <button onClick={copy} className={`shrink-0 px-3 rounded-lg text-xs font-medium transition-colors ${copied ? 'bg-emerald-500/20 text-emerald-300' : 'bg-accent/15 text-accent hover:bg-accent/25'}`}>
+          {copied ? '✓' : 'Kopyala'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ApprovalModal({ data, onClose }) {
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+      onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-base font-semibold text-gray-100">📤 Onay Linki Hazır</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <p className="text-[11px] text-gray-500 mb-4">
+          Telefon ve hazır mesajı kopyalayıp <b>WhatsApp/Instagram'dan elle</b> gönder.
+        </p>
+        <div className="space-y-3">
+          <ApprovalCopyField label="Müşteri telefonu" value={data.phone || ''} mono />
+          {!data.phone && <div className="text-[10px] text-amber-400 -mt-1">⚠ Telefon bulunamadı — siparişten kontrol et</div>}
+          <ApprovalCopyField label="Hazır mesaj (link dahil)" value={data.message} />
+          <ApprovalCopyField label="Yalnızca link" value={data.link} mono />
+        </div>
+        <button onClick={onClose} className="btn-secondary !text-xs w-full mt-4">Kapat</button>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -465,11 +542,23 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
             </div>
           )}
           {item.customer_props && item.customer_props.length > 0 && (
-            <div className="text-[10px] text-blue-300 mt-1 flex items-start gap-1">
-              <span>📄</span>
-              <span className="line-clamp-1">
-                {item.customer_props.map(p => `${p.name}: ${p.value}`).join(' · ')}
-              </span>
+            <div className="mt-1.5 bg-blue-500/5 border border-blue-500/15 rounded-lg p-2">
+              <div className="flex items-center gap-1 text-[10px] text-blue-400 font-medium mb-1">
+                <span>📄</span><span>Müşteri detayları</span>
+              </div>
+              <div className="space-y-0.5">
+                {item.customer_props.map((p, i) => (
+                  <div key={i} className="text-[11px] flex gap-1.5 leading-snug">
+                    <span className="text-gray-500 shrink-0">{p.name}:</span>
+                    {typeof p.value === 'string' && p.value.startsWith('http') ? (
+                      <a href={p.value} target="_blank" rel="noreferrer"
+                        className="text-accent hover:underline break-all">{p.value}</a>
+                    ) : (
+                      <span className="text-gray-200 break-words">{p.value}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

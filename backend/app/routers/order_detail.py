@@ -453,7 +453,10 @@ def create_design_approval(
     """Müşteri onay isteği oluştur (yeni versiyon). Link + hazır mesaj + telefon döner."""
     order = _resolve_order(db, order_ref, user.tenant_id)
     from app.services import approvals as ap_svc
-    ap = ap_svc.create_approval(db, order, user, note=payload.note)
+    try:
+        ap = ap_svc.create_approval(db, order, user, note=payload.note)
+    except ap_svc.NoApprovalItems as e:
+        raise HTTPException(status_code=422, detail=str(e))
     _log_history(db, order, user, action="onay_gonderildi", note=f"v{ap.version}")
     db.commit()
     db.refresh(ap)

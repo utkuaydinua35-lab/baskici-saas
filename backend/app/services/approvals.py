@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import secrets
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import DesignApproval, Order
+from app.models import DesignApproval, KisiyeOzelProduct, Order
 
 STATUS_LABELS = {
     "bekliyor": "Onay bekliyor",
@@ -30,18 +31,41 @@ def resolve_phone(order: Order) -> str | None:
     return None
 
 
+def _absolute(url: str | None) -> str | None:
+    """/storage/... göreli yolu, public erişim için panel domain'iyle mutlak yap."""
+    if not url:
+        return None
+    if url.startswith("http"):
+        return url
+    base = get_settings().panel_base_url.rstrip("/")
+    return f"{base}{url}"
+
+
 def build_items(db: Session, order: Order) -> list[dict]:
-    """Sipariş kalemlerinden müşteriye gösterilecek tasarım görselleri."""
-    from app.routers.telafiler import _li_thumbnail  # aynı thumbnail mantığı
+    """Müşteriye gösterilecek tasarımlar — YALNIZCA kişiye özel kalemler ve
+    operatörün yüklediği tasarım dosyası (PDF) thumbnail'ı. Ürünün katalog
+    görseli DEĞİL. Tasarımı yüklenmemiş kalemler atlanır.
+    """
+    from app.services import storage
+
+    # Bu store'un kişiye özel product_id'leri
+    pids = set(db.scalars(
+        select(KisiyeOzelProduct.product_id).where(KisiyeOzelProduct.store_id == order.store_id)
+    ).all())
+
     items = []
     for li in (order.line_items or []):
-        img = None
-        try:
-            img = _li_thumbnail(li, db)
-        except Exception:
-            img = getattr(li, "product_image_url", None)
+        # sadece kişiye özel kalemler
+        if not (li.product_id and str(li.product_id) in pids):
+            continue
+        d = li.assigned_design
+        # tasarım (PDF) yüklenmemişse onaya dahil etme
+        if not (li.assigned_design_id and d and getattr(d, "file_path", None)):
+            continue
         items.append({
-            "image_url": img,
+            "image_url": _absolute(storage.get_thumbnail_url(d.file_path, d.file_format)),
+            "file_url": _absolute(storage.get_design_url(d.file_path)),
+            "file_format": getattr(d, "file_format", None),
             "title": li.title or "Ürün",
             "quantity": getattr(li, "quantity", 1) or 1,
         })
@@ -65,14 +89,27 @@ def build_message(order: Order, link: str) -> str:
     )
 
 
+class NoApprovalItems(Exception):
+    """Onaya gönderilecek (tasarımı yüklenmiş) kişiye özel kalem yok."""
+
+
 def create_approval(db: Session, order: Order, user, note: str | None = None) -> DesignApproval:
-    """Sipariş için yeni onay kaydı (versiyon = mevcut max + 1)."""
+    """Sipariş için yeni onay kaydı (versiyon = mevcut max + 1).
+
+    Tasarımı yüklenmiş kişiye özel kalem yoksa NoApprovalItems yükseltir.
+    """
+    items = build_items(db, order)
+    if not items:
+        raise NoApprovalItems(
+            "Onaya gönderilecek kişiye özel tasarım bulunamadı. "
+            "Önce kişiye özel kalem(ler)in tasarım dosyasını (PDF) yükleyin."
+        )
     existing = order.approvals or []
     version = max((a.version for a in existing), default=0) + 1
     token = secrets.token_urlsafe(24)
     ap = DesignApproval(
         tenant_id=order.tenant_id, order_id=order.id, token=token,
-        status="bekliyor", version=version, items=build_items(db, order),
+        status="bekliyor", version=version, items=items,
         note=(note or None),
         created_by=(getattr(user, "full_name", None) or getattr(user, "email", None)) if user else None,
     )
@@ -109,7 +146,13 @@ def public_payload(ap: DesignApproval, order: Order) -> dict:
         "status_label": STATUS_LABELS.get(ap.status, ap.status),
         "version": ap.version,
         "items": [
-            {"image_url": it.get("image_url"), "title": it.get("title"), "quantity": it.get("quantity", 1)}
+            {
+                "image_url": it.get("image_url"),
+                "file_url": it.get("file_url"),
+                "file_format": it.get("file_format"),
+                "title": it.get("title"),
+                "quantity": it.get("quantity", 1),
+            }
             for it in (ap.items or [])
         ],
         "note": ap.note,

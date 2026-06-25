@@ -34,6 +34,8 @@
   .item .cap{padding:8px 10px;font-size:12.5px}
   .item .cap .t{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .item .cap .q{color:var(--muted);font-size:11px}
+  .item .cap .pdflink{display:inline-block;margin-top:5px;font-size:11.5px;color:var(--accent);text-decoration:none;font-weight:600}
+  .item .cap .pdflink:active{opacity:.7}
   .actions{margin-top:6px}
   .btn{display:block;width:100%;border:0;border-radius:13px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;transition:transform .08s,opacity .2s}
   .btn:active{transform:scale(.985)}
@@ -102,9 +104,11 @@ function itemsHtml(){
   const cells = DATA.items.map(it=>{
     const img = it.image_url
       ? `<img src="${esc(it.image_url)}" alt="" onclick="zoom('${esc(it.image_url)}')"/>`
-      : `<span class="noimg">görsel yok</span>`;
+      : `<span class="noimg">önizleme yok</span>`;
     const q = (it.quantity && it.quantity>1) ? `<div class="q">${it.quantity} adet</div>` : '';
-    return `<div class="item"><div class="imgbox">${img}</div><div class="cap"><div class="t">${esc(it.title)}</div>${q}</div></div>`;
+    const pdf = it.file_url
+      ? `<a class="pdflink" href="${esc(it.file_url)}" target="_blank" rel="noopener">📄 Tasarımı tam boyut aç</a>` : '';
+    return `<div class="item"><div class="imgbox">${img}</div><div class="cap"><div class="t">${esc(it.title)}</div>${q}${pdf}</div></div>`;
   }).join('');
   return `<div class="grid">${cells}</div>`;
 }

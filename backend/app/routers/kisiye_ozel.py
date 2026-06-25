@@ -21,12 +21,45 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store, User
+from app.models import Design, KisiyeOzelProduct, LineItem, Order, OrderStatusHistory, Store, User
 from app.services import storage
 
 router = APIRouter(prefix="/api/kisiye-ozel", tags=["kisiye_ozel"],
     dependencies=[Depends(require_permission("kisiye_ozel"))],
 )
+
+
+@router.post("/orders/{order_id}/approval", response_model=dict)
+def create_order_approval(
+    order_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kişiye özel panelinden müşteri onayı oluştur (PDF yüklendikten sonra)."""
+    order = db.scalar(
+        select(Order)
+        .where(Order.id == order_id, Order.tenant_id == user.tenant_id)
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+    )
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı")
+    from app.services import approvals as ap_svc
+    try:
+        ap = ap_svc.create_approval(db, order, user)
+    except ap_svc.NoApprovalItems as e:
+        raise HTTPException(422, str(e))
+    db.add(OrderStatusHistory(
+        tenant_id=order.tenant_id, order_id=order.id,
+        action="onay_gonderildi", note=f"v{ap.version}",
+        created_by=user.full_name or user.email,
+    ))
+    db.commit()
+    db.refresh(ap)
+    data = ap_svc.serialize(ap, with_secrets=True)
+    data["message"] = ap_svc.build_message(order, data["link"])
+    data["phone"] = ap_svc.resolve_phone(order)
+    data["customer_name"] = order.customer_name
+    return data
 
 
 # ─── Helpers ────────────────────────────────────────────────

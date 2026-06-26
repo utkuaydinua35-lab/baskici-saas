@@ -74,11 +74,16 @@ export default function LoginPage() {
             {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
           </button>
 
-          <div className="text-center text-xs text-gray-500 pt-2">
-            Hesabın yok mu?{' '}
-            <Link to="/register" className="text-accent hover:underline">
-              Kayıt ol
+          <div className="text-center pt-1">
+            <Link to="/sifre-unuttum" className="text-xs text-gray-500 hover:text-accent">
+              Şifremi unuttum
             </Link>
+          </div>
+
+          <div className="text-center text-xs text-gray-500 pt-1 border-t border-brand-border mt-1">
+            <span className="block pt-2">Hesabın yok mu?{' '}
+              <Link to="/register" className="text-accent hover:underline">Kayıt ol</Link>
+            </span>
           </div>
         </form>
       </div>

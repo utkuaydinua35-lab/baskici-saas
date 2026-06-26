@@ -26,6 +26,8 @@ const NotesPage = lazyWithReload(() => import('./pages/NotesPage'))
 const TelafilerPage = lazyWithReload(() => import('./pages/TelafilerPage'))
 const KisiyeOzelPage = lazyWithReload(() => import('./pages/KisiyeOzelPage'))
 const LoginPage = lazyWithReload(() => import('./pages/LoginPage'))
+const ForgotPasswordPage = lazyWithReload(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazyWithReload(() => import('./pages/ResetPasswordPage'))
 const OrderDetailPage = lazyWithReload(() => import('./pages/OrderDetailPage'))
 const AskiPage = lazyWithReload(() => import('./pages/AskiPage'))
 const MoldDetailPage = lazyWithReload(() => import('./pages/MoldDetailPage'))
@@ -63,6 +65,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/sifre-unuttum" element={<ForgotPasswordPage />} />
+        <Route path="/sifre-sifirla" element={<ResetPasswordPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/profil-sec" element={<ProfileSelectPage />} />

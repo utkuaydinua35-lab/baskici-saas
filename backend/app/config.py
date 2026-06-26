@@ -59,6 +59,13 @@ class Settings(BaseSettings):
     # AI model degisikligi icin master password. Bos ise model degisikligi engellenir.
     ai_model_master_password: str = Field("", alias="AI_MODEL_MASTER_PASSWORD")
 
+    # SMTP (e-posta gonderimi — sifre sifirlama). Bos ise e-posta ozelligi kapali.
+    smtp_host: str = Field("", alias="SMTP_HOST")
+    smtp_port: int = Field(587, alias="SMTP_PORT")
+    smtp_user: str = Field("", alias="SMTP_USER")
+    smtp_password: str = Field("", alias="SMTP_PASSWORD")
+    smtp_from: str = Field("", alias="SMTP_FROM")  # bos ise smtp_user kullanilir
+
     # Sürat Kargo
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")
     surat_sifre: str = Field("", alias="SURAT_SIFRE")

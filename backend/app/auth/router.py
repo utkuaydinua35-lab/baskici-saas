@@ -258,6 +258,75 @@ def change_password_endpoint(
     return {"ok": True}
 
 
+# ─── Şifre sıfırlama (e-posta ile) ───────────────────────────
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer  # noqa: E402
+
+_PW_RESET_SALT = "pw-reset"
+_PW_RESET_MAX_AGE = 3600  # 1 saat
+
+
+def _pw_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings.session_secret, salt=_PW_RESET_SALT)
+
+
+class _ForgotPasswordRequest(_PwBaseModel):
+    email: str
+
+
+class _ResetPasswordRequest(_PwBaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/forgot-password", response_model=None)
+def forgot_password(req: _ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Şifre sıfırlama e-postası gönder. E-postanın kayıtlı olup olmadığını ASLA
+    açık etme (güvenlik) — her durumda aynı yanıt döner."""
+    from app.services import email_service
+    email = (req.email or "").strip().lower()
+    user = db.scalar(select(User).where(User.email == email)) if email else None
+
+    if user and user.password_hash and email_service.is_configured():
+        token = _pw_serializer().dumps({"uid": str(user.id)})
+        link = f"{settings.panel_base_url.rstrip('/')}/sifre-sifirla?token={token}"
+        ad = (user.full_name or "").split()[0] if user.full_name else ""
+        html = f"""
+        <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;color:#1f2937">
+          <h2 style="color:#6d28d9">Şifre Sıfırlama</h2>
+          <p>Merhaba {ad or ''},</p>
+          <p>Hesabınız için şifre sıfırlama talebinde bulunuldu. Yeni şifre belirlemek için
+          aşağıdaki butona tıklayın (bağlantı <b>1 saat</b> geçerlidir):</p>
+          <p style="margin:24px 0">
+            <a href="{link}" style="background:#6d28d9;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Şifremi Sıfırla</a>
+          </p>
+          <p style="font-size:12px;color:#6b7280">Buton çalışmazsa: <br>{link}</p>
+          <p style="font-size:12px;color:#6b7280">Bu talebi siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>
+        </div>"""
+        text = f"Şifre sıfırlama bağlantınız (1 saat geçerli):\n{link}"
+        email_service.send_email(user.email, "Şifre Sıfırlama — BERNZ", html, text)
+
+    return {"ok": True, "message": "E-posta adresiniz kayıtlıysa sıfırlama bağlantısı gönderildi."}
+
+
+@router.post("/reset-password", response_model=None)
+def reset_password(req: _ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Yeni şifre en az 8 karakter olmalı")
+    try:
+        data = _pw_serializer().loads(req.token, max_age=_PW_RESET_MAX_AGE)
+    except SignatureExpired:
+        raise HTTPException(status_code=400, detail="Bağlantının süresi dolmuş. Yeni bir talep oluşturun.")
+    except BadSignature:
+        raise HTTPException(status_code=400, detail="Geçersiz bağlantı.")
+
+    user = db.scalar(select(User).where(User.id == data.get("uid")))
+    if not user:
+        raise HTTPException(status_code=400, detail="Kullanıcı bulunamadı.")
+    user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"ok": True, "message": "Şifreniz güncellendi. Giriş yapabilirsiniz."}
+
+
 # ─── Netflix tarzi profil secimi (Paket Profiles) ───
 from pydantic import BaseModel as _PfBaseModel  # profil semalari
 

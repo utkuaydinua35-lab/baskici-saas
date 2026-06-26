@@ -49,6 +49,7 @@ function BrandTab() {
         onDone={refresh}
         shape="rounded-xl"
       />}
+      {_isAdmin && <BrandIdentity onSaved={refresh} />}
       <LogoUploader
         title="Profil Görseli"
         desc="Profil bölümünde görünür (sana özel). PNG/SVG/JPG, max 5MB."
@@ -58,6 +59,69 @@ function BrandTab() {
         onDone={refresh}
         shape="rounded-full"
       />
+    </div>
+  )
+}
+
+function BrandIdentity({ onSaved }) {
+  const toast = useToast()
+  const [color, setColor] = useState('#7c5cff')
+  const [appName, setAppName] = useState('')
+  const [orig, setOrig] = useState({ color: '', appName: '' })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/api/tenant/settings').then(r => {
+      setColor(r.brand_color || '#7c5cff')
+      setAppName(r.app_name || '')
+      setOrig({ color: r.brand_color || '', appName: r.app_name || '' })
+    }).catch(() => {})
+  }, [])
+
+  const dirty = (color !== (orig.color || '#7c5cff')) || (appName !== orig.appName)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await api.patch('/api/tenant/settings', { brand_color: color, app_name: appName })
+      setOrig({ color: r.brand_color || '', appName: r.app_name || '' })
+      // anında uygula
+      const m = /^#?([0-9a-fA-F]{6})$/.exec(color)
+      if (m) { const n = parseInt(m[1], 16); document.documentElement.style.setProperty('--accent-rgb', `${(n>>16)&255} ${(n>>8)&255} ${n&255}`) }
+      if (appName) document.title = appName
+      toast.success('Marka kimliği kaydedildi')
+      onSaved?.()
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-gray-100 mb-1">Marka Kimliği</h3>
+      <p className="text-xs text-gray-500 mb-4">Panel ve müşteri sayfalarındaki vurgu rengi + uygulama adı.</p>
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-gray-400 block mb-1">Vurgu rengi (accent)</label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={color} onChange={e => setColor(e.target.value)}
+              className="w-10 h-9 rounded-lg bg-transparent border border-brand-border cursor-pointer p-0.5" />
+            <input type="text" value={color} onChange={e => setColor(e.target.value)}
+              placeholder="#7c5cff" className="input !text-sm font-mono w-28" />
+            <span className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: color }}>Önizleme</span>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-gray-400 block mb-1">Uygulama adı (sekme başlığı)</label>
+          <input type="text" value={appName} onChange={e => setAppName(e.target.value)}
+            placeholder="ör. Atölyem Panel" maxLength={80} className="input !text-sm w-full max-w-xs" />
+        </div>
+        {dirty && (
+          <button onClick={save} disabled={saving} className="btn-primary !text-xs disabled:opacity-50">
+            {saving ? 'Kaydediliyor…' : 'Kaydet'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

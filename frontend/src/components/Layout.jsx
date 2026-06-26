@@ -475,6 +475,12 @@ function NavLinks({ onNavigate }) {
 
   return (
     <nav className="space-y-1 text-sm">
+      {user?.is_platform_admin && (
+        <>
+          <SectionLabel>PLATFORM</SectionLabel>
+          <NavItem to="/platform" label="Atölyeler" icon="🏢" onNavigate={onNavigate} />
+        </>
+      )}
       <I to="/" label="Dashboard" icon="📊" perm="dashboard" end />
 
       <Section label="SİPARİŞ YÖNETİMİ" perms={['siparisler', 'paketleme', 'destek']} />

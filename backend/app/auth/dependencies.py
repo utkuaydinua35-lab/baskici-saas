@@ -100,6 +100,16 @@ def require_role(*allowed: str):
     return dep
 
 
+def require_platform_admin(user: User = Depends(get_current_user)) -> User:
+    """Platform sahibi (cross-tenant white-label yönetimi). Sadece is_platform_admin."""
+    if not getattr(user, "is_platform_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem yalnızca platform yöneticisine açıktır.",
+        )
+    return user
+
+
 from app.auth import permissions as _perms  # esnek yetki sistemi
 
 

@@ -41,6 +41,10 @@ class Tenant(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # White-label markalama: accent renk (#rrggbb) + uygulama adı (None ise name).
+    brand_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    app_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
     # LEGACY — artık kullanılmıyor (Paket 11c'de ürün bazlı sisteme geçildi)
     custom_design_keywords: Mapped[list] = mapped_column(JSONB, default=list)
 
@@ -82,6 +86,10 @@ class User(Base):
     permissions: Mapped[list] = mapped_column(JSONB, default=list)
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Platform sahibi (cross-tenant): tüm atölyeleri yönetir (white-label kiralama).
+    is_platform_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

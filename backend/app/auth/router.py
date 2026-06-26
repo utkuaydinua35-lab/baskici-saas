@@ -183,6 +183,20 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)) ->
             detail="Hesap pasif. Yöneticiyle iletişime geç.",
         )
 
+    # Abonelik kontrolü (white-label kiralama) — platform admin muaf
+    if not user.is_platform_admin:
+        tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
+        if tenant and not tenant.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Aboneliğiniz pasif durumda. Lütfen sağlayıcınızla iletişime geçin.",
+            )
+        if tenant and tenant.active_until and tenant.active_until < datetime.now(UTC).date():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Abonelik süreniz doldu. Lütfen sağlayıcınızla iletişime geçin.",
+            )
+
     user.last_login_at = datetime.now(UTC)
     db.commit()
 

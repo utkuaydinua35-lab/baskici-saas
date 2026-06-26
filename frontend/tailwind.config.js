@@ -14,7 +14,9 @@ export default {
           input:  '#1f2231',   // input arka plan
           border: '#262a3a',
         },
-        accent: '#7c5cff',     // mor — birincil aksiyon rengi
+        // Accent runtime CSS değişkeninden gelir (white-label per-tenant override).
+        // Opacity modifier'lar (accent/15 vb.) için RGB kanalları kullanılır.
+        accent: 'rgb(var(--accent-rgb) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],

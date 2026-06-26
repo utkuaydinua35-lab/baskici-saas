@@ -4,6 +4,7 @@ Tenant ayarları — /api/tenant/settings
 from __future__ import annotations
 
 import hmac
+import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -29,6 +30,8 @@ class TenantSettings(BaseModel):
 
 class UpdateTenantSettings(BaseModel):
     custom_design_keywords: list[str] | None = None
+    brand_color: str | None = None     # "#rrggbb" veya "" (temizle)
+    app_name: str | None = None        # uygulama adı veya "" (temizle)
 
 
 def _get_tenant(db: Session, tenant_id) -> Tenant:
@@ -47,6 +50,8 @@ def get_settings(
     t = _get_tenant(db, user.tenant_id)
     return {
         "custom_design_keywords": list(t.custom_design_keywords or []),
+        "brand_color": t.brand_color,
+        "app_name": t.app_name,
     }
 
 
@@ -73,10 +78,21 @@ def update_settings(
             cleaned.append(k)
         t.custom_design_keywords = cleaned
 
+    if payload.brand_color is not None:
+        c = (payload.brand_color or "").strip()
+        if c and not re.match(r"^#[0-9a-fA-F]{6}$", c):
+            raise HTTPException(400, "Geçersiz renk (#rrggbb)")
+        t.brand_color = c or None
+
+    if payload.app_name is not None:
+        t.app_name = (payload.app_name or "").strip()[:80] or None
+
     db.commit()
     db.refresh(t)
     return {
         "custom_design_keywords": list(t.custom_design_keywords or []),
+        "brand_color": t.brand_color,
+        "app_name": t.app_name,
     }
 # ─── AI Destek Yanıtı ayarları (yalnızca yönetici; model değişikliği master password ister) ───
 

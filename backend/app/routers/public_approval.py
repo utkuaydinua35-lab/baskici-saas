@@ -59,8 +59,9 @@ def get_approval(token: str, db: Session = Depends(get_db)):
     ap, order = _get_approval(db, token)
     data = ap_svc.public_payload(ap, order)
     tenant = db.get(Tenant, ap.tenant_id)
-    data["atolye"] = (tenant.name if tenant else None) or "Atölye"
+    data["atolye"] = (tenant.app_name or tenant.name if tenant else None) or "Atölye"
     data["logo_url"] = (tenant.logo_url if tenant else None)
+    data["brand_color"] = (tenant.brand_color if tenant else None)
     # Müşterinin revizyon hakkı kaldı mı (sipariş başına MAX_REVISIONS)
     data["revision_allowed"] = ap_svc.revisions_used(db, ap.order_id) < ap_svc.MAX_REVISIONS
     return data

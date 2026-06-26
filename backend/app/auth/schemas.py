@@ -58,6 +58,7 @@ class UserResponse(BaseModel):
     permissions: list[str] = []
     avatar_url: str | None = None
     is_active: bool
+    is_platform_admin: bool = False
     tenant_id: uuid.UUID
     last_login_at: datetime | None
     created_at: datetime
@@ -69,6 +70,8 @@ class TenantResponse(BaseModel):
     id: uuid.UUID
     name: str
     logo_url: str | None = None
+    brand_color: str | None = None
+    app_name: str | None = None
     slug: str
     plan: str
     is_active: bool

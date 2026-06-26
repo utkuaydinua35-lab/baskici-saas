@@ -9,11 +9,31 @@ import { api, ApiError, getToken, setToken } from './api'
 
 const AuthContext = createContext(null)
 
+const DEFAULT_ACCENT_RGB = '124 92 255'
+
+function _hexToRgb(hex) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`
+}
+
+// White-label: tenant markasını uygula (accent renk + sekme başlığı)
+function applyBranding(tenant) {
+  const rgb = _hexToRgb(tenant?.brand_color) || DEFAULT_ACCENT_RGB
+  document.documentElement.style.setProperty('--accent-rgb', rgb)
+  const title = tenant?.app_name || tenant?.name
+  if (title) document.title = title
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [tenant, setTenant] = useState(null)
   const [loading, setLoading] = useState(true)   // ilk mount'ta /me çağrılırken true
   const [error, setError] = useState('')
+
+  // Tenant değişince markayı (accent + başlık) uygula
+  useEffect(() => { applyBranding(tenant) }, [tenant])
 
   // Mount: token varsa /me ile kim olduğunu öğren
   useEffect(() => {

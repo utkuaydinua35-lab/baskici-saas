@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --accent-rgb: 124 92 255;   /* varsayılan accent (#7c5cff); tenant brand_color ile override edilir */
+}
+
 @layer base {
   html, body, #root {
     @apply h-full;

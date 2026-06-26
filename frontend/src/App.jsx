@@ -47,6 +47,7 @@ const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
 const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
 const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
 const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
+const PlatformPage = lazyWithReload(() => import('./pages/PlatformPage'))
 
 function PageLoader() {
   return (
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/shortcuts" element={<ShortcutsPage />} />
             <Route path="/pipeline" element={<PipelinePage />} />
             <Route path="/denetim" element={<AuditPage />} />
+            <Route path="/platform" element={<PlatformPage />} />
           </Route>
         </Route>
 

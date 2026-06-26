@@ -41,7 +41,8 @@ export default function MoldGeneratorPage() {
   const [skipMissing, setSkipMissing] = useState(false)
 
   useEffect(() => {
-    api.get('/api/stores').then(s => {
+    // include_bayii: bayi siparişlerini ayrı seçip plan/kalıp doğrulayabilmek için
+    api.get('/api/stores?include_bayii=true').then(s => {
       const list = Array.isArray(s) ? s : []
       setStores(list)
       // Varsayılan: 'Tüm Mağazalar' (storeId="") — multi-store birleşik plan

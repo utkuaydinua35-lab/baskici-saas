@@ -168,8 +168,10 @@ function LogoUploader({ title, desc, current, uploadUrl, deleteUrl, onDone, shap
 }
 
 function AccountTab() {
-  const { user } = useAuth()
+  const { user, refresh } = useAuth()
   const [showPw, setShowPw] = useState(false)
+  const [show2fa, setShow2fa] = useState(false)
+  const twoFaOn = !!user?.totp_enabled
   return (
     <div className="space-y-4 animate-fadein">
       <div className="card">
@@ -180,10 +182,19 @@ function AccountTab() {
       </div>
       <div className="card">
         <h3 className="text-sm font-semibold text-gray-200 mb-1">Güvenlik</h3>
-        <p className="text-xs text-gray-500 mb-3">Hesap şifreni buradan değiştirebilirsin.</p>
-        <button onClick={() => setShowPw(true)} className="btn-secondary !text-sm">🔑 Şifre Değiştir</button>
+        <p className="text-xs text-gray-500 mb-3">Şifreni değiştir veya iki adımlı doğrulamayı (2FA) yönet.</p>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setShowPw(true)} className="btn-secondary !text-sm">🔑 Şifre Değiştir</button>
+          <button onClick={() => setShow2fa(true)} className="btn-secondary !text-sm">
+            🔐 İki Adımlı Doğrulama
+            <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded ${twoFaOn ? 'bg-emerald-500/15 text-emerald-300' : 'bg-gray-500/15 text-gray-400'}`}>
+              {twoFaOn ? 'Açık' : 'Kapalı'}
+            </span>
+          </button>
+        </div>
       </div>
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
+      {show2fa && <TwoFactorModal enabled={twoFaOn} onClose={() => setShow2fa(false)} onChanged={refresh} />}
     </div>
   )
 }
@@ -228,6 +239,118 @@ function ChangePasswordModal({ onClose }) {
               <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
               <button onClick={save} disabled={busy} className="btn-primary !text-sm">{busy ? '...' : 'Kaydet'}</button>
             </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// İki adımlı dogrulama (2FA / TOTP) — kurulum, acma, kapatma, yedek kodlar
+function TwoFactorModal({ enabled, onClose, onChanged }) {
+  const [phase, setPhase] = useState(enabled ? 'disable' : 'setup') // setup | codes | disable
+  const [qr, setQr] = useState(''); const [secret, setSecret] = useState('')
+  const [code, setCode] = useState(''); const [pw, setPw] = useState('')
+  const [codes, setCodes] = useState([])
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('')
+  const [copied, setCopied] = useState('')
+  const errMsg = (e) => (typeof e?.detail === 'string' ? e.detail : null)
+
+  // Kurulum: secret + QR al (yalnizca kapaliyken)
+  useEffect(() => {
+    if (enabled) return
+    let alive = true
+    setBusy(true); setErr('')
+    api.post('/api/auth/2fa/setup')
+      .then(d => { if (alive) { setQr(d.qr); setSecret(d.secret); setBusy(false) } })
+      .catch(e => { if (alive) { setErr(errMsg(e) || 'Kurulum başlatılamadı'); setBusy(false) } })
+    return () => { alive = false }
+  }, [enabled])
+
+  const enable = async () => {
+    if (!code.trim()) { setErr('Kodu gir'); return }
+    setBusy(true); setErr('')
+    try {
+      const d = await api.post('/api/auth/2fa/enable', { code: code.trim() })
+      setCodes(d.backup_codes || []); setPhase('codes')
+    } catch (e) { setErr(errMsg(e) || 'Kod doğrulanamadı'); setBusy(false) }
+  }
+
+  const disable = async () => {
+    if (!pw && !code) { setErr('Şifre veya kod gir'); return }
+    setBusy(true); setErr('')
+    try {
+      await api.post('/api/auth/2fa/disable', { password: pw || null, code: code.trim() || null })
+      onChanged?.(); onClose()
+    } catch (e) { setErr(errMsg(e) || 'Kapatılamadı'); setBusy(false) }
+  }
+
+  const finish = () => { onChanged?.(); onClose() }
+  const copy = (text, key) => {
+    navigator.clipboard?.writeText(text)
+      .then(() => { setCopied(key); setTimeout(() => setCopied(''), 1500) }).catch(() => {})
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 animate-popin max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-100">İki Adımlı Doğrulama</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+
+        {phase === 'disable' && (
+          <>
+            <p className="text-sm text-gray-300 mb-3">2FA şu an <b className="text-emerald-300">açık</b>. Kapatmak için şifreni ya da uygulamandaki kodu gir.</p>
+            <Field label="Şifre"><SecretInput value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" /></Field>
+            <div className="text-center text-[11px] text-gray-600 my-1">— veya —</div>
+            <Field label="Authenticator kodu"><input className="input w-full text-center tracking-widest" inputMode="numeric" value={code} onChange={e => setCode(e.target.value)} placeholder="000000" /></Field>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+              <button onClick={disable} disabled={busy} className="!text-sm px-3 py-1.5 rounded-lg bg-red-500/90 hover:bg-red-500 text-white font-medium disabled:opacity-50">{busy ? '...' : "2FA'yı Kapat"}</button>
+            </div>
+          </>
+        )}
+
+        {phase === 'setup' && (
+          <>
+            <p className="text-sm text-gray-300 mb-3">Authenticator uygulamanla (Google Authenticator, Authy, 1Password…) QR'ı tara, sonra çıkan 6 haneli kodu gir.</p>
+            {busy && !qr ? (
+              <div className="text-center text-sm text-gray-500 py-8">Hazırlanıyor…</div>
+            ) : qr ? (
+              <>
+                <img src={qr} alt="2FA QR" className="w-44 h-44 mx-auto rounded-lg bg-white p-2" />
+                <div className="mt-3">
+                  <p className="text-[11px] text-gray-500 mb-1">QR taranmıyorsa bu anahtarı elle gir:</p>
+                  <button onClick={() => copy(secret, 'secret')} className="w-full font-mono text-xs bg-brand-bg border border-brand-border rounded px-3 py-2 text-gray-300 hover:border-accent break-all text-left">
+                    {secret} <span className="text-accent">{copied === 'secret' ? '✓ kopyalandı' : '⧉'}</span>
+                  </button>
+                </div>
+                <div className="mt-4">
+                  <Field label="Uygulamadaki 6 haneli kod">
+                    <input className="input w-full text-center tracking-widest text-lg" inputMode="numeric" autoFocus value={code} onChange={e => setCode(e.target.value)} placeholder="000000" />
+                  </Field>
+                </div>
+                <div className="flex justify-end gap-2 mt-1">
+                  <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+                  <button onClick={enable} disabled={busy} className="btn-primary !text-sm">{busy ? '...' : 'Doğrula ve Aç'}</button>
+                </div>
+              </>
+            ) : null}
+          </>
+        )}
+
+        {phase === 'codes' && (
+          <>
+            <div className="text-sm text-emerald-300 mb-2">✓ 2FA açıldı!</div>
+            <p className="text-sm text-gray-300 mb-1">Telefonunu kaybedersen bu <b>yedek kodlarla</b> giriş yapabilirsin. Her kod <b>bir kez</b> kullanılır.</p>
+            <p className="text-[11px] text-amber-300/90 mb-3">⚠ Bu kodlar yalnızca şimdi gösterilir — güvenli bir yere kaydet.</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {codes.map(c => <div key={c} className="font-mono text-sm text-center bg-brand-bg border border-brand-border rounded py-1.5 text-gray-200">{c}</div>)}
+            </div>
+            <button onClick={() => copy(codes.join('\n'), 'codes')} className="btn-secondary !text-sm w-full mb-2">{copied === 'codes' ? '✓ Kopyalandı' : '⧉ Tümünü Kopyala'}</button>
+            <button onClick={finish} className="btn-primary !text-sm w-full">Kaydettim, Kapat</button>
           </>
         )}
       </div>

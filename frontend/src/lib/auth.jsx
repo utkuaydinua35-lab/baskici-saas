@@ -62,6 +62,20 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setError('')
     const data = await api.post('/api/auth/login', { email, password })
+    // 2FA açıksa token gelmez — LoginPage kod adımına geçer.
+    if (data?.requires_2fa) {
+      return { requires_2fa: true, mfa_token: data.mfa_token }
+    }
+    setToken(data.access_token)
+    const me = await api.get('/api/auth/me')
+    setUser(me.user)
+    setTenant(me.tenant)
+    return me
+  }
+
+  // Login'in 2. adımı: mfa_token + authenticator kodu (veya yedek kod) → JWT
+  const verifyTwoFactor = async (mfaToken, code) => {
+    const data = await api.post('/api/auth/2fa/verify-login', { mfa_token: mfaToken, code })
     setToken(data.access_token)
     const me = await api.get('/api/auth/me')
     setUser(me.user)
@@ -107,7 +121,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, register, logout, refresh, selectProfile }}>
+    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, verifyTwoFactor, register, logout, refresh, selectProfile }}>
       {children}
     </AuthContext.Provider>
   )

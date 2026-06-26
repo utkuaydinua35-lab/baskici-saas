@@ -59,6 +59,7 @@ class UserResponse(BaseModel):
     avatar_url: str | None = None
     is_active: bool
     is_platform_admin: bool = False
+    totp_enabled: bool = False
     tenant_id: uuid.UUID
     last_login_at: datetime | None
     created_at: datetime

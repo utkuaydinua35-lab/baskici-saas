@@ -93,6 +93,14 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # 2FA (TOTP / authenticator app). Secret Fernet ile şifreli saklanır,
+    # backup_codes bcrypt hash'li liste. totp_enabled=False iken login zorlamaz.
+    totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+    totp_backup_codes: Mapped[list] = mapped_column(JSONB, default=list, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

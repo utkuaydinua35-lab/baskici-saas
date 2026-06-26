@@ -157,8 +157,8 @@ def _login_record_fail(request: Request) -> None:
     _login_hits.setdefault(ip, []).append(_t.time())
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+@router.post("/login", response_model=None)
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     _login_rate_limit(request)
     """Email + şifre ile giriş. Yanlış bilgi → 401."""
     user = db.scalar(select(User).where(User.email == req.email.lower()))
@@ -196,6 +196,11 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)) ->
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Abonelik süreniz doldu. Lütfen sağlayıcınızla iletişime geçin.",
             )
+
+    # 2FA aktifse — token verme; önce TOTP doğrulanmalı (kısa ömürlü mfa_token).
+    if user.totp_enabled and user.totp_secret:
+        mfa_token = _mfa_serializer().dumps({"uid": str(user.id)})
+        return {"requires_2fa": True, "mfa_token": mfa_token}
 
     user.last_login_at = datetime.now(UTC)
     db.commit()
@@ -325,6 +330,138 @@ def reset_password(req: _ResetPasswordRequest, db: Session = Depends(get_db)):
     user.password_hash = hash_password(req.new_password)
     db.commit()
     return {"ok": True, "message": "Şifreniz güncellendi. Giriş yapabilirsiniz."}
+
+
+# ─── 2FA / İki adımlı doğrulama (TOTP) ───────────────────────
+# Not: totp_service (pyotp/qrcode) endpoint içinde lazy import edilir; VPS'te
+# paketler kurulmadan restart edilirse app boot olmaya devam etsin diye.
+
+_MFA_SALT = "mfa-login"
+_MFA_MAX_AGE = 300  # 5 dakika — login ile kod doğrulama arası
+
+
+def _mfa_serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings.session_secret, salt=_MFA_SALT)
+
+
+class _TwoFACodeRequest(_PwBaseModel):
+    code: str
+
+
+class _TwoFADisableRequest(_PwBaseModel):
+    password: str | None = None
+    code: str | None = None
+
+
+class _TwoFAVerifyLoginRequest(_PwBaseModel):
+    mfa_token: str
+    code: str
+
+
+@router.post("/2fa/setup", response_model=None)
+def twofa_setup(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yeni TOTP secret üret (henüz aktif değil) + QR/URI döndür. Aktifleşmesi
+    için /2fa/enable ile kod doğrulanmalı."""
+    from app.services import totp_service
+    if not user.password_hash:
+        raise HTTPException(400, "Şifresiz (OAuth) hesaplarda 2FA kullanılamaz.")
+    if user.totp_enabled:
+        raise HTTPException(400, "2FA zaten aktif. Önce kapatıp tekrar kurun.")
+    secret = totp_service.generate_secret()
+    user.totp_secret = totp_service.encrypt_secret(secret)
+    user.totp_enabled = False
+    db.commit()
+    uri = totp_service.provisioning_uri(secret, user.email)
+    return {"secret": secret, "otpauth_uri": uri, "qr": totp_service.qr_data_uri(uri)}
+
+
+@router.post("/2fa/enable", response_model=None)
+def twofa_enable(
+    req: _TwoFACodeRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kurulumdaki secret'ı kodla doğrula → 2FA'yı aç + tek kullanımlık yedek
+    kodları üret (yalnızca burada bir kez gösterilir)."""
+    from app.services import totp_service
+    if not user.totp_secret:
+        raise HTTPException(400, "Önce 2FA kurulumunu başlatın.")
+    secret = totp_service.decrypt_secret(user.totp_secret)
+    if not secret or not totp_service.verify_code(secret, req.code):
+        raise HTTPException(400, "Kod doğrulanamadı. Uygulamadaki güncel kodu girin.")
+    codes = totp_service.generate_backup_codes()
+    user.totp_backup_codes = totp_service.hash_backup_codes(codes)
+    user.totp_enabled = True
+    db.commit()
+    return {"ok": True, "backup_codes": codes}
+
+
+@router.post("/2fa/disable", response_model=None)
+def twofa_disable(
+    req: _TwoFADisableRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """2FA'yı kapat — kimlik için şifre VEYA geçerli TOTP kodu gerekir."""
+    from app.services import totp_service
+    if not user.totp_enabled:
+        return {"ok": True}
+    ok = False
+    if req.password and user.password_hash and verify_password(req.password, user.password_hash):
+        ok = True
+    elif req.code and user.totp_secret:
+        secret = totp_service.decrypt_secret(user.totp_secret)
+        ok = bool(secret and totp_service.verify_code(secret, req.code))
+    if not ok:
+        raise HTTPException(401, "Doğrulama başarısız (şifre veya kod hatalı).")
+    user.totp_enabled = False
+    user.totp_secret = None
+    user.totp_backup_codes = []
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/2fa/verify-login", response_model=TokenResponse)
+def twofa_verify_login(
+    req: _TwoFAVerifyLoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    """Login'in 2. adımı: mfa_token + kod (veya yedek kod) → gerçek JWT."""
+    from app.services import totp_service
+    _login_rate_limit(request)
+    try:
+        data = _mfa_serializer().loads(req.mfa_token, max_age=_MFA_MAX_AGE)
+    except SignatureExpired:
+        raise HTTPException(400, "Doğrulama süresi doldu. Tekrar giriş yapın.")
+    except BadSignature:
+        raise HTTPException(400, "Geçersiz oturum. Tekrar giriş yapın.")
+
+    user = db.scalar(select(User).where(User.id == data.get("uid")))
+    if not user or not user.totp_enabled or not user.totp_secret:
+        raise HTTPException(400, "2FA doğrulanamadı.")
+
+    secret = totp_service.decrypt_secret(user.totp_secret)
+    ok = bool(secret and totp_service.verify_code(secret, req.code))
+    if not ok:
+        # TOTP tutmadıysa yedek kod mu?
+        idx = totp_service.consume_backup_code(user.totp_backup_codes or [], req.code)
+        if idx is not None:
+            remaining = list(user.totp_backup_codes)
+            remaining.pop(idx)
+            user.totp_backup_codes = remaining  # JSONB — yeniden atama (mutation algılansın)
+            ok = True
+
+    if not ok:
+        _login_record_fail(request)
+        raise HTTPException(401, "Kod hatalı.")
+
+    user.last_login_at = datetime.now(UTC)
+    db.commit()
+    return _issue_token(user)
 
 
 # ─── Netflix tarzi profil secimi (Paket Profiles) ───

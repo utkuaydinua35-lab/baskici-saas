@@ -87,8 +87,99 @@ export default function PlatformPage() {
         </div>
       )}
 
+      <Backups />
+
       {showCreate && <CreateTenant onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); load() }} />}
       {editing && <EditTenant tenant={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load() }} />}
+    </div>
+  )
+}
+
+function fmtSize(b) {
+  if (!b) return '—'
+  const mb = b / 1024 / 1024
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(b / 1024)} KB`
+}
+function fmtDateTime(d) {
+  if (!d) return '—'
+  try { return new Date(d).toLocaleString('tr-TR') } catch { return d }
+}
+
+function Backups() {
+  const toast = useToast()
+  const [items, setItems] = useState([])
+  const [keep, setKeep] = useState(7)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    try { const r = await api.get('/api/platform/backups'); setItems(r.items || []); setKeep(r.keep || 7) }
+    catch {} finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  const runNow = async () => {
+    setBusy(true)
+    try { await api.post('/api/platform/backups', {}); toast.success('Yedek alındı'); load() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Yedek alınamadı') }
+    finally { setBusy(false) }
+  }
+
+  const download = async (name) => {
+    try {
+      const token = localStorage.getItem('baskici_token')
+      const res = await fetch(`/api/platform/backups/${encodeURIComponent(name)}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click()
+      URL.revokeObjectURL(url)
+    } catch { toast.error('İndirilemedi') }
+  }
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-100">💾 Veritabanı Yedekleri</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Her gece 03:30 otomatik · son {keep} yedek saklanır</p>
+        </div>
+        <button onClick={runNow} disabled={busy} className="btn-secondary !text-sm disabled:opacity-50">
+          {busy ? 'Alınıyor…' : '+ Yedek Al'}
+        </button>
+      </div>
+      <div className="card !p-0 overflow-hidden">
+        {loading ? (
+          <div className="p-6"><div className="skeleton h-4 w-40 rounded" /></div>
+        ) : items.length === 0 ? (
+          <div className="p-8 text-center text-gray-500 text-sm">Henüz yedek yok. "Yedek Al" ile ilkini oluştur.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-brand-border text-left text-[11px] text-gray-500 uppercase">
+                <th className="px-4 py-2.5 font-medium">Dosya</th>
+                <th className="px-4 py-2.5 font-medium">Boyut</th>
+                <th className="px-4 py-2.5 font-medium">Tarih</th>
+                <th className="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(b => (
+                <tr key={b.name} className="border-b border-brand-border/40 hover:bg-brand-input/40">
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-300">{b.name}</td>
+                  <td className="px-4 py-2.5 text-gray-400">{fmtSize(b.size)}</td>
+                  <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDateTime(b.created_at)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => download(b.name)} className="btn-secondary !text-xs">⬇ İndir</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }

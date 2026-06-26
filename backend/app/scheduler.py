@@ -43,6 +43,16 @@ def _daily_summary_job():
         db.close()
 
 
+def _backup_job():
+    logger.info("[scheduler] gunluk yedek aliniyor")
+    try:
+        from app.services import backup
+        r = backup.run_backup()
+        logger.info(f"[scheduler] yedek alindi: {r['name']} ({r['size']} bayt)")
+    except Exception as e:
+        logger.exception(f"[scheduler] yedek hata: {e}")
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -77,6 +87,9 @@ def start_scheduler():
     # Sabah ozeti — her gun 08:00 (Europe/Istanbul)
     _scheduler.add_job(_daily_summary_job, "cron", hour=8, minute=0,
                        id="daily_summary", max_instances=1, coalesce=True)
+    # Gunluk veritabani yedegi — her gece 03:30 (Europe/Istanbul)
+    _scheduler.add_job(_backup_job, "cron", hour=3, minute=30,
+                       id="daily_backup", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

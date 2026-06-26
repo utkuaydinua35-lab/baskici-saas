@@ -15,6 +15,7 @@ import uuid
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func as sql_func, select
 from sqlalchemy.orm import Session
@@ -163,3 +164,30 @@ def update_tenant(
     db.commit()
     db.refresh(t)
     return _ser_tenant(db, t)
+
+
+# ─── Veritabanı yedekleri (platform admin) ───────────────────
+
+@router.get("/backups", response_model=dict)
+def list_backups(user: User = Depends(require_platform_admin)):
+    from app.services import backup
+    return {"items": backup.list_backups(), "keep": backup.KEEP}
+
+
+@router.post("/backups", response_model=dict)
+def run_backup_now(user: User = Depends(require_platform_admin)):
+    """Anlık yedek al (08:00 cron'u beklemeden)."""
+    from app.services import backup
+    try:
+        return backup.run_backup()
+    except backup.BackupError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.get("/backups/{name}/download")
+def download_backup(name: str, user: User = Depends(require_platform_admin)):
+    from app.services import backup
+    path = backup.backup_path(name)
+    if not path:
+        raise HTTPException(404, "Yedek bulunamadı")
+    return FileResponse(str(path), media_type="application/gzip", filename=name)

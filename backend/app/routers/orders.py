@@ -615,6 +615,39 @@ def _bulk_log(db, order, user, action, from_stage=None, to_stage=None, note=None
     ))
 
 
+def _adjust_dealer_debt(db, order, *, reverse: bool):
+    """Bayi siparişinin cari borcunu sil(reverse=True)/geri al(reverse=False).
+
+    Sil-geri al kesin sıralı (silinmiş tekrar silinemez, silinmeden geri alınamaz)
+    olduğundan bakiye tutarlı kalır. Her işlem bir 'duzeltme' hareketi yazar.
+    """
+    from decimal import Decimal as _Dec
+    from app.models import Dealer as _Dealer, DealerTransaction as _DTx
+
+    txs = db.scalars(
+        select(_DTx).where(_DTx.ref_order_id == order.id, _DTx.kind == "siparis")
+    ).all()
+    for tx in txs:
+        dealer = db.scalar(select(_Dealer).where(_Dealer.id == tx.dealer_id))
+        if not dealer:
+            continue
+        delta = -_Dec(str(tx.amount)) if reverse else _Dec(str(tx.amount))
+        cur = (tx.currency or "TRY").upper()
+        if cur == "USD":
+            new_bal = _Dec(str(dealer.balance_usd or 0)) + delta
+            dealer.balance_usd = new_bal
+        else:
+            new_bal = _Dec(str(dealer.balance or 0)) + delta
+            dealer.balance = new_bal
+        _desc = (f"Sipariş #{order.order_number} silindi — borç iptali" if reverse
+                 else f"Sipariş #{order.order_number} geri alındı — borç tekrar")
+        db.add(_DTx(
+            tenant_id=order.tenant_id, dealer_id=dealer.id,
+            amount=delta, kind="duzeltme", currency=cur,
+            description=_desc, ref_order_id=order.id, balance_after=new_bal,
+        ))
+
+
 @router.post("/_bulk", response_model=dict)
 def bulk_action(
     payload: BulkRequest,
@@ -694,6 +727,7 @@ def bulk_action(
         elif payload.action == "delete":
             if order.deleted_at is None:
                 order.deleted_at = datetime.now(UTC)
+                _adjust_dealer_debt(db, order, reverse=True)
                 affected += 1
 
     db.commit()
@@ -795,6 +829,7 @@ def delete_order(
     if not order:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
     order.deleted_at = datetime.now(UTC)
+    _adjust_dealer_debt(db, order, reverse=True)
     db.commit()
     return None
 
@@ -814,6 +849,7 @@ def restore_order(
     if not order:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
     order.deleted_at = None
+    _adjust_dealer_debt(db, order, reverse=False)  # geri alınınca borcu tekrar uygula
     db.commit()
     return {"ok": True}
 
@@ -852,14 +888,24 @@ def store_designs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Manuel sipariş dialog'u için store'un tasarım listesi."""
+    """Manuel sipariş dialog'u için tasarım listesi.
+
+    Bayii (sanal) mağazasının kendi tasarımı yoktur; bu durumda tenant'ın TÜM
+    gerçek mağazalarındaki tasarımlar listelenir (bayi siparişine atanabilsin).
+    """
     from app.models import Design
     from app.services import storage as _storage
-    designs = db.scalars(
-        select(Design)
-        .where(Design.store_id == store_id, Design.tenant_id == user.tenant_id)
-        .order_by(Design.code)
-    ).all()
+
+    _store = db.scalar(select(Store).where(Store.id == store_id, Store.tenant_id == user.tenant_id))
+    is_bayii = bool(_store and (_store.platform or "") == "bayii")
+
+    dq = select(Design).where(Design.tenant_id == user.tenant_id)
+    if is_bayii:
+        # Bayii: gerçek mağazaların tasarımları (bayii mağazaları hariç)
+        dq = dq.join(Store, Store.id == Design.store_id).where(Store.platform != "bayii")
+    else:
+        dq = dq.where(Design.store_id == store_id)
+    designs = db.scalars(dq.order_by(Design.code)).all()
     return {
         "items": [
             {
@@ -978,10 +1024,11 @@ def create_manual_order(
 
         design = None
         if li.design_id:
+            # Tenant geneli — bayii siparişinde tasarım gerçek bir mağazadan gelir,
+            # store_id eşleşmesi şart koşulmaz.
             design = db.scalar(
                 select(_Design).where(
                     _Design.id == li.design_id,
-                    _Design.store_id == req.store_id,
                     _Design.tenant_id == user.tenant_id,
                 )
             )

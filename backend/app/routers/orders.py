@@ -469,9 +469,17 @@ def list_orders(
 
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
 
+    # Mağaza adı haritası (bayii dahil — "?" sorununu önler)
+    store_names = {
+        s.id: s.name for s in db.scalars(
+            select(Store).where(Store.tenant_id == user.tenant_id)
+        )
+    }
+
     items = []
     for o in rows:
         item = OrderListItem.model_validate(o).model_dump(mode="json")
+        item["store_name"] = store_names.get(o.store_id)
         item["item_count"] = len(o.line_items)
         item["total_li_count"] = len(o.line_items)
         item["kalipta_count"] = sum(

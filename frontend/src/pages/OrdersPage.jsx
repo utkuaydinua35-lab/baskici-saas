@@ -264,6 +264,8 @@ export default function OrdersPage() {
   }
 
   const storeName = (id) => stores.find(s => s.id === id)?.name || '?'
+  // Bayii mağazaları /api/stores'ta gelmediği için önce order'ın store_name'i kullanılır
+  const storeLabel = (o) => o.store_name || storeName(o.store_id)
   const storeOf = (id) => stores.find(s => s.id === id)
 
   const toggleExpand = (id) => {
@@ -486,7 +488,7 @@ export default function OrdersPage() {
                               {o.is_acil && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">🔥 Acil</span>}
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-gray-400">{storeName(o.store_id)}</td>
+                          <td className="px-3 py-2 text-gray-400">{storeLabel(o)}</td>
                           <td className="px-3 py-2 text-gray-300 truncate max-w-[160px]">{o.customer_name || '—'}</td>
                           <td className="px-3 py-2">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${status.color}`}>

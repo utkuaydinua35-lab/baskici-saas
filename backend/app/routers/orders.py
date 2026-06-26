@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import case, desc, func as sql_func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.adapters import get_adapter
@@ -916,17 +917,24 @@ def create_manual_order(
     if not req.line_items:
         raise HTTPException(status_code=400, detail="En az bir ürün eklemelisin")
 
-    # Çakışma kontrol
+    # Çakışma kontrol — silinmiş (çöp) siparişleri de kapsar (DB unique constraint
+    # soft-delete'i bilmez; aksi halde insert IntegrityError -> 500 verirdi).
     existing = db.scalar(
         select(Order).where(
             Order.store_id == req.store_id,
             Order.external_id == req.external_id,
-        )
+        ).execution_options(include_deleted=True)
     )
     if existing:
+        _silinmis = getattr(existing, "deleted_at", None) is not None
         raise HTTPException(
             status_code=400,
-            detail=f"Bu sipariş kodu zaten kullanılıyor: {req.external_id}"
+            detail=(
+                f"Bu sipariş kodu silinmiş bir siparişte kullanılıyor: {req.external_id}. "
+                "Farklı bir kod gir ya da çöp kutusundan geri al."
+                if _silinmis else
+                f"Bu sipariş kodu zaten kullanılıyor: {req.external_id}"
+            ),
         )
 
     # Address dict
@@ -1031,7 +1039,14 @@ def create_manual_order(
                 ref_order_id=order.id, balance_after=_newbal,
             ))
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu sipariş kodu zaten kullanılıyor (silinmiş olabilir): {req.external_id}. Farklı bir kod dene.",
+        )
     return {
         "ok": True,
         "order_id": str(order.id),

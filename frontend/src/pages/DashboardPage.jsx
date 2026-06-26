@@ -81,6 +81,13 @@ export default function DashboardPage() {
 
   // Sabah worklist — ilk 5 dashboard ziyaretinde banner göster
   useEffect(() => {
+    // Zil bildiriminden gelindiyse (?worklist=1) sayaçtan bağımsız zorla göster
+    const forced = new URLSearchParams(window.location.search).get('worklist') === '1'
+    if (forced) {
+      api.get('/api/dashboard/worklist').then(wl => { setWorklist(wl); setShowWorklist(true) }).catch(() => {})
+      window.history.replaceState({}, '', '/')
+      return
+    }
     const state = wlGetState()
     if (!state.dismissed && state.count < 5) {
       api.get('/api/dashboard/worklist').then(wl => {

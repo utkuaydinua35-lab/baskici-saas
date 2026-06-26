@@ -301,7 +301,7 @@ function NotificationBell() {
           </div>
           <div className="max-h-96 overflow-y-auto">
             {wlBadge && (
-              <button onClick={() => { dismissWlBadge(); window.location.href = '/' }}
+              <button onClick={() => { dismissWlBadge(); window.location.href = '/?worklist=1' }}
                 className="w-full text-left px-3 py-2.5 border-b border-brand-border/50 hover:bg-brand-input flex gap-2 bg-accent/5">
                 <span className="text-base shrink-0">📋</span>
                 <div className="min-w-0 flex-1">

@@ -19,6 +19,20 @@ STATUS_LABELS = {
     "revizyon": "Revizyon istendi",
 }
 
+# Müşterinin sipariş başına en fazla revizyon isteme hakkı
+MAX_REVISIONS = 1
+
+
+def revisions_used(db: Session, order_id) -> int:
+    """Bu sipariş için müşterinin şimdiye kadar istediği revizyon sayısı."""
+    from sqlalchemy import func as _f
+    return db.scalar(
+        select(_f.count(DesignApproval.id)).where(
+            DesignApproval.order_id == order_id,
+            DesignApproval.status == "revizyon",
+        )
+    ) or 0
+
 
 def resolve_phone(order: Order) -> str | None:
     """Sipariş ham verisinden müşteri telefonu (Shopify customer/shipping)."""

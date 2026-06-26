@@ -142,7 +142,9 @@ function render(){
     <div class="sub center" style="margin:8px 0 8px">Tasarım doğruysa onaylayın; değişiklik gerekiyorsa belirtin.</div>
     <div class="actions">
       <button class="btn btn-approve" onclick="approve(this)">✓ Onaylıyorum</button>
-      <button class="btn btn-revise" onclick="showRevise(this)">✏️ Revizyon İstiyorum</button>
+      ${DATA.revision_allowed
+        ? '<button class="btn btn-revise" onclick="showRevise(this)">✏️ Revizyon İstiyorum</button>'
+        : '<div class="sub center" style="margin:4px 0 0;font-size:11.5px">ℹ️ Revizyon hakkınızı kullandınız. Tasarımı onaylayabilirsiniz.</div>'}
     </div>
     <div id="reviseBox" class="hidden" style="margin-top:12px">
       <textarea id="revnote" placeholder="Hangi değişikliği istersiniz? (ör. yazı rengi, isim yazımı...)"></textarea>

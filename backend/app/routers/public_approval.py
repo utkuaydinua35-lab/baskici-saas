@@ -61,6 +61,8 @@ def get_approval(token: str, db: Session = Depends(get_db)):
     tenant = db.get(Tenant, ap.tenant_id)
     data["atolye"] = (tenant.name if tenant else None) or "Atölye"
     data["logo_url"] = (tenant.logo_url if tenant else None)
+    # Müşterinin revizyon hakkı kaldı mı (sipariş başına MAX_REVISIONS)
+    data["revision_allowed"] = ap_svc.revisions_used(db, ap.order_id) < ap_svc.MAX_REVISIONS
     return data
 
 
@@ -95,6 +97,9 @@ def post_decision(
         notif_title = f"✅ Müşteri onayladı — {order_no}"
         notif_body = None
     elif payload.decision == "revizyon":
+        # Revizyon hakkı kontrolü (sipariş başına MAX_REVISIONS)
+        if ap_svc.revisions_used(db, ap.order_id) >= ap_svc.MAX_REVISIONS:
+            raise HTTPException(409, "Revizyon hakkınız doldu. Tasarımı onaylayabilirsiniz.")
         ap.status = "revizyon"
         ap.customer_note = payload.note or None
         action = "musteri_revizyon"

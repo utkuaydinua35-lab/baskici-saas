@@ -888,24 +888,14 @@ def store_designs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Manuel sipariş dialog'u için tasarım listesi.
-
-    Bayii (sanal) mağazasının kendi tasarımı yoktur; bu durumda tenant'ın TÜM
-    gerçek mağazalarındaki tasarımlar listelenir (bayi siparişine atanabilsin).
-    """
+    """Manuel sipariş dialog'u için store'un (bayi dahil) kendi tasarım listesi."""
     from app.models import Design
     from app.services import storage as _storage
-
-    _store = db.scalar(select(Store).where(Store.id == store_id, Store.tenant_id == user.tenant_id))
-    is_bayii = bool(_store and (_store.platform or "") == "bayii")
-
-    dq = select(Design).where(Design.tenant_id == user.tenant_id)
-    if is_bayii:
-        # Bayii: gerçek mağazaların tasarımları (bayii mağazaları hariç)
-        dq = dq.join(Store, Store.id == Design.store_id).where(Store.platform != "bayii")
-    else:
-        dq = dq.where(Design.store_id == store_id)
-    designs = db.scalars(dq.order_by(Design.code)).all()
+    designs = db.scalars(
+        select(Design)
+        .where(Design.store_id == store_id, Design.tenant_id == user.tenant_id)
+        .order_by(Design.code)
+    ).all()
     return {
         "items": [
             {
@@ -1024,11 +1014,11 @@ def create_manual_order(
 
         design = None
         if li.design_id:
-            # Tenant geneli — bayii siparişinde tasarım gerçek bir mağazadan gelir,
-            # store_id eşleşmesi şart koşulmaz.
+            # Tasarım siparişin mağazasına (bayi dahil) ait olmalı
             design = db.scalar(
                 select(_Design).where(
                     _Design.id == li.design_id,
+                    _Design.store_id == req.store_id,
                     _Design.tenant_id == user.tenant_id,
                 )
             )

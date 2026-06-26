@@ -191,6 +191,8 @@ def _serialize_order_row(o: Order, product_ids: set[str]) -> dict:
         "kilif_renkleri": renkler[:5],
         "created_at_platform": o.created_at_platform.isoformat() if o.created_at_platform else None,
         "status": status_,
+        # Müşteri onayı (en güncel) — sipariş no yanında rozet için
+        "approval_status": (o.approvals[0].status if getattr(o, "approvals", None) else None),
     }
 
 
@@ -245,7 +247,10 @@ def list_kisiye_ozel_orders(
 
     q = (
         q.order_by(desc(Order.created_at_platform), desc(Order.created_at))
-        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .options(
+            selectinload(Order.line_items).selectinload(LineItem.assigned_design),
+            selectinload(Order.approvals),
+        )
     )
     all_rows = db.scalars(q).all()
 

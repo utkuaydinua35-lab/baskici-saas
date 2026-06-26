@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import DesignApproval, Order, OrderStatusHistory, Tenant
+from app.models import DesignApproval, Notification, Order, OrderStatusHistory, Tenant
 from app.routers.public_tracker import rate_limit
 from app.services import approvals as ap_svc
 
@@ -87,15 +87,20 @@ def post_decision(
         # Zaten karar verilmiş — mevcut durumu döndür (idempotent)
         return {"ok": True, "status": ap.status, "already": True}
 
+    order_no = order.name or f"#{order.order_number}"
     if payload.decision == "onayla":
         ap.status = "onaylandi"
         action = "musteri_onay"
         note = None
+        notif_title = f"✅ Müşteri onayladı — {order_no}"
+        notif_body = None
     elif payload.decision == "revizyon":
         ap.status = "revizyon"
         ap.customer_note = payload.note or None
         action = "musteri_revizyon"
         note = payload.note or None
+        notif_title = f"✏️ Müşteri revizyon istedi — {order_no}"
+        notif_body = payload.note or None
     else:
         raise HTTPException(400, "Geçersiz karar.")
 
@@ -103,6 +108,11 @@ def post_decision(
     db.add(OrderStatusHistory(
         tenant_id=ap.tenant_id, order_id=ap.order_id,
         action=action, note=note, created_by="Müşteri",
+    ))
+    # Panel bildirimi (zil)
+    db.add(Notification(
+        tenant_id=ap.tenant_id, store_id=order.store_id,
+        kind="info", title=notif_title, body=notif_body,
     ))
     db.commit()
     return {"ok": True, "status": ap.status}

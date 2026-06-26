@@ -524,6 +524,7 @@ function UserDialog({ user, meta, onClose, onSaved }) {
             <option value="yonetici">Yönetici (tüm yetkiler)</option>
             <option value="baskici">Baskıcı</option>
             <option value="paketlemeci">Paketlemeci</option>
+            <option value="grafiker">Grafiker (kişiye özel + tasarım)</option>
             <option value="ozel">Özel</option>
           </select>
         </label>

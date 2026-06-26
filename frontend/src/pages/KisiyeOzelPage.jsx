@@ -344,6 +344,15 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
         </div>
         <div className="col-span-2">
           <span className="text-accent hover:underline font-mono text-xs">#{order.order_number}</span>
+          {order.approval_status === 'onaylandi' && (
+            <span className="ml-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 align-middle">✓ Onaylı</span>
+          )}
+          {order.approval_status === 'revizyon' && (
+            <span className="ml-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 align-middle">✏ Revizyon</span>
+          )}
+          {order.approval_status === 'bekliyor' && (
+            <span className="ml-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 align-middle">⏳ Onayda</span>
+          )}
         </div>
         <div className="col-span-3 min-w-0">
           <div className="text-xs text-gray-200 truncate">{order.customer_name || '?'}</div>

@@ -30,6 +30,7 @@ ROLE_TEMPLATES = {
     "yonetici": list(ALL_PERMISSIONS),  # her sey
     "baskici": ["dashboard", "kalip", "stok", "tasarim", "kisiye_ozel", "aksesuar", "couple", "telefon_modelleri"],
     "paketlemeci": ["dashboard", "paketleme", "destek", "siparisler"],
+    "grafiker": ["kisiye_ozel", "tasarim"],
 }
 
 # Yonetici sayilan roller (her zaman tum yetkiler + yonetim)

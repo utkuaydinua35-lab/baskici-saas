@@ -968,11 +968,18 @@ function OnayTab({ orderId }) {
 
       {items.length > 1 && (
         <PanelCard title="Geçmiş Versiyonlar" icon="🕐">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {items.slice(1).map(a => (
-              <div key={a.id} className="text-xs flex items-center justify-between border-l-2 border-brand-border pl-2 py-0.5">
-                <span className="text-gray-400">v{a.version} · {(ONAY_STATUS[a.status] || ONAY_STATUS.bekliyor).label}</span>
-                <span className="text-[10px] text-gray-600">{formatDate(a.created_at)}</span>
+              <div key={a.id} className="text-xs border-l-2 border-brand-border pl-2 py-0.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-400">v{a.version} · {(ONAY_STATUS[a.status] || ONAY_STATUS.bekliyor).label}</span>
+                  <span className="text-[10px] text-gray-600">{formatDate(a.created_at)}</span>
+                </div>
+                {a.status === 'revizyon' && a.customer_note && (
+                  <div className="mt-1 text-[11px] bg-red-500/10 border border-red-500/20 rounded px-2 py-1 text-red-200">
+                    <b>Müşteri notu:</b> {a.customer_note}
+                  </div>
+                )}
               </div>
             ))}
           </div>

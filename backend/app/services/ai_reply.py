@@ -9,10 +9,17 @@ import json
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import get_settings
-from app.models import SupportMessage, SupportThread, Tenant
+from app.models import (
+    KisiyeOzelProduct,
+    LineItem,
+    Order,
+    SupportMessage,
+    SupportThread,
+    Tenant,
+)
 
 logger = logging.getLogger("ai_reply")
 
@@ -27,6 +34,19 @@ MAX_TOKENS = 1024
 # Çok uzun konuşmalarda son N mesaj yeterli (taslak için bağlam)
 MAX_HISTORY = 30
 
+# BERNZ teslim süreleri — AI müşteri teslim/süre sorularında bunu kullanır
+_DELIVERY_INFO = """BERNZ TESLİM SÜRELERİ (iş günü; Cumartesi/Pazar hariç. Tahmini \
+sürelerdir, toptancı yoğunluğuna göre değişebilir):
+- iPhone modelleri (normal kılıf): ortalama 7 iş günü içinde kargoya verilir.
+- Parlak, Şeffaf ve MagSafe kılıflar: ortalama 10–14 iş günü.
+- Android modeller: ortalama 10–14 iş günü.
+- Kişiye özel tasarımlar: ortalama 10–15 iş günü, azami 30 iş günü (tasarım sırasına bağlı).
+- Android, MagSafe ve Parlak kılıflar talep üzerine tedarik edilir; BERNZ azami 30 iş \
+gününe kadar bekletme hakkını saklı tutar.
+Karışık siparişte teslim süresi, en uzun süreli kaleme göre belirlenir. Kesin gün/tarih \
+verme; "ortalama", "tahmini" ve aralık (ör. 10–14 iş günü) ifadeleri kullan."""
+
+
 _SYSTEM = """Sen BERNZ adlı telefon kılıfı baskı atölyesinin Türkçe müşteri \
 destek temsilcisisin. Müşterinin son mesajı için İKİ şey üretirsin: bir yanıt \
 taslağı (draft) ve operatöre kısa bir not (note).
@@ -38,6 +58,16 @@ DRAFT (müşteriye gönderilmeye hazır yanıt):
 indirim gibi emin olmadığın şeyleri uydurma. Gerekiyorsa "[kargo tarihi]" gibi \
 köşeli parantezli yer tutucu bırak; operatör doldurur.
 - İmza veya "BERNZ Destek" gibi kapanış ekleme; sadece mesaj gövdesi.
+
+TESLİM SÜRESİ / "ne zaman gelir" SORULARI:
+- Müşteri teslim/kargo süresi sorarsa, aşağıdaki "BERNZ TESLİM SÜRELERİ" \
+kurallarını ve (varsa) "SİPARİŞ İÇERİĞİ" analizini kullanarak siparişe ÖZEL yanıt ver.
+- Siparişteki kalemlere göre doğru kategoriyi seç: iPhone normal mi, Android mı, \
+özel kılıf (parlak/şeffaf/magsafe) mı, kişiye özel mi. Karışıksa en uzun süreliye göre söyle.
+- Kişiye özel ve tasarım onayı BEKLİYORSA: önce tasarım onayının alınması gerektiğini, \
+sürenin onaydan sonra işlemeye başlayacağını nazikçe belirt.
+- Kişiye özel ve onay ALINMIŞSA: üretim sırasına göre süreyi ver.
+- Kesin gün/tarih uydurma; aralık + "tahmini/ortalama" kullan.
 
 NOTE (yalnızca operatöre, müşteriye GÖSTERİLMEZ):
 - draft içinde operatörün doldurması gereken yer tutucuları ve karar vermesi \
@@ -91,6 +121,69 @@ def _history_messages(db: Session, thread: SupportThread) -> list[dict]:
     return messages
 
 
+def _find_order(db: Session, tenant_id, thread: SupportThread):
+    opts = (
+        selectinload(Order.line_items).selectinload(LineItem.assigned_design),
+        selectinload(Order.approvals),
+    )
+    order = None
+    if thread.order_number:
+        order = db.scalar(
+            select(Order).where(
+                Order.tenant_id == tenant_id, Order.order_number == str(thread.order_number)
+            ).options(*opts)
+        )
+    if not order and thread.shopify_order_id:
+        order = db.scalar(
+            select(Order).where(
+                Order.tenant_id == tenant_id, Order.external_id == str(thread.shopify_order_id)
+            ).options(*opts)
+        )
+    return order
+
+
+def _analyze_order(db: Session, tenant_id, thread: SupportThread) -> str | None:
+    """Siparişin model/kılıf/kişiye-özel/onay analizini AI bağlamı olarak üret."""
+    from app.services import placement_rules as pr
+
+    order = _find_order(db, tenant_id, thread)
+    if not order or not order.line_items:
+        return None
+
+    kop_ids = set(db.scalars(
+        select(KisiyeOzelProduct.product_id).where(KisiyeOzelProduct.store_id == order.store_id)
+    ).all())
+    approval_status = order.approvals[0].status if getattr(order, "approvals", None) else None
+
+    lines = []
+    for li in order.line_items:
+        model = (getattr(li, "device_model_override", None)
+                 or li.variant_title or li.title or "Ürün")
+        grp = pr.get_model_group(model)
+        is_unknown = grp in ("UNKNOWN-GROUP", "IPHONE-UNKNOWN")
+        is_iphone = grp.startswith("IPHONE")
+        design = getattr(li, "assigned_design", None)
+        var = pr.normalize_variation(getattr(design, "kalip_tipi", None)) if design else None
+        special = var in ("PARLAK", "ŞEFFAF", "MAGSAFE")
+        ko = bool(li.product_id and str(li.product_id) in kop_ids)
+
+        tags = []
+        if not is_unknown:
+            tags.append("iPhone modeli" if is_iphone else "Android modeli")
+        if special:
+            tags.append(f"{var.capitalize()} kılıf")
+        if ko:
+            tags.append("kişiye özel tasarım")
+        lines.append(f"- {model}" + (f" ({', '.join(tags)})" if tags else ""))
+
+    txt = f"SİPARİŞ İÇERİĞİ (#{order.order_number}):\n" + "\n".join(lines)
+    if approval_status:
+        lbl = {"bekliyor": "onay BEKLİYOR", "onaylandi": "onaylandı",
+               "revizyon": "revizyon istendi"}.get(approval_status, approval_status)
+        txt += f"\nKişiye özel tasarım onay durumu: {lbl}."
+    return txt
+
+
 def draft_reply(db: Session, thread: SupportThread) -> dict:
     """Konuşma geçmişinden {draft, note} üret. Hata olursa DraftError.
 
@@ -117,15 +210,24 @@ def draft_reply(db: Session, thread: SupportThread) -> dict:
     except ModuleNotFoundError as e:
         raise DraftError("anthropic SDK kurulu değil.") from e
 
-    # Sipariş bağlamını sistem promptuna ekle
+    # Sistem promptu = kişilik + teslim süresi kuralları
+    system = f"{_SYSTEM}\n\n{_DELIVERY_INFO}"
+
+    # Sipariş bağlamı (no/müşteri + içerik analizi)
     ctx_parts = []
     if thread.order_number:
         ctx_parts.append(f"Sipariş no: {thread.order_number}")
     if thread.customer_name:
         ctx_parts.append(f"Müşteri: {thread.customer_name}")
-    system = _SYSTEM
     if ctx_parts:
-        system = f"{_SYSTEM}\n\nBAĞLAM: {' · '.join(ctx_parts)}"
+        system += f"\n\nBAĞLAM: {' · '.join(ctx_parts)}"
+    try:
+        analiz = _analyze_order(db, thread.tenant_id, thread)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[ai_reply] sipariş analizi hata: {e}")
+        analiz = None
+    if analiz:
+        system += f"\n\n{analiz}"
 
     try:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)

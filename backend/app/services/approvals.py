@@ -41,12 +41,25 @@ def _absolute(url: str | None) -> str | None:
     return f"{base}{url}"
 
 
+def _variation_of(li) -> str:
+    """Kılıf varyasyonu (mockup için): şeffaf mı siyah mı."""
+    text = " ".join(filter(None, [
+        getattr(li, "birincil_renk", None),
+        getattr(li, "variant_title", None),
+        getattr(li, "title", None),
+    ])).lower()
+    if any(k in text for k in ["şeffaf", "seffaf", "şefaf", "transparent", "clear", "silikon"]):
+        return "seffaf"
+    return "siyah"
+
+
 def build_items(db: Session, order: Order) -> list[dict]:
-    """Müşteriye gösterilecek tasarımlar — YALNIZCA kişiye özel kalemler ve
-    operatörün yüklediği tasarım dosyası (PDF) thumbnail'ı. Ürünün katalog
-    görseli DEĞİL. Tasarımı yüklenmemiş kalemler atlanır.
+    """Müşteriye gösterilecek tasarımlar — YALNIZCA kişiye özel kalemler.
+    Tasarım (PDF) kılıf mockup'ına oturtulup numune görseli üretilir; mockup
+    başarısız olursa PDF thumbnail'ına düşülür. Ürünün katalog görseli DEĞİL.
+    Tasarımı yüklenmemiş kalemler atlanır.
     """
-    from app.services import storage
+    from app.services import storage, mockup
 
     # Bu store'un kişiye özel product_id'leri
     pids = set(db.scalars(
@@ -62,12 +75,19 @@ def build_items(db: Session, order: Order) -> list[dict]:
         # tasarım (PDF) yüklenmemişse onaya dahil etme
         if not (li.assigned_design_id and d and getattr(d, "file_path", None)):
             continue
+
+        variation = _variation_of(li)
+        # Numune mockup üret (tasarımı kılıfa oturt); olmazsa thumbnail
+        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation)
+        preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
+
         items.append({
-            "image_url": _absolute(storage.get_thumbnail_url(d.file_path, d.file_format)),
+            "image_url": _absolute(preview),
             "file_url": _absolute(storage.get_design_url(d.file_path)),
             "file_format": getattr(d, "file_format", None),
             "title": li.title or "Ürün",
             "quantity": getattr(li, "quantity", 1) or 1,
+            "is_mockup": bool(mock_url),
         })
     return items
 
@@ -152,6 +172,7 @@ def public_payload(ap: DesignApproval, order: Order) -> dict:
                 "file_format": it.get("file_format"),
                 "title": it.get("title"),
                 "quantity": it.get("quantity", 1),
+                "is_mockup": it.get("is_mockup", False),
             }
             for it in (ap.items or [])
         ],

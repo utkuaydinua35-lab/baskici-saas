@@ -138,7 +138,8 @@ function render(){
     <div class="sub">${esc(DATA.order_no||'')} numaralı siparişiniz · ${DATA.version>1?('Versiyon '+DATA.version):'Baskı öncesi son kontrol'}</div>
     ${noteHtml}
     <div class="card">${itemsHtml() || '<div class="center sub" style="margin:0">Görsel bulunamadı</div>'}</div>
-    <div class="sub center" style="margin:14px 0 8px">Tasarım doğruysa onaylayın; değişiklik gerekiyorsa belirtin.</div>
+    <div class="sub center" style="margin:10px 0 2px;font-size:11px">Görseller temsilî numunedir; baskı yüklediğiniz tasarıma göre yapılır.</div>
+    <div class="sub center" style="margin:8px 0 8px">Tasarım doğruysa onaylayın; değişiklik gerekiyorsa belirtin.</div>
     <div class="actions">
       <button class="btn btn-approve" onclick="approve(this)">✓ Onaylıyorum</button>
       <button class="btn btn-revise" onclick="showRevise(this)">✏️ Revizyon İstiyorum</button>

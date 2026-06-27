@@ -66,10 +66,15 @@ class Settings(BaseSettings):
     smtp_password: str = Field("", alias="SMTP_PASSWORD")
     smtp_from: str = Field("", alias="SMTP_FROM")  # bos ise smtp_user kullanilir
 
-    # Sürat Kargo
+    # Sürat Kargo (eski — Basit Kargo ile değiştirildi; adres ayrıştırma helper'ları kalıyor)
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")
     surat_sifre: str = Field("", alias="SURAT_SIFRE")
     surat_relay_url: str = Field("", alias="SURAT_RELAY_URL")
+
+    # Basit Kargo (çoklu kargo agregatörü). Boş ise kargo gönderimi kapalı.
+    basit_kargo_token: str = Field("", alias="BASIT_KARGO_TOKEN")
+    basit_kargo_address_id: str = Field("", alias="BASIT_KARGO_ADDRESS_ID")  # opsiyonel gönderici
+    basit_kargo_brand_id: str = Field("", alias="BASIT_KARGO_BRAND_ID")      # opsiyonel marka
 
     @property
     def is_production(self) -> bool:

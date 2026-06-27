@@ -19,7 +19,7 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.adapters import get_adapter
 from app.database import get_db
 from app.models import Design, LineItem, MoldItem, Order, OrderStatusHistory, Store, User
-from app.services import label_pdf, packaging as pkg, storage, surat
+from app.services import basit_kargo, label_pdf, packaging as pkg, storage
 from app import stages as stage_defs
 
 router = APIRouter(prefix="/api/packaging", tags=["packaging"],
@@ -112,52 +112,65 @@ def complete(
     return result
 
 
-@router.post("/order/{order_ref}/surat-gonder", response_model=dict)
-def surat_gonder(
+@router.post("/order/{order_ref}/kargo-gonder", response_model=dict)
+def kargo_gonder(
     order_ref: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Surat Kargo'ya gonderi olustur -> Shopify fulfillment + takip no -> stage 8 (Kargoda).
-    Doner: {ok, takip_no, barkod_base64, message}
+    """Basit Kargo ile gönderi + barkod oluştur -> Shopify fulfillment + takip no -> stage 8.
+    Kargo firması mağaza ayarından (store.config.kargo_handler) gelir.
+    Döner: {ok, takip_no, handler_name, label_svg, id, barcode, shopify_ok, shopify_err}
     """
     order = _resolve_order(db, order_ref, user.tenant_id)
     if not order.store_id:
-        raise HTTPException(400, "Siparisin magazasi yok")
+        raise HTTPException(400, "Siparişin mağazası yok")
     store = db.scalar(select(Store).where(Store.id == order.store_id))
     if not store:
-        raise HTTPException(404, "Magaza bulunamadi")
+        raise HTTPException(404, "Mağaza bulunamadı")
 
-    # 1) Surat gonderi olustur (relay uzerinden)
-    res = surat.create_shipment(
+    handler_code = (store.config or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER
+
+    # 1) Basit Kargo gönderi + barkod
+    res = basit_kargo.create_shipment(
         order.raw or {},
-        ozel_kargo_takip_no=order.order_number or str(order.id),
-        canli=True,
+        handler_code=handler_code,
+        order_code=order.order_number or str(order.id),
     )
     if not res.get("ok"):
-        # Surat hatasi: kullaniciya mesaji ilet
-        raise HTTPException(400, f"Surat: {res.get('message', 'bilinmeyen hata')}")
+        raise HTTPException(400, res.get("message", "Kargo gönderimi başarısız"))
 
     takip_no = res.get("takip_no") or ""
-    barkod_b64 = res.get("barkod_base64")
+    handler_label = res.get("handler_name") or basit_kargo.handler_name(handler_code)
 
-    # 2) Shopify'a fulfillment + takip no yaz (hata olsa da Surat gonderisi olustu, devam)
+    # 2) Shopify'a fulfillment + takip no yaz (hata olsa da kargo gönderisi oluştu, devam)
     shopify_ok = False
     shopify_err = None
     try:
         shopify_oid = order.external_id or str((order.raw or {}).get("id") or "")
-        if shopify_oid and store.platform == "shopify":
+        if shopify_oid and store.platform == "shopify" and takip_no:
             adapter = get_adapter(store)
-            tr = adapter.add_tracking(shopify_oid, takip_no, "Sürat Kargo")
+            tr = adapter.add_tracking(shopify_oid, takip_no, handler_label)
             shopify_ok = bool(tr.get("ok"))
             shopify_err = tr.get("error")
     except Exception as e:
         shopify_err = str(e)[:200]
 
-    # 3) Stage 8 (Kargoda) + history + stok dusumu
+    # 3) Kargo referansını sakla (re-print / iptal / webhook eşleşmesi için)
+    order.kargo_info = {
+        "provider": "basit",
+        "id": res.get("id"),
+        "barcode": res.get("barcode"),
+        "takip_no": takip_no,
+        "handler_code": res.get("handler_code") or handler_code,
+        "handler_name": handler_label,
+        "status": res.get("status"),
+    }
+
+    # 4) Stage 8 (Kargoda) + history + stok düşümü
     prev_stage = order.current_stage or 1
     order.current_stage = 8
-    # Kargoya verilince ana kalem/alt kalem stogundan dus (idempotent, bloklamaz)
+    # Kargoya verilince ana kalem/alt kalem stoğundan düş (idempotent, bloklamaz)
     try:
         from app.services import stock as _stock_svc
         _stock_svc.deduct_for_shipment(db, order.tenant_id, order, user)
@@ -169,7 +182,7 @@ def surat_gonder(
         from_stage=prev_stage,
         to_stage=8,
         action="kargoya_verildi",
-        note=f"Surat Kargo · takip {takip_no}" + ("" if shopify_ok else f" · Shopify yazilamadi: {shopify_err}"),
+        note=f"{handler_label} · takip {takip_no}" + ("" if shopify_ok else f" · Shopify yazılamadı: {shopify_err}"),
         created_by=user.full_name or user.email,
     ))
     db.commit()
@@ -177,11 +190,31 @@ def surat_gonder(
     return {
         "ok": True,
         "takip_no": takip_no,
-        "barkod_base64": barkod_b64,
-        "message": res.get("message"),
+        "handler_name": handler_label,
+        "label_svg": res.get("label_svg"),
+        "id": res.get("id"),
+        "barcode": res.get("barcode"),
+        "status": res.get("status"),
         "shopify_ok": shopify_ok,
         "shopify_err": shopify_err,
     }
+
+
+@router.get("/order/{order_ref}/kargo-label")
+def kargo_label(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Daha önce oluşturulmuş Basit Kargo etiketini (SVG) yeniden getir (re-print)."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    ki = order.kargo_info or {}
+    if not ki.get("id"):
+        raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
+    svg = basit_kargo.get_label_svg(ki["id"])
+    if not svg:
+        raise HTTPException(502, "Etiket alınamadı")
+    return Response(content=svg, media_type="image/svg+xml")
 
 
 @router.get("/order/{order_ref}/label")

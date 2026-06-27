@@ -145,9 +145,9 @@ export default function StoresPage({ embedded = false }) {
                   </div>
                   <div className="text-xs text-gray-500 font-mono">{store.slug}</div>
 
-                  {/* Config preview (maskelenmiş) — sla_days hariç (kendi editörü var) */}
+                  {/* Config preview (maskelenmiş) — kendi editörü olanlar hariç */}
                   <div className="mt-3 space-y-1">
-                    {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days').map(([k, v]) => (
+                    {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days' && k !== 'kargo_handler').map(([k, v]) => (
                       <div key={k} className="text-xs flex gap-2">
                         <span className="text-gray-500 w-32 shrink-0">{k}:</span>
                         <span className="text-gray-300 font-mono truncate">{String(v)}</span>
@@ -157,6 +157,9 @@ export default function StoresPage({ embedded = false }) {
 
                   {/* Kargo SLA (söz tarihi gün sayısı) */}
                   <SlaEditor store={store} onSaved={loadData} />
+
+                  {/* Kargo firması (Basit Kargo handlerCode) — gönderide kullanılır */}
+                  {store.platform === 'shopify' && <KargoEditor store={store} onSaved={loadData} />}
 
                   {/* Test sonucu */}
                   {result && (
@@ -253,6 +256,48 @@ function SlaEditor({ store, onSaved }) {
   )
 }
 
+
+// Basit Kargo firma seçenekleri (handlerCode -> etiket). Backend HANDLER_NAMES ile eş.
+const KARGO_OPTIONS = [
+  ['ECONOMIC', 'Ekonomik (en ucuz)'],
+  ['FAST', 'Hızlı (en hızlı)'],
+  ['ARAS', 'Aras Kargo'],
+  ['YURTICI', 'Yurtiçi Kargo'],
+  ['MNG', 'MNG Kargo'],
+  ['PTT', 'PTT Kargo'],
+  ['SURAT', 'Sürat Kargo'],
+]
+
+function KargoEditor({ store, onSaved }) {
+  const toast = useToast()
+  const [val, setVal] = useState(store.config?.kargo_handler || 'ECONOMIC')
+  const [busy, setBusy] = useState(false)
+
+  const save = async (next) => {
+    setVal(next)
+    setBusy(true)
+    try {
+      await api.patch(`/api/stores/${store.id}`, { config: { kargo_handler: next } })
+      toast.success('Kargo firması güncellendi')
+      onSaved?.()
+    } catch (e) {
+      toast.error(e.detail || 'Kaydedilemedi')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <span className="text-xs text-gray-500">📦 Kargo firması:</span>
+      <select value={val} onChange={e => save(e.target.value)} disabled={busy}
+        className="input !text-xs !py-1 w-44">
+        {KARGO_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+      </select>
+      <span className="text-[10px] text-gray-600">(gönderide kullanılır)</span>
+    </div>
+  )
+}
 
 function AddStoreDialog({ platforms, onClose, onSaved }) {
   const [platform, setPlatform] = useState(platforms[0]?.id || 'shopify')

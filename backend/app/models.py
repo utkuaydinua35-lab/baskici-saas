@@ -406,6 +406,10 @@ class Order(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
 
+    # Basit Kargo gönderi referansı: {provider, id, barcode, takip_no, handler_code,
+    # handler_name, status}. Re-print (etiket), iptal ve webhook eşleşmesi için.
+    kargo_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     store: Mapped[Store] = relationship(back_populates="orders")

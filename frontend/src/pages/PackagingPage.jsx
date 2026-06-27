@@ -69,38 +69,34 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  // base64 PDF -> hem indir hem yeni sekmede ac
-  const openBarkodPdf = (b64, takipNo) => {
+  // SVG kargo etiketi -> yeni sekmede ac + otomatik yazdir
+  const openLabelSvg = (svg, takipNo) => {
     try {
-      const bin = atob(b64)
-      const bytes = new Uint8Array(bin.length)
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-      const blob = new Blob([bytes], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `surat_barkod_${takipNo || 'etiket'}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      try { window.open(url, '_blank') } catch { /* popup engellendi */ }
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-    } catch { /* yok say */ }
+      const w = window.open('', '_blank')
+      if (!w) return
+      w.document.write(
+        `<!doctype html><html><head><title>Kargo Etiketi ${takipNo || ''}</title>` +
+        `<style>@page{margin:0}body{margin:0;display:flex;justify-content:center;padding:8px}svg{max-width:100%;height:auto}</style>` +
+        `</head><body>${svg}<scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr` + `ipt></body></html>`
+      )
+      w.document.close()
+    } catch { /* popup engellendi */ }
   }
 
-  const suratGonder = async () => {
+  const kargoGonder = async () => {
     if (!order || busy) return
-    if (!confirm(`#${order.order_number} siparişi Sürat Kargo ile gönderilecek. Onaylıyor musun?`)) return
+    if (!confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
     setBusy(true); setMsg(null)
     try {
-      const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/surat-gonder`, {})
+      const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/kargo-gonder`, {})
       const tn = r.takip_no || '—'
+      const firma = r.handler_name || 'Kargo'
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
-      setMsg({ ok: true, text: `✅ Sürat gönderi oluştu · Takip No: ${tn} · Barkod indirildi${extra}` })
-      if (r.barkod_base64) openBarkodPdf(r.barkod_base64, tn)
+      setMsg({ ok: true, text: `✅ ${firma} gönderi oluştu · Takip No: ${tn}${extra}` })
+      if (r.label_svg) openLabelSvg(r.label_svg, tn)
       setTimeout(() => loadIndex(index), 2500)
     } catch (e) {
-      const t = typeof e?.detail === 'string' ? e.detail : 'Sürat gönderimi başarısız'
+      const t = typeof e?.detail === 'string' ? e.detail : 'Kargo gönderimi başarısız'
       const friendly = t.includes('İlçe belirlenemedi')
         ? `⚠ ${t} (Adreste ilçe yok — Shopify'da ilçeyi düzeltip tekrar deneyin.)`
         : t
@@ -219,9 +215,9 @@ export default function PackagingPage() {
               <button onClick={downloadLabel} className="w-full btn-secondary !text-sm flex items-center justify-center gap-2">
                 🖨 KARGO ETİKETİ YAZDIR
               </button>
-              <button onClick={suratGonder} disabled={busy}
+              <button onClick={kargoGonder} disabled={busy}
                 className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
-                {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 SÜRAT KARGO İLE GÖNDER'}
+                {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 KARGOYA VER'}
               </button>
             </div>
 

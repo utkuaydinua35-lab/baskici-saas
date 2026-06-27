@@ -200,6 +200,7 @@ class ShopifyAdapter(StorePlatform):
         order_id: str,
         tracking_number: str,
         tracking_company: str = "Sürat Kargo",
+        tracking_url: str | None = None,
     ) -> dict:
         # İlk önce fulfillment_order_id'yi al
         url = f"{self._base_url()}/orders/{order_id}/fulfillment_orders.json"
@@ -228,6 +229,7 @@ class ShopifyAdapter(StorePlatform):
                 "tracking_info": {
                     "number": tracking_number,
                     "company": tracking_company,
+                    **({"url": tracking_url} if tracking_url else {}),
                 },
                 "notify_customer": True,
             }

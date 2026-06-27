@@ -102,11 +102,47 @@ def get_thread_detail(
 class ReplyRequest(BaseModel):
     message: str = ""
     image_url: str | None = None
+    send_email: bool = False  # müşteriye e-posta olarak da gönder
 
     @field_validator("message")
     @classmethod
     def _m(cls, v: str) -> str:
         return (v or "").strip()[:sup.MAX_MESSAGE_LEN]
+
+
+def _send_reply_email(thread: SupportThread, body: str, img_url: str | None) -> tuple[bool, str | None]:
+    """Admin cevabını müşteriye e-posta olarak gönder. Dönüş: (ok, hata_mesajı)."""
+    from html import escape
+    from app.config import get_settings
+    from app.services import email_service
+
+    to = (thread.customer_email or "").strip()
+    if not to:
+        return False, "Müşteri e-postası yok"
+    if not email_service.is_configured():
+        return False, "SMTP yapılandırılmamış"
+
+    onum = thread.order_number or thread.shopify_order_id or ""
+    ad = (thread.customer_name or "").split()[0] if thread.customer_name else ""
+    track = (get_settings().support_public_base_url or "").rstrip("/")
+    body_html = escape((body or "").strip()).replace("\n", "<br>") or "—"
+    img_html = (f'<p style="margin-top:12px"><img src="{img_url}" alt="" '
+                f'style="max-width:100%;border-radius:8px"></p>') if img_url else ""
+    html = f"""
+    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
+      <h2 style="color:#6d28d9;font-size:18px">Sipariş #{escape(onum)} — Destek Yanıtı</h2>
+      <p>Merhaba {escape(ad)},</p>
+      <p>Mesajınıza yanıtımız:</p>
+      <div style="background:#f5f3ff;border-left:3px solid #6d28d9;padding:12px 16px;border-radius:8px">{body_html}</div>
+      {img_html}
+      <p style="margin-top:20px;font-size:14px">Yanıtlamak veya siparişinizi takip etmek için
+        <a href="{track}" style="color:#6d28d9;font-weight:600">sipariş takip sayfanızı</a> ziyaret edebilirsiniz.</p>
+      <p style="font-size:12px;color:#6b7280">Bu e-posta, siparişinizle ilgili destek talebinize verilen yanıttır.</p>
+    </div>"""
+    text = f"Sipariş #{onum} — Destek Yanıtı\n\nMerhaba {ad},\n\n{(body or '').strip()}\n\nTakip: {track}"
+    subject = f"Siparişiniz #{onum} hakkında — Destek Yanıtı"
+    ok = email_service.send_email(to, subject, html, text)
+    return ok, (None if ok else "Gönderim başarısız (SMTP log'una bakın)")
 
 
 @router.post("/threads/{thread_id}/reply", response_model=dict)
@@ -121,7 +157,15 @@ def reply_thread(
     if not payload.message.strip() and not img:
         raise HTTPException(422, "Mesaj veya görsel gerekli.")
     t = sup.add_admin_message(db, t, payload.message, image_url=img)
-    return {**_thread_summary(db, t), "messages": sup.messages_payload(db, t)}
+    email_sent, email_error = (False, None)
+    if payload.send_email:
+        email_sent, email_error = _send_reply_email(t, payload.message, img)
+    return {
+        **_thread_summary(db, t),
+        "messages": sup.messages_payload(db, t),
+        "email_sent": email_sent,
+        "email_error": email_error,
+    }
 
 
 @router.post("/threads/{thread_id}/ai-draft", response_model=dict)

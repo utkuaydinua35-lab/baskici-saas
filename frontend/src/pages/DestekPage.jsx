@@ -27,6 +27,7 @@ export default function DestekPage() {
   const [sending, setSending] = useState(false)
   const [drafting, setDrafting] = useState(false)
   const [aiNote, setAiNote] = useState('')
+  const [okMsg, setOkMsg] = useState('')
   const msgEndRef = useRef(null)
 
   const loadThreads = async () => {
@@ -112,18 +113,29 @@ export default function DestekPage() {
     }
   }
 
-  const sendReply = async () => {
+  const sendReply = async (withEmail = false) => {
     if (!active || (reply.trim().length < 1 && !replyImg)) return
     setSending(true)
+    setError(''); setOkMsg('')
     try {
       let image_url = null
       if (replyImg) image_url = await uploadImage(replyImg)
-      const updated = await api.post(`/api/support/threads/${active.id}/reply`, { message: reply.trim(), image_url })
+      const updated = await api.post(`/api/support/threads/${active.id}/reply`, {
+        message: reply.trim(), image_url, send_email: withEmail,
+      })
       setActive(updated)
       setReply('')
       setAiNote('')
       clearImage()
       loadThreads()
+      if (withEmail) {
+        if (updated.email_sent) {
+          setOkMsg(`📧 Cevap müşteriye e-posta olarak gönderildi (${active.customer_email})`)
+          setTimeout(() => setOkMsg(''), 4000)
+        } else {
+          setError(`E-posta gönderilemedi: ${updated.email_error || 'bilinmeyen hata'}`)
+        }
+      }
     } catch (e) {
       setError(e.detail || e.message || 'Cevap gönderilemedi')
     } finally {
@@ -163,6 +175,9 @@ export default function DestekPage() {
 
       {error && (
         <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-4">{error}</div>
+      )}
+      {okMsg && (
+        <div className="text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 mb-4">{okMsg}</div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-[340px_1fr] gap-4">
@@ -275,10 +290,18 @@ export default function DestekPage() {
                         {drafting ? '✨ Yazılıyor…' : '✨ AI Taslak'}
                       </button>
                     </div>
-                    <button onClick={sendReply} disabled={sending || (reply.trim().length < 1 && !replyImg)}
-                      className="btn-primary !text-xs !py-1.5 !px-3 disabled:opacity-40">
-                      {sending ? 'Gönderiliyor...' : 'Cevapla →'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => sendReply(true)}
+                        disabled={sending || !active?.customer_email || (reply.trim().length < 1 && !replyImg)}
+                        title={active?.customer_email ? `Müşteriye e-posta: ${active.customer_email}` : 'Müşteri e-postası yok — e-posta gönderilemez'}
+                        className="!text-xs !py-1.5 !px-3 rounded-lg border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 flex items-center gap-1">
+                        📧 E-posta ile gönder
+                      </button>
+                      <button onClick={() => sendReply(false)} disabled={sending || (reply.trim().length < 1 && !replyImg)}
+                        className="btn-primary !text-xs !py-1.5 !px-3 disabled:opacity-40">
+                        {sending ? 'Gönderiliyor...' : 'Cevapla →'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

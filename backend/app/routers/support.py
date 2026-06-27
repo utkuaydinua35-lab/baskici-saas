@@ -110,10 +110,11 @@ class ReplyRequest(BaseModel):
         return (v or "").strip()[:sup.MAX_MESSAGE_LEN]
 
 
-def _send_reply_email(thread: SupportThread, body: str, img_url: str | None) -> tuple[bool, str | None]:
-    """Admin cevabını müşteriye e-posta olarak gönder. Dönüş: (ok, hata_mesajı)."""
+def _send_reply_email(db: Session, thread: SupportThread, body: str, img_url: str | None) -> tuple[bool, str | None]:
+    """Admin cevabını müşteriye 'destek talebiniz yanıtlandı' e-postası olarak gönder."""
     from html import escape
     from app.config import get_settings
+    from app.models import Tenant
     from app.services import email_service
 
     to = (thread.customer_email or "").strip()
@@ -125,22 +126,42 @@ def _send_reply_email(thread: SupportThread, body: str, img_url: str | None) -> 
     onum = thread.order_number or thread.shopify_order_id or ""
     ad = (thread.customer_name or "").split()[0] if thread.customer_name else ""
     track = (get_settings().support_public_base_url or "").rstrip("/")
-    body_html = escape((body or "").strip()).replace("\n", "<br>") or "—"
-    img_html = (f'<p style="margin-top:12px"><img src="{img_url}" alt="" '
-                f'style="max-width:100%;border-radius:8px"></p>') if img_url else ""
-    html = f"""
-    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">
-      <h2 style="color:#6d28d9;font-size:18px">Sipariş #{escape(onum)} — Destek Yanıtı</h2>
-      <p>Merhaba {escape(ad)},</p>
-      <p>Mesajınıza yanıtımız:</p>
-      <div style="background:#f5f3ff;border-left:3px solid #6d28d9;padding:12px 16px;border-radius:8px">{body_html}</div>
-      {img_html}
-      <p style="margin-top:20px;font-size:14px">Yanıtlamak veya siparişinizi takip etmek için
-        <a href="{track}" style="color:#6d28d9;font-weight:600">sipariş takip sayfanızı</a> ziyaret edebilirsiniz.</p>
-      <p style="font-size:12px;color:#6b7280">Bu e-posta, siparişinizle ilgili destek talebinize verilen yanıttır.</p>
-    </div>"""
-    text = f"Sipariş #{onum} — Destek Yanıtı\n\nMerhaba {ad},\n\n{(body or '').strip()}\n\nTakip: {track}"
-    subject = f"Siparişiniz #{onum} hakkında — Destek Yanıtı"
+
+    # White-label: yanıt müşteriye gider — atölyenin markasını kullan
+    tenant = db.get(Tenant, thread.tenant_id) if thread.tenant_id else None
+    brand = (tenant.app_name or tenant.name) if tenant else "BERNZ"
+    bc = (tenant.brand_color or "").strip() if tenant else ""
+    if bc and not bc.startswith("#"):
+        bc = "#" + bc
+    accent = bc or email_service.DEFAULT_ACCENT
+
+    reply_html = escape((body or "").strip()).replace("\n", "<br>") or "—"
+    box = email_service.highlight_box(reply_html, accent=accent)
+    if img_url:
+        box += (f'<p style="margin:0 0 16px"><img src="{escape(img_url)}" alt="" '
+                f'style="max-width:100%;border-radius:10px"></p>')
+    body_html = (
+        f"<p style='margin:0 0 14px'>Merhaba {escape(ad)},</p>"
+        f"<p style='margin:0 0 14px'><b>Sipariş #{escape(onum)}</b> ile ilgili destek talebinize "
+        "yanıt verdik:</p>"
+        f"{box}"
+        "<p style='margin:0;font-size:14px;color:#6b7280'>Yanıtlamak veya siparişinizi takip etmek "
+        "için aşağıdaki butonu kullanabilirsiniz.</p>"
+    )
+    html = email_service.render_email(
+        title="Destek talebiniz yanıtlandı",
+        emoji="💬",
+        body_html=body_html,
+        button_text="Görüntüle / Yanıtla",
+        button_url=track,
+        brand=brand,
+        accent=accent,
+        preheader=f"Sipariş #{onum} destek talebinize yanıt verildi",
+        footer="Bu e-posta, siparişinizle ilgili destek talebinize verilen yanıttır.",
+    )
+    text = (f"Destek talebiniz yanıtlandı — Sipariş #{onum}\n\nMerhaba {ad},\n\n"
+            f"{(body or '').strip()}\n\nGörüntüle/Yanıtla: {track}")
+    subject = f"Destek talebiniz yanıtlandı — Sipariş #{onum}"
     ok = email_service.send_email(to, subject, html, text)
     return ok, (None if ok else "Gönderim başarısız (SMTP log'una bakın)")
 
@@ -159,7 +180,7 @@ def reply_thread(
     t = sup.add_admin_message(db, t, payload.message, image_url=img)
     email_sent, email_error = (False, None)
     if payload.send_email:
-        email_sent, email_error = _send_reply_email(t, payload.message, img)
+        email_sent, email_error = _send_reply_email(db, t, payload.message, img)
     return {
         **_thread_summary(db, t),
         "messages": sup.messages_payload(db, t),

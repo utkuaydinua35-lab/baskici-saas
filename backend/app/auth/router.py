@@ -295,18 +295,24 @@ def forgot_password(req: _ForgotPasswordRequest, db: Session = Depends(get_db)):
         token = _pw_serializer().dumps({"uid": str(user.id)})
         link = f"{settings.panel_base_url.rstrip('/')}/sifre-sifirla?token={token}"
         ad = (user.full_name or "").split()[0] if user.full_name else ""
-        html = f"""
-        <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;color:#1f2937">
-          <h2 style="color:#6d28d9">Şifre Sıfırlama</h2>
-          <p>Merhaba {ad or ''},</p>
-          <p>Hesabınız için şifre sıfırlama talebinde bulunuldu. Yeni şifre belirlemek için
-          aşağıdaki butona tıklayın (bağlantı <b>1 saat</b> geçerlidir):</p>
-          <p style="margin:24px 0">
-            <a href="{link}" style="background:#6d28d9;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Şifremi Sıfırla</a>
-          </p>
-          <p style="font-size:12px;color:#6b7280">Buton çalışmazsa: <br>{link}</p>
-          <p style="font-size:12px;color:#6b7280">Bu talebi siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>
-        </div>"""
+        body = (
+            f"<p style='margin:0 0 14px'>Merhaba {ad or ''},</p>"
+            "<p style='margin:0 0 14px'>Hesabınız için bir şifre sıfırlama talebi aldık. "
+            "Yeni şifrenizi belirlemek için aşağıdaki butona tıklayın. "
+            "Bağlantı <b>1 saat</b> boyunca geçerlidir.</p>"
+            "<p style='margin:0 0 6px;font-size:13px;color:#6b7280'>Buton çalışmazsa bu bağlantıyı "
+            f"tarayıcınıza yapıştırın:</p><p style='margin:0 0 4px;font-size:12px;word-break:break-all'>"
+            f"<a href='{link}' style='color:#6d28d9'>{link}</a></p>"
+        )
+        html = email_service.render_email(
+            title="Şifre Sıfırlama",
+            emoji="🔒",
+            body_html=body,
+            button_text="Şifremi Sıfırla",
+            button_url=link,
+            preheader="Şifre sıfırlama bağlantınız (1 saat geçerli)",
+            footer="Bu talebi siz yapmadıysanız bu e-postayı yok sayabilirsiniz. Şifreniz değişmez.",
+        )
         text = f"Şifre sıfırlama bağlantınız (1 saat geçerli):\n{link}"
         email_service.send_email(user.email, "Şifre Sıfırlama — BERNZ", html, text)
 

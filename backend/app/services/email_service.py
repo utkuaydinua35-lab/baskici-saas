@@ -51,3 +51,80 @@ def send_email(to: str, subject: str, html: str, text: str | None = None) -> boo
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[email] gönderim hatası: {e}")
         return False
+
+
+# ─── Şık e-posta şablonu (tüm e-postalar ortak görünüm) ──────────────
+DEFAULT_ACCENT = "#6d28d9"
+
+
+def highlight_box(inner_html: str, accent: str = DEFAULT_ACCENT) -> str:
+    """İçeriği vurgulu (sol kenarlıklı, açık zeminli) bir kutuya sar."""
+    return (
+        f'<div style="background:#f7f6fe;border-left:4px solid {accent};'
+        f'border-radius:10px;padding:14px 18px;margin:6px 0 18px;'
+        f'font-size:15px;color:#374151;line-height:1.6">{inner_html}</div>'
+    )
+
+
+def render_email(
+    *,
+    title: str,
+    body_html: str,
+    button_text: str = "",
+    button_url: str = "",
+    footer: str = "Bu otomatik bir e-postadır.",
+    preheader: str = "",
+    brand: str = "BERNZ",
+    accent: str = DEFAULT_ACCENT,
+    emoji: str = "",
+) -> str:
+    """Markalı, responsive, email-client uyumlu HTML e-posta üret.
+
+    body_html: gövde içeriği (paragraflar + opsiyonel highlight_box()).
+    button_*: opsiyonel CTA butonu. preheader: gelen kutusu önizleme metni.
+    """
+    initial = (brand or "B").strip()[:1].upper() or "B"
+    pre = (
+        f'<div style="display:none;max-height:0;overflow:hidden;opacity:0;'
+        f'mso-hide:all">{preheader}</div>'
+    ) if preheader else ""
+    btn = ""
+    if button_text and button_url:
+        btn = f"""
+              <tr><td align="center" style="padding:6px 0 2px">
+                <a href="{button_url}" style="display:inline-block;background:{accent};
+                   color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;
+                   padding:13px 30px;border-radius:10px">{button_text}</a>
+              </td></tr>"""
+    head_emoji = f'{emoji} ' if emoji else ""
+    return f"""<!doctype html>
+<html lang="tr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+</head>
+<body style="margin:0;padding:0;background:#eef0f4;-webkit-font-smoothing:antialiased;">
+{pre}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef0f4;padding:28px 12px;">
+  <tr><td align="center">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:540px;background:#ffffff;border-radius:18px;overflow:hidden;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;box-shadow:0 4px 24px rgba(17,24,39,.06);">
+      <tr><td style="background:{accent};padding:24px 30px;">
+        <span style="display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;background:rgba(255,255,255,.20);border-radius:10px;color:#ffffff;font-weight:700;font-size:19px;vertical-align:middle;">{initial}</span>
+        <span style="color:#ffffff;font-size:18px;font-weight:600;letter-spacing:.3px;margin-left:11px;vertical-align:middle;">{brand}</span>
+      </td></tr>
+      <tr><td style="padding:30px 30px 26px;">
+        <h1 style="margin:0 0 18px;font-size:21px;line-height:1.3;color:#111827;font-weight:700;">{head_emoji}{title}</h1>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td style="font-size:15px;color:#374151;line-height:1.65;">{body_html}</td></tr>
+          {btn}
+        </table>
+      </td></tr>
+      <tr><td style="padding:16px 30px;border-top:1px solid #f0f1f3;background:#fafafb;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">{footer}</p>
+      </td></tr>
+    </table>
+    <p style="margin:14px 0 0;font-size:11px;color:#aab0bb;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">© {brand}</p>
+  </td></tr>
+</table>
+</body></html>"""

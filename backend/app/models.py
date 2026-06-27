@@ -1143,3 +1143,43 @@ class Note(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+
+class MarketingSubscriber(Base):
+    """Pazarlama (kampanya/bilgilendirme) e-posta abonesi — KVKK uyumlu.
+
+    status: pending (onay bekliyor) | subscribed (onaylı) | unsubscribed | bounced.
+    Rıza kanıtı consent_at/ip/text alanlarında saklanır (KVKK açık rıza).
+    """
+    __tablename__ = "marketing_subscribers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_mkt_sub_tenant_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+
+    email: Mapped[str] = mapped_column(String(200), index=True)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default=text("'pending'"), nullable=False, index=True
+    )
+    source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # KVKK açık rıza kanıtı
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consent_ip: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    consent_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Çift opt-in onay + kalıcı abonelikten-çıkma token'ı
+    confirm_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    unsubscribe_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    unsubscribed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+

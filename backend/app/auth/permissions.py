@@ -23,6 +23,7 @@ ALL_PERMISSIONS = [
     "ayarlar",
     "kullanici_yonetimi",
     "bayii",
+    "pazarlama",
 ]
 
 # Hazir rol sablonlari (yonetici kullanici eklerken baslangic noktasi)

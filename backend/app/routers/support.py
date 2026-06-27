@@ -145,6 +145,14 @@ def _send_reply_email(db: Session, thread: SupportThread, body: str, img_url: st
         "<p style='margin:0;font-size:14px;color:#6b7280'>Yanıtlamak veya siparişinizi takip etmek "
         "için aşağıdaki butonu kullanabilirsiniz.</p>"
     )
+    # Pazarlama daveti (KVKK: tıklayan kendi gelen kutusundan onaylamış sayılır)
+    from app.services import marketing as _mkt
+    _join = _mkt.join_url(thread.tenant_id, to, thread.customer_name or "", "support_mail")
+    body_html += (
+        "<p style='margin:18px 0 0;padding-top:14px;border-top:1px solid #f0f1f3;font-size:13px;color:#6b7280'>"
+        f"📣 Kampanya ve yeni ürünlerden haberdar olmak ister misiniz? "
+        f"<a href='{_join}' style='color:{accent};font-weight:600'>Abone olun</a></p>"
+    )
     html = email_service.render_email(
         title="Destek talebiniz yanıtlandı",
         emoji="💬",

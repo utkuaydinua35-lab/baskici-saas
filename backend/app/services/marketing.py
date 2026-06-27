@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import MarketingSubscriber, Tenant
+from app.models import MarketingCampaign, MarketingSubscriber, Tenant
 from app.services import email_service
 
 logger = logging.getLogger("marketing")
@@ -195,3 +195,121 @@ def _send_confirm_email(db: Session, sub: MarketingSubscriber) -> bool:
     )
     text = f"Aboneliğini onaylamak için: {confirm_link}"
     return email_service.send_email(sub.email, "Aboneliğini onayla", html, text)
+
+
+# ─── Kampanya (Faz 2) ────────────────────────────────────────
+
+def _body_to_html(text: str | None) -> str:
+    from html import escape
+    text = (text or "").strip()
+    if not text:
+        return ""
+    paras = [p.strip() for p in text.split("\n\n") if p.strip()]
+    return "".join(
+        "<p style='margin:0 0 14px'>" + escape(p).replace("\n", "<br>") + "</p>"
+        for p in paras
+    )
+
+
+def _campaign_plain(camp: MarketingCampaign) -> str:
+    parts = [camp.title or camp.subject, "", (camp.body or "")]
+    if camp.button_url:
+        parts += ["", f"{camp.button_label or 'Bağlantı'}: {camp.button_url}"]
+    return "\n".join(parts)
+
+
+def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str) -> str:
+    footer = (
+        "Bu e-postayı, pazarlama iletilerimize abone olduğunuz için aldınız. "
+        f"<a href='{unsubscribe_link}' style='color:#9ca3af'>Abonelikten çık</a>"
+    )
+    return email_service.render_email(
+        title=camp.title or camp.subject,
+        body_html=_body_to_html(camp.body),
+        button_text=camp.button_label or "",
+        button_url=camp.button_url or "",
+        preheader=camp.subject,
+        footer=footer,
+        **email_service.brand_kwargs(tenant),
+    )
+
+
+def send_test(db: Session, camp: MarketingCampaign, to_email: str) -> bool:
+    to_email = _norm_email(to_email)
+    if not to_email or "@" not in to_email:
+        return False
+    tenant = db.get(Tenant, camp.tenant_id)
+    html = render_campaign_email(tenant, camp, f"{_base()}/api/pazarlama/cik/test")
+    return email_service.send_email(to_email, f"[TEST] {camp.subject}", html, _campaign_plain(camp))
+
+
+def start_campaign(db: Session, camp: MarketingCampaign) -> tuple[bool, str]:
+    if camp.status == "sending":
+        return False, "Kampanya zaten gönderiliyor"
+    if camp.status == "sent":
+        return False, "Bu kampanya zaten gönderilmiş"
+    if not email_service.is_configured():
+        return False, "SMTP yapılandırılmamış"
+    n = db.scalar(
+        select(safunc.count()).select_from(MarketingSubscriber).where(
+            MarketingSubscriber.tenant_id == camp.tenant_id,
+            MarketingSubscriber.status == "subscribed",
+        )
+    ) or 0
+    if not n:
+        return False, "Onaylı abone yok"
+    camp.status = "sending"
+    camp.recipient_count = int(n)
+    camp.sent_count = 0
+    camp.fail_count = 0
+    db.commit()
+    import threading
+    threading.Thread(target=_send_campaign_worker, args=(str(camp.id),), daemon=True).start()
+    return True, f"{n} aboneye gönderim başladı"
+
+
+def _send_campaign_worker(campaign_id: str) -> None:
+    import time
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        camp = db.get(MarketingCampaign, campaign_id)
+        if not camp:
+            return
+        tenant = db.get(Tenant, camp.tenant_id)
+        subs = db.scalars(
+            select(MarketingSubscriber).where(
+                MarketingSubscriber.tenant_id == camp.tenant_id,
+                MarketingSubscriber.status == "subscribed",
+            )
+        ).all()
+        sent = fail = 0
+        for sub in subs:
+            unsub = unsubscribe_url(sub)
+            html = render_campaign_email(tenant, camp, unsub)
+            ok = email_service.send_email(
+                sub.email, camp.subject, html, _campaign_plain(camp),
+                headers={"List-Unsubscribe": f"<{unsub}>"},
+            )
+            sent += 1 if ok else 0
+            fail += 0 if ok else 1
+            if (sent + fail) % 20 == 0:
+                camp.sent_count, camp.fail_count = sent, fail
+                db.commit()
+            time.sleep(0.4)  # Gmail'i yormamak için
+        camp.sent_count, camp.fail_count = sent, fail
+        camp.status = "sent"
+        camp.sent_at = datetime.now(UTC)
+        db.commit()
+        logger.info(f"[marketing] kampanya {campaign_id}: {sent} gönderildi, {fail} hata")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[marketing] kampanya worker hatası: {e}")
+        try:
+            c = db.get(MarketingCampaign, campaign_id)
+            if c and c.status == "sending":
+                c.status = "failed"
+                db.commit()
+        except Exception:  # noqa: BLE001
+            pass
+    finally:
+        db.close()

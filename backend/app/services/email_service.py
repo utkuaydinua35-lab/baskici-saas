@@ -20,8 +20,10 @@ def is_configured() -> bool:
     return bool(s.smtp_host and s.smtp_user and s.smtp_password)
 
 
-def send_email(to: str, subject: str, html: str, text: str | None = None) -> bool:
-    """E-posta gönder. Başarılıysa True. SMTP ayarlı değilse / hata olursa False."""
+def send_email(to: str, subject: str, html: str, text: str | None = None,
+               headers: dict | None = None) -> bool:
+    """E-posta gönder. Başarılıysa True. SMTP ayarlı değilse / hata olursa False.
+    headers: ek e-posta başlıkları (örn. List-Unsubscribe)."""
     s = get_settings()
     if not is_configured():
         logger.warning("[email] SMTP yapılandırılmamış — gönderilmedi")
@@ -32,6 +34,9 @@ def send_email(to: str, subject: str, html: str, text: str | None = None) -> boo
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = to
+    for k, v in (headers or {}).items():
+        if v:
+            msg[k] = v
     msg.set_content(text or "Bu e-postayı görüntülemek için HTML destekli bir istemci kullanın.")
     msg.add_alternative(html, subtype="html")
 

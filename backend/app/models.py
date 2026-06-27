@@ -1183,3 +1183,34 @@ class MarketingSubscriber(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+
+class MarketingCampaign(Base):
+    """Pazarlama kampanyası — abonelere toplu gönderilen markalı e-posta.
+
+    status: draft (taslak) | sending (gönderiliyor) | sent (tamamlandı) | failed.
+    Gövde düz metin (satır sonları paragrafa çevrilir) + opsiyonel CTA butonu.
+    """
+    __tablename__ = "marketing_campaigns"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+
+    subject: Mapped[str] = mapped_column(String(300))
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    button_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    button_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default=text("'draft'"), nullable=False, index=True
+    )
+    recipient_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    sent_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    fail_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+

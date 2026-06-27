@@ -19,6 +19,8 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    HRFlowable,
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -81,6 +83,47 @@ def _parse_day(s: str | None, end: bool = False) -> datetime | None:
     return datetime.combine(d.date(), t, tzinfo=_TR)
 
 
+def _accent_colors(tenant) -> tuple[colors.Color, colors.Color]:
+    """Tenant marka renginden (accent, açık_ton). Yoksa varsayılan mor."""
+    hexc = (getattr(tenant, "brand_color", None) or "").strip() if tenant else ""
+    if hexc and not hexc.startswith("#"):
+        hexc = "#" + hexc
+    try:
+        accent = colors.HexColor(hexc) if hexc else _ACCENT
+    except Exception:  # noqa: BLE001 — geçersiz hex
+        accent = _ACCENT
+    light = colors.Color(
+        accent.red * 0.10 + 0.90,
+        accent.green * 0.10 + 0.90,
+        accent.blue * 0.10 + 0.90,
+    )
+    return accent, light
+
+
+def _logo_flowable(tenant, max_h: float = 15 * mm, max_w: float = 50 * mm):
+    """Tenant logosunu (varsa) reportlab Image olarak döndür — oranı korur. Yoksa None."""
+    logo_url = getattr(tenant, "logo_url", None) if tenant else None
+    if not logo_url or not str(logo_url).startswith("/storage/"):
+        return None
+    try:
+        from reportlab.lib.utils import ImageReader
+        from app.services.storage import STORAGE_ROOT
+        path = STORAGE_ROOT / str(logo_url)[len("/storage/"):]
+        if not path.exists():
+            return None
+        iw, ih = ImageReader(str(path)).getSize()
+        if not iw or not ih:
+            return None
+        dh, dw = max_h, iw * (max_h / ih)
+        if dw > max_w:
+            dw, dh = max_w, ih * (max_w / iw)
+        img = Image(str(path), width=dw, height=dh)
+        img.hAlign = "RIGHT"
+        return img
+    except Exception:  # noqa: BLE001 — bozuk/eksik logo dosyası
+        return None
+
+
 def build_statement_pdf(
     db: Session,
     dealer: Dealer,
@@ -89,7 +132,8 @@ def build_statement_pdf(
 ) -> bytes:
     reg, bold = _ensure_fonts()
     tenant = db.get(Tenant, dealer.tenant_id)
-    atolye = (tenant.name if tenant else None) or "Atölye"
+    atolye = (getattr(tenant, "app_name", None) or (tenant.name if tenant else None)) or "Atölye"
+    accent, accent_light = _accent_colors(tenant)
     primary = (getattr(dealer, "currency", "TRY") or "TRY").upper()
 
     dt_from = _parse_day(date_from, end=False)
@@ -104,9 +148,9 @@ def build_statement_pdf(
 
     # ─── Stiller ───
     styles = {
-        "title": ParagraphStyle("title", fontName=bold, fontSize=18, textColor=_ACCENT, leading=22),
+        "title": ParagraphStyle("title", fontName=bold, fontSize=18, textColor=accent, leading=22),
         "sub": ParagraphStyle("sub", fontName=reg, fontSize=9, textColor=_GREY, leading=12),
-        "h2": ParagraphStyle("h2", fontName=bold, fontSize=12, textColor=_ACCENT, leading=15),
+        "h2": ParagraphStyle("h2", fontName=bold, fontSize=12, textColor=accent, leading=15),
         "body": ParagraphStyle("body", fontName=reg, fontSize=9, textColor=colors.HexColor("#111827"), leading=12),
         "small": ParagraphStyle("small", fontName=reg, fontSize=8, textColor=_GREY, leading=10),
     }
@@ -119,11 +163,24 @@ def build_statement_pdf(
     )
     story = []
 
-    # ─── Başlık ───
+    # ─── Başlık (logo + marka) ───
     bugun = datetime.now(_TR).strftime("%d.%m.%Y %H:%M")
-    story.append(Paragraph("CARİ EKSTRE", styles["title"]))
-    story.append(Paragraph(atolye, styles["sub"]))
-    story.append(Spacer(1, 8))
+    title_block = [Paragraph("CARİ EKSTRE", styles["title"]), Paragraph(atolye, styles["sub"])]
+    logo = _logo_flowable(tenant)
+    if logo is not None:
+        head = Table([[title_block, logo]], colWidths=[120 * mm, 58 * mm])
+        head.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        story.append(head)
+    else:
+        story.append(title_block[0])
+        story.append(title_block[1])
+    story.append(Spacer(1, 6))
+    story.append(HRFlowable(width="100%", thickness=2, color=accent, spaceBefore=0, spaceAfter=8))
 
     # ─── Bayi + dönem bilgisi (iki sütun) ───
     donem_txt = "Tüm zamanlar"
@@ -209,7 +266,7 @@ def build_statement_pdf(
             colWidths=[59 * mm, 59 * mm, 60 * mm],
         )
         summary.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), _ACCENT_LIGHT),
+            ("BACKGROUND", (0, 0), (-1, -1), accent_light),
             ("BOX", (0, 0), (-1, -1), 0.5, _BORDER),
             ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.white),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -249,7 +306,7 @@ def build_statement_pdf(
             ("FONTNAME", (0, 0), (-1, 0), bold),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("BACKGROUND", (0, 0), (-1, 0), _ACCENT),
+            ("BACKGROUND", (0, 0), (-1, 0), accent),
             ("ALIGN", (3, 0), (5, -1), "RIGHT"),
             ("ALIGN", (0, 0), (1, -1), "LEFT"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),

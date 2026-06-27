@@ -1209,8 +1209,34 @@ class MarketingCampaign(Base):
     recipient_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     sent_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     fail_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # Benzersiz açan / tıklayan abone sayısı (tracking pixel + yönlendirme linki)
+    open_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    click_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MarketingSend(Base):
+    """Kampanya × abone gönderim kaydı — açılma/tıklama takibi (id = tracking token)."""
+    __tablename__ = "marketing_sends"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("marketing_campaigns.id", ondelete="CASCADE"), index=True
+    )
+    subscriber_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("marketing_subscribers.id", ondelete="SET NULL"), nullable=True
+    )
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(20), default="sent", server_default=text("'sent'"))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    open_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    clicked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    click_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

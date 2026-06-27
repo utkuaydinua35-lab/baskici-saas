@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import MarketingCampaign, MarketingSubscriber, Tenant
+from app.models import MarketingCampaign, MarketingSend, MarketingSubscriber, Tenant
 from app.services import email_service
 
 logger = logging.getLogger("marketing")
@@ -218,16 +218,27 @@ def _campaign_plain(camp: MarketingCampaign) -> str:
     return "\n".join(parts)
 
 
-def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str) -> str:
+def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str,
+                          *, tracking_send_id: str | None = None) -> str:
+    base = _base()
+    body = _body_to_html(camp.body)
+    btn_url = camp.button_url or ""
+    # Tıklama takibi: buton linkini yönlendirme endpoint'ine çevir
+    if tracking_send_id and btn_url:
+        btn_url = f"{base}/api/pazarlama/t/{tracking_send_id}"
+    # Açılma takibi: görünmez 1x1 pixel
+    if tracking_send_id:
+        body += (f"<img src='{base}/api/pazarlama/a/{tracking_send_id}' width='1' height='1' "
+                 "alt='' style='display:none;width:1px;height:1px'>")
     footer = (
         "Bu e-postayı, pazarlama iletilerimize abone olduğunuz için aldınız. "
         f"<a href='{unsubscribe_link}' style='color:#9ca3af'>Abonelikten çık</a>"
     )
     return email_service.render_email(
         title=camp.title or camp.subject,
-        body_html=_body_to_html(camp.body),
+        body_html=body,
         button_text=camp.button_label or "",
-        button_url=camp.button_url or "",
+        button_url=btn_url,
         preheader=camp.subject,
         footer=footer,
         **email_service.brand_kwargs(tenant),
@@ -285,12 +296,17 @@ def _send_campaign_worker(campaign_id: str) -> None:
         ).all()
         sent = fail = 0
         for sub in subs:
+            send = MarketingSend(campaign_id=camp.id, subscriber_id=sub.id, email=sub.email)
+            db.add(send)
+            db.flush()  # send.id (tracking token)
             unsub = unsubscribe_url(sub)
-            html = render_campaign_email(tenant, camp, unsub)
+            html = render_campaign_email(tenant, camp, unsub, tracking_send_id=str(send.id))
             ok = email_service.send_email(
                 sub.email, camp.subject, html, _campaign_plain(camp),
                 headers={"List-Unsubscribe": f"<{unsub}>"},
             )
+            send.status = "sent" if ok else "failed"
+            send.sent_at = datetime.now(UTC) if ok else None
             sent += 1 if ok else 0
             fail += 0 if ok else 1
             if (sent + fail) % 20 == 0:
@@ -313,3 +329,49 @@ def _send_campaign_worker(campaign_id: str) -> None:
             pass
     finally:
         db.close()
+
+
+# ─── Açılma / tıklama takibi ─────────────────────────────────
+
+def _get_send(db: Session, send_id: str) -> MarketingSend | None:
+    import uuid as _uuid
+    try:
+        sid = _uuid.UUID(send_id)
+    except (ValueError, AttributeError):
+        return None
+    return db.get(MarketingSend, sid)
+
+
+def record_open(db: Session, send_id: str) -> None:
+    send = _get_send(db, send_id)
+    if not send:
+        return
+    first = send.opened_at is None
+    if first:
+        send.opened_at = datetime.now(UTC)
+        camp = db.get(MarketingCampaign, send.campaign_id)
+        if camp:
+            camp.open_count = (camp.open_count or 0) + 1
+    send.open_count = (send.open_count or 0) + 1
+    db.commit()
+
+
+def record_click(db: Session, send_id: str) -> str | None:
+    """Tıklamayı kaydet, yönlendirilecek hedef URL'i döndür (kampanya butonu)."""
+    send = _get_send(db, send_id)
+    if not send:
+        return None
+    camp = db.get(MarketingCampaign, send.campaign_id)
+    # Tıklama aynı zamanda açılma sayılır
+    if send.opened_at is None:
+        send.opened_at = datetime.now(UTC)
+        if camp:
+            camp.open_count = (camp.open_count or 0) + 1
+    if send.clicked_at is None:
+        send.clicked_at = datetime.now(UTC)
+        if camp:
+            camp.click_count = (camp.click_count or 0) + 1
+    send.click_count = (send.click_count or 0) + 1
+    db.commit()
+    return (camp.button_url if camp else None) or None
+

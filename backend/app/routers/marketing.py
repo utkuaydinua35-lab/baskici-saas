@@ -144,6 +144,7 @@ def _ser_camp(c: MarketingCampaign) -> dict:
         "id": str(c.id), "subject": c.subject, "title": c.title, "body": c.body,
         "button_label": c.button_label, "button_url": c.button_url, "status": c.status,
         "recipient_count": c.recipient_count, "sent_count": c.sent_count, "fail_count": c.fail_count,
+        "open_count": c.open_count, "click_count": c.click_count,
         "created_by": c.created_by,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "sent_at": c.sent_at.isoformat() if c.sent_at else None,

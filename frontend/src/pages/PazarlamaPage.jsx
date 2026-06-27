@@ -220,7 +220,10 @@ function CampaignsTab({ toast }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center gap-2">
         <p className="text-sm text-gray-400">Onaylı abonelere markalı toplu e-posta gönder. Önce <b>Test</b> et, sonra <b>Gönder</b>.</p>
-        <button onClick={() => setShowNew(s => !s)} className="btn-primary !text-sm shrink-0">{showNew ? 'Kapat' : '+ Yeni Kampanya'}</button>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={load} className="btn-secondary !text-sm">↻ Yenile</button>
+          <button onClick={() => setShowNew(s => !s)} className="btn-primary !text-sm">{showNew ? 'Kapat' : '+ Yeni Kampanya'}</button>
+        </div>
       </div>
 
       {showNew && (
@@ -249,7 +252,12 @@ function CampaignsTab({ toast }) {
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <span className={`text-[11px] px-1.5 py-0.5 rounded ${cls}`}>{lbl}</span>
                     {(c.status === 'sent' || c.status === 'sending') && (
-                      <span className="text-xs text-gray-500">{c.sent_count}/{c.recipient_count} gönderildi{c.fail_count ? ` · ${c.fail_count} hata` : ''}</span>
+                      <span className="text-xs text-gray-500">
+                        {c.sent_count}/{c.recipient_count} gönderildi{c.fail_count ? ` · ${c.fail_count} hata` : ''}
+                        {c.status === 'sent' && c.sent_count > 0 && (
+                          <> · 👁 {c.open_count} (%{Math.round(100 * c.open_count / c.sent_count)}) · 🖱 {c.click_count} (%{Math.round(100 * c.click_count / c.sent_count)})</>
+                        )}
+                      </span>
                     )}
                   </div>
                 </div>

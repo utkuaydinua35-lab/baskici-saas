@@ -8,10 +8,11 @@
 """
 from __future__ import annotations
 
+import base64
 from html import escape
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -162,3 +163,29 @@ def subscribe_submit(slug: str, request: Request, db: Session = Depends(get_db),
                  message="E-postanıza bir <b>onay bağlantısı</b> gönderdik. Aboneliğinizi "
                          "tamamlamak için lütfen onaylayın.<br><span style='font-size:13px;color:#9ca3af'>"
                          "(Gelen kutunuzu ve spam klasörünü kontrol edin.)</span>")
+
+
+# ─── Açılma / tıklama takibi ─────────────────────────────────
+_PIXEL = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+
+
+@router.get("/a/{send_id}")
+def track_open(send_id: str, db: Session = Depends(get_db)):
+    """Açılma takibi — görünmez 1x1 GIF döner."""
+    try:
+        marketing.record_open(db, send_id)
+    except Exception:  # noqa: BLE001 — takip asla isteği bozmasın
+        pass
+    return Response(content=_PIXEL, media_type="image/gif",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@router.get("/t/{send_id}")
+def track_click(send_id: str, db: Session = Depends(get_db)):
+    """Tıklama takibi — kaydeder, kampanya buton linkine yönlendirir."""
+    url = None
+    try:
+        url = marketing.record_click(db, send_id)
+    except Exception:  # noqa: BLE001
+        pass
+    return RedirectResponse(url or (get_settings().panel_base_url or "/"), status_code=302)

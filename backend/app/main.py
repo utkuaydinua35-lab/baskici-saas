@@ -25,6 +25,7 @@ from app.routers.dashboard import router as dashboard_router
 from app.routers.public_tracker import router as public_tracker_router
 from app.routers.public_support import router as public_support_router
 from app.routers.public_approval import router as public_approval_router
+from app.routers.webhooks import router as webhooks_router
 from app.routers.platform import router as platform_router
 from app.routers.support import router as support_router
 from app.routers.templates import router as templates_router
@@ -93,6 +94,7 @@ app.include_router(dashboard_router)
 app.include_router(public_tracker_router)
 app.include_router(public_support_router)
 app.include_router(public_approval_router)
+app.include_router(webhooks_router)
 app.include_router(platform_router)
 app.include_router(support_router)
 app.include_router(aski.router)

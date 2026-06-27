@@ -1,0 +1,106 @@
+"""Webhook'lar — dış servis bildirimleri (auth yok, URL secret ile korunur).
+
+Basit Kargo kargo durumu:
+  POST /api/webhooks/basit-kargo/{secret}
+Payload (status değişikliği): {id, barcode, status, handler{...}, handlerShipmentCode}
+Order.kargo_info.barcode ile eşleştirir → kargo_info günceller, DELIVERED'da stage 9
+(Teslim), sorunlu durumlarda Telegram uyarısı.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.database import get_db
+from app.models import Order, OrderStatusHistory
+from app.services import telegram
+
+logger = logging.getLogger("webhooks")
+
+router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+
+# Basit Kargo status -> Türkçe etiket
+_STATUS_TR = {
+    "NEW": "Oluşturuldu",
+    "READY_TO_SHIP": "Kargoya hazır",
+    "SHIPPED": "Kargoda",
+    "OUT_FOR_DELIVERY": "Dağıtımda",
+    "DELIVERED": "Teslim edildi",
+    "NEEDS_SUPPORT": "Destek gerekiyor",
+    "DELAYED": "Gecikti",
+    "RETURNING": "İade ediliyor",
+    "RETURNED": "İade edildi",
+    "LOST": "Kayıp",
+}
+# Operatöre Telegram uyarısı gerektiren sorunlu durumlar
+_PROBLEM = {"NEEDS_SUPPORT", "DELAYED", "RETURNING", "RETURNED", "LOST"}
+
+
+@router.post("/basit-kargo/{secret}", response_model=None)
+def basit_kargo_webhook(
+    secret: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    s = get_settings()
+    expected = (s.basit_kargo_webhook_secret or "").strip()
+    # Secret tanımsız ya da yanlışsa — varlığını belli etmeden 404
+    if not expected or secret != expected:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    barcode = str(payload.get("barcode") or "").strip()
+    status = str(payload.get("status") or "").strip().upper()
+    if not barcode:
+        return {"ok": True, "skipped": "no barcode"}
+
+    # Barkodla siparişi bul (tenant-bağımsız; barkod global benzersiz)
+    order = db.scalar(select(Order).where(Order.kargo_info["barcode"].astext == barcode))
+    if not order:
+        logger.info(f"[webhook] basit-kargo barkod eşleşmedi: {barcode}")
+        return {"ok": True, "matched": False}
+
+    ki = dict(order.kargo_info or {})
+    prev_status = (ki.get("status") or "").upper()
+    changed = bool(status) and status != prev_status
+
+    # kargo_info güncelle (durum + son hareket + zaman)
+    if status:
+        ki["status"] = status
+    last_state = (payload.get("shipmentInfo") or {}).get("lastState") or _STATUS_TR.get(status)
+    if last_state:
+        ki["last_state"] = last_state
+    ki["updated_at"] = datetime.now(UTC).isoformat()
+    order.kargo_info = ki
+
+    if changed:
+        durum_tr = _STATUS_TR.get(status, status)
+        if status == "DELIVERED":
+            if (order.current_stage or 0) < 9:
+                prev_stage = order.current_stage or 8
+                order.current_stage = 9  # Teslim
+                db.add(OrderStatusHistory(
+                    tenant_id=order.tenant_id, order_id=order.id,
+                    from_stage=prev_stage, to_stage=9, action="teslim_edildi",
+                    note=f"{ki.get('handler_name', 'Kargo')} · {durum_tr} (webhook)",
+                    created_by="Basit Kargo",
+                ))
+        else:
+            action = "kargo_sorunu" if status in _PROBLEM else "kargo_durumu"
+            db.add(OrderStatusHistory(
+                tenant_id=order.tenant_id, order_id=order.id,
+                from_stage=None, to_stage=order.current_stage, action=action,
+                note=f"Kargo: {durum_tr} (webhook)", created_by="Basit Kargo",
+            ))
+            if status in _PROBLEM:
+                telegram.send_message(
+                    f"⚠️ <b>Kargo sorunu</b> · #{order.order_number or order.id}\n"
+                    f"{ki.get('handler_name', 'Kargo')} · <b>{durum_tr}</b> · takip {ki.get('takip_no', '')}"
+                )
+
+    db.commit()
+    return {"ok": True, "matched": True, "status": status, "changed": changed}

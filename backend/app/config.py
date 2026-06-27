@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     basit_kargo_token: str = Field("", alias="BASIT_KARGO_TOKEN")
     basit_kargo_address_id: str = Field("", alias="BASIT_KARGO_ADDRESS_ID")  # opsiyonel gönderici
     basit_kargo_brand_id: str = Field("", alias="BASIT_KARGO_BRAND_ID")      # opsiyonel marka
+    # Webhook secret (URL'de): boş ise webhook kapalı (tüm istekler 404).
+    basit_kargo_webhook_secret: str = Field("", alias="BASIT_KARGO_WEBHOOK_SECRET")
 
     @property
     def is_production(self) -> bool:

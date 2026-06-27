@@ -64,15 +64,23 @@ def _addr_parts(raw: dict) -> dict:
     soyad = (sa.get("last_name") or "").strip()
     kisi = (ad + " " + soyad).strip() or (sa.get("name") or "").strip()
     il, ilce = _split_il_ilce(sa.get("province"), sa.get("city"))
-    # ilce gecerli mi? degilse adres metninden cikarmayi dene
+    # resmi il (ilce eslesmesi icin)
+    resmi_il = tr_iller.resolve_il(il)
+    # İl çözülemediyse (örn province boş, city='Merkez') posta kodundan (TR plaka) bul.
+    # Bu durumda eldeki "il" değeri aslında ilçedir (Merkez/Şahinbey gibi) — ilçeye taşı.
+    if not resmi_il:
+        zip_il = tr_iller.il_from_zip(sa.get("zip"))
+        if zip_il:
+            if il and not (ilce or "").strip():
+                ilce = il
+            resmi_il = zip_il
+    if resmi_il:
+        il = resmi_il
+    # ilce gecerli mi? degilse adres metninden cikarmayi dene (cozulen il ile)
     if il and not tr_iller.gecerli_ilce_mi(ilce, il):
         bulunan = tr_iller.ilce_bul(adres, il)
         if bulunan:
             ilce = bulunan
-    # resmi il (ilce eslesmesi icin) + Surat'in bekledigi il adi (payload icin)
-    resmi_il = tr_iller.resolve_il(il)
-    if resmi_il:
-        il = resmi_il
     surat_il = tr_iller.surat_il_adi(il)   # ornek: Afyonkarahisar -> Afyon
     return {
         "kisi": kisi,

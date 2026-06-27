@@ -304,6 +304,7 @@ def forgot_password(req: _ForgotPasswordRequest, db: Session = Depends(get_db)):
             f"tarayıcınıza yapıştırın:</p><p style='margin:0 0 4px;font-size:12px;word-break:break-all'>"
             f"<a href='{link}' style='color:#6d28d9'>{link}</a></p>"
         )
+        tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
         html = email_service.render_email(
             title="Şifre Sıfırlama",
             emoji="🔒",
@@ -312,6 +313,7 @@ def forgot_password(req: _ForgotPasswordRequest, db: Session = Depends(get_db)):
             button_url=link,
             preheader="Şifre sıfırlama bağlantınız (1 saat geçerli)",
             footer="Bu talebi siz yapmadıysanız bu e-postayı yok sayabilirsiniz. Şifreniz değişmez.",
+            **email_service.brand_kwargs(tenant),
         )
         text = f"Şifre sıfırlama bağlantınız (1 saat geçerli):\n{link}"
         email_service.send_email(user.email, "Şifre Sıfırlama — BERNZ", html, text)

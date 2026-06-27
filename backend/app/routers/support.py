@@ -127,13 +127,10 @@ def _send_reply_email(db: Session, thread: SupportThread, body: str, img_url: st
     ad = (thread.customer_name or "").split()[0] if thread.customer_name else ""
     track = (get_settings().support_public_base_url or "").rstrip("/")
 
-    # White-label: yanıt müşteriye gider — atölyenin markasını kullan
+    # White-label: yanıt müşteriye gider — atölyenin markası (logo/ad/renk)
     tenant = db.get(Tenant, thread.tenant_id) if thread.tenant_id else None
-    brand = (tenant.app_name or tenant.name) if tenant else "BERNZ"
-    bc = (tenant.brand_color or "").strip() if tenant else ""
-    if bc and not bc.startswith("#"):
-        bc = "#" + bc
-    accent = bc or email_service.DEFAULT_ACCENT
+    bk = email_service.brand_kwargs(tenant)
+    accent = bk.get("accent", email_service.DEFAULT_ACCENT)
 
     reply_html = escape((body or "").strip()).replace("\n", "<br>") or "—"
     box = email_service.highlight_box(reply_html, accent=accent)
@@ -154,10 +151,9 @@ def _send_reply_email(db: Session, thread: SupportThread, body: str, img_url: st
         body_html=body_html,
         button_text="Görüntüle / Yanıtla",
         button_url=track,
-        brand=brand,
-        accent=accent,
         preheader=f"Sipariş #{onum} destek talebinize yanıt verildi",
         footer="Bu e-posta, siparişinizle ilgili destek talebinize verilen yanıttır.",
+        **bk,
     )
     text = (f"Destek talebiniz yanıtlandı — Sipariş #{onum}\n\nMerhaba {ad},\n\n"
             f"{(body or '').strip()}\n\nGörüntüle/Yanıtla: {track}")

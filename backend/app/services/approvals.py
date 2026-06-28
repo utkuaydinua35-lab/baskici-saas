@@ -70,13 +70,17 @@ def _variation_of(li) -> str:
 def _resolve_phone_model(db, tenant_id, li):
     """Kalemin telefon modelini çöz (mockup şablonu için) — sistemin kanonik
     çıkarımıyla (properties 'Model' öncelikli). Bulunamazsa None."""
-    from app.services import phone_models as pmsvc
     from app.services.mold_planner import extract_phone_model
-    model_str = extract_phone_model(li) or ""
-    if not model_str:
+    return _resolve_phone_model_by_str(db, tenant_id, extract_phone_model(li) or "")
+
+
+def _resolve_phone_model_by_str(db, tenant_id, model_str: str):
+    """Açık model metninden (couple+kişiye özel slot override'ı) çöz."""
+    if not model_str or not model_str.strip():
         return None
+    from app.services import phone_models as pmsvc
     try:
-        return pmsvc._db_lookup(db, tenant_id, pmsvc.normalize_key(model_str))
+        return pmsvc._db_lookup(db, tenant_id, pmsvc.normalize_key(model_str.strip()))
     except Exception:  # noqa: BLE001
         return None
 
@@ -87,37 +91,63 @@ def build_items(db: Session, order: Order) -> list[dict]:
     başarısız olursa PDF thumbnail'ına düşülür. Ürünün katalog görseli DEĞİL.
     Tasarımı yüklenmemiş kalemler atlanır.
     """
+    from app.models import CoupleProduct
     from app.services import storage, mockup
 
     # Bu store'un kişiye özel product_id'leri
     pids = set(db.scalars(
         select(KisiyeOzelProduct.product_id).where(KisiyeOzelProduct.store_id == order.store_id)
     ).all())
+    # couple + kişiye özel ürünler (2 tasarım sipariş başına yüklenir)
+    couple_ko_ids = set(db.scalars(
+        select(CoupleProduct.product_id).where(
+            CoupleProduct.store_id == order.store_id,
+            CoupleProduct.is_kisiye_ozel.is_(True),
+        )
+    ).all())
+
+    def _mk_item(li, d, pm, title, qty):
+        mock_url = mockup.generate_mockup_url(d, order.tenant_id, _variation_of(li), phone_model=pm)
+        preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
+        return {
+            "image_url": _absolute(preview),
+            "file_url": _absolute(storage.get_design_url(d.file_path)),
+            "file_format": getattr(d, "file_format", None),
+            "title": title,
+            "quantity": qty,
+            "is_mockup": bool(mock_url),
+        }
 
     items = []
     for li in (order.line_items or []):
-        # sadece kişiye özel kalemler
-        if not (li.product_id and str(li.product_id) in pids):
+        pid = str(li.product_id) if li.product_id else None
+        if not pid:
+            continue
+
+        # couple + kişiye özel: iki slot (1./2. kılıf) ayrı tasarım+model
+        if pid in couple_ko_ids:
+            base = li.title or "Ürün"
+            slots = [
+                (1, li.assigned_design, (li.device_model_override or "")),
+                (2, li.assigned_design_2, (li.device_model_override_2 or "")),
+            ]
+            for slot, d, mstr in slots:
+                if not (d and getattr(d, "file_path", None)):
+                    continue
+                pm = _resolve_phone_model_by_str(db, order.tenant_id, mstr) \
+                    or _resolve_phone_model(db, order.tenant_id, li)
+                items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1))
+            continue
+
+        # tekli kişiye özel kalem
+        if pid not in pids:
             continue
         d = li.assigned_design
         # tasarım (PDF) yüklenmemişse onaya dahil etme
         if not (li.assigned_design_id and d and getattr(d, "file_path", None)):
             continue
-
-        variation = _variation_of(li)
         pm = _resolve_phone_model(db, order.tenant_id, li)
-        # Numune mockup üret (model şablonu varsa gerçek foto, yoksa çizim); olmazsa thumbnail
-        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation, phone_model=pm)
-        preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
-
-        items.append({
-            "image_url": _absolute(preview),
-            "file_url": _absolute(storage.get_design_url(d.file_path)),
-            "file_format": getattr(d, "file_format", None),
-            "title": li.title or "Ürün",
-            "quantity": getattr(li, "quantity", 1) or 1,
-            "is_mockup": bool(mock_url),
-        })
+        items.append(_mk_item(li, d, pm, li.title or "Ürün", getattr(li, "quantity", 1) or 1))
     return items
 
 

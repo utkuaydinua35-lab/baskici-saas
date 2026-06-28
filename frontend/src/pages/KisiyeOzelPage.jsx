@@ -12,6 +12,23 @@ const KALIP_TIPLERI = [
   { value: 'magsafe', label: 'MagSafe' },
 ]
 
+// Telefon modeli listesi (couple+kişiye özel slot dropdown'u) — bir kez yüklenir
+let _phoneModelsCache = null
+function usePhoneModels() {
+  const [models, setModels] = useState(_phoneModelsCache || [])
+  useEffect(() => {
+    if (_phoneModelsCache) return
+    api.get('/api/phone-models?include_baseline=true')
+      .then(r => {
+        const names = (r.items || []).map(m => m.display_name).filter(Boolean)
+        _phoneModelsCache = [...new Set(names)].sort((a, b) => a.localeCompare(b, 'tr'))
+        setModels(_phoneModelsCache)
+      })
+      .catch(() => {})
+  }, [])
+  return models
+}
+
 const RENK_SECENEKLERI = [
   { name: 'Bordo', hex: '#800020' },
   { name: 'Fıstık Yeşil', hex: '#5C9F3F' },
@@ -491,6 +508,8 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
   const [savingColor, setSavingColor] = useState(false)
   const isCouple = !!item.is_couple
   const ready = item.status === 'hazir'
+  const phoneModels = usePhoneModels()
+  const modelListId = `phone-models-${item.id}`
 
   const patchLi = async (body) => {
     try { await api.patch(`/api/kisiye-ozel/line-items/${item.id}`, body); onRefresh() }
@@ -602,13 +621,17 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
 
       {isCouple && (
         <div className="mt-3 grid sm:grid-cols-2 gap-2 border-t border-brand-border/50 pt-3">
+          <datalist id={modelListId}>
+            {phoneModels.map(m => <option key={m} value={m} />)}
+          </datalist>
           {[1, 2].map(slot => {
             const design = slot === 2 ? item.assigned_design_2 : item.assigned_design
             const model = slot === 2 ? item.device_model_override_2 : item.device_model_override
             return (
               <div key={slot} className="bg-brand-card/50 rounded-lg p-2 space-y-2">
                 <div className="text-[11px] text-gray-300 font-medium">{slot}. kılıf {design ? '✓' : ''}</div>
-                <input defaultValue={model || ''} placeholder="Telefon modeli (örn. iPhone 13)"
+                <input list={modelListId} key={model || ''} defaultValue={model || ''}
+                  placeholder="Telefon modeli seç / ara"
                   onBlur={e => { const v = e.target.value.trim(); if (v !== (model || '')) saveModel(slot, v) }}
                   className="input !text-xs w-full" />
                 <div className="flex justify-end">{renderDesign(design, slot)}</div>

@@ -113,7 +113,7 @@ export default function DestekPage() {
     }
   }
 
-  const sendReply = async (withEmail = false) => {
+  const sendReply = async () => {
     if (!active || (reply.trim().length < 1 && !replyImg)) return
     setSending(true)
     setError(''); setOkMsg('')
@@ -121,20 +121,22 @@ export default function DestekPage() {
       let image_url = null
       if (replyImg) image_url = await uploadImage(replyImg)
       const updated = await api.post(`/api/support/threads/${active.id}/reply`, {
-        message: reply.trim(), image_url, send_email: withEmail,
+        message: reply.trim(), image_url,
       })
       setActive(updated)
       setReply('')
       setAiNote('')
       clearImage()
       loadThreads()
-      if (withEmail) {
-        if (updated.email_sent) {
-          setOkMsg(`📧 Cevap müşteriye e-posta olarak gönderildi (${active.customer_email})`)
-          setTimeout(() => setOkMsg(''), 4000)
-        } else {
-          setError(`E-posta gönderilemedi: ${updated.email_error || 'bilinmeyen hata'}`)
-        }
+      // Backend, müşteri e-postası varsa otomatik "Destek talebiniz yanıtlandı" maili atar
+      if (updated.email_sent) {
+        setOkMsg(`✅ Cevap gönderildi · müşteriye e-posta iletildi (${active.customer_email})`)
+        setTimeout(() => setOkMsg(''), 4000)
+      } else if (active.customer_email && updated.email_error) {
+        setError(`Cevap kaydedildi ama e-posta gönderilemedi: ${updated.email_error}`)
+      } else {
+        setOkMsg('✅ Cevap gönderildi')
+        setTimeout(() => setOkMsg(''), 3000)
       }
     } catch (e) {
       setError(e.detail || e.message || 'Cevap gönderilemedi')
@@ -291,13 +293,10 @@ export default function DestekPage() {
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => sendReply(true)}
-                        disabled={sending || !active?.customer_email || (reply.trim().length < 1 && !replyImg)}
-                        title={active?.customer_email ? `Müşteriye e-posta: ${active.customer_email}` : 'Müşteri e-postası yok — e-posta gönderilemez'}
-                        className="!text-xs !py-1.5 !px-3 rounded-lg border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 flex items-center gap-1">
-                        📧 E-posta ile gönder
-                      </button>
-                      <button onClick={() => sendReply(false)} disabled={sending || (reply.trim().length < 1 && !replyImg)}
+                      {active?.customer_email && (
+                        <span className="text-[10px] text-gray-500 hidden sm:inline" title={active.customer_email}>📧 müşteriye e-posta gider</span>
+                      )}
+                      <button onClick={() => sendReply()} disabled={sending || (reply.trim().length < 1 && !replyImg)}
                         className="btn-primary !text-xs !py-1.5 !px-3 disabled:opacity-40">
                         {sending ? 'Gönderiliyor...' : 'Cevapla →'}
                       </button>

@@ -182,8 +182,9 @@ def reply_thread(
     if not payload.message.strip() and not img:
         raise HTTPException(422, "Mesaj veya görsel gerekli.")
     t = sup.add_admin_message(db, t, payload.message, image_url=img)
+    # Her cevapta müşteriye otomatik "Destek talebiniz yanıtlandı" e-postası (e-postası varsa)
     email_sent, email_error = (False, None)
-    if payload.send_email:
+    if t.customer_email:
         email_sent, email_error = _send_reply_email(db, t, payload.message, img)
     return {
         **_thread_summary(db, t),

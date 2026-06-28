@@ -68,10 +68,11 @@ def _variation_of(li) -> str:
 
 
 def _resolve_phone_model(db, tenant_id, li):
-    """Kalemin telefon modelini çöz (mockup şablonu için). Bulunamazsa None."""
+    """Kalemin telefon modelini çöz (mockup şablonu için) — sistemin kanonik
+    çıkarımıyla (properties 'Model' öncelikli). Bulunamazsa None."""
     from app.services import phone_models as pmsvc
-    model_str = (getattr(li, "device_model_override", None)
-                 or getattr(li, "variant_title", None) or "")
+    from app.services.mold_planner import extract_phone_model
+    model_str = extract_phone_model(li) or ""
     if not model_str:
         return None
     try:

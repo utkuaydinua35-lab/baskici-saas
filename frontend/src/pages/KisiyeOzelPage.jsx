@@ -487,37 +487,41 @@ function ApprovalModal({ data, onClose }) {
 // ═══════════════════════════════════════════════════════════
 
 function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIndex, totalKisiyeOzel }) {
-  const [showUpload, setShowUpload] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)  // false | 1 | 2 (couple slot)
   const [savingColor, setSavingColor] = useState(false)
-  const hasDesign = !!item.assigned_design
+  const isCouple = !!item.is_couple
+  const ready = item.status === 'hazir'
 
+  const patchLi = async (body) => {
+    try { await api.patch(`/api/kisiye-ozel/line-items/${item.id}`, body); onRefresh() }
+    catch (e) { toast.error(e.detail || 'Güncellenemedi') }
+  }
   const updateColor = async (which, value) => {
     setSavingColor(true)
     try {
-      await api.patch(`/api/kisiye-ozel/line-items/${item.id}`, {
-        [which]: value,
-        fields_to_update: [which],
-      })
+      await api.patch(`/api/kisiye-ozel/line-items/${item.id}`, { [which]: value, fields_to_update: [which] })
       onRefresh()
-    } catch (e) {
-      toast.error(e.detail || 'Renk güncellenemedi')
-    } finally {
-      setSavingColor(false)
-    }
+    } catch (e) { toast.error(e.detail || 'Renk güncellenemedi') }
+    finally { setSavingColor(false) }
   }
-
-  const removeAssignedDesign = async () => {
+  const removeDesign = (slot) => {
     if (!confirm('Atanan tasarımı kaldır?')) return
-    try {
-      await api.patch(`/api/kisiye-ozel/line-items/${item.id}`, {
-        assigned_design_id: null,
-        fields_to_update: ['assigned_design_id'],
-      })
-      onRefresh()
-    } catch (e) {
-      toast.error(e.detail || 'Kaldırılamadı')
-    }
+    const f = slot === 2 ? 'assigned_design_id_2' : 'assigned_design_id'
+    patchLi({ [f]: null, fields_to_update: [f] })
   }
+  const saveModel = (slot, value) => {
+    const f = slot === 2 ? 'device_model_override_2' : 'device_model_override'
+    patchLi({ [f]: value, fields_to_update: [f] })
+  }
+  const renderDesign = (design, slot) => design ? (
+    <div className="flex items-center gap-1">
+      {design.thumbnail_url ? <img src={design.thumbnail_url} alt="" className="w-8 h-8 object-cover rounded border border-emerald-500/30" /> : <span className="text-emerald-400">📄</span>}
+      <span className="text-[10px] font-mono text-emerald-300">{design.code}</span>
+      <button onClick={() => removeDesign(slot)} className="text-[10px] text-red-400 hover:underline ml-1">Kaldır</button>
+    </div>
+  ) : (
+    <button onClick={() => setShowUpload(slot)} className="btn-primary !text-xs !py-1 !px-3">↑ Yükle</button>
+  )
 
   return (
     <div className="bg-brand-input/40 border border-brand-border/60 rounded-lg p-3">
@@ -573,7 +577,7 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
         </div>
 
         <div className="col-span-1">
-          {hasDesign ? (
+          {ready ? (
             <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-300 text-[10px] px-2 py-0.5 rounded-full">
               ● Hazır
             </span>
@@ -592,25 +596,27 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
 
         <div className="col-span-2 flex flex-col items-end gap-2">
           <div className="text-xs text-gray-400">x{item.quantity}</div>
-          {hasDesign ? (
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-1">
-                {item.assigned_design.thumbnail_url ? (
-                  <img src={item.assigned_design.thumbnail_url} alt="" className="w-8 h-8 object-cover rounded border border-emerald-500/30" />
-                ) : (
-                  <span className="text-emerald-400">📄</span>
-                )}
-                <span className="text-[10px] font-mono text-emerald-300">{item.assigned_design.code}</span>
-              </div>
-              <button onClick={removeAssignedDesign} className="text-[10px] text-red-400 hover:underline">Kaldır</button>
-            </div>
-          ) : (
-            <button onClick={() => setShowUpload(true)} className="btn-primary !text-xs !py-1 !px-3 flex items-center gap-1">
-              ↑ Yükle
-            </button>
-          )}
+          {isCouple ? <span className="text-[10px] text-gray-500">↓ 2 kılıf</span> : renderDesign(item.assigned_design, 1)}
         </div>
       </div>
+
+      {isCouple && (
+        <div className="mt-3 grid sm:grid-cols-2 gap-2 border-t border-brand-border/50 pt-3">
+          {[1, 2].map(slot => {
+            const design = slot === 2 ? item.assigned_design_2 : item.assigned_design
+            const model = slot === 2 ? item.device_model_override_2 : item.device_model_override
+            return (
+              <div key={slot} className="bg-brand-card/50 rounded-lg p-2 space-y-2">
+                <div className="text-[11px] text-gray-300 font-medium">{slot}. kılıf {design ? '✓' : ''}</div>
+                <input defaultValue={model || ''} placeholder="Telefon modeli (örn. iPhone 13)"
+                  onBlur={e => { const v = e.target.value.trim(); if (v !== (model || '')) saveModel(slot, v) }}
+                  className="input !text-xs w-full" />
+                <div className="flex justify-end">{renderDesign(design, slot)}</div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {showUpload && (
         <LineItemUploadDialog
@@ -620,6 +626,7 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
           orderNumber={orderNumber}
           itemIndex={itemIndex}
           totalKisiyeOzel={totalKisiyeOzel}
+          slot={showUpload}
           onClose={() => setShowUpload(false)}
           onSaved={() => { setShowUpload(false); onRefresh() }}
         />
@@ -743,7 +750,7 @@ function ColorSelect({ value, onChange, disabled }) {
 // LineItemUploadDialog
 // ═══════════════════════════════════════════════════════════
 
-function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemIndex, totalKisiyeOzel, onClose, onSaved }) {
+function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemIndex, totalKisiyeOzel, slot = 1, onClose, onSaved }) {
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
   const [filePreview, setFilePreview] = useState(null)
@@ -791,6 +798,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
       if (ucuncu) fd.append('ucuncu_renk', ucuncu)
       fd.append('is_kisiye_ozel', 'true')
       fd.append('line_item_id', lineItem.id)
+      fd.append('slot', String(slot || 1))
 
       const res = await fetch('/api/designs', {
         method: 'POST',

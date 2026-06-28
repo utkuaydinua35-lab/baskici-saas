@@ -105,7 +105,7 @@ export default function CoupleProductsPage() {
     try {
       const r = await api.get(`/api/couple?store_id=${sid}`)
       const m = {}
-      ;(r.items || []).forEach(c => { m[c.product_id] = { design_1: c.design_1, design_2: c.design_2 } })
+      ;(r.items || []).forEach(c => { m[c.product_id] = { design_1: c.design_1, design_2: c.design_2, is_kisiye_ozel: c.is_kisiye_ozel } })
       setCoupleMap(m)
     } catch { setCoupleMap({}) }
   }, [])
@@ -145,8 +145,9 @@ export default function CoupleProductsPage() {
         product_id: p.id,
         product_title: p.title,
         product_image_url: p.image_url || null,
-        design_id_1: sel.design_1?.id || null,
-        design_id_2: sel.design_2?.id || null,
+        design_id_1: sel.is_kisiye_ozel ? null : (sel.design_1?.id || null),
+        design_id_2: sel.is_kisiye_ozel ? null : (sel.design_2?.id || null),
+        is_kisiye_ozel: !!sel.is_kisiye_ozel,
       })
       await loadCouple(selectedStore)
       setDraft(prev => { const n = { ...prev }; delete n[p.id]; return n })
@@ -205,7 +206,9 @@ export default function CoupleProductsPage() {
             const sel = getSel(p.id)
             const marked = isCouple(p.id)
             const hasDraft = !!draft[p.id]
+            const ko = !!sel.is_kisiye_ozel
             const bothPicked = sel.design_1 && sel.design_2
+            const canSave = ko || bothPicked
             return (
               <div key={p.id} className={`card !p-3 ${marked ? 'border-accent/40 bg-accent/5' : ''}`}>
                 <div className="flex items-center gap-3">
@@ -224,15 +227,27 @@ export default function CoupleProductsPage() {
 
                 {(marked || hasDraft) && (
                   <div className="flex flex-col gap-2 mt-3">
-                    <div className="text-[10px] text-gray-500">Müşterinin seçtiği <span className="text-gray-300">1. telefon → Erkek tasarım</span>, <span className="text-gray-300">2. telefon → Kadın tasarım</span> ile basılır.</div>
-                    <div className="flex gap-2">
-                      <DesignSlot label="👨 1. Tasarım (Erkek)" design={sel.design_1} productImgMap={productImgMap}
-                        onPick={() => setPicker({ productId: p.id, slot: 'design_1' })}
-                        onClear={() => setSlot(p.id, 'design_1', null)} />
-                      <DesignSlot label="👩 2. Tasarım (Kadın)" design={sel.design_2} productImgMap={productImgMap}
-                        onPick={() => setPicker({ productId: p.id, slot: 'design_2' })}
-                        onClear={() => setSlot(p.id, 'design_2', null)} />
-                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={ko} onChange={() => setSlot(p.id, 'is_kisiye_ozel', !ko)} />
+                      Kişiye özel — 2 tasarım sipariş başına (Kişiye Özel panelinden) yüklenir
+                    </label>
+                    {ko ? (
+                      <div className="text-[11px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1.5">
+                        Sabit tasarım seçilmez. Sipariş gelince <b>Kişiye Özel</b> panelinden 1. ve 2. kılıf için model + görsel yüklenir.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-[10px] text-gray-500">Müşterinin seçtiği <span className="text-gray-300">1. telefon → Erkek tasarım</span>, <span className="text-gray-300">2. telefon → Kadın tasarım</span> ile basılır.</div>
+                        <div className="flex gap-2">
+                          <DesignSlot label="👨 1. Tasarım (Erkek)" design={sel.design_1} productImgMap={productImgMap}
+                            onPick={() => setPicker({ productId: p.id, slot: 'design_1' })}
+                            onClear={() => setSlot(p.id, 'design_1', null)} />
+                          <DesignSlot label="👩 2. Tasarım (Kadın)" design={sel.design_2} productImgMap={productImgMap}
+                            onPick={() => setPicker({ productId: p.id, slot: 'design_2' })}
+                            onClear={() => setSlot(p.id, 'design_2', null)} />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -244,9 +259,9 @@ export default function CoupleProductsPage() {
                     </button>
                   )}
                   {(marked || hasDraft) && (
-                    <button onClick={() => save(p)} disabled={savingId === p.id || !bothPicked}
+                    <button onClick={() => save(p)} disabled={savingId === p.id || !canSave}
                       className="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/80 disabled:opacity-40"
-                      title={!bothPicked ? '2 tasarım da seçilmeli' : ''}>
+                      title={!canSave ? '2 tasarım da seçilmeli (veya kişiye özel işaretle)' : ''}>
                       {savingId === p.id ? 'Kaydediliyor...' : 'Kaydet'}
                     </button>
                   )}

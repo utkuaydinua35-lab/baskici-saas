@@ -55,6 +55,7 @@ class CoupleUpsert(BaseModel):
     product_image_url: str | None = None
     design_id_1: uuid.UUID | None = None
     design_id_2: uuid.UUID | None = None
+    is_kisiye_ozel: bool = False  # True: tasarımlar sipariş başına kişiye özel yüklenir
 
 
 @router.get("", response_model=None)
@@ -74,6 +75,7 @@ def list_couple(
             "product_image_url": c.product_image_url,
             "design_1": _design_brief(db, c.design_id_1),
             "design_2": _design_brief(db, c.design_id_2),
+            "is_kisiye_ozel": c.is_kisiye_ozel,
         })
     return {"items": items, "product_ids": [c.product_id for c in rows]}
 
@@ -102,6 +104,7 @@ def upsert_couple(
         existing.product_image_url = body.product_image_url or existing.product_image_url
         existing.design_id_1 = body.design_id_1
         existing.design_id_2 = body.design_id_2
+        existing.is_kisiye_ozel = body.is_kisiye_ozel
         db.commit()
         return {"ok": True, "id": str(existing.id), "updated": True}
     c = CoupleProduct(
@@ -112,6 +115,7 @@ def upsert_couple(
         product_image_url=body.product_image_url,
         design_id_1=body.design_id_1,
         design_id_2=body.design_id_2,
+        is_kisiye_ozel=body.is_kisiye_ozel,
     )
     db.add(c)
     try:

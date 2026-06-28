@@ -21,7 +21,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import Design, KisiyeOzelProduct, LineItem, Order, OrderStatusHistory, Store, User
+from app.models import (
+    CoupleProduct, Design, KisiyeOzelProduct, LineItem, Order, OrderStatusHistory, Store, User,
+)
 from app.services import storage
 
 router = APIRouter(prefix="/api/kisiye-ozel", tags=["kisiye_ozel"],
@@ -73,12 +75,24 @@ def _get_store(db: Session, store_id: uuid.UUID, tenant_id: uuid.UUID) -> Store:
     return store
 
 
+def _get_couple_ko_ids(db: Session, store_id: uuid.UUID) -> set[str]:
+    """Couple + kişiye özel (2 tasarım sipariş başına yüklenir) ürün ID'leri."""
+    rows = db.scalars(
+        select(CoupleProduct.product_id).where(
+            CoupleProduct.store_id == store_id,
+            CoupleProduct.is_kisiye_ozel.is_(True),
+            CoupleProduct.product_id.isnot(None),
+        )
+    ).all()
+    return {str(p) for p in rows if p}
+
+
 def _get_kop_product_ids(db: Session, store_id: uuid.UUID) -> set[str]:
-    """Mağaza için kişiye özel olarak işaretlenmiş ürün ID'leri."""
+    """Kişiye özel sayılan ürün ID'leri — normal KOP + couple-kişiye özel birleşimi."""
     rows = db.scalars(
         select(KisiyeOzelProduct.product_id).where(KisiyeOzelProduct.store_id == store_id)
     ).all()
-    return {str(p) for p in rows if p}
+    return {str(p) for p in rows if p} | _get_couple_ko_ids(db, store_id)
 
 
 def _kisiye_ozel_exists(product_ids: set[str]):
@@ -95,8 +109,19 @@ def _is_li_kisiye_ozel(li: LineItem, product_ids: set[str]) -> bool:
     return bool(li.product_id) and str(li.product_id) in product_ids
 
 
-def _serialize_line_item(li: LineItem, product_ids: set[str]) -> dict:
+def _ser_design(d):
+    if not d:
+        return None
+    return {
+        "id": str(d.id), "code": d.code, "name": d.name,
+        "thumbnail_url": storage.get_thumbnail_url(d.file_path, d.file_format),
+        "file_url": storage.get_design_url(d.file_path), "file_format": d.file_format,
+    }
+
+
+def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[str] | None = None) -> dict:
     is_kisiye = _is_li_kisiye_ozel(li, product_ids)
+    is_couple = bool(couple_ids) and bool(li.product_id) and str(li.product_id) in couple_ids
 
     # Müşterinin yüklediği görsel + notlar
     customer_image_url = None
@@ -120,17 +145,10 @@ def _serialize_line_item(li: LineItem, product_ids: set[str]) -> dict:
 
     model_info = li.variant_title or ""
 
-    assigned = None
-    if li.assigned_design_id and li.assigned_design:
-        d = li.assigned_design
-        assigned = {
-            "id": str(d.id),
-            "code": d.code,
-            "name": d.name,
-            "thumbnail_url": storage.get_thumbnail_url(d.file_path, d.file_format),
-            "file_url": storage.get_design_url(d.file_path),
-            "file_format": d.file_format,
-        }
+    assigned = _ser_design(li.assigned_design if li.assigned_design_id else None)
+    assigned_2 = _ser_design(li.assigned_design_2 if li.assigned_design_id_2 else None)
+    status = (("hazir" if (assigned and assigned_2) else "bekliyor") if is_couple
+              else ("hazir" if assigned else "bekliyor"))
 
     return {
         "id": str(li.id),
@@ -140,25 +158,34 @@ def _serialize_line_item(li: LineItem, product_ids: set[str]) -> dict:
         "quantity": li.quantity,
         "product_id": li.product_id,
         "is_kisiye_ozel": is_kisiye,
+        "is_couple": is_couple,
         "customer_image_url": customer_image_url,
         "customer_note": customer_note,
         "customer_props": customer_props_text,
         "assigned_design": assigned,
+        "assigned_design_2": assigned_2,
+        "device_model_override": li.device_model_override,
+        "device_model_override_2": li.device_model_override_2,
         "birincil_renk": li.birincil_renk,
         "ikincil_renk": li.ikincil_renk,
         "ucuncu_renk": li.ucuncu_renk,
-        "status": "hazir" if assigned else "bekliyor",
+        "status": status,
     }
 
 
-def _order_kisiye_status(order: Order, product_ids: set[str]) -> tuple[str, int, int]:
+def _order_kisiye_status(order: Order, product_ids: set[str], couple_ids: set[str] | None = None) -> tuple[str, int, int]:
+    couple_ids = couple_ids or set()
     bekliyor = 0
     hazir = 0
     for li in order.line_items or []:
         if not _is_li_kisiye_ozel(li, product_ids):
             continue
         qty = li.quantity or 1
-        if li.assigned_design_id:
+        if li.product_id and str(li.product_id) in couple_ids:
+            ready = bool(li.assigned_design_id) and bool(li.assigned_design_id_2)
+        else:
+            ready = bool(li.assigned_design_id)
+        if ready:
             hazir += qty
         else:
             bekliyor += qty
@@ -166,8 +193,8 @@ def _order_kisiye_status(order: Order, product_ids: set[str]) -> tuple[str, int,
     return status_, bekliyor, hazir
 
 
-def _serialize_order_row(o: Order, product_ids: set[str]) -> dict:
-    status_, bekliyor_qty, hazir_qty = _order_kisiye_status(o, product_ids)
+def _serialize_order_row(o: Order, product_ids: set[str], couple_ids: set[str] | None = None) -> dict:
+    status_, bekliyor_qty, hazir_qty = _order_kisiye_status(o, product_ids, couple_ids)
     total_items = sum((li.quantity or 1) for li in (o.line_items or []))
 
     renkler: list[str] = []
@@ -211,6 +238,7 @@ def list_kisiye_ozel_orders(
     _get_store(db, store_id, user.tenant_id)
 
     product_ids = _get_kop_product_ids(db, store_id)
+    couple_ids = _get_couple_ko_ids(db, store_id)
     if not product_ids:
         return {
             "items": [], "total": 0, "page": page, "per_page": per_page, "pages": 0,
@@ -254,7 +282,7 @@ def list_kisiye_ozel_orders(
     )
     all_rows = db.scalars(q).all()
 
-    serialized = [_serialize_order_row(o, product_ids) for o in all_rows]
+    serialized = [_serialize_order_row(o, product_ids, couple_ids) for o in all_rows]
     if status == "bekliyor":
         serialized = [r for r in serialized if r["status"] == "bekliyor"]
     elif status == "hazir":
@@ -286,6 +314,7 @@ def stats(
     _get_store(db, store_id, user.tenant_id)
 
     product_ids = _get_kop_product_ids(db, store_id)
+    couple_ids = _get_couple_ko_ids(db, store_id)
     if not product_ids:
         return {
             "tasarim_bekliyor": 0, "tasarim_hazir": 0, "renk_bekliyor": 0,
@@ -314,7 +343,7 @@ def stats(
     hazir = 0
     renk_bekliyor = 0
     for o in rows:
-        st, _, _ = _order_kisiye_status(o, product_ids)
+        st, _, _ = _order_kisiye_status(o, product_ids, couple_ids)
         if st == "bekliyor":
             bekliyor += 1
         else:
@@ -350,6 +379,7 @@ def get_order_detail(
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
 
     product_ids = _get_kop_product_ids(db, order.store_id)
+    couple_ids = _get_couple_ko_ids(db, order.store_id)
 
     return {
         "id": str(order.id),
@@ -365,7 +395,7 @@ def get_order_detail(
         "billing_address": (order.raw or {}).get("billing_address"),
         "note": order.note,
         "tags": order.tags,
-        "line_items": [_serialize_line_item(li, product_ids) for li in (order.line_items or [])],
+        "line_items": [_serialize_line_item(li, product_ids, couple_ids) for li in (order.line_items or [])],
     }
 
 
@@ -376,6 +406,9 @@ class LineItemPatch(BaseModel):
     ikincil_renk: str | None = None
     ucuncu_renk: str | None = None
     assigned_design_id: str | None = None
+    assigned_design_id_2: str | None = None        # couple 2. kılıf tasarımı
+    device_model_override: str | None = None        # couple 1. kılıf modeli (veya tekil model)
+    device_model_override_2: str | None = None       # couple 2. kılıf modeli
     fields_to_update: list[str] = []
 
 
@@ -389,10 +422,16 @@ def update_line_item(
     li = db.scalar(
         select(LineItem)
         .where(LineItem.id == line_item_id, LineItem.tenant_id == user.tenant_id)
-        .options(selectinload(LineItem.assigned_design))
+        .options(selectinload(LineItem.assigned_design), selectinload(LineItem.assigned_design_2))
     )
     if not li:
         raise HTTPException(status_code=404, detail="Line item bulunamadı")
+
+    def _resolve_design(did: str):
+        d = db.scalar(select(Design).where(Design.id == uuid.UUID(did), Design.tenant_id == user.tenant_id))
+        if not d:
+            raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
+        return d.id
 
     fields = set(payload.fields_to_update)
 
@@ -403,26 +442,22 @@ def update_line_item(
     if "ucuncu_renk" in fields:
         li.ucuncu_renk = (payload.ucuncu_renk or "").strip() or None
     if "assigned_design_id" in fields:
-        if not payload.assigned_design_id:
-            li.assigned_design_id = None
-        else:
-            d = db.scalar(
-                select(Design).where(
-                    Design.id == uuid.UUID(payload.assigned_design_id),
-                    Design.tenant_id == user.tenant_id,
-                )
-            )
-            if not d:
-                raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
-            li.assigned_design_id = d.id
+        li.assigned_design_id = _resolve_design(payload.assigned_design_id) if payload.assigned_design_id else None
+    if "assigned_design_id_2" in fields:
+        li.assigned_design_id_2 = _resolve_design(payload.assigned_design_id_2) if payload.assigned_design_id_2 else None
+    if "device_model_override" in fields:
+        li.device_model_override = (payload.device_model_override or "").strip() or None
+    if "device_model_override_2" in fields:
+        li.device_model_override_2 = (payload.device_model_override_2 or "").strip() or None
 
     db.commit()
     db.refresh(li)
 
-    # Bu line item'ın bağlı olduğu mağazadaki kişiye özel ürün ID'leri
+    # Bu line item'ın bağlı olduğu mağazadaki kişiye özel + couple ürün ID'leri
     order = db.scalar(select(Order).where(Order.id == li.order_id))
     product_ids = _get_kop_product_ids(db, order.store_id) if order else set()
-    return _serialize_line_item(li, product_ids)
+    couple_ids = _get_couple_ko_ids(db, order.store_id) if order else set()
+    return _serialize_line_item(li, product_ids, couple_ids)
 
 
 # ═══════════════════════════════════════════════════════════

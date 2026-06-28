@@ -164,7 +164,10 @@ def plan_molds(
             Order.cancelled_at.is_(None),
             (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         )
-        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .options(
+            selectinload(Order.line_items).selectinload(LineItem.assigned_design),
+            selectinload(Order.line_items).selectinload(LineItem.assigned_design_2),
+        )
     )
     if store_id:
         orders_q = orders_q.where(Order.store_id == store_id)
@@ -205,15 +208,25 @@ def plan_molds(
             # Couple (cift kilif): 2 ayri tasarim, ayni model, 2 birim
             couple = couple_map.get((order_store_id, pid)) if pid else None
             if couple is not None:
-                d1 = design_by_id.get(couple.design_id_1) if couple.design_id_1 else None
-                d2 = design_by_id.get(couple.design_id_2) if couple.design_id_2 else None
-                if not d1 or not d2:
-                    add_eksik("couple_tasarim_eksik", li, order, model)
-                    continue
-                # Couple: 2 telefon modeli — model1 (erkek)=design_id_1, model2 (kadin)=design_id_2
-                _m1, _m2 = extract_couple_models(li)
-                _m1 = _m1 or model
-                _m2 = _m2 or _m1   # 2. model yoksa 1. modele dus (geriye uyum)
+                if couple.is_kisiye_ozel:
+                    # Couple + kişiye özel: 2 tasarım sipariş başına yüklenir, modeller elle seçilir
+                    d1 = li.assigned_design
+                    d2 = li.assigned_design_2
+                    if not d1 or not d2:
+                        add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
+                        continue
+                    _m1 = (li.device_model_override or "").strip() or model
+                    _m2 = (li.device_model_override_2 or "").strip() or _m1
+                else:
+                    d1 = design_by_id.get(couple.design_id_1) if couple.design_id_1 else None
+                    d2 = design_by_id.get(couple.design_id_2) if couple.design_id_2 else None
+                    if not d1 or not d2:
+                        add_eksik("couple_tasarim_eksik", li, order, model)
+                        continue
+                    # Couple: 2 telefon modeli — model1=design_id_1, model2=design_id_2
+                    _m1, _m2 = extract_couple_models(li)
+                    _m1 = _m1 or model
+                    _m2 = _m2 or _m1   # 2. model yoksa 1. modele dus (geriye uyum)
                 if not _m1:
                     add_eksik("model_belirsiz", li, order, model)
                     continue

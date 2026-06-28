@@ -290,6 +290,9 @@ class CoupleProduct(Base):
     design_id_2: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True
     )
+    # True ise tasarımlar sabit değil; sipariş başına kişiye özel olarak yüklenir
+    # (line item assigned_design_id + assigned_design_id_2 / device_model_override(_2)).
+    is_kisiye_ozel: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -475,6 +478,12 @@ class LineItem(Base):
         ForeignKey("designs.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
+    # Couple + kişiye özel: 2. kılıfın tasarımı (1. = assigned_design_id)
+    assigned_design_id_2: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("designs.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     birincil_renk: Mapped[str | None] = mapped_column(String(30), nullable=True)
     ikincil_renk: Mapped[str | None] = mapped_column(String(30), nullable=True)
     ucuncu_renk: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -490,10 +499,12 @@ class LineItem(Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
     device_model_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    device_model_override_2: Mapped[str | None] = mapped_column(String(100), nullable=True)  # couple 2. kılıf modeli
     product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # shopify_urun_gorseli
 
     order: Mapped[Order] = relationship(back_populates="line_items")
     assigned_design: Mapped[Design | None] = relationship("Design", foreign_keys=[assigned_design_id])
+    assigned_design_2: Mapped[Design | None] = relationship("Design", foreign_keys=[assigned_design_id_2])
 
 
 # ═════════════════════════════════════════════════════════════════════

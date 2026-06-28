@@ -249,6 +249,7 @@ async def create_design(
     ucuncu_renk: str | None = Form(None),
     is_kisiye_ozel: bool = Form(False),
     notes: str | None = Form(None),
+    slot: int = Form(1),  # couple: 1 = 1. kılıf (assigned_design_id), 2 = 2. kılıf (assigned_design_id_2)
     # Opsiyonel: line item'a otomatik bağla
     line_item_id: uuid.UUID | None = Form(None),
     user: User = Depends(get_current_user),
@@ -332,9 +333,12 @@ async def create_design(
     design.file_format = file_info["format"]
     design.file_size_bytes = file_info["size"]
 
-    # Line item bağlanıyorsa
+    # Line item bağlanıyorsa (couple 2. kılıf için slot=2)
     if line_item:
-        line_item.assigned_design_id = design.id
+        if slot == 2:
+            line_item.assigned_design_id_2 = design.id
+        else:
+            line_item.assigned_design_id = design.id
 
     db.commit()
     db.refresh(design)

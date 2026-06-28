@@ -193,6 +193,30 @@ function CampaignsTab({ toast }) {
     finally { setUploading(false); e.target.value = '' }
   }
 
+  // Ürün kartları
+  const addProduct = () => setF(p => ({ ...p, products: [...(p.products || []), { image: '', title: '', url: '' }] }))
+  const updateProduct = (i, k, v) => setF(p => { const ps = [...(p.products || [])]; ps[i] = { ...ps[i], [k]: v }; return { ...p, products: ps } })
+  const removeProduct = (i) => setF(p => ({ ...p, products: (p.products || []).filter((_, j) => j !== i) }))
+  const uploadProductImg = async (i, e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await api.postForm('/api/marketing/campaigns/upload-image', fd)
+      updateProduct(i, 'image', r.url)
+    } catch (err) { toast.error(err.detail || 'Görsel yüklenemedi') }
+    finally { e.target.value = '' }
+  }
+
+  // Canlı önizleme (form değiştikçe, debounced)
+  const [previewHtml, setPreviewHtml] = useState('')
+  useEffect(() => {
+    if (!showNew) return
+    const t = setTimeout(() => {
+      api.post('/api/marketing/campaigns/preview', f).then(r => setPreviewHtml(r.html || '')).catch(() => {})
+    }, 500)
+    return () => clearTimeout(t)
+  }, [f, showNew])
+
   const load = async () => {
     setLoading(true)
     try { setList((await api.get('/api/marketing/campaigns')).campaigns || []) }
@@ -239,34 +263,64 @@ function CampaignsTab({ toast }) {
       </div>
 
       {showNew && (
-        <div className="card space-y-2">
-          <input value={f.subject} onChange={e => setF({ ...f, subject: e.target.value })} placeholder="Konu — e-posta başlığı *" className="input !text-sm w-full" />
-          <input value={f.preheader} onChange={e => setF({ ...f, preheader: e.target.value })} placeholder="Önizleme metni — gelen kutusunda konunun yanında görünür (ops.)" className="input !text-sm w-full" />
-          <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="İçerik başlığı (opsiyonel)" className="input !text-sm w-full" />
+        <div className="grid lg:grid-cols-2 gap-4 items-start">
+          <div className="card space-y-2">
+            <input value={f.subject} onChange={e => setF({ ...f, subject: e.target.value })} placeholder="Konu — e-posta başlığı *" className="input !text-sm w-full" />
+            <input value={f.preheader} onChange={e => setF({ ...f, preheader: e.target.value })} placeholder="Önizleme metni — gelen kutusunda görünür (ops.)" className="input !text-sm w-full" />
+            <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="İçerik başlığı (opsiyonel)" className="input !text-sm w-full" />
 
-          {/* Üst görsel */}
-          {f.image_url ? (
-            <div className="flex items-center gap-3">
-              <img src={f.image_url} alt="" className="h-14 rounded-lg border border-brand-border" />
-              <button onClick={() => setF({ ...f, image_url: '' })} className="text-xs text-red-400 hover:text-red-300">Görseli kaldır</button>
+            {f.image_url ? (
+              <div className="flex items-center gap-3">
+                <img src={f.image_url} alt="" className="h-14 rounded-lg border border-brand-border" />
+                <button onClick={() => setF({ ...f, image_url: '' })} className="text-xs text-red-400 hover:text-red-300">Görseli kaldır</button>
+              </div>
+            ) : (
+              <label className="btn-secondary !text-sm cursor-pointer inline-flex w-fit">
+                {uploading ? 'Yükleniyor…' : '🖼 Üst görsel ekle'}
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={uploadImg} disabled={uploading} />
+              </label>
+            )}
+
+            <textarea value={f.body} onChange={e => setF({ ...f, body: e.target.value })} rows={4} placeholder="Mesaj metni... (boş satır = yeni paragraf)" className="input !text-sm w-full resize-y" />
+
+            {/* Ürün kartları */}
+            <div className="border-t border-brand-border pt-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-gray-400">Ürün kartları (görsel + ad + link)</span>
+                <button onClick={addProduct} className="text-xs text-accent hover:text-accent/80">+ Ürün ekle</button>
+              </div>
+              <div className="space-y-2">
+                {(f.products || []).map((p, i) => (
+                  <div key={i} className="flex gap-2 items-start bg-brand-input/40 rounded-lg p-2">
+                    {p.image
+                      ? <img src={p.image} alt="" className="w-12 h-12 object-cover rounded border border-brand-border shrink-0" />
+                      : <label className="w-12 h-12 shrink-0 rounded border border-dashed border-brand-border flex items-center justify-center text-base text-gray-500 cursor-pointer">🖼<input type="file" accept="image/*" className="hidden" onChange={e => uploadProductImg(i, e)} /></label>}
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <input value={p.title} onChange={e => updateProduct(i, 'title', e.target.value)} placeholder="Ürün adı" className="input !text-xs w-full" />
+                      <input value={p.url} onChange={e => updateProduct(i, 'url', e.target.value)} placeholder="Ürün linki" className="input !text-xs w-full" />
+                    </div>
+                    <button onClick={() => removeProduct(i)} className="text-gray-500 hover:text-red-400 text-sm shrink-0" title="Kaldır">✕</button>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : (
-            <label className="btn-secondary !text-sm cursor-pointer inline-flex w-fit">
-              {uploading ? 'Yükleniyor…' : '🖼 Üst görsel ekle'}
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={uploadImg} disabled={uploading} />
-            </label>
-          )}
 
-          <textarea value={f.body} onChange={e => setF({ ...f, body: e.target.value })} rows={5} placeholder="Mesaj metni... (boş satır = yeni paragraf)" className="input !text-sm w-full resize-y" />
-          <div className="flex flex-wrap gap-2">
-            <input value={f.button_label} onChange={e => setF({ ...f, button_label: e.target.value })} placeholder="Buton yazısı (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
-            <input value={f.button_url} onChange={e => setF({ ...f, button_url: e.target.value })} placeholder="Buton linki (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
+            <div className="flex flex-wrap gap-2 border-t border-brand-border pt-2">
+              <input value={f.button_label} onChange={e => setF({ ...f, button_label: e.target.value })} placeholder="Buton yazısı (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
+              <input value={f.button_url} onChange={e => setF({ ...f, button_url: e.target.value })} placeholder="Buton linki (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={f.personalize} onChange={e => setF({ ...f, personalize: e.target.checked })} />
+              İsimle kişiselleştir — adı varsa "Merhaba [ad]," ile başlar
+            </label>
+            <div className="flex justify-end"><button onClick={create} disabled={saving} className="btn-primary !text-sm disabled:opacity-40">{saving ? '...' : 'Taslak Oluştur'}</button></div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-            <input type="checkbox" checked={f.personalize} onChange={e => setF({ ...f, personalize: e.target.checked })} />
-            İsimle kişiselleştir — abonenin adı varsa e-posta "Merhaba [ad]," ile başlar
-          </label>
-          <div className="flex justify-end"><button onClick={create} disabled={saving} className="btn-primary !text-sm disabled:opacity-40">{saving ? '...' : 'Taslak Oluştur'}</button></div>
+
+          {/* Canlı önizleme */}
+          <div className="lg:sticky lg:top-4">
+            <div className="text-xs text-gray-400 mb-1">📧 Canlı önizleme</div>
+            <iframe srcDoc={previewHtml} title="Önizleme" className="w-full h-[640px] rounded-lg border border-brand-border bg-white" />
+          </div>
         </div>
       )}
 

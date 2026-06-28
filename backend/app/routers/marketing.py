@@ -144,6 +144,7 @@ def _ser_camp(c: MarketingCampaign) -> dict:
         "id": str(c.id), "subject": c.subject, "title": c.title, "body": c.body,
         "button_label": c.button_label, "button_url": c.button_url,
         "image_url": c.image_url, "preheader": c.preheader, "personalize": c.personalize,
+        "products": c.products or [],
         "status": c.status,
         "recipient_count": c.recipient_count, "sent_count": c.sent_count, "fail_count": c.fail_count,
         "open_count": c.open_count, "click_count": c.click_count,
@@ -174,6 +175,22 @@ class _CampaignRequest(BaseModel):
     image_url: str = ""
     preheader: str = ""
     personalize: bool = False
+    products: list[dict] = []
+
+
+def _clean_products(products) -> list[dict]:
+    out = []
+    for p in (products or [])[:24]:
+        if not isinstance(p, dict):
+            continue
+        item = {
+            "image": (p.get("image") or "").strip()[:500],
+            "title": (p.get("title") or "").strip()[:120],
+            "url": (p.get("url") or "").strip()[:500],
+        }
+        if item["image"] or item["title"]:
+            out.append(item)
+    return out
 
 
 class _TestRequest(BaseModel):
@@ -207,6 +224,7 @@ def create_campaign(
         image_url=(req.image_url.strip() or None),
         preheader=(req.preheader.strip()[:200] or None),
         personalize=bool(req.personalize),
+        products=_clean_products(req.products),
         created_by=user.full_name or user.email,
         status="draft",
     )
@@ -214,6 +232,33 @@ def create_campaign(
     db.commit()
     db.refresh(c)
     return _ser_camp(c)
+
+
+@router.post("/campaigns/preview", response_model=dict)
+def preview_campaign(
+    req: _CampaignRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Taslağı kaydetmeden e-posta HTML'ini üret — canlı önizleme."""
+    tenant = db.get(Tenant, user.tenant_id)
+    camp = MarketingCampaign(
+        tenant_id=user.tenant_id,
+        subject=(req.subject.strip() or "Konu"),
+        title=(req.title.strip() or None),
+        body=(req.body or None),
+        button_label=(req.button_label.strip() or None),
+        button_url=(req.button_url.strip() or None),
+        image_url=(req.image_url.strip() or None),
+        preheader=(req.preheader.strip() or None),
+        personalize=bool(req.personalize),
+        products=_clean_products(req.products),
+    )
+    html = marketing.render_campaign_email(
+        tenant, camp, "#", tracking_send_id=None,
+        recipient_name="Müşteri" if req.personalize else "",
+    )
+    return {"html": html}
 
 
 _IMG_EXT = {"png", "jpg", "jpeg", "webp", "gif"}

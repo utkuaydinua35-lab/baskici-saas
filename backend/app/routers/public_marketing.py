@@ -181,11 +181,11 @@ def track_open(send_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/t/{send_id}")
-def track_click(send_id: str, db: Session = Depends(get_db)):
-    """Tıklama takibi — kaydeder, kampanya buton linkine yönlendirir."""
+def track_click(send_id: str, u: str | None = None, db: Session = Depends(get_db)):
+    """Tıklama takibi — kaydeder, imzalı hedef (u) veya kampanya butonuna yönlendirir."""
     url = None
     try:
-        url = marketing.record_click(db, send_id)
+        url = marketing.record_click(db, send_id, u)
     except Exception:  # noqa: BLE001
         pass
     return RedirectResponse(url or (get_settings().panel_base_url or "/"), status_code=302)

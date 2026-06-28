@@ -1206,6 +1206,8 @@ class MarketingCampaign(Base):
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     preheader: Mapped[str | None] = mapped_column(String(200), nullable=True)
     personalize: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Ürün kartları ızgarası: [{"image": "/storage/..", "title": "..", "url": ".."}]
+    products: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
 
     status: Mapped[str] = mapped_column(
         String(20), default="draft", server_default=text("'draft'"), nullable=False, index=True

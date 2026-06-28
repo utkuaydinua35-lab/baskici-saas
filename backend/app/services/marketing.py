@@ -35,6 +35,30 @@ def _signer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().session_secret, salt=_JOIN_SALT)
 
 
+_LINK_SALT = "mkt-link"
+
+
+def _link_signer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(get_settings().session_secret, salt=_LINK_SALT)
+
+
+def _track_link(base: str, send_id: str | None, url: str) -> str:
+    """Linki tıklama-takip endpoint'ine sar (imzalı hedef → open-redirect yok).
+    send_id yoksa (önizleme) linki olduğu gibi döndürür."""
+    if not url:
+        return ""
+    if not send_id:
+        return url
+    return f"{base}/api/pazarlama/t/{send_id}?u={_link_signer().dumps(url)}"
+
+
+def unsign_link(token: str) -> str | None:
+    try:
+        return _link_signer().loads(token, max_age=60 * 60 * 24 * 60)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
 def _base() -> str:
     return (get_settings().panel_base_url or "").rstrip("/")
 
@@ -218,6 +242,38 @@ def _campaign_plain(camp: MarketingCampaign) -> str:
     return "\n".join(parts)
 
 
+def _render_products(products, base: str, tracking_send_id: str | None, escape) -> str:
+    """Ürün kartları ızgarası (2 sütun) — görsel + başlık, kart tıklanınca ürüne gider."""
+    items = [p for p in (products or [])
+             if isinstance(p, dict) and ((p.get("image") or "").strip() or (p.get("title") or "").strip())]
+    if not items:
+        return ""
+    cells = []
+    for p in items:
+        img = (p.get("image") or "").strip()
+        if img.startswith("/"):
+            img = base + img
+        title = escape((p.get("title") or "").strip())
+        url = _track_link(base, tracking_send_id, (p.get("url") or "").strip())
+        inner = ""
+        if img:
+            inner += f"<img src='{escape(img)}' alt='' style='width:100%;border-radius:10px;display:block'>"
+        if title:
+            inner += f"<div style='font-size:14px;color:#374151;margin-top:8px;line-height:1.4'>{title}</div>"
+        if url:
+            inner = f"<a href='{url}' style='text-decoration:none;color:inherit;display:block'>{inner}</a>"
+        cells.append(inner)
+    rows = []
+    for i in range(0, len(cells), 2):
+        pair = cells[i:i + 2]
+        tds = "".join(f"<td width='50%' valign='top' style='padding:6px'>{c}</td>" for c in pair)
+        if len(pair) == 1:
+            tds += "<td width='50%'></td>"
+        rows.append(f"<tr>{tds}</tr>")
+    return ("<table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0' "
+            "style='margin:10px 0 4px'>" + "".join(rows) + "</table>")
+
+
 def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str,
                           *, tracking_send_id: str | None = None, recipient_name: str = "") -> str:
     from html import escape
@@ -234,12 +290,14 @@ def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str
         parts.append(f"<p style='margin:0 0 16px'><img src='{escape(img)}' alt='' "
                      "style='max-width:100%;border-radius:12px;display:block'></p>")
     parts.append(_body_to_html(camp.body))
+    # Ürün kartları ızgarası
+    prods = _render_products(getattr(camp, "products", None) or [], base, tracking_send_id, escape)
+    if prods:
+        parts.append(prods)
     body = "".join(parts)
 
-    btn_url = camp.button_url or ""
-    # Tıklama takibi: buton linkini yönlendirme endpoint'ine çevir
-    if tracking_send_id and btn_url:
-        btn_url = f"{base}/api/pazarlama/t/{tracking_send_id}"
+    # Buton linki tıklama-takip ile sarılır (imzalı hedef)
+    btn_url = _track_link(base, tracking_send_id, camp.button_url or "")
     # Açılma takibi: görünmez 1x1 pixel
     if tracking_send_id:
         body += (f"<img src='{base}/api/pazarlama/a/{tracking_send_id}' width='1' height='1' "
@@ -371,8 +429,8 @@ def record_open(db: Session, send_id: str) -> None:
     db.commit()
 
 
-def record_click(db: Session, send_id: str) -> str | None:
-    """Tıklamayı kaydet, yönlendirilecek hedef URL'i döndür (kampanya butonu)."""
+def record_click(db: Session, send_id: str, signed_url: str | None = None) -> str | None:
+    """Tıklamayı kaydet, yönlendirilecek hedef URL'i döndür (imzalı link veya buton)."""
     send = _get_send(db, send_id)
     if not send:
         return None
@@ -388,5 +446,8 @@ def record_click(db: Session, send_id: str) -> str | None:
             camp.click_count = (camp.click_count or 0) + 1
     send.click_count = (send.click_count or 0) + 1
     db.commit()
-    return (camp.button_url if camp else None) or None
+    target = unsign_link(signed_url) if signed_url else None
+    if not target and camp:
+        target = camp.button_url
+    return target or None
 

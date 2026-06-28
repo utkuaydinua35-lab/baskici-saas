@@ -67,6 +67,19 @@ def _variation_of(li) -> str:
     return "siyah"
 
 
+def _resolve_phone_model(db, tenant_id, li):
+    """Kalemin telefon modelini çöz (mockup şablonu için). Bulunamazsa None."""
+    from app.services import phone_models as pmsvc
+    model_str = (getattr(li, "device_model_override", None)
+                 or getattr(li, "variant_title", None) or "")
+    if not model_str:
+        return None
+    try:
+        return pmsvc._db_lookup(db, tenant_id, pmsvc.normalize_key(model_str))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def build_items(db: Session, order: Order) -> list[dict]:
     """Müşteriye gösterilecek tasarımlar — YALNIZCA kişiye özel kalemler.
     Tasarım (PDF) kılıf mockup'ına oturtulup numune görseli üretilir; mockup
@@ -91,8 +104,9 @@ def build_items(db: Session, order: Order) -> list[dict]:
             continue
 
         variation = _variation_of(li)
-        # Numune mockup üret (tasarımı kılıfa oturt); olmazsa thumbnail
-        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation)
+        pm = _resolve_phone_model(db, order.tenant_id, li)
+        # Numune mockup üret (model şablonu varsa gerçek foto, yoksa çizim); olmazsa thumbnail
+        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation, phone_model=pm)
         preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
 
         items.append({

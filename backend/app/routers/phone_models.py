@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -52,6 +52,7 @@ class PhoneModelUpdate(BaseModel):
     radius_cm: float | None = Field(None, ge=0, lt=10)
     is_active: bool | None = None
     notes: str | None = None
+    mockup_rect: dict | None = None  # {x,y,w,h} kesirsel (0..1)
 
 
 class CheckRequest(BaseModel):
@@ -70,6 +71,8 @@ def _serialize(m: PhoneModel) -> dict:
         "radius_cm": m.radius_cm,
         "is_active": m.is_active,
         "notes": m.notes,
+        "mockup_template_url": m.mockup_template_url,
+        "mockup_rect": m.mockup_rect,
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
     }
@@ -199,7 +202,55 @@ def update_model(
         m.is_active = body.is_active
     if body.notes is not None:
         m.notes = body.notes
+    if body.mockup_rect is not None:
+        r = body.mockup_rect or {}
+        if all(k in r for k in ("x", "y", "w", "h")):
+            m.mockup_rect = {k: round(float(r[k]), 5) for k in ("x", "y", "w", "h")}
+        elif not r:
+            m.mockup_rect = None
 
+    db.commit()
+    db.refresh(m)
+    return _serialize(m)
+
+
+@router.post("/{model_id}/mockup-template", response_model=dict)
+async def upload_mockup_template(
+    model_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("telefon_modelleri")),
+    db: Session = Depends(get_db),
+):
+    """Telefon modeli için gerçek ürün fotoğrafı (mockup şablonu) yükle."""
+    m = db.scalar(select(PhoneModel).where(
+        PhoneModel.id == model_id, PhoneModel.tenant_id == user.tenant_id))
+    if not m:
+        raise HTTPException(404, "Model bulunamadı")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in {"png", "jpg", "jpeg", "webp"}:
+        raise HTTPException(400, "İzin verilen formatlar: png, jpg, webp")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Görsel çok büyük (max 5 MB)")
+    from app.services import storage
+    m.mockup_template_url = storage.save_logo(user.tenant_id, f"mockup-{model_id}", data, ext)
+    db.commit()
+    db.refresh(m)
+    return _serialize(m)
+
+
+@router.delete("/{model_id}/mockup-template", response_model=dict)
+def delete_mockup_template(
+    model_id: uuid.UUID,
+    user: User = Depends(require_permission("telefon_modelleri")),
+    db: Session = Depends(get_db),
+):
+    m = db.scalar(select(PhoneModel).where(
+        PhoneModel.id == model_id, PhoneModel.tenant_id == user.tenant_id))
+    if not m:
+        raise HTTPException(404, "Model bulunamadı")
+    m.mockup_template_url = None
+    m.mockup_rect = None
     db.commit()
     db.refresh(m)
     return _serialize(m)

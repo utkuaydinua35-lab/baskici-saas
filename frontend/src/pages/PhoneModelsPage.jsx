@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -20,6 +20,7 @@ export default function PhoneModelsPage() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
+  const [mockupModel, setMockupModel] = useState(null)
   const [testInput, setTestInput] = useState('')
   const [testRes, setTestRes] = useState(null)
   const [testing, setTesting] = useState(false)
@@ -301,6 +302,9 @@ export default function PhoneModelsPage() {
                   </td>
                   <td className="px-2 py-2">
                     <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setMockupModel(m)}
+                        className={`w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-accent/10 ${m.mockup_template_url ? 'text-emerald-400' : 'text-gray-500 hover:text-accent'}`}
+                        title="Mockup şablonu">🖼</button>
                       <button onClick={() => openEdit(m)}
                         className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-accent hover:bg-accent/10 rounded transition-colors"
                         title="Düzenle">✎</button>
@@ -315,6 +319,97 @@ export default function PhoneModelsPage() {
           </table></div>
         </div>
       )}
+      {mockupModel && (
+        <MockupEditor model={mockupModel} onClose={() => setMockupModel(null)} onSaved={load} />
+      )}
+    </div>
+  )
+}
+
+// Mockup şablonu: gerçek ürün fotoğrafı yükle + tasarım alanını fareyle sürükleyerek çiz
+function MockupEditor({ model, onClose, onSaved }) {
+  const [tplUrl, setTplUrl] = useState(model.mockup_template_url || '')
+  const [rect, setRect] = useState(model.mockup_rect || null)
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const boxRef = useRef(null)
+  const drag = useRef(null)
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    setUploading(true); setErr('')
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await api.postForm(`/api/phone-models/${model.id}/mockup-template`, fd)
+      setTplUrl(r.mockup_template_url || ''); setRect(r.mockup_rect || null)
+    } catch (e2) { setErr(e2.detail || 'Yüklenemedi') }
+    finally { setUploading(false); e.target.value = '' }
+  }
+  const removeTpl = async () => {
+    if (!confirm('Şablon kaldırılsın mı?')) return
+    try { await api.del(`/api/phone-models/${model.id}/mockup-template`); setTplUrl(''); setRect(null); onSaved?.() }
+    catch (e2) { setErr(e2.detail || 'Olmadı') }
+  }
+
+  const frac = (e) => {
+    const b = boxRef.current.getBoundingClientRect()
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
+    }
+  }
+  const onDown = (e) => { e.preventDefault(); drag.current = frac(e); setRect({ x: drag.current.x, y: drag.current.y, w: 0, h: 0 }) }
+  const onMove = (e) => {
+    if (!drag.current) return
+    const p = frac(e), s = drag.current
+    setRect({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) })
+  }
+  const onUp = () => { drag.current = null }
+
+  const saveRect = async () => {
+    if (!rect || rect.w < 0.02 || rect.h < 0.02) { setErr('Önce fotoğraf üzerinde tasarım alanını çiz'); return }
+    setSaving(true); setErr('')
+    try { await api.patch(`/api/phone-models/${model.id}`, { mockup_rect: rect }); onSaved?.(); onClose() }
+    catch (e2) { setErr(e2.detail || 'Kaydedilemedi') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-lg font-semibold text-gray-100">Mockup şablonu — {model.display_name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+
+        {!tplUrl ? (
+          <label className="block border border-dashed border-brand-border rounded-lg p-8 text-center text-sm text-gray-400 cursor-pointer hover:border-accent">
+            {uploading ? 'Yükleniyor…' : '🖼 Ürün fotoğrafı yükle (png / jpg / webp)'}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={upload} disabled={uploading} />
+          </label>
+        ) : (
+          <>
+            <p className="text-xs text-gray-400 mb-2">Fotoğraf üzerinde, müşterinin tasarımının oturacağı alanı <b>fareyle sürükleyerek çiz</b>:</p>
+            <div ref={boxRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+              className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
+              <img src={tplUrl} alt="" className="w-full block pointer-events-none" draggable={false} />
+              {rect && (
+                <div className="absolute border-2 border-accent bg-accent/20 pointer-events-none"
+                  style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }} />
+              )}
+            </div>
+            <div className="flex justify-between items-center mt-3">
+              <button onClick={removeTpl} className="text-xs text-red-400 hover:text-red-300">Şablonu kaldır</button>
+              <div className="flex gap-2">
+                <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+                <button onClick={saveRect} disabled={saving} className="btn-primary !text-sm disabled:opacity-50">{saving ? '...' : 'Alanı Kaydet'}</button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

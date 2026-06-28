@@ -238,3 +238,28 @@ class ShopifyAdapter(StorePlatform):
         if r2.status_code in (200, 201):
             return {"ok": True, "fulfillment": r2.json().get("fulfillment", {})}
         return {"ok": False, "error": f"HTTP {r2.status_code}: {r2.text[:200]}"}
+
+    def update_tracking(
+        self,
+        fulfillment_id: str,
+        tracking_number: str,
+        tracking_company: str = "Kargo",
+        tracking_url: str | None = None,
+        notify_customer: bool = False,
+    ) -> dict:
+        """Mevcut bir fulfillment'ın takip bilgisini güncelle (no sonradan geldiğinde)."""
+        url = f"{self._base_url()}/fulfillments/{fulfillment_id}/update_tracking.json"
+        payload = {
+            "fulfillment": {
+                "notify_customer": notify_customer,
+                "tracking_info": {
+                    "number": tracking_number,
+                    "company": tracking_company,
+                    **({"url": tracking_url} if tracking_url else {}),
+                },
+            }
+        }
+        r = self.session.post(url, headers=self._headers(), json=payload, timeout=30)
+        if r.status_code in (200, 201):
+            return {"ok": True, "fulfillment": r.json().get("fulfillment", {})}
+        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}

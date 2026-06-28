@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Order, OrderStatusHistory
+from app.models import Order, OrderStatusHistory, Store
 from app.services import telegram
 
 logger = logging.getLogger("webhooks")
@@ -76,6 +76,35 @@ def basit_kargo_webhook(
         ki["last_state"] = last_state
     ki["updated_at"] = datetime.now(UTC).isoformat()
     order.kargo_info = ki
+
+    # Gerçek kargo firması takip no'su (handlerShipmentCode) sonradan gelirse:
+    # kargo_info'yu güncelle + Shopify fulfillment takip no'sunu düzelt.
+    hsc = str(payload.get("handlerShipmentCode") or "").strip()
+    handler_name_in = ((payload.get("handler") or {}).get("name")
+                       or ((payload.get("shipmentInfo") or {}).get("handler") or {}).get("name"))
+    if hsc and hsc != (ki.get("takip_no") or ""):
+        ki["takip_no"] = hsc
+        if handler_name_in:
+            ki["handler_name"] = handler_name_in
+        order.kargo_info = ki
+        try:
+            store = db.get(Store, order.store_id) if order.store_id else None
+            if store and store.platform == "shopify":
+                from app.adapters import get_adapter
+                adapter = get_adapter(store)
+                company = ki.get("handler_name") or "Kargo"
+                fid = ki.get("fulfillment_id")
+                if fid:
+                    adapter.update_tracking(fid, hsc, company)
+                elif ki.get("shopify_oid"):
+                    tr = adapter.add_tracking(ki["shopify_oid"], hsc, company)
+                    nfid = (tr.get("fulfillment") or {}).get("id")
+                    if nfid:
+                        ki["fulfillment_id"] = nfid
+                        order.kargo_info = ki
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[webhook] Shopify takip no güncelleme hatası: {e}")
+        logger.info(f"[webhook] takip no güncellendi -> {hsc} (sipariş {order.order_number})")
 
     if changed:
         durum_tr = _STATUS_TR.get(status, status)

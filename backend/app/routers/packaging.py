@@ -161,6 +161,7 @@ def kargo_gonder(
     # 2) Shopify'a fulfillment + takip no yaz (hata olsa da kargo gönderisi oluştu, devam)
     shopify_ok = False
     shopify_err = None
+    fulfillment_id = None
     try:
         shopify_oid = order.external_id or str((order.raw or {}).get("id") or "")
         if shopify_oid and store.platform == "shopify" and takip_no:
@@ -168,10 +169,12 @@ def kargo_gonder(
             tr = adapter.add_tracking(shopify_oid, takip_no, handler_label)
             shopify_ok = bool(tr.get("ok"))
             shopify_err = tr.get("error")
+            fulfillment_id = (tr.get("fulfillment") or {}).get("id")
     except Exception as e:
         shopify_err = str(e)[:200]
 
-    # 3) Kargo referansını sakla (re-print / iptal / webhook eşleşmesi için)
+    # 3) Kargo referansını sakla (re-print / iptal / webhook eşleşmesi için).
+    # fulfillment_id + shopify_oid: gerçek takip no sonradan (webhook) gelince güncellemek için.
     order.kargo_info = {
         "provider": "basit",
         "id": res.get("id"),
@@ -180,6 +183,8 @@ def kargo_gonder(
         "handler_code": res.get("handler_code") or handler_code,
         "handler_name": handler_label,
         "status": res.get("status"),
+        "shopify_oid": (order.external_id or str((order.raw or {}).get("id") or "")) or None,
+        "fulfillment_id": fulfillment_id,
     }
 
     # 4) Stage 8 (Kargoda) + history + stok düşümü

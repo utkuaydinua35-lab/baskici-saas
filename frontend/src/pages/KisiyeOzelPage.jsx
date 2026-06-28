@@ -754,6 +754,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
   const [filePreview, setFilePreview] = useState(null)
+  const [previewType, setPreviewType] = useState(null)  // 'image' | 'pdf'
   const defaultCode = orderNumber
     ? (totalKisiyeOzel > 1 ? `${orderNumber}-${(itemIndex ?? 0) + 1}` : `${orderNumber}`)
     : ''
@@ -769,12 +770,15 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
   const handleFile = (f) => {
     if (!f) return
     setFile(f)
+    if (filePreview && previewType === 'pdf') { try { URL.revokeObjectURL(filePreview) } catch { /* yok say */ } }
     if (['image/svg+xml', 'image/png', 'image/jpeg'].includes(f.type)) {
       const reader = new FileReader()
-      reader.onload = e => setFilePreview(e.target.result)
+      reader.onload = e => { setFilePreview(e.target.result); setPreviewType('image') }
       reader.readAsDataURL(f)
+    } else if (f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf')) {
+      setFilePreview(URL.createObjectURL(f)); setPreviewType('pdf')
     } else {
-      setFilePreview(null)
+      setFilePreview(null); setPreviewType(null)
     }
   }
 
@@ -841,7 +845,11 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
                        onChange={e => handleFile(e.target.files?.[0])} className="hidden" />
                 {file ? (
                   <div className="space-y-2">
-                    {filePreview && <img src={filePreview} alt="" className="max-h-32 mx-auto rounded" />}
+                    {previewType === 'image' && filePreview && <img src={filePreview} alt="" className="max-h-40 mx-auto rounded" />}
+                    {previewType === 'pdf' && filePreview && (
+                      <iframe src={`${filePreview}#toolbar=0&navpanes=0&view=FitH`} title="PDF önizleme"
+                        className="w-full h-56 rounded border border-brand-border bg-white" style={{ pointerEvents: 'none' }} />
+                    )}
                     <div className="text-sm text-gray-300">{file.name}</div>
                     <div className="text-[10px] text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
                   </div>

@@ -112,9 +112,22 @@ def complete(
     return result
 
 
+@router.get("/il-ilce", response_model=dict)
+def il_ilce(user: User = Depends(get_current_user)):
+    """TR il → ilçe listesi (manuel il/ilçe seçimi için)."""
+    from app.services import tr_iller
+    return tr_iller.IL_ILCE
+
+
+class KargoGonderRequest(BaseModel):
+    il: str = ""    # manuel il (adres çözülemezse)
+    ilce: str = ""  # manuel ilçe
+
+
 @router.post("/order/{order_ref}/kargo-gonder", response_model=dict)
 def kargo_gonder(
     order_ref: str,
+    body: KargoGonderRequest = KargoGonderRequest(),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -136,6 +149,8 @@ def kargo_gonder(
         order.raw or {},
         handler_code=handler_code,
         order_code=order.order_number or str(order.id),
+        il_override=(body.il.strip() or None),
+        ilce_override=(body.ilce.strip() or None),
     )
     if not res.get("ok"):
         raise HTTPException(400, res.get("message", "Kargo gönderimi başarısız"))

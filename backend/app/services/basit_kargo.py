@@ -54,6 +54,8 @@ def create_shipment(
     *,
     handler_code: str = DEFAULT_HANDLER,
     order_code: str = "",
+    il_override: str | None = None,
+    ilce_override: str | None = None,
 ) -> dict:
     """Gönderi + barkod oluştur (POST /v2/order/barcode).
 
@@ -66,6 +68,12 @@ def create_shipment(
         return {"ok": False, "message": "Basit Kargo token tanımlı değil (.env BASIT_KARGO_TOKEN)"}
 
     info = _surat._addr_parts(order_raw)
+    # Manuel il/ilçe (adresten çözülemeyen siparişlerde panelden seçilir)
+    if il_override and ilce_override:
+        from app.services import tr_iller
+        info["il"] = tr_iller.resolve_il(il_override) or il_override
+        info["ilce"] = ilce_override
+        info["ilce_gecerli"] = True
     if not info["telefon"] or len(info["telefon"]) < 10:
         return {"ok": False, "message": f"Geçersiz telefon: '{info['telefon']}'"}
     if not info["il"] or not info["adres"]:

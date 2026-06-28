@@ -32,10 +32,14 @@ export default function PackagingPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [manualAddr, setManualAddr] = useState(false)   // ilçe çözülemedi → il/ilçe seçici
+  const [ilIlce, setIlIlce] = useState(null)            // { il: [ilçe, ...] }
+  const [selIl, setSelIl] = useState('')
+  const [selIlce, setSelIlce] = useState('')
   const { clock, h, m, passed } = useCargoCountdown()
 
   const loadIndex = useCallback(async (idx) => {
-    setLoading(true); setMsg(null)
+    setLoading(true); setMsg(null); setManualAddr(false)
     try {
       const r = await api.get(`/api/packaging/queue?index=${idx}`)
       setQueue(r)
@@ -83,24 +87,29 @@ export default function PackagingPage() {
     } catch { /* popup engellendi */ }
   }
 
-  const kargoGonder = async () => {
+  const kargoGonder = async (opts = {}) => {
     if (!order || busy) return
-    if (!confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
+    if (!opts.il && !confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
     setBusy(true); setMsg(null)
     try {
-      const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/kargo-gonder`, {})
+      const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/kargo-gonder`,
+        { il: opts.il || '', ilce: opts.ilce || '' })
       const tn = r.takip_no || '—'
       const firma = r.handler_name || 'Kargo'
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
       setMsg({ ok: true, text: `✅ ${firma} gönderi oluştu · Takip No: ${tn}${extra}` })
+      setManualAddr(false)
       if (r.label_svg) openLabelSvg(r.label_svg, tn)
       setTimeout(() => loadIndex(index), 2500)
     } catch (e) {
       const t = typeof e?.detail === 'string' ? e.detail : 'Kargo gönderimi başarısız'
-      const friendly = t.includes('İlçe belirlenemedi')
-        ? `⚠ ${t} (Adreste ilçe yok — Shopify'da ilçeyi düzeltip tekrar deneyin.)`
-        : t
-      setMsg({ ok: false, text: friendly })
+      if (t.includes('İlçe belirlenemedi')) {
+        setMsg({ ok: false, text: '⚠ Adresten il/ilçe çözülemedi. Aşağıdan seçip gönderebilirsin.' })
+        setManualAddr(true)
+        if (!ilIlce) api.get('/api/packaging/il-ilce').then(setIlIlce).catch(() => {})
+      } else {
+        setMsg({ ok: false, text: t })
+      }
     } finally {
       setBusy(false)
     }
@@ -215,10 +224,33 @@ export default function PackagingPage() {
               <button onClick={downloadLabel} className="w-full btn-secondary !text-sm flex items-center justify-center gap-2">
                 🖨 KARGO ETİKETİ YAZDIR
               </button>
-              <button onClick={kargoGonder} disabled={busy}
+              <button onClick={() => kargoGonder()} disabled={busy}
                 className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
                 {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 KARGOYA VER'}
               </button>
+
+              {manualAddr && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                  <div className="text-xs text-amber-300">Adresten il/ilçe çözülemedi — elle seç:</div>
+                  <div className="flex gap-2">
+                    <select value={selIl} onChange={e => { setSelIl(e.target.value); setSelIlce('') }}
+                      className="input !text-sm flex-1">
+                      <option value="">İl seç…</option>
+                      {ilIlce && Object.keys(ilIlce).map(il => <option key={il} value={il}>{il}</option>)}
+                    </select>
+                    <select value={selIlce} onChange={e => setSelIlce(e.target.value)} disabled={!selIl}
+                      className="input !text-sm flex-1 disabled:opacity-50">
+                      <option value="">İlçe seç…</option>
+                      {selIl && (ilIlce?.[selIl] || []).map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={() => kargoGonder({ il: selIl, ilce: selIlce })}
+                    disabled={busy || !selIl || !selIlce}
+                    className="w-full !text-sm rounded-lg py-2 font-medium bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50">
+                    {busy ? '⏳ Gönderiliyor…' : 'Seçili il/ilçe ile gönder'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Navigasyon */}

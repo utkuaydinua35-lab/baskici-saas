@@ -491,9 +491,12 @@ export default function OrdersPage() {
                           <td className="px-3 py-2 text-gray-400">{storeLabel(o)}</td>
                           <td className="px-3 py-2 text-gray-300 truncate max-w-[160px]">{o.customer_name || '—'}</td>
                           <td className="px-3 py-2">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${status.color}`}>
-                              {status.label}
-                            </span>
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full ${status.color}`}>
+                                {status.label}
+                              </span>
+                              <KargoBadge o={o} />
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             {mold ? (
@@ -620,6 +623,30 @@ export default function OrdersPage() {
         />
       )}
 </div>
+  )
+}
+
+const KARGO_STATUS = {
+  NEW: ['Hazırlanıyor', 'bg-gray-500/15 text-gray-300'],
+  READY_TO_SHIP: ['Kargoya hazır', 'bg-gray-500/15 text-gray-300'],
+  SHIPPED: ['Kargoda', 'bg-blue-500/15 text-blue-300'],
+  OUT_FOR_DELIVERY: ['Dağıtımda', 'bg-blue-500/15 text-blue-300'],
+  DELIVERED: ['Teslim edildi', 'bg-emerald-500/15 text-emerald-300'],
+  NEEDS_SUPPORT: ['Destek gerek', 'bg-red-500/15 text-red-300'],
+  DELAYED: ['Gecikti', 'bg-amber-500/15 text-amber-300'],
+  RETURNING: ['İade ediliyor', 'bg-amber-500/15 text-amber-300'],
+  RETURNED: ['İade edildi', 'bg-red-500/15 text-red-300'],
+  LOST: ['Kayıp', 'bg-red-500/15 text-red-300'],
+}
+
+function KargoBadge({ o }) {
+  if (!o?.kargo_status) return null
+  const [label, color] = KARGO_STATUS[o.kargo_status] || [o.kargo_status, 'bg-gray-500/15 text-gray-300']
+  return (
+    <span className={`text-[10px] px-2 py-0.5 rounded-full ${color}`}
+      title={`${o.kargo_firma || 'Kargo'}${o.kargo_takip ? ' · ' + o.kargo_takip : ''}`}>
+      🚚 {label}
+    </span>
   )
 }
 

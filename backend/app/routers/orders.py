@@ -487,6 +487,10 @@ def list_orders(
             1 for li in o.line_items if getattr(li, "is_kaliba_eklendi", False)
         )
         item["mold_kodlari"] = mold_codes_by_order.get(o.id, [])
+        _ki = o.kargo_info or {}
+        item["kargo_status"] = _ki.get("status")
+        item["kargo_takip"] = _ki.get("takip_no")
+        item["kargo_firma"] = _ki.get("handler_name")
         item["is_acil"] = bool(
             o.cancelled_at is None
             and (o.fulfillment_status != "fulfilled")

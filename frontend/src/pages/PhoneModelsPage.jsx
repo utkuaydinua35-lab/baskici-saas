@@ -363,22 +363,52 @@ function MockupEditor({ model, onClose, onSaved }) {
       y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
     }
   }
-  const onDown = (e) => {
-    e.preventDefault(); drag.current = frac(e)
-    const start = { x: drag.current.x, y: drag.current.y, w: 0, h: 0 }
-    setRect(prev => mode === 'camera'
-      ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: start }
-      : { ...start, camera: prev?.camera, radius: prev?.radius })
-  }
+  const active = mode === 'camera'
+    ? (rect?.camera || null)
+    : (rect && rect.w !== undefined ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null)
+  const setActive = (box) => setRect(prev => mode === 'camera'
+    ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: box }
+    : { ...box, camera: prev?.camera, radius: prev?.radius, overlay: prev?.overlay })
+
+  const startNew = (e) => { e.preventDefault(); const p = frac(e); drag.current = { type: 'new', startP: p }; setActive({ x: p.x, y: p.y, w: 0, h: 0 }) }
+  const startDrag = (e, type) => { e.preventDefault(); e.stopPropagation(); if (active) drag.current = { type, startP: frac(e), startBox: { ...active } } }
   const onMove = (e) => {
     if (!drag.current) return
-    const p = frac(e), s = drag.current
-    const box = { x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) }
-    setRect(prev => mode === 'camera'
-      ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: box }
-      : { ...box, camera: prev?.camera, radius: prev?.radius })
+    const p = frac(e), { type, startP, startBox } = drag.current
+    if (type === 'new') { setActive({ x: Math.min(startP.x, p.x), y: Math.min(startP.y, p.y), w: Math.abs(p.x - startP.x), h: Math.abs(p.y - startP.y) }); return }
+    const dx = p.x - startP.x, dy = p.y - startP.y
+    let { x, y, w, h } = startBox
+    if (type === 'move') { x = Math.max(0, Math.min(1 - w, x + dx)); y = Math.max(0, Math.min(1 - h, y + dy)) }
+    else {
+      if (type.includes('w')) { x = startBox.x + dx; w = startBox.w - dx }
+      if (type.includes('e')) { w = startBox.w + dx }
+      if (type.includes('n')) { y = startBox.y + dy; h = startBox.h - dy }
+      if (type.includes('s')) { h = startBox.h + dy }
+      if (w < 0) { x += w; w = -w }
+      if (h < 0) { y += h; h = -h }
+      x = Math.max(0, x); y = Math.max(0, y)
+      w = Math.max(0.01, Math.min(1 - x, w)); h = Math.max(0.01, Math.min(1 - y, h))
+    }
+    setActive({ x, y, w, h })
   }
   const onUp = () => { drag.current = null }
+
+  const HANDLES = [['nw', 0, 0, 'nwse-resize'], ['n', 50, 0, 'ns-resize'], ['ne', 100, 0, 'nesw-resize'], ['e', 100, 50, 'ew-resize'], ['se', 100, 100, 'nwse-resize'], ['s', 50, 100, 'ns-resize'], ['sw', 0, 100, 'nesw-resize'], ['w', 0, 50, 'ew-resize']]
+  const renderBox = (box, color, editable, br) => {
+    if (!box || !(box.w > 0)) return null
+    const cls = color === 'accent' ? 'border-accent bg-accent/20' : 'border-amber-400 bg-amber-400/25'
+    return (
+      <div className={`absolute border-2 ${cls}`} onMouseDown={editable ? (e => startDrag(e, 'move')) : undefined}
+        style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, borderRadius: br || 0, cursor: editable ? 'move' : 'default', pointerEvents: editable ? 'auto' : 'none' }}>
+        {editable && HANDLES.map(([h, lx, ly, cur]) => (
+          <div key={h} onMouseDown={e => startDrag(e, h)} className="absolute w-3 h-3 bg-white border border-gray-600 rounded-sm"
+            style={{ left: `${lx}%`, top: `${ly}%`, transform: 'translate(-50%,-50%)', cursor: cur }} />
+        ))}
+      </div>
+    )
+  }
+  const overlay = !!rect?.overlay
+  const designBr = `${(rect?.radius ?? 0.08) * Math.min((rect?.w || 0) * boxSz.w, (rect?.h || 0) * boxSz.h)}px`
 
   const saveRect = async () => {
     if (!rect || rect.w < 0.02 || rect.h < 0.02) { setErr('Önce fotoğraf üzerinde tasarım alanını çiz'); return }
@@ -404,29 +434,33 @@ function MockupEditor({ model, onClose, onSaved }) {
           </label>
         ) : (
           <>
-            <div className="flex items-center gap-2 mb-2">
-              <button onClick={() => setMode('design')}
-                className={`text-xs px-2.5 py-1 rounded ${mode === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>1) Tasarım alanı</button>
-              <button onClick={() => setMode('camera')}
-                className={`text-xs px-2.5 py-1 rounded ${mode === 'camera' ? 'bg-amber-500 text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>2) Kamera alanı</button>
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              <span className="text-gray-500">Şablon tipi:</span>
+              <button onClick={() => setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: false }))}
+                className={`px-2 py-1 rounded ${!overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Düz foto</button>
+              <button onClick={() => { setMode('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: true })) }}
+                className={`px-2 py-1 rounded ${overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Şeffaf pencere</button>
             </div>
+            {!overlay && (
+              <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => setMode('design')}
+                  className={`text-xs px-2.5 py-1 rounded ${mode === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>1) Tasarım alanı</button>
+                <button onClick={() => setMode('camera')}
+                  className={`text-xs px-2.5 py-1 rounded ${mode === 'camera' ? 'bg-amber-500 text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>2) Kamera alanı</button>
+              </div>
+            )}
             <p className="text-xs text-gray-400 mb-2">
-              {mode === 'design'
-                ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> fareyle sürükleyerek çiz.</>
-                : <>Kameranın olduğu <b className="text-amber-400">bölgeyi</b> çiz — bu alan tasarımdan hariç tutulur, fotoğraftaki kamera görünür kalır. (Opsiyonel)</>}
+              {overlay
+                ? <>Şeffaf pencereli PNG — tasarım <b className="text-accent">arkada</b>, şablon (kamera/gölge) üstte. <b className="text-accent">Tasarım alanını</b> pencereye hizala: çiz, sonra kenar/köşelerden tutup oturt.</>
+                : mode === 'design'
+                  ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> çiz; sonra kenar/köşelerden tutup tam oturt.</>
+                  : <>Kameranın olduğu <b className="text-amber-400">bölgeyi</b> çiz/ayarla — tasarımdan hariç tutulur. (Opsiyonel)</>}
             </p>
-            <div ref={boxRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+            <div ref={boxRef} onMouseDown={startNew} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
               className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
               <img src={tplUrl} alt="" onLoad={measure} className="w-full block pointer-events-none" draggable={false} />
-              {rect && rect.w > 0 && (
-                <div className="absolute border-2 border-accent bg-accent/20 pointer-events-none"
-                  style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%`,
-                    borderRadius: `${(rect.radius ?? 0.08) * Math.min(rect.w * boxSz.w, rect.h * boxSz.h)}px` }} />
-              )}
-              {rect?.camera && rect.camera.w > 0 && (
-                <div className="absolute border-2 border-amber-400 bg-amber-400/25 pointer-events-none"
-                  style={{ left: `${rect.camera.x * 100}%`, top: `${rect.camera.y * 100}%`, width: `${rect.camera.w * 100}%`, height: `${rect.camera.h * 100}%` }} />
-              )}
+              {renderBox(rect && rect.w > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null, 'accent', mode === 'design', designBr)}
+              {!overlay && renderBox(rect?.camera, 'amber', mode === 'camera', 0)}
             </div>
             {rect && rect.w > 0 && (
               <div className="flex items-center gap-2 mt-2">

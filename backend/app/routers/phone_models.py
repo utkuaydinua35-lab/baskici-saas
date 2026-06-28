@@ -214,6 +214,8 @@ def update_model(
             cam = r.get("camera")
             if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
                 rect["camera"] = {k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}
+            if r.get("overlay"):
+                rect["overlay"] = True
             m.mockup_rect = rect
         elif not r:
             m.mockup_rect = None

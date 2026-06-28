@@ -120,18 +120,26 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
     rh = int(float(rect.get("h", 1)) * TH)
     if rw < 4 or rh < 4:
         return tpl
+    overlay = bool(rect.get("overlay")) if isinstance(rect, dict) else False
     fitted = _cover(design, rw, rh).convert("RGB")
-    # Gölgelendirme: kılıfın (fotoğraftaki) ışık/gölgesini tasarıma soft-light ile uygula
+    rfrac = float(rect.get("radius", 0.08)) if isinstance(rect, dict) else 0.08
+    rfrac = min(0.5, max(0.0, rfrac))
+    radius = int(min(rw, rh) * rfrac)
+    mask = _rounded_mask(rw, rh, radius)
+
+    if overlay:
+        # Şeffaf pencereli şablon: tasarım ARKADA, şablon (pencere + kamera + gölge) ÜSTTE
+        base = Image.new("RGBA", (TW, TH), (0, 0, 0, 0))
+        base.paste(fitted, (rx, ry), mask)
+        return Image.alpha_composite(base, tpl)
+
+    # Düz foto modu — gölgelendirme: kılıfın ışık/gölgesini tasarıma soft-light ile uygula
     try:
         from PIL import ImageChops
         case = tpl.crop((rx, ry, rx + rw, ry + rh)).convert("RGB")
         fitted = Image.blend(fitted, ImageChops.soft_light(fitted, case), 0.45)
     except Exception:  # noqa: BLE001
         pass
-    rfrac = float(rect.get("radius", 0.08)) if isinstance(rect, dict) else 0.08
-    rfrac = min(0.5, max(0.0, rfrac))
-    radius = int(min(rw, rh) * rfrac)
-    mask = _rounded_mask(rw, rh, radius)
     # Kamera alanı: tasarımdan hariç tut → fotoğraftaki kamera modülü üstte kalır
     cam = rect.get("camera") if isinstance(rect, dict) else None
     if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):

@@ -330,6 +330,7 @@ export default function PhoneModelsPage() {
 function MockupEditor({ model, onClose, onSaved }) {
   const [tplUrl, setTplUrl] = useState(model.mockup_template_url || '')
   const [rect, setRect] = useState(model.mockup_rect || null)
+  const [mode, setMode] = useState('design')  // 'design' | 'camera'
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -359,11 +360,20 @@ function MockupEditor({ model, onClose, onSaved }) {
       y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
     }
   }
-  const onDown = (e) => { e.preventDefault(); drag.current = frac(e); setRect({ x: drag.current.x, y: drag.current.y, w: 0, h: 0 }) }
+  const onDown = (e) => {
+    e.preventDefault(); drag.current = frac(e)
+    const start = { x: drag.current.x, y: drag.current.y, w: 0, h: 0 }
+    setRect(prev => mode === 'camera'
+      ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: start }
+      : { ...start, camera: prev?.camera })
+  }
   const onMove = (e) => {
     if (!drag.current) return
     const p = frac(e), s = drag.current
-    setRect({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) })
+    const box = { x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) }
+    setRect(prev => mode === 'camera'
+      ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: box }
+      : { ...box, camera: prev?.camera })
   }
   const onUp = () => { drag.current = null }
 
@@ -391,13 +401,27 @@ function MockupEditor({ model, onClose, onSaved }) {
           </label>
         ) : (
           <>
-            <p className="text-xs text-gray-400 mb-2">Fotoğraf üzerinde, müşterinin tasarımının oturacağı alanı <b>fareyle sürükleyerek çiz</b>:</p>
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={() => setMode('design')}
+                className={`text-xs px-2.5 py-1 rounded ${mode === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>1) Tasarım alanı</button>
+              <button onClick={() => setMode('camera')}
+                className={`text-xs px-2.5 py-1 rounded ${mode === 'camera' ? 'bg-amber-500 text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>2) Kamera alanı</button>
+            </div>
+            <p className="text-xs text-gray-400 mb-2">
+              {mode === 'design'
+                ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> fareyle sürükleyerek çiz.</>
+                : <>Kameranın olduğu <b className="text-amber-400">bölgeyi</b> çiz — bu alan tasarımdan hariç tutulur, fotoğraftaki kamera görünür kalır. (Opsiyonel)</>}
+            </p>
             <div ref={boxRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
               className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
               <img src={tplUrl} alt="" className="w-full block pointer-events-none" draggable={false} />
-              {rect && (
+              {rect && rect.w > 0 && (
                 <div className="absolute border-2 border-accent bg-accent/20 pointer-events-none"
                   style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }} />
+              )}
+              {rect?.camera && rect.camera.w > 0 && (
+                <div className="absolute border-2 border-amber-400 bg-amber-400/25 pointer-events-none"
+                  style={{ left: `${rect.camera.x * 100}%`, top: `${rect.camera.y * 100}%`, width: `${rect.camera.w * 100}%`, height: `${rect.camera.h * 100}%` }} />
               )}
             </div>
             <div className="flex justify-between items-center mt-3">

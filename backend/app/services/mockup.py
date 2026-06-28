@@ -123,6 +123,16 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
     fitted = _cover(design, rw, rh)
     radius = max(0, int(min(rw, rh) * 0.08))
     mask = _rounded_mask(rw, rh, radius)
+    # Kamera alanı: tasarımdan hariç tut → fotoğraftaki kamera modülü üstte kalır
+    cam = rect.get("camera") if isinstance(rect, dict) else None
+    if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
+        cx = int(float(cam["x"]) * TW) - rx
+        cy = int(float(cam["y"]) * TH) - ry
+        cw = int(float(cam["w"]) * TW)
+        ch = int(float(cam["h"]) * TH)
+        if cw > 1 and ch > 1:
+            cr = max(0, int(min(cw, ch) * 0.18))
+            ImageDraw.Draw(mask).rounded_rectangle([cx, cy, cx + cw, cy + ch], radius=cr, fill=0)
     out = tpl.copy()
     out.paste(fitted, (rx, ry), mask)
     return out

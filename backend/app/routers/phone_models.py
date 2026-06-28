@@ -205,7 +205,11 @@ def update_model(
     if body.mockup_rect is not None:
         r = body.mockup_rect or {}
         if all(k in r for k in ("x", "y", "w", "h")):
-            m.mockup_rect = {k: round(float(r[k]), 5) for k in ("x", "y", "w", "h")}
+            rect = {k: round(float(r[k]), 5) for k in ("x", "y", "w", "h")}
+            cam = r.get("camera")
+            if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
+                rect["camera"] = {k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}
+            m.mockup_rect = rect
         elif not r:
             m.mockup_rect = None
 

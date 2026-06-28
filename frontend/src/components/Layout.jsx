@@ -25,7 +25,7 @@ export default function Layout() {
   return (
     <div className="h-full flex flex-col">
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-      <header className="border-b border-brand-border bg-brand-card/50 backdrop-blur-md relative z-[60]">
+      <header className="border-b border-brand-border bg-brand-card/50 backdrop-blur-md relative z-[60] pt-[env(safe-area-inset-top)]">
         <div className="px-4 md:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 md:gap-3">
             <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
@@ -58,7 +58,7 @@ export default function Layout() {
         {mobileMenu && (
           <div className="fixed inset-0 z-[80] md:hidden">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenu(false)} />
-            <aside className="absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] bg-brand-card border-r border-brand-border p-3 overflow-y-auto">
+            <aside className="absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] bg-brand-card border-r border-brand-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto">
               <div className="flex items-center justify-between mb-3 px-1">
                 <span className="text-sm font-semibold text-gray-200">Menü</span>
                 <button onClick={() => setMobileMenu(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>

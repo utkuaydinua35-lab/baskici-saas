@@ -211,9 +211,24 @@ def update_model(
                     rect["radius"] = min(0.5, max(0.0, round(float(r["radius"]), 5)))
             except (TypeError, ValueError):
                 pass
-            cam = r.get("camera")
-            if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
-                rect["camera"] = {k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}
+            cuts = r.get("cutouts")
+            if isinstance(cuts, list):
+                out_cuts = []
+                for c in cuts[:10]:
+                    if isinstance(c, dict) and all(k in c for k in ("x", "y", "w", "h")):
+                        item = {k: round(float(c[k]), 5) for k in ("x", "y", "w", "h")}
+                        try:
+                            item["radius"] = min(0.5, max(0.0, round(float(c.get("radius", 0.2)), 5)))
+                        except (TypeError, ValueError):
+                            item["radius"] = 0.2
+                        out_cuts.append(item)
+                if out_cuts:
+                    rect["cutouts"] = out_cuts
+            else:
+                # Geriye dönük: tek 'camera' alanı → cutouts
+                cam = r.get("camera")
+                if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
+                    rect["cutouts"] = [{**{k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}, "radius": 0.18}]
             if r.get("overlay"):
                 rect["overlay"] = True
             m.mockup_rect = rect

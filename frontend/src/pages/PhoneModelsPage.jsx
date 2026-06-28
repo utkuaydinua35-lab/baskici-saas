@@ -329,8 +329,12 @@ export default function PhoneModelsPage() {
 // Mockup şablonu: gerçek ürün fotoğrafı yükle + tasarım alanını fareyle sürükleyerek çiz
 function MockupEditor({ model, onClose, onSaved }) {
   const [tplUrl, setTplUrl] = useState(model.mockup_template_url || '')
-  const [rect, setRect] = useState(model.mockup_rect || null)
-  const [mode, setMode] = useState('design')  // 'design' | 'camera'
+  const [rect, setRect] = useState(() => {
+    const r = model.mockup_rect ? { ...model.mockup_rect } : null
+    if (r && r.camera && !r.cutouts) { r.cutouts = [{ ...r.camera, radius: r.camera.radius ?? 0.18 }]; delete r.camera }
+    return r
+  })
+  const [sel, setSel] = useState('design')  // 'design' | boş alan index
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -363,12 +367,25 @@ function MockupEditor({ model, onClose, onSaved }) {
       y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
     }
   }
-  const active = mode === 'camera'
-    ? (rect?.camera || null)
-    : (rect && rect.w !== undefined ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null)
-  const setActive = (box) => setRect(prev => mode === 'camera'
-    ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: box }
-    : { ...box, camera: prev?.camera, radius: prev?.radius, overlay: prev?.overlay })
+  const cuts = rect?.cutouts || []
+  const active = sel === 'design'
+    ? (rect && rect.w !== undefined ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null)
+    : (cuts[sel] ? { x: cuts[sel].x, y: cuts[sel].y, w: cuts[sel].w, h: cuts[sel].h } : null)
+  const setActive = (box) => setRect(prev => {
+    if (sel === 'design') return { ...prev, ...box }
+    const cs = [...(prev?.cutouts || [])]; cs[sel] = { ...cs[sel], ...box }; return { ...prev, cutouts: cs }
+  })
+  const addCutout = () => {
+    const i = (rect?.cutouts || []).length
+    setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), cutouts: [...((p && p.cutouts) || []), { x: 0.38, y: 0.08, w: 0.24, h: 0.16, radius: 0.2 }] }))
+    setSel(i)
+  }
+  const delCutout = () => { setRect(p => ({ ...p, cutouts: (p?.cutouts || []).filter((_, i) => i !== sel) })); setSel('design') }
+  const selRadius = sel === 'design' ? (rect?.radius ?? 0.08) : (cuts[sel]?.radius ?? 0.2)
+  const setSelRadius = (v) => setRect(prev => {
+    if (sel === 'design') return { ...prev, radius: v }
+    const cs = [...(prev?.cutouts || [])]; cs[sel] = { ...cs[sel], radius: v }; return { ...prev, cutouts: cs }
+  })
 
   const startNew = (e) => { e.preventDefault(); const p = frac(e); drag.current = { type: 'new', startP: p }; setActive({ x: p.x, y: p.y, w: 0, h: 0 }) }
   const startDrag = (e, type) => { e.preventDefault(); e.stopPropagation(); if (active) drag.current = { type, startP: frac(e), startBox: { ...active } } }
@@ -394,11 +411,11 @@ function MockupEditor({ model, onClose, onSaved }) {
   const onUp = () => { drag.current = null }
 
   const HANDLES = [['nw', 0, 0, 'nwse-resize'], ['n', 50, 0, 'ns-resize'], ['ne', 100, 0, 'nesw-resize'], ['e', 100, 50, 'ew-resize'], ['se', 100, 100, 'nwse-resize'], ['s', 50, 100, 'ns-resize'], ['sw', 0, 100, 'nesw-resize'], ['w', 0, 50, 'ew-resize']]
-  const renderBox = (box, color, editable, br) => {
+  const renderBox = (box, color, editable, br, k) => {
     if (!box || !(box.w > 0)) return null
     const cls = color === 'accent' ? 'border-accent bg-accent/20' : 'border-amber-400 bg-amber-400/25'
     return (
-      <div className={`absolute border-2 ${cls}`} onMouseDown={editable ? (e => startDrag(e, 'move')) : undefined}
+      <div key={k} className={`absolute border-2 ${cls}`} onMouseDown={editable ? (e => startDrag(e, 'move')) : undefined}
         style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.w * 100}%`, height: `${box.h * 100}%`, borderRadius: br || 0, cursor: editable ? 'move' : 'default', pointerEvents: editable ? 'auto' : 'none' }}>
         {editable && HANDLES.map(([h, lx, ly, cur]) => (
           <div key={h} onMouseDown={e => startDrag(e, h)} className="absolute w-3 h-3 bg-white border border-gray-600 rounded-sm"
@@ -438,37 +455,41 @@ function MockupEditor({ model, onClose, onSaved }) {
               <span className="text-gray-500">Şablon tipi:</span>
               <button onClick={() => setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: false }))}
                 className={`px-2 py-1 rounded ${!overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Düz foto</button>
-              <button onClick={() => { setMode('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: true })) }}
+              <button onClick={() => { setSel('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: true })) }}
                 className={`px-2 py-1 rounded ${overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Şeffaf pencere</button>
             </div>
             {!overlay && (
-              <div className="flex items-center gap-2 mb-2">
-                <button onClick={() => setMode('design')}
-                  className={`text-xs px-2.5 py-1 rounded ${mode === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>1) Tasarım alanı</button>
-                <button onClick={() => setMode('camera')}
-                  className={`text-xs px-2.5 py-1 rounded ${mode === 'camera' ? 'bg-amber-500 text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>2) Kamera alanı</button>
+              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                <button onClick={() => setSel('design')}
+                  className={`text-xs px-2.5 py-1 rounded ${sel === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Tasarım alanı</button>
+                {cuts.map((_, i) => (
+                  <button key={i} onClick={() => setSel(i)}
+                    className={`text-xs px-2.5 py-1 rounded ${sel === i ? 'bg-amber-500 text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Boş alan {i + 1}</button>
+                ))}
+                <button onClick={addCutout} className="text-xs px-2 py-1 rounded bg-brand-input text-gray-300 hover:text-white">+ Boş alan</button>
+                {sel !== 'design' && <button onClick={delCutout} className="text-xs px-2 py-1 rounded text-red-400 hover:text-red-300">Sil</button>}
               </div>
             )}
             <p className="text-xs text-gray-400 mb-2">
               {overlay
                 ? <>Şeffaf pencereli PNG — tasarım <b className="text-accent">arkada</b>, şablon (kamera/gölge) üstte. <b className="text-accent">Tasarım alanını</b> pencereye hizala: çiz, sonra kenar/köşelerden tutup oturt.</>
-                : mode === 'design'
-                  ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> çiz; sonra kenar/köşelerden tutup tam oturt.</>
-                  : <>Kameranın olduğu <b className="text-amber-400">bölgeyi</b> çiz/ayarla — tasarımdan hariç tutulur. (Opsiyonel)</>}
+                : sel === 'design'
+                  ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> çiz; kenar/köşelerden tutup tam oturt.</>
+                  : <>Kamera, parmak izi vb. <b className="text-amber-400">boş alanı</b> çiz/taşı — tasarımdan hariç tutulur, fotoğraftaki detay görünür. Köşe ovalliğini aşağıdan ayarla.</>}
             </p>
             <div ref={boxRef} onMouseDown={startNew} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
               className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
               <img src={tplUrl} alt="" onLoad={measure} className="w-full block pointer-events-none" draggable={false} />
-              {renderBox(rect && rect.w > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null, 'accent', mode === 'design', designBr)}
-              {!overlay && renderBox(rect?.camera, 'amber', mode === 'camera', 0)}
+              {renderBox(rect && rect.w > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null, 'accent', sel === 'design', designBr, 'design')}
+              {!overlay && cuts.map((c, i) => renderBox(c, 'amber', sel === i,
+                `${(c.radius ?? 0.2) * Math.min(c.w * boxSz.w, c.h * boxSz.h)}px`, i))}
             </div>
-            {rect && rect.w > 0 && (
+            {active && active.w > 0 && (
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs text-gray-400 shrink-0">Köşe ovalliği</span>
-                <input type="range" min="0" max="50" value={Math.round((rect.radius ?? 0.08) * 100)}
-                  onChange={e => setRect(prev => ({ ...prev, radius: Number(e.target.value) / 100 }))}
-                  className="flex-1" />
-                <span className="text-xs text-gray-500 w-7 text-right">{Math.round((rect.radius ?? 0.08) * 100)}</span>
+                <span className="text-xs text-gray-400 shrink-0">{sel === 'design' ? 'Tasarım köşe ovalliği' : 'Boş alan köşe ovalliği'}</span>
+                <input type="range" min="0" max="50" value={Math.round(selRadius * 100)}
+                  onChange={e => setSelRadius(Number(e.target.value) / 100)} className="flex-1" />
+                <span className="text-xs text-gray-500 w-7 text-right">{Math.round(selRadius * 100)}</span>
               </div>
             )}
             <div className="flex justify-between items-center mt-3">

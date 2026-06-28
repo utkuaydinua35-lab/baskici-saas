@@ -140,16 +140,23 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
         fitted = Image.blend(fitted, ImageChops.soft_light(fitted, case), 0.45)
     except Exception:  # noqa: BLE001
         pass
-    # Kamera alanı: tasarımdan hariç tut → fotoğraftaki kamera modülü üstte kalır
-    cam = rect.get("camera") if isinstance(rect, dict) else None
-    if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
-        cx = int(float(cam["x"]) * TW) - rx
-        cy = int(float(cam["y"]) * TH) - ry
-        cw = int(float(cam["w"]) * TW)
-        ch = int(float(cam["h"]) * TH)
+    # Boş alanlar (kamera, parmak izi vb.): tasarımdan hariç tut → fotoğraftaki detay üstte kalır.
+    # Her alanın kendi köşe ovalliği (radius) olur. Geriye dönük: tek 'camera' de desteklenir.
+    cutouts = list(rect.get("cutouts") or []) if isinstance(rect, dict) else []
+    legacy = rect.get("camera") if isinstance(rect, dict) else None
+    if isinstance(legacy, dict) and all(k in legacy for k in ("x", "y", "w", "h")):
+        cutouts = cutouts + [{**legacy, "radius": legacy.get("radius", 0.18)}]
+    md = ImageDraw.Draw(mask)
+    for c in cutouts:
+        if not (isinstance(c, dict) and all(k in c for k in ("x", "y", "w", "h"))):
+            continue
+        cx = int(float(c["x"]) * TW) - rx
+        cy = int(float(c["y"]) * TH) - ry
+        cw = int(float(c["w"]) * TW)
+        ch = int(float(c["h"]) * TH)
         if cw > 1 and ch > 1:
-            cr = max(0, int(min(cw, ch) * 0.18))
-            ImageDraw.Draw(mask).rounded_rectangle([cx, cy, cx + cw, cy + ch], radius=cr, fill=0)
+            crf = min(0.5, max(0.0, float(c.get("radius", 0.2))))
+            md.rounded_rectangle([cx, cy, cx + cw, cy + ch], radius=int(min(cw, ch) * crf), fill=0)
     out = tpl.copy()
     out.paste(fitted, (rx, ry), mask)
     return out

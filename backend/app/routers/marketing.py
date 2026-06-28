@@ -10,7 +10,7 @@ import io
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,7 +20,7 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.config import get_settings
 from app.database import get_db
 from app.models import MarketingCampaign, MarketingSubscriber, Tenant, User
-from app.services import marketing
+from app.services import marketing, storage
 
 router = APIRouter(
     prefix="/api/marketing", tags=["marketing"],
@@ -142,7 +142,9 @@ def public_link(
 def _ser_camp(c: MarketingCampaign) -> dict:
     return {
         "id": str(c.id), "subject": c.subject, "title": c.title, "body": c.body,
-        "button_label": c.button_label, "button_url": c.button_url, "status": c.status,
+        "button_label": c.button_label, "button_url": c.button_url,
+        "image_url": c.image_url, "preheader": c.preheader, "personalize": c.personalize,
+        "status": c.status,
         "recipient_count": c.recipient_count, "sent_count": c.sent_count, "fail_count": c.fail_count,
         "open_count": c.open_count, "click_count": c.click_count,
         "created_by": c.created_by,
@@ -169,6 +171,9 @@ class _CampaignRequest(BaseModel):
     body: str = ""
     button_label: str = ""
     button_url: str = ""
+    image_url: str = ""
+    preheader: str = ""
+    personalize: bool = False
 
 
 class _TestRequest(BaseModel):
@@ -199,6 +204,9 @@ def create_campaign(
         body=(req.body.strip() or None),
         button_label=(req.button_label.strip() or None),
         button_url=(req.button_url.strip() or None),
+        image_url=(req.image_url.strip() or None),
+        preheader=(req.preheader.strip()[:200] or None),
+        personalize=bool(req.personalize),
         created_by=user.full_name or user.email,
         status="draft",
     )
@@ -206,6 +214,27 @@ def create_campaign(
     db.commit()
     db.refresh(c)
     return _ser_camp(c)
+
+
+_IMG_EXT = {"png", "jpg", "jpeg", "webp", "gif"}
+_IMG_MAX = 3 * 1024 * 1024
+
+
+@router.post("/campaigns/upload-image", response_model=dict)
+async def upload_campaign_image(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kampanya görseli yükle — /storage URL döner."""
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if ext not in _IMG_EXT:
+        raise HTTPException(400, "İzin verilen formatlar: png, jpg, webp, gif")
+    data = await file.read()
+    if len(data) > _IMG_MAX:
+        raise HTTPException(400, f"Görsel çok büyük (max {_IMG_MAX // 1024 // 1024} MB)")
+    url = storage.save_logo(user.tenant_id, "campaign", data, ext)
+    return {"url": url}
 
 
 @router.post("/campaigns/{cid}/test", response_model=dict)

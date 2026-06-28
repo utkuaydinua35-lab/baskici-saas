@@ -172,7 +172,7 @@ const CAMP_STATUS = {
   sent: ['Gönderildi', 'bg-emerald-500/15 text-emerald-300'],
   failed: ['Hata', 'bg-red-500/15 text-red-300'],
 }
-const EMPTY_CAMP = { subject: '', title: '', body: '', button_label: '', button_url: '' }
+const EMPTY_CAMP = { subject: '', title: '', body: '', button_label: '', button_url: '', image_url: '', preheader: '', personalize: false }
 
 function CampaignsTab({ toast }) {
   const [list, setList] = useState([])
@@ -180,6 +180,18 @@ function CampaignsTab({ toast }) {
   const [showNew, setShowNew] = useState(false)
   const [f, setF] = useState(EMPTY_CAMP)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  const uploadImg = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const r = await api.postForm('/api/marketing/campaigns/upload-image', fd)
+      setF(prev => ({ ...prev, image_url: r.url }))
+    } catch (err) { toast.error(err.detail || 'Görsel yüklenemedi') }
+    finally { setUploading(false); e.target.value = '' }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -229,12 +241,31 @@ function CampaignsTab({ toast }) {
       {showNew && (
         <div className="card space-y-2">
           <input value={f.subject} onChange={e => setF({ ...f, subject: e.target.value })} placeholder="Konu — e-posta başlığı *" className="input !text-sm w-full" />
+          <input value={f.preheader} onChange={e => setF({ ...f, preheader: e.target.value })} placeholder="Önizleme metni — gelen kutusunda konunun yanında görünür (ops.)" className="input !text-sm w-full" />
           <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="İçerik başlığı (opsiyonel)" className="input !text-sm w-full" />
+
+          {/* Üst görsel */}
+          {f.image_url ? (
+            <div className="flex items-center gap-3">
+              <img src={f.image_url} alt="" className="h-14 rounded-lg border border-brand-border" />
+              <button onClick={() => setF({ ...f, image_url: '' })} className="text-xs text-red-400 hover:text-red-300">Görseli kaldır</button>
+            </div>
+          ) : (
+            <label className="btn-secondary !text-sm cursor-pointer inline-flex w-fit">
+              {uploading ? 'Yükleniyor…' : '🖼 Üst görsel ekle'}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={uploadImg} disabled={uploading} />
+            </label>
+          )}
+
           <textarea value={f.body} onChange={e => setF({ ...f, body: e.target.value })} rows={5} placeholder="Mesaj metni... (boş satır = yeni paragraf)" className="input !text-sm w-full resize-y" />
           <div className="flex flex-wrap gap-2">
             <input value={f.button_label} onChange={e => setF({ ...f, button_label: e.target.value })} placeholder="Buton yazısı (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
             <input value={f.button_url} onChange={e => setF({ ...f, button_url: e.target.value })} placeholder="Buton linki (ops.)" className="input !text-sm flex-1 min-w-[140px]" />
           </div>
+          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+            <input type="checkbox" checked={f.personalize} onChange={e => setF({ ...f, personalize: e.target.checked })} />
+            İsimle kişiselleştir — abonenin adı varsa e-posta "Merhaba [ad]," ile başlar
+          </label>
           <div className="flex justify-end"><button onClick={create} disabled={saving} className="btn-primary !text-sm disabled:opacity-40">{saving ? '...' : 'Taslak Oluştur'}</button></div>
         </div>
       )}

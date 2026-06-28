@@ -1202,6 +1202,10 @@ class MarketingCampaign(Base):
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     button_label: Mapped[str | None] = mapped_column(String(80), nullable=True)
     button_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Zenginleştirme: üst görsel + önizleme (preheader) metni + isimle kişiselleştirme
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    preheader: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    personalize: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
     status: Mapped[str] = mapped_column(
         String(20), default="draft", server_default=text("'draft'"), nullable=False, index=True

@@ -219,9 +219,23 @@ def _campaign_plain(camp: MarketingCampaign) -> str:
 
 
 def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str,
-                          *, tracking_send_id: str | None = None) -> str:
+                          *, tracking_send_id: str | None = None, recipient_name: str = "") -> str:
+    from html import escape
     base = _base()
-    body = _body_to_html(camp.body)
+    parts: list[str] = []
+    # İsimle kişiselleştirme
+    if camp.personalize and (recipient_name or "").strip():
+        parts.append(f"<p style='margin:0 0 14px'>Merhaba {escape(recipient_name.split()[0])},</p>")
+    # Üst görsel (/storage göreli ise mutlaklaştır)
+    if camp.image_url:
+        img = camp.image_url
+        if img.startswith("/"):
+            img = base + img
+        parts.append(f"<p style='margin:0 0 16px'><img src='{escape(img)}' alt='' "
+                     "style='max-width:100%;border-radius:12px;display:block'></p>")
+    parts.append(_body_to_html(camp.body))
+    body = "".join(parts)
+
     btn_url = camp.button_url or ""
     # Tıklama takibi: buton linkini yönlendirme endpoint'ine çevir
     if tracking_send_id and btn_url:
@@ -239,7 +253,7 @@ def render_campaign_email(tenant, camp: MarketingCampaign, unsubscribe_link: str
         body_html=body,
         button_text=camp.button_label or "",
         button_url=btn_url,
-        preheader=camp.subject,
+        preheader=camp.preheader or camp.subject,
         footer=footer,
         **email_service.brand_kwargs(tenant),
     )
@@ -300,7 +314,8 @@ def _send_campaign_worker(campaign_id: str) -> None:
             db.add(send)
             db.flush()  # send.id (tracking token)
             unsub = unsubscribe_url(sub)
-            html = render_campaign_email(tenant, camp, unsub, tracking_send_id=str(send.id))
+            html = render_campaign_email(tenant, camp, unsub, tracking_send_id=str(send.id),
+                                         recipient_name=sub.name or "")
             ok = email_service.send_email(
                 sub.email, camp.subject, html, _campaign_plain(camp),
                 headers={"List-Unsubscribe": f"<{unsub}>"},

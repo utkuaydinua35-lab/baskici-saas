@@ -336,6 +336,9 @@ function MockupEditor({ model, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const boxRef = useRef(null)
   const drag = useRef(null)
+  const [boxSz, setBoxSz] = useState({ w: 0, h: 0 })
+  const measure = () => { const b = boxRef.current?.getBoundingClientRect(); if (b) setBoxSz({ w: b.width, h: b.height }) }
+  useEffect(() => { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure) }, [])
 
   const upload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -365,7 +368,7 @@ function MockupEditor({ model, onClose, onSaved }) {
     const start = { x: drag.current.x, y: drag.current.y, w: 0, h: 0 }
     setRect(prev => mode === 'camera'
       ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: start }
-      : { ...start, camera: prev?.camera })
+      : { ...start, camera: prev?.camera, radius: prev?.radius })
   }
   const onMove = (e) => {
     if (!drag.current) return
@@ -373,7 +376,7 @@ function MockupEditor({ model, onClose, onSaved }) {
     const box = { x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) }
     setRect(prev => mode === 'camera'
       ? { ...(prev || { x: 0, y: 0, w: 0, h: 0 }), camera: box }
-      : { ...box, camera: prev?.camera })
+      : { ...box, camera: prev?.camera, radius: prev?.radius })
   }
   const onUp = () => { drag.current = null }
 
@@ -414,16 +417,26 @@ function MockupEditor({ model, onClose, onSaved }) {
             </p>
             <div ref={boxRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
               className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
-              <img src={tplUrl} alt="" className="w-full block pointer-events-none" draggable={false} />
+              <img src={tplUrl} alt="" onLoad={measure} className="w-full block pointer-events-none" draggable={false} />
               {rect && rect.w > 0 && (
                 <div className="absolute border-2 border-accent bg-accent/20 pointer-events-none"
-                  style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }} />
+                  style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%`,
+                    borderRadius: `${(rect.radius ?? 0.08) * Math.min(rect.w * boxSz.w, rect.h * boxSz.h)}px` }} />
               )}
               {rect?.camera && rect.camera.w > 0 && (
                 <div className="absolute border-2 border-amber-400 bg-amber-400/25 pointer-events-none"
                   style={{ left: `${rect.camera.x * 100}%`, top: `${rect.camera.y * 100}%`, width: `${rect.camera.w * 100}%`, height: `${rect.camera.h * 100}%` }} />
               )}
             </div>
+            {rect && rect.w > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-gray-400 shrink-0">Köşe ovalliği</span>
+                <input type="range" min="0" max="50" value={Math.round((rect.radius ?? 0.08) * 100)}
+                  onChange={e => setRect(prev => ({ ...prev, radius: Number(e.target.value) / 100 }))}
+                  className="flex-1" />
+                <span className="text-xs text-gray-500 w-7 text-right">{Math.round((rect.radius ?? 0.08) * 100)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center mt-3">
               <button onClick={removeTpl} className="text-xs text-red-400 hover:text-red-300">Şablonu kaldır</button>
               <div className="flex gap-2">

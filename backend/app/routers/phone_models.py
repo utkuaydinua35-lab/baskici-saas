@@ -206,6 +206,11 @@ def update_model(
         r = body.mockup_rect or {}
         if all(k in r for k in ("x", "y", "w", "h")):
             rect = {k: round(float(r[k]), 5) for k in ("x", "y", "w", "h")}
+            try:
+                if "radius" in r:
+                    rect["radius"] = min(0.5, max(0.0, round(float(r["radius"]), 5)))
+            except (TypeError, ValueError):
+                pass
             cam = r.get("camera")
             if isinstance(cam, dict) and all(k in cam for k in ("x", "y", "w", "h")):
                 rect["camera"] = {k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}

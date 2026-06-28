@@ -492,6 +492,14 @@ function MockupEditor({ model, onClose, onSaved }) {
                 <span className="text-xs text-gray-500 w-7 text-right">{Math.round(selRadius * 100)}</span>
               </div>
             )}
+            {!overlay && rect && rect.w > 0 && (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-gray-400 shrink-0">Gölge / ışık şiddeti</span>
+                <input type="range" min="0" max="100" value={Math.round((rect?.shadow ?? 0.45) * 100)}
+                  onChange={e => setRect(p => ({ ...p, shadow: Number(e.target.value) / 100 }))} className="flex-1" />
+                <span className="text-xs text-gray-500 w-7 text-right">{Math.round((rect?.shadow ?? 0.45) * 100)}</span>
+              </div>
+            )}
             <div className="flex justify-between items-center mt-3">
               <button onClick={removeTpl} className="text-xs text-red-400 hover:text-red-300">Şablonu kaldır</button>
               <div className="flex gap-2">

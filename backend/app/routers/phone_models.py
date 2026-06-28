@@ -211,6 +211,11 @@ def update_model(
                     rect["radius"] = min(0.5, max(0.0, round(float(r["radius"]), 5)))
             except (TypeError, ValueError):
                 pass
+            try:
+                if "shadow" in r:
+                    rect["shadow"] = min(1.0, max(0.0, round(float(r["shadow"]), 3)))
+            except (TypeError, ValueError):
+                pass
             cuts = r.get("cutouts")
             if isinstance(cuts, list):
                 out_cuts = []

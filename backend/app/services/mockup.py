@@ -98,7 +98,7 @@ def _load_design_image(file_path: str, file_format: str | None) -> Image.Image |
             import fitz
             doc = fitz.open(str(full))
             page = doc[0]
-            mat = fitz.Matrix(200 / 72, 200 / 72)
+            mat = fitz.Matrix(300 / 72, 300 / 72)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             doc.close()
@@ -111,7 +111,8 @@ def _load_design_image(file_path: str, file_format: str | None) -> Image.Image |
 
 def render_with_template(design: Image.Image, template_path: str, rect: dict) -> Image.Image:
     """Tasarımı gerçek ürün fotoğrafı şablonunun rect alanına oturt.
-    rect: {x,y,w,h} kesirsel (0..1). Tasarım o alana cover + hafif yuvarlak köşe."""
+    rect: {x,y,w,h,radius,shadow,overlay,cutouts:[{x,y,w,h,radius}]} kesirsel (0..1).
+    Köşeler/boş alanlar supersample ile anti-alias; gölge şiddeti ayarlanabilir."""
     tpl = Image.open(template_path).convert("RGBA")
     TW, TH = tpl.size
     rx = int(float(rect.get("x", 0)) * TW)
@@ -122,10 +123,33 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
         return tpl
     overlay = bool(rect.get("overlay")) if isinstance(rect, dict) else False
     fitted = _cover(design, rw, rh).convert("RGB")
-    rfrac = float(rect.get("radius", 0.08)) if isinstance(rect, dict) else 0.08
-    rfrac = min(0.5, max(0.0, rfrac))
-    radius = int(min(rw, rh) * rfrac)
-    mask = _rounded_mask(rw, rh, radius)
+    rfrac = min(0.5, max(0.0, float(rect.get("radius", 0.08)) if isinstance(rect, dict) else 0.08))
+
+    # Boş alanlar (kamera, parmak izi): tasarımdan hariç → fotoğraftaki detay üstte kalır.
+    # Geriye dönük: tek 'camera' de desteklenir.
+    cutouts = list(rect.get("cutouts") or []) if isinstance(rect, dict) else []
+    legacy = rect.get("camera") if isinstance(rect, dict) else None
+    if isinstance(legacy, dict) and all(k in legacy for k in ("x", "y", "w", "h")):
+        cutouts = cutouts + [{**legacy, "radius": legacy.get("radius", 0.18)}]
+
+    # ── Anti-alias maske: supersample'da çiz, LANCZOS ile küçült (pürüzsüz köşe) ──
+    ss = max(1, min(4, 2400 // max(rw, rh, 1)))
+    mw, mh = rw * ss, rh * ss
+    mask = Image.new("L", (mw, mh), 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle([0, 0, mw - 1, mh - 1], radius=int(min(mw, mh) * rfrac), fill=255)
+    for c in cutouts:
+        if not (isinstance(c, dict) and all(k in c for k in ("x", "y", "w", "h"))):
+            continue
+        cx = (int(float(c["x"]) * TW) - rx) * ss
+        cy = (int(float(c["y"]) * TH) - ry) * ss
+        ccw = int(float(c["w"]) * TW) * ss
+        cch = int(float(c["h"]) * TH) * ss
+        if ccw > 1 and cch > 1:
+            crf = min(0.5, max(0.0, float(c.get("radius", 0.2))))
+            md.rounded_rectangle([cx, cy, cx + ccw, cy + cch], radius=int(min(ccw, cch) * crf), fill=0)
+    if ss != 1:
+        mask = mask.resize((rw, rh), Image.LANCZOS)
 
     if overlay:
         # Şeffaf pencereli şablon: tasarım ARKADA, şablon (pencere + kamera + gölge) ÜSTTE
@@ -133,30 +157,15 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
         base.paste(fitted, (rx, ry), mask)
         return Image.alpha_composite(base, tpl)
 
-    # Düz foto modu — gölgelendirme: kılıfın ışık/gölgesini tasarıma soft-light ile uygula
-    try:
-        from PIL import ImageChops
-        case = tpl.crop((rx, ry, rx + rw, ry + rh)).convert("RGB")
-        fitted = Image.blend(fitted, ImageChops.soft_light(fitted, case), 0.45)
-    except Exception:  # noqa: BLE001
-        pass
-    # Boş alanlar (kamera, parmak izi vb.): tasarımdan hariç tut → fotoğraftaki detay üstte kalır.
-    # Her alanın kendi köşe ovalliği (radius) olur. Geriye dönük: tek 'camera' de desteklenir.
-    cutouts = list(rect.get("cutouts") or []) if isinstance(rect, dict) else []
-    legacy = rect.get("camera") if isinstance(rect, dict) else None
-    if isinstance(legacy, dict) and all(k in legacy for k in ("x", "y", "w", "h")):
-        cutouts = cutouts + [{**legacy, "radius": legacy.get("radius", 0.18)}]
-    md = ImageDraw.Draw(mask)
-    for c in cutouts:
-        if not (isinstance(c, dict) and all(k in c for k in ("x", "y", "w", "h"))):
-            continue
-        cx = int(float(c["x"]) * TW) - rx
-        cy = int(float(c["y"]) * TH) - ry
-        cw = int(float(c["w"]) * TW)
-        ch = int(float(c["h"]) * TH)
-        if cw > 1 and ch > 1:
-            crf = min(0.5, max(0.0, float(c.get("radius", 0.2))))
-            md.rounded_rectangle([cx, cy, cx + cw, cy + ch], radius=int(min(cw, ch) * crf), fill=0)
+    # ── Düz foto: kılıfın ışık/gölgesini tasarıma soft-light ile uygula (ayarlanabilir) ──
+    sh = min(1.0, max(0.0, float(rect.get("shadow", 0.45)) if isinstance(rect, dict) else 0.45))
+    if sh > 0:
+        try:
+            from PIL import ImageChops
+            case = tpl.crop((rx, ry, rx + rw, ry + rh)).convert("RGB")
+            fitted = Image.blend(fitted, ImageChops.soft_light(fitted, case), sh)
+        except Exception:  # noqa: BLE001
+            pass
     out = tpl.copy()
     out.paste(fitted, (rx, ry), mask)
     return out

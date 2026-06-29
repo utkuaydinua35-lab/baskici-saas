@@ -138,6 +138,16 @@ export default function OrderDetailPage() {
     catch (e) { toast.error(errMsg(e, 'Kalıptan çıkarılamadı')) }
   }
 
+  const cancelKargo = async () => {
+    if (!confirm('Kargo gönderisi iptal edilsin mi?\nBasit Kargo barkodu + Shopify fulfillment iptal edilir, sipariş "Paketleme" aşamasına döner.')) return
+    try {
+      const r = await api.post(`/api/packaging/order/${orderId}/kargo-iptal`, {})
+      if (r.shopify_err) toast.info('Kargo iptal edildi · Shopify: ' + r.shopify_err)
+      else toast.success('Kargo gönderisi iptal edildi')
+      load()
+    } catch (e) { toast.error(errMsg(e, 'Kargo iptal edilemedi')) }
+  }
+
   const handleDuplicate = async () => {
     if (!confirm('Bu siparişi yeni bir sipariş olarak çoğalt?')) return
     try {
@@ -300,7 +310,7 @@ export default function OrderDetailPage() {
 
           {rightTab === 'musteri' && <MusteriTab detail={detail} />}
           {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
-          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} />}
+          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} onCancelKargo={cancelKargo} />}
           {rightTab === 'onay' && <OnayTab orderId={orderId} />}
           {rightTab === 'diger' && <DigerTab detail={detail} />}
         </div>
@@ -802,7 +812,7 @@ function FinansalTab({ f, cur }) {
   )
 }
 
-function KargoTab({ detail, onPatchBarkod, onPatchDeadline }) {
+function KargoTab({ detail, onPatchBarkod, onPatchDeadline, onCancelKargo }) {
   const ship = detail.shipping_address || {}
   const [barkod, setBarkod] = useState(detail.barkod_kodu || '')
   const dlIso = detail.kargo_deadline ? new Date(detail.kargo_deadline).toISOString().slice(0, 10) : ''
@@ -836,6 +846,15 @@ function KargoTab({ detail, onPatchBarkod, onPatchDeadline }) {
           <button onClick={() => onPatchBarkod(barkod)} className="btn-primary !text-xs !px-3">Kaydet</button>
         </div>
       </PanelCard>
+      {detail.current_stage === 8 && (
+        <PanelCard title="Kargo İşlemi" icon="🚚">
+          <p className="text-[11px] text-gray-500 mb-2">Sipariş kargoya verildi. Yanlış gönderildiyse iptal edip "Paketleme" aşamasına döndür.</p>
+          <button onClick={onCancelKargo}
+            className="w-full text-sm px-3 py-2 rounded-lg border bg-red-500/10 text-red-300 border-red-500/30 hover:bg-red-500/20 transition-colors">
+            ✕ Kargoyu iptal et
+          </button>
+        </PanelCard>
+      )}
     </div>
   )
 }

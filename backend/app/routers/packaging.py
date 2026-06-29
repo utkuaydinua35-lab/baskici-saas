@@ -220,6 +220,58 @@ def kargo_gonder(
     }
 
 
+@router.post("/order/{order_ref}/kargo-iptal", response_model=dict)
+def kargo_iptal(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kargo gönderisini iptal et: Basit Kargo barkodu sil + Shopify fulfillment iptal +
+    stage 8->7 geri al + kargo_info temizle. Shopify/Basit hatasi akisi bloklamaz."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    ki = order.kargo_info or {}
+    if not ki:
+        raise HTTPException(400, "Bu siparişte iptal edilecek kargo gönderisi yok")
+
+    basit_ok = basit_kargo.cancel(ki.get("barcode")) if ki.get("barcode") else False
+
+    shopify_ok = False
+    shopify_err = None
+    try:
+        fid = ki.get("fulfillment_id")
+        if fid and order.store_id:
+            store = db.scalar(select(Store).where(Store.id == order.store_id))
+            if store and store.platform == "shopify":
+                rr = get_adapter(store).cancel_fulfillment(str(fid))
+                shopify_ok = bool(rr.get("ok"))
+                shopify_err = rr.get("error")
+    except Exception as e:  # noqa: BLE001
+        shopify_err = str(e)[:200]
+
+    prev_stage = order.current_stage or 8
+    if prev_stage == 8:
+        order.current_stage = 7  # Kargoda -> Paketleme'ye geri
+    order.kargo_info = None
+    db.add(OrderStatusHistory(
+        tenant_id=order.tenant_id,
+        order_id=order.id,
+        from_stage=prev_stage,
+        to_stage=order.current_stage,
+        action="kargo_iptal",
+        note=f"Kargo iptal · {ki.get('handler_name') or ''} {ki.get('takip_no') or ''}".strip()
+             + ("" if shopify_ok else (f" · Shopify: {shopify_err}" if shopify_err else "")),
+        created_by=user.full_name or user.email,
+    ))
+    db.commit()
+    return {
+        "ok": True,
+        "basit_ok": basit_ok,
+        "shopify_ok": shopify_ok,
+        "shopify_err": shopify_err,
+        "current_stage": order.current_stage,
+    }
+
+
 @router.get("/order/{order_ref}/kargo-label")
 def kargo_label(
     order_ref: str,

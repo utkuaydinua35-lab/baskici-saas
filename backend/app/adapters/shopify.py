@@ -263,3 +263,11 @@ class ShopifyAdapter(StorePlatform):
         if r.status_code in (200, 201):
             return {"ok": True, "fulfillment": r.json().get("fulfillment", {})}
         return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+
+    def cancel_fulfillment(self, fulfillment_id: str) -> dict:
+        """Bir fulfillment'ı iptal et (POST /fulfillments/{id}/cancel.json)."""
+        url = f"{self._base_url()}/fulfillments/{fulfillment_id}/cancel.json"
+        r = self.session.post(url, headers=self._headers(), timeout=30)
+        if r.status_code in (200, 201):
+            return {"ok": True, "fulfillment": r.json().get("fulfillment", {})}
+        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}

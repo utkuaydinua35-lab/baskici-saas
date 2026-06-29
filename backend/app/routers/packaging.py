@@ -541,7 +541,9 @@ def packaging_queue(
 
     # Filtre menüleri: mağazalar + bayiler
     stores = [{"id": str(x.id), "name": x.name} for x in db.scalars(
-        select(Store).where(Store.tenant_id == user.tenant_id).order_by(Store.name)).all()]
+        select(Store).where(
+            Store.tenant_id == user.tenant_id, Store.platform != "bayii"
+        ).order_by(Store.name)).all()]
     dealers = [{"id": str(x.id), "name": x.name} for x in db.scalars(
         select(Dealer).where(Dealer.tenant_id == user.tenant_id).order_by(Dealer.name)).all()]
 

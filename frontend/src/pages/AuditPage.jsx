@@ -161,23 +161,23 @@ export default function AuditPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="tbl text-sm">
               <thead>
-                <tr className="border-b border-brand-border text-left text-[11px] text-gray-500 uppercase">
-                  <th className="px-4 py-2.5 font-medium">Tarih</th>
-                  <th className="px-4 py-2.5 font-medium">Sipariş</th>
-                  <th className="px-4 py-2.5 font-medium">Eylem</th>
-                  <th className="px-4 py-2.5 font-medium">Detay</th>
-                  <th className="px-4 py-2.5 font-medium">Kullanıcı</th>
+                <tr>
+                  <th>Tarih</th>
+                  <th>Sipariş</th>
+                  <th>Eylem</th>
+                  <th>Detay</th>
+                  <th>Kullanıcı</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map(h => {
                   const s = styleFor(h.action)
                   return (
-                    <tr key={h.id} className="border-b border-brand-border/40 hover:bg-brand-input/40">
-                      <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap text-xs">{fmtTime(h.created_at)}</td>
-                      <td className="px-4 py-2.5">
+                    <tr key={h.id}>
+                      <td className="text-gray-400 whitespace-nowrap text-xs">{fmtTime(h.created_at)}</td>
+                      <td>
                         <button
                           onClick={() => navigate(`/orders/${h.order_id}`)}
                           className="text-accent hover:underline font-medium"
@@ -185,14 +185,14 @@ export default function AuditPage() {
                           {h.order_number || '—'}
                         </button>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] ${s.color}`}>
                           <span>{s.icon}</span>
                           <span>{h.action_label}</span>
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-300 text-xs max-w-[280px] truncate">{detailText(h)}</td>
-                      <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">{h.created_by || '—'}</td>
+                      <td className="text-gray-300 text-xs max-w-[280px] truncate">{detailText(h)}</td>
+                      <td className="text-gray-400 text-xs whitespace-nowrap">{h.created_by || '—'}</td>
                     </tr>
                   )
                 })}

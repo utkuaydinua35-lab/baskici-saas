@@ -118,6 +118,15 @@ export default function BaskiciPaneliPage() {
     finally { setRmBusy(false) }
   }
 
+  const copyRequiredModels = async () => {
+    if (!requiredModels?.items?.length) return
+    const text = requiredModels.items
+      .map(it => `${it.count} ad ${String(it.variation || '').toUpperCase()} ${it.model}`)
+      .join('\n')
+    try { await navigator.clipboard.writeText(text); toast.success('Liste kopyalandı') }
+    catch { toast.error('Kopyalanamadı') }
+  }
+
   const analyzeAll = async () => {
     const pending = molds.filter(m => (m.print_status || 'bekliyor') !== 'basildi')
     if (!pending.length) { toast.info('Analiz edilecek kalıp yok'); return }
@@ -203,9 +212,14 @@ export default function BaskiciPaneliPage() {
       {requiredModels && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setRequiredModels(null)}>
           <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 max-h-[85vh] overflow-y-auto animate-popin">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <h2 className="text-lg font-semibold text-gray-100">📋 Kalıplarda Gereken Modeller</h2>
-              <button onClick={() => setRequiredModels(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+              <div className="flex items-center gap-2">
+                {requiredModels.items.length > 0 && (
+                  <button onClick={copyRequiredModels} className="btn-secondary !text-xs whitespace-nowrap">📋 Kopyala</button>
+                )}
+                <button onClick={() => setRequiredModels(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+              </div>
             </div>
             {requiredModels.items.length === 0 ? (
               <div className="text-center py-8 text-gray-400">Panelde (basılmamış) kalıp yok.</div>

@@ -9,7 +9,7 @@ import { api, ApiError, getToken, setToken } from './api'
 
 const AuthContext = createContext(null)
 
-const DEFAULT_ACCENT_RGB = '45 226 167'  // mint emerald #2de2a7 (yeni varsayılan tema)
+const DEFAULT_ACCENT_RGB = '20 184 166'  // teal #14b8a6 (yeni varsayilan tema)
 
 function _hexToRgb(hex) {
   const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim())

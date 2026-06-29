@@ -108,7 +108,7 @@ export default function SplashScreen({ onDone }) {
           {tenant?.logo_url ? (
             <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-28 max-w-[300px] object-contain rounded-2xl" />
           ) : (
-            <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-5xl font-bold">
+            <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-accent to-teal-600 flex items-center justify-center text-white text-5xl font-bold">
               {(tenant?.name || 'B').charAt(0).toUpperCase()}
             </div>
           )}

@@ -14,6 +14,7 @@ export default function Layout() {
     navigate('/login', { replace: true })
   }
 
+  const location = useLocation()
   const [mobileMenu, setMobileMenu] = useState(false)
   const [showSplash, setShowSplash] = useState(() => {
     try { return sessionStorage.getItem('freshLogin') === '1' } catch { return false }
@@ -25,53 +26,43 @@ export default function Layout() {
   return (
     <div className="h-full flex flex-col">
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-      <header className="border-b border-brand-border bg-brand-card/50 backdrop-blur-md relative z-[60] pt-[env(safe-area-inset-top)]">
-        <div className="px-4 md:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 md:gap-3">
-            <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
+
+      {/* ÜST MENÜ — yatay, bölüm dropdown'lı */}
+      <header className="sticky top-0 z-[60] border-b border-brand-border/70 bg-brand-bg/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+        <div className="px-3 md:px-5 h-14 flex items-center gap-2 md:gap-3">
+          <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          <div className="flex items-center gap-2 shrink-0">
             {tenant?.logo_url ? (
-              <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-11 max-w-[190px] object-contain rounded-lg" />
+              <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-9 max-w-[150px] object-contain rounded-lg" />
             ) : (
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-sm font-bold">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-[#04130d] text-sm font-bold shrink-0"
+                   style={{ boxShadow: '0 6px 18px -6px rgb(var(--accent-rgb) / 0.6)' }}>
                 {(tenant?.name || 'B').charAt(0).toUpperCase()}
               </div>
             )}
+            <span className="hidden lg:block text-sm font-semibold text-gray-100 tracking-tight">{tenant?.app_name || tenant?.name || 'Baskıcı'}</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <DesktopNav />
+
+          <div className="ml-auto flex items-center gap-1 shrink-0">
             <SyncButton />
-          <NotificationBell />
-          <ProfileDropdown user={user} onLogout={handleLogout} />
+            <NotificationBell />
+            <ProfileDropdown user={user} onLogout={handleLogout} />
           </div>
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-56 border-r border-brand-border bg-brand-card/30 p-3 hidden md:block overflow-y-auto">
-          <NavLinks />
+      {mobileMenu && <MobileNav onClose={() => setMobileMenu(false)} />}
 
-
-        </aside>
-
-        {mobileMenu && (
-          <div className="fixed inset-0 z-[80] md:hidden">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenu(false)} />
-            <aside className="absolute left-0 top-0 bottom-0 w-64 max-w-[80vw] bg-brand-card border-r border-brand-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto">
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-sm font-semibold text-gray-200">Menü</span>
-                <button onClick={() => setMobileMenu(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
-              </div>
-              <NavLinks onNavigate={() => setMobileMenu(false)} />
-            </aside>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div key={location.pathname} className="page-enter">
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
       <InstallPrompt />
     </div>
   )
@@ -462,111 +453,165 @@ function ChangePasswordModal({ onClose }) {
   )
 }
 
-function NavLinks({ onNavigate }) {
+// ─── Üst menü verisi: bölümler + öğeler (perm bazlı) ───
+const NAV = [
+  { label: 'Dashboard', to: '/', icon: '📊', perm: 'dashboard', end: true },
+  { label: 'Sipariş', icon: '📦', items: [
+    { to: '/orders', label: 'Siparişler', icon: '📦', perm: 'siparisler' },
+    { to: '/paketleme', label: 'Paketleme', icon: '🏷️', perm: 'paketleme' },
+    { to: '/destek', label: 'Destek', icon: '🎧', perm: 'destek' },
+    { to: '/notlar', label: 'Notlar', icon: '📝', perm: 'siparisler' },
+    { to: '/telafiler', label: 'Telafiler', icon: '♻️', perm: 'siparisler' },
+  ] },
+  { label: 'Bayi', icon: '🤝', items: [
+    { to: '/bayiler', label: 'Bayiler', icon: '🤝', perm: 'bayii' },
+  ] },
+  { label: 'Tasarım', icon: '🎨', items: [
+    { to: '/designs', label: 'Tasarımlar', icon: '🎨', perm: 'tasarim' },
+    { to: '/kisiye-ozel', label: 'Kişiye Özel', icon: '✨', perm: 'kisiye_ozel' },
+    { to: '/aksesuarlar', label: 'Aksesuarlar', icon: '🧷', perm: 'aksesuar' },
+    { to: '/couple', label: 'Couple Ürünler', icon: '👫', perm: 'couple' },
+  ] },
+  { label: 'Kalıp', icon: '🧩', items: [
+    { to: '/kalip-sablon', label: 'Kalıp Şablonu', icon: '🧩', perm: 'kalip' },
+    { to: '/kalip-olustur', label: 'Kalıp Oluşturucu', icon: '🎯', perm: 'kalip' },
+    { to: '/kalip-olustur?tab=existing', label: 'Oluşturulan Kalıplar', icon: '📦', perm: 'kalip' },
+    { to: '/kalip-olustur?tab=old', label: 'Eski Kalıplar', icon: '🗄️', perm: 'kalip' },
+    { to: '/baskici-paneli', label: 'Baskıcı Paneli', icon: '🖨️', perm: 'kalip' },
+  ] },
+  { label: 'Stok', icon: '🗃️', items: [
+    { to: '/stok', label: 'Stok', icon: '🗃️', perm: 'stok' },
+    { to: '/aski', label: 'Askıda Bekleyenler', icon: '🎁', perm: 'stok' },
+  ] },
+  { label: 'Katalog', icon: '📱', items: [
+    { to: '/telefon-modelleri', label: 'Telefon Modelleri', icon: '📱', perm: 'telefon_modelleri' },
+  ] },
+  { label: 'Pazarlama', icon: '📣', items: [
+    { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
+  ] },
+  { label: 'Sistem', icon: '📜', items: [
+    { to: '/denetim', label: 'Denetim Kaydı', icon: '📜', perm: 'ayarlar' },
+  ] },
+]
+
+function usePerm() {
   const { user } = useAuth()
-  const role = user?.role || ''
-  const isAdmin = role === 'yonetici' || role === 'owner'
-  const myPerms = isAdmin ? null : (user?.permissions || [])  // null = hepsi
-  const can = (perm) => isAdmin || !perm || myPerms.includes(perm)
-  const I = (props) => can(props.perm) ? <NavItem {...props} onNavigate={onNavigate} /> : null
+  const isAdmin = user?.role === 'yonetici' || user?.role === 'owner'
+  const perms = isAdmin ? null : (user?.permissions || [])
+  return (perm) => isAdmin || !perm || (perms || []).includes(perm)
+}
 
-  // Bolum: en az 1 gorunur link varsa basligi goster
-  const Section = ({ label, perms }) => (perms.some(can) ? <SectionLabel>{label}</SectionLabel> : null)
+// Görünür menü: perm filtresi; tek öğeli bölüm doğrudan linke iner; boş bölüm gizlenir.
+function visibleNav(can, user) {
+  const out = []
+  if (user?.is_platform_admin) out.push({ to: '/platform', label: 'Atölyeler', icon: '🏢' })
+  for (const sec of NAV) {
+    if (sec.to) { if (can(sec.perm)) out.push(sec); continue }
+    const its = (sec.items || []).filter(it => can(it.perm))
+    if (its.length === 0) continue
+    if (its.length === 1) out.push({ ...its[0] })
+    else out.push({ ...sec, items: its })
+  }
+  return out
+}
 
+// Üst yatay menü (masaüstü)
+function DesktopNav() {
+  const { user } = useAuth()
+  const can = usePerm()
+  const items = visibleNav(can, user)
   return (
-    <nav className="space-y-1 text-sm">
-      {user?.is_platform_admin && (
-        <>
-          <SectionLabel>PLATFORM</SectionLabel>
-          <NavItem to="/platform" label="Atölyeler" icon="🏢" onNavigate={onNavigate} />
-        </>
-      )}
-      <I to="/" label="Dashboard" icon="📊" perm="dashboard" end />
-
-      <Section label="SİPARİŞ YÖNETİMİ" perms={['siparisler', 'paketleme', 'destek']} />
-      <I to="/orders" label="Siparişler" icon="📦" perm="siparisler" />
-      <I to="/paketleme" label="Paketleme" icon="🏷️" perm="paketleme" />
-      <I to="/destek" label="Destek" icon="🎧" perm="destek" />
-      <I to="/notlar" label="Notlar" icon="📝" perm="siparisler" />
-      <I to="/telafiler" label="Telafiler" icon="♻️" perm="siparisler" />
-
-      <Section label="BAYİ YÖNETİMİ" perms={['bayii']} />
-      <I to="/bayiler" label="Bayiler" icon="🤝" perm="bayii" />
-
-      <Section label="TASARIM YÖNETİMİ" perms={['tasarim', 'kisiye_ozel', 'aksesuar', 'couple']} />
-      <I to="/designs" label="Tasarımlar" icon="🎨" perm="tasarim" />
-      <I to="/kisiye-ozel" label="Kişiye Özel" icon="✨" perm="kisiye_ozel" />
-      <I to="/aksesuarlar" label="Aksesuarlar" icon="🧷" perm="aksesuar" />
-      <I to="/couple" label="Couple Ürünler" icon="👫" perm="couple" />
-
-      <Section label="KALIP YÖNETİMİ" perms={['kalip']} />
-      <I to="/kalip-sablon" label="Kalıp Şablonu" icon="🧩" perm="kalip" />
-      <I to="/kalip-olustur" label="Kalıp Oluşturucu" icon="🎯" perm="kalip" />
-      <I to="/kalip-olustur?tab=existing" label="Oluşturulan Kalıplar" icon="📦" perm="kalip" />
-      <I to="/kalip-olustur?tab=old" label="Eski Kalıplar" icon="🗄️" perm="kalip" />
-      <I to="/baskici-paneli" label="Baskıcı Paneli" icon="🖨️" perm="kalip" />
-
-      <Section label="STOK YÖNETİMİ" perms={['stok']} />
-      <I to="/stok" label="Stok" icon="🗃️" perm="stok" />
-      <I to="/aski" label="Askıda Bekleyenler" icon="🎁" perm="stok" />
-
-      <Section label="KATALOG" perms={['telefon_modelleri']} />
-      <I to="/telefon-modelleri" label="Telefon Modelleri" icon="📱" perm="telefon_modelleri" />
-
-      <Section label="PAZARLAMA" perms={['pazarlama']} />
-      <I to="/pazarlama" label="Pazarlama" icon="📣" perm="pazarlama" />
-
-      <Section label="SİSTEM" perms={['ayarlar']} />
-      <I to="/denetim" label="Denetim Kaydı" icon="📜" perm="ayarlar" />
+    <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1">
+      {items.map(e => e.items
+        ? <NavDropdown key={e.label} entry={e} />
+        : <TopLink key={e.to} to={e.to} label={e.label} icon={e.icon} end={e.end} />)}
     </nav>
   )
 }
 
-function NavItem({ to, label, icon, end = false, disabled = false, legacy = false, onNavigate }) {
-  const _loc = useLocation()
-  const _toPath = to.split('?')[0]
-  const _toTab = (to.split('?')[1] || '').includes('tab=existing')
-  const _curTab = new URLSearchParams(_loc.search).get('tab') === 'existing'
-  const _tabAware = to.includes('?tab=') || (_toPath === '/kalip-olustur')
-  const _forceActive = _tabAware && _loc.pathname === _toPath && (_toTab === _curTab)
-  const _forceInactive = _tabAware && _loc.pathname === _toPath && (_toTab !== _curTab)
-  if (disabled) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-700 cursor-not-allowed">
-        <span className="w-5 text-center opacity-40">{icon}</span>
-        <span>{label}</span>
-      </div>
-    )
-  }
-  const _calc = (_ia) => (_forceInactive ? false : (_forceActive ? true : _ia))
+function TopLink({ to, label, icon, end }) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      onClick={() => onNavigate?.()}
-      className={({ isActive: _ia }) => {
-        const isActive = _calc(_ia)
-        return `group relative flex items-center gap-2.5 pl-3 pr-3 py-1.5 rounded-xl transition-colors ${
-          isActive
-            ? 'bg-accent/12 text-accent'
-            : legacy
-              ? 'text-gray-500 hover:bg-brand-input/60 hover:text-gray-300'
-              : 'text-gray-400 hover:bg-brand-input/60 hover:text-gray-200'
-        }`
-      }}
-    >
-      {({ isActive: _ia }) => {
-        const isActive = _calc(_ia)
-        return (
-          <>
-            {isActive && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent" />}
-            <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[13px] shrink-0 transition-colors ${
-              isActive ? 'bg-accent/20' : 'bg-brand-input/70 group-hover:bg-brand-input'
-            }`}>{icon}</span>
-            <span className={`text-[13px] ${legacy ? 'italic' : ''}`}>{label}</span>
-          </>
-        )
-      }}
+    <NavLink to={to} end={end}
+      className={({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+        isActive ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
+      }`}>
+      <span className="text-[13px]">{icon}</span>{label}
     </NavLink>
+  )
+}
+
+function NavDropdown({ entry }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const loc = useLocation()
+  const active = entry.items.some(it => loc.pathname === it.to.split('?')[0])
+  useEffect(() => {
+    if (!open) return
+    const f = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', f)
+    return () => document.removeEventListener('mousedown', f)
+  }, [open])
+  useEffect(() => { setOpen(false) }, [loc.pathname, loc.search])
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-colors ${
+          active || open ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
+        }`}>
+        <span className="text-[13px]">{entry.icon}</span>{entry.label}
+        <span className={`text-[8px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-2 w-56 bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[70] menu-pop">
+          {entry.items.map(it => <DropItem key={it.to} {...it} onClick={() => setOpen(false)} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DropItem({ to, label, icon, end, legacy, onClick }) {
+  return (
+    <NavLink to={to} end={end} onClick={onClick}
+      className={({ isActive }) => `group flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] transition-colors ${
+        isActive ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-brand-input/70 hover:text-gray-100'
+      }`}>
+      {({ isActive }) => (
+        <>
+          <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[13px] shrink-0 transition-colors ${
+            isActive ? 'bg-accent/20' : 'bg-brand-input/70 group-hover:bg-brand-input'
+          }`}>{icon}</span>
+          <span className={legacy ? 'italic' : ''}>{label}</span>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+// Mobil çekmece (dikey, bölümlü)
+function MobileNav({ onClose }) {
+  const { user } = useAuth()
+  const can = usePerm()
+  const items = visibleNav(can, user)
+  return (
+    <div className="fixed inset-0 z-[80] md:hidden">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] bg-brand-card border-r border-brand-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto animate-slidein">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <span className="text-sm font-semibold text-gray-100">Menü</span>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <nav className="space-y-1">
+          {items.map(e => e.items ? (
+            <div key={e.label} className="mb-1">
+              <SectionLabel>{e.label}</SectionLabel>
+              {e.items.map(it => <DropItem key={it.to} {...it} onClick={onClose} />)}
+            </div>
+          ) : (
+            <DropItem key={e.to} {...e} onClick={onClose} />
+          ))}
+        </nav>
+      </aside>
+    </div>
   )
 }

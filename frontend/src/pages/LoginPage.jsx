@@ -192,7 +192,7 @@ export default function LoginPage() {
         alt="BERNZ Company"
         draggable="false"
         onError={e => { e.currentTarget.style.display = 'none' }}
-        className="mx-auto mt-4 w-28 rounded-xl border border-white/10 opacity-90 shadow-lg"
+        className="mx-auto mt-4 w-14 rounded-lg border border-white/10 opacity-90 shadow-lg"
       />
     </AuthShell>
   )

@@ -308,6 +308,26 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                 by_om[(onum, _nk(mi.model))] = kisa
             by_o[onum] = kisa
 
+    # Katalog tasarımları: (store_id, product_id, variant_id) -> Design (mold_planner ile ayni
+    # mantik). Kisiye ozel olmayan kalemlerin tasarim kodunu cozup kalip eslesmesinde kullaniriz;
+    # boylece ayni modelden farkli tasarimli kalemler dogru kalibi gosterir.
+    design_by_key: dict = {}
+    for d in db.scalars(select(Design).where(Design.tenant_id == tenant_id, Design.product_id.isnot(None))).all():
+        pid = str(d.product_id)
+        vid = str(d.variant_id) if getattr(d, "variant_id", None) else None
+        design_by_key[(d.store_id, pid, vid)] = d
+        if vid is None or (d.store_id, pid, None) not in design_by_key:
+            design_by_key[(d.store_id, pid, None)] = d
+
+    def _li_design(li, store_id):
+        if li.assigned_design:
+            return li.assigned_design
+        if li.product_id:
+            pid = str(li.product_id)
+            vid = str(li.variant_id) if getattr(li, "variant_id", None) else None
+            return design_by_key.get((store_id, pid, vid)) or design_by_key.get((store_id, pid, None))
+        return None
+
     # Couple ürünler — 2 kılıf (slot 1/2) olarak yazılmalı
     couple_rows = db.scalars(select(_Couple).where(_Couple.tenant_id == tenant_id)).all()
     couple_map = {(c.store_id, str(c.product_id)): c for c in couple_rows}
@@ -373,10 +393,11 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                     })
                 continue
 
-            # Tekli kalem
+            # Tekli kalem — tasarımı (kişiye özel ya da katalog) çözüp kodundan eşleştir
             model = _model_from_props(li) or "?"
-            tasarim, uyari = _tasarim_str(li, li.assigned_design)
-            _dcode = str(li.assigned_design.code) if li.assigned_design and li.assigned_design.code else None
+            li_design = _li_design(li, o.store_id)
+            tasarim, uyari = _tasarim_str(li, li_design)
+            _dcode = str(li_design.code) if li_design and li_design.code else None
             sira += 1
             toplam += qty
             kalemler.append({

@@ -53,6 +53,7 @@ class PhoneModelUpdate(BaseModel):
     is_active: bool | None = None
     notes: str | None = None
     mockup_rect: dict | None = None  # {x,y,w,h} kesirsel (0..1)
+    mockup_variation: str | None = None  # boş/SİYAH=varsayılan; aksi halde mockup_variants[VAR].rect
 
 
 class CheckRequest(BaseModel):
@@ -60,6 +61,15 @@ class CheckRequest(BaseModel):
 
 
 # ─── Helpers ─────────────────────────────────────────────────
+def _var_key(variation: str | None) -> str | None:
+    """Varyasyon -> mockup_variants anahtarı. Boş/SİYAH -> None (varsayılan şablon)."""
+    if not variation or not str(variation).strip():
+        return None
+    from app.services.mockup import canon_variation
+    vk = canon_variation(variation)
+    return None if vk == "SİYAH" else vk
+
+
 def _serialize(m: PhoneModel) -> dict:
     return {
         "id": str(m.id),
@@ -73,6 +83,7 @@ def _serialize(m: PhoneModel) -> dict:
         "notes": m.notes,
         "mockup_template_url": m.mockup_template_url,
         "mockup_rect": m.mockup_rect,
+        "mockup_variants": m.mockup_variants or {},
         "created_at": m.created_at.isoformat() if m.created_at else None,
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
     }
@@ -236,9 +247,24 @@ def update_model(
                     rect["cutouts"] = [{**{k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}, "radius": 0.18}]
             if r.get("overlay"):
                 rect["overlay"] = True
-            m.mockup_rect = rect
+            vk = _var_key(body.mockup_variation)
+            if vk:
+                variants = dict(m.mockup_variants or {})
+                entry = dict(variants.get(vk) or {})
+                entry["rect"] = rect
+                variants[vk] = entry
+                m.mockup_variants = variants
+            else:
+                m.mockup_rect = rect
         elif not r:
-            m.mockup_rect = None
+            vk = _var_key(body.mockup_variation)
+            if vk:
+                variants = dict(m.mockup_variants or {})
+                if vk in variants:
+                    variants[vk] = {**variants[vk], "rect": None}
+                    m.mockup_variants = variants
+            else:
+                m.mockup_rect = None
 
     db.commit()
     db.refresh(m)
@@ -249,10 +275,12 @@ def update_model(
 async def upload_mockup_template(
     model_id: uuid.UUID,
     file: UploadFile = File(...),
+    variation: str | None = Query(None),  # boş/SİYAH=varsayılan; BEYAZ/ŞEFFAF/PARLAK/MAGSAFE
     user: User = Depends(require_permission("telefon_modelleri")),
     db: Session = Depends(get_db),
 ):
-    """Telefon modeli için gerçek ürün fotoğrafı (mockup şablonu) yükle."""
+    """Telefon modeli için gerçek ürün fotoğrafı (mockup şablonu) yükle.
+    variation verilirse o varyasyona özel şablon (mockup_variants) olarak saklanır."""
     m = db.scalar(select(PhoneModel).where(
         PhoneModel.id == model_id, PhoneModel.tenant_id == user.tenant_id))
     if not m:
@@ -264,7 +292,16 @@ async def upload_mockup_template(
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(400, "Görsel çok büyük (max 5 MB)")
     from app.services import storage
-    m.mockup_template_url = storage.save_logo(user.tenant_id, f"mockup-{model_id}", data, ext)
+    vk = _var_key(variation)
+    if vk:
+        url = storage.save_logo(user.tenant_id, f"mockup-{model_id}-{vk}", data, ext)
+        variants = dict(m.mockup_variants or {})
+        entry = dict(variants.get(vk) or {})
+        entry["template_url"] = url
+        variants[vk] = entry
+        m.mockup_variants = variants
+    else:
+        m.mockup_template_url = storage.save_logo(user.tenant_id, f"mockup-{model_id}", data, ext)
     db.commit()
     db.refresh(m)
     return _serialize(m)
@@ -273,6 +310,7 @@ async def upload_mockup_template(
 @router.delete("/{model_id}/mockup-template", response_model=dict)
 def delete_mockup_template(
     model_id: uuid.UUID,
+    variation: str | None = Query(None),
     user: User = Depends(require_permission("telefon_modelleri")),
     db: Session = Depends(get_db),
 ):
@@ -280,8 +318,14 @@ def delete_mockup_template(
         PhoneModel.id == model_id, PhoneModel.tenant_id == user.tenant_id))
     if not m:
         raise HTTPException(404, "Model bulunamadı")
-    m.mockup_template_url = None
-    m.mockup_rect = None
+    vk = _var_key(variation)
+    if vk:
+        variants = dict(m.mockup_variants or {})
+        variants.pop(vk, None)
+        m.mockup_variants = variants or None
+    else:
+        m.mockup_template_url = None
+        m.mockup_rect = None
     db.commit()
     db.refresh(m)
     return _serialize(m)

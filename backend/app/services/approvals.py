@@ -106,8 +106,8 @@ def build_items(db: Session, order: Order) -> list[dict]:
         )
     ).all())
 
-    def _mk_item(li, d, pm, title, qty):
-        mock_url = mockup.generate_mockup_url(d, order.tenant_id, _variation_of(li), phone_model=pm)
+    def _mk_item(li, d, pm, title, qty, variation):
+        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation, phone_model=pm)
         preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
         return {
             "image_url": _absolute(preview),
@@ -124,19 +124,22 @@ def build_items(db: Session, order: Order) -> list[dict]:
         if not pid:
             continue
 
-        # couple + kişiye özel: iki slot (1./2. kılıf) ayrı tasarım+model
+        # couple + kişiye özel: iki slot (1./2. kılıf) ayrı tasarım+model+varyasyon
         if pid in couple_ko_ids:
             base = li.title or "Ürün"
             slots = [
-                (1, li.assigned_design, (li.device_model_override or "")),
-                (2, li.assigned_design_2, (li.device_model_override_2 or "")),
+                (1, li.assigned_design, (li.device_model_override or ""),
+                 (li.kilif_varyasyon or "")),
+                (2, li.assigned_design_2, (li.device_model_override_2 or ""),
+                 (li.kilif_varyasyon_2 or "")),
             ]
-            for slot, d, mstr in slots:
+            for slot, d, mstr, var in slots:
                 if not (d and getattr(d, "file_path", None)):
                     continue
                 pm = _resolve_phone_model_by_str(db, order.tenant_id, mstr) \
                     or _resolve_phone_model(db, order.tenant_id, li)
-                items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1))
+                variation = var.strip() or _variation_of(li)
+                items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1, variation))
             continue
 
         # tekli kişiye özel kalem
@@ -147,7 +150,8 @@ def build_items(db: Session, order: Order) -> list[dict]:
         if not (li.assigned_design_id and d and getattr(d, "file_path", None)):
             continue
         pm = _resolve_phone_model(db, order.tenant_id, li)
-        items.append(_mk_item(li, d, pm, li.title or "Ürün", getattr(li, "quantity", 1) or 1))
+        variation = (li.kilif_varyasyon or "").strip() or _variation_of(li)
+        items.append(_mk_item(li, d, pm, li.title or "Ürün", getattr(li, "quantity", 1) or 1, variation))
     return items
 
 

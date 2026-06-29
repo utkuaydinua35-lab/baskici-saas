@@ -328,11 +328,28 @@ export default function PhoneModelsPage() {
 
 // Mockup şablonu: gerçek ürün fotoğrafı yükle + tasarım alanını fareyle sürükleyerek çiz
 function MockupEditor({ model, onClose, onSaved }) {
-  const [tplUrl, setTplUrl] = useState(model.mockup_template_url || '')
-  const [rect, setRect] = useState(() => {
-    const r = model.mockup_rect ? { ...model.mockup_rect } : null
-    if (r && r.camera && !r.cutouts) { r.cutouts = [{ ...r.camera, radius: r.camera.radius ?? 0.18 }]; delete r.camera }
+  const normRect = (r0) => {
+    if (!r0) return null
+    const r = { ...r0 }
+    if (r.camera && !r.cutouts) { r.cutouts = [{ ...r.camera, radius: r.camera.radius ?? 0.18 }]; delete r.camera }
     return r
+  }
+  const buildVariants = (m) => {
+    const out = { '': { tplUrl: m.mockup_template_url || '', rect: normRect(m.mockup_rect) } }
+    const mv = m.mockup_variants || {}
+    for (const k of Object.keys(mv)) out[k] = { tplUrl: mv[k]?.template_url || '', rect: normRect(mv[k]?.rect) }
+    return out
+  }
+  // Tüm varyasyonların (foto+rect) verisi tek state'te; '' = Varsayılan (Siyah)
+  const [variants, setVariants] = useState(() => buildVariants(model))
+  const [varSel, setVarSel] = useState('')
+  const cur = variants[varSel] || { tplUrl: '', rect: null }
+  const tplUrl = cur.tplUrl
+  const rect = cur.rect
+  const setRect = (updater) => setVariants(vs => {
+    const c = vs[varSel] || { tplUrl: '', rect: null }
+    const nr = typeof updater === 'function' ? updater(c.rect) : updater
+    return { ...vs, [varSel]: { ...c, rect: nr } }
   })
   const [sel, setSel] = useState('design')  // 'design' | boş alan index
   const [uploading, setUploading] = useState(false)
@@ -344,20 +361,25 @@ function MockupEditor({ model, onClose, onSaved }) {
   const measure = () => { const b = boxRef.current?.getBoundingClientRect(); if (b) setBoxSz({ w: b.width, h: b.height }) }
   useEffect(() => { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure) }, [])
 
+  const varQ = () => (varSel ? `?variation=${encodeURIComponent(varSel)}` : '')
   const upload = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
     setUploading(true); setErr('')
     try {
       const fd = new FormData(); fd.append('file', file)
-      const r = await api.postForm(`/api/phone-models/${model.id}/mockup-template`, fd)
-      setTplUrl(r.mockup_template_url || ''); setRect(r.mockup_rect || null)
+      const r = await api.postForm(`/api/phone-models/${model.id}/mockup-template${varQ()}`, fd)
+      setVariants(buildVariants(r))
     } catch (e2) { setErr(e2.detail || 'Yüklenemedi') }
     finally { setUploading(false); e.target.value = '' }
   }
   const removeTpl = async () => {
-    if (!confirm('Şablon kaldırılsın mı?')) return
-    try { await api.del(`/api/phone-models/${model.id}/mockup-template`); setTplUrl(''); setRect(null); onSaved?.() }
-    catch (e2) { setErr(e2.detail || 'Olmadı') }
+    const lbl = varSel || 'Varsayılan'
+    if (!confirm(`${lbl} şablonu kaldırılsın mı?`)) return
+    try {
+      const r = await api.del(`/api/phone-models/${model.id}/mockup-template${varQ()}`)
+      if (r) setVariants(buildVariants(r)); else setVariants(vs => ({ ...vs, [varSel]: { tplUrl: '', rect: null } }))
+      onSaved?.()
+    } catch (e2) { setErr(e2.detail || 'Olmadı') }
   }
 
   const frac = (e) => {
@@ -430,7 +452,7 @@ function MockupEditor({ model, onClose, onSaved }) {
   const saveRect = async () => {
     if (!rect || rect.w < 0.02 || rect.h < 0.02) { setErr('Önce fotoğraf üzerinde tasarım alanını çiz'); return }
     setSaving(true); setErr('')
-    try { await api.patch(`/api/phone-models/${model.id}`, { mockup_rect: rect }); onSaved?.(); onClose() }
+    try { await api.patch(`/api/phone-models/${model.id}`, { mockup_rect: rect, mockup_variation: varSel || null }); onSaved?.(); onClose() }
     catch (e2) { setErr(e2.detail || 'Kaydedilemedi') }
     finally { setSaving(false) }
   }
@@ -443,6 +465,19 @@ function MockupEditor({ model, onClose, onSaved }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
         {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
+
+        <div className="flex items-center gap-1 mb-3 flex-wrap text-xs">
+          <span className="text-gray-500 mr-1">Varyasyon:</span>
+          {[['', 'Varsayılan (Siyah)'], ['BEYAZ', 'Beyaz'], ['ŞEFFAF', 'Şeffaf'], ['PARLAK', 'Parlak'], ['MAGSAFE', 'MagSafe']].map(([val, lab]) => (
+            <button key={val} onClick={() => { setVarSel(val); setSel('design') }}
+              className={`px-2 py-1 rounded ${varSel === val ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>
+              {lab}{variants[val]?.tplUrl ? ' ✓' : ''}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-gray-500 mb-2">
+          {varSel ? `"${varSel}" varyasyonu için ayrı gerçek foto + tasarım alanı.` : 'Varsayılan şablon — diğer varyasyonlar foto yüklenmezse buna düşer.'}
+        </p>
 
         {!tplUrl ? (
           <label className="block border border-dashed border-brand-border rounded-lg p-8 text-center text-sm text-gray-400 cursor-pointer hover:border-accent">

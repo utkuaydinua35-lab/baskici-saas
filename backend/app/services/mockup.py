@@ -171,28 +171,58 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
     return out
 
 
+def canon_variation(variation: str | None) -> str:
+    """Varyasyonu kanonik TR forma getir (SİYAH/BEYAZ/ŞEFFAF/PARLAK/MAGSAFE).
+    Eski 'siyah'/'seffaf' küçük harf girdileri de desteklenir."""
+    v = (variation or "").strip().upper()
+    if v in ("SIYAH", "SİYAH", ""):
+        return "SİYAH"
+    if v == "BEYAZ":
+        return "BEYAZ"
+    if v in ("SEFFAF", "ŞEFFAF"):
+        return "ŞEFFAF"
+    if v == "PARLAK":
+        return "PARLAK"
+    if v == "MAGSAFE":
+        return "MAGSAFE"
+    return v
+
+
+def _pick_template(phone_model, var_key: str):
+    """Varyasyona özel gerçek foto şablonu (varsa); yoksa varsayılan şablon.
+    Dönüş: (template_url, rect) ya da (None, None)."""
+    if not phone_model:
+        return None, None
+    variants = getattr(phone_model, "mockup_variants", None) or {}
+    v = variants.get(var_key) if isinstance(variants, dict) else None
+    if isinstance(v, dict) and v.get("template_url") and v.get("rect"):
+        return v["template_url"], v["rect"]
+    return getattr(phone_model, "mockup_template_url", None), getattr(phone_model, "mockup_rect", None)
+
+
 def generate_mockup_url(design, tenant_id, variation: str = "siyah", phone_model=None) -> str | None:
     """Tasarımdan mockup üret, storage'a kaydet, /storage göreli URL döndür.
 
-    phone_model verilir ve mockup_template_url+mockup_rect doluysa GERÇEK FOTO şablonu
-    kullanılır; yoksa prosedürel çizime düşülür. design: Design ORM. Hata olursa None.
+    Varyasyona özel gerçek foto şablonu (phone_model.mockup_variants) varsa onu;
+    yoksa varsayılan şablonu (mockup_template_url); o da yoksa prosedürel çizimi
+    kullanır. design: Design ORM. Hata olursa None.
     """
     img = _load_design_image(getattr(design, "file_path", None), getattr(design, "file_format", None))
     if img is None:
         return None
     try:
         from app.services.storage import STORAGE_ROOT
-        tpl_url = getattr(phone_model, "mockup_template_url", None) if phone_model else None
-        rect = getattr(phone_model, "mockup_rect", None) if phone_model else None
-        suffix = variation
+        var_key = canon_variation(variation)
+        tpl_url, rect = _pick_template(phone_model, var_key)
+        suffix = var_key.replace("İ", "I")
         mock = None
         if tpl_url and rect and str(tpl_url).startswith("/storage/"):
             tpl_path = STORAGE_ROOT / str(tpl_url)[len("/storage/"):]
             if tpl_path.exists():
                 mock = render_with_template(img, str(tpl_path), rect)
-                suffix = f"tpl_{getattr(phone_model, 'id', '')}"
+                suffix = f"tpl_{getattr(phone_model, 'id', '')}_{suffix}"
         if mock is None:
-            mock = render_mockup(img, variation)
+            mock = render_mockup(img, "seffaf" if var_key == "ŞEFFAF" else "siyah")
         rel_dir = f"tenants/{tenant_id}/mockups"
         (STORAGE_ROOT / rel_dir).mkdir(parents=True, exist_ok=True)
         rel = f"{rel_dir}/{design.id}_{suffix}.png"

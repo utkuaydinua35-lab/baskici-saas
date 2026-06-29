@@ -12,6 +12,8 @@ const KALIP_TIPLERI = [
   { value: 'magsafe', label: 'MagSafe' },
 ]
 
+const KILIF_VARYASYONLARI = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
+
 // Telefon modeli listesi (couple+kişiye özel slot dropdown'u) — bir kez yüklenir
 let _phoneModelsCache = null
 function usePhoneModels() {
@@ -532,6 +534,10 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
     const f = slot === 2 ? 'device_model_override_2' : 'device_model_override'
     patchLi({ [f]: value, fields_to_update: [f] })
   }
+  const saveVaryasyon = (slot, value) => {
+    const f = slot === 2 ? 'kilif_varyasyon_2' : 'kilif_varyasyon'
+    patchLi({ [f]: value, fields_to_update: [f] })
+  }
   const renderDesign = (design, slot) => design ? (
     <div className="flex items-center gap-1">
       {design.thumbnail_url ? <img src={design.thumbnail_url} alt="" className="w-8 h-8 object-cover rounded border border-emerald-500/30" /> : <span className="text-emerald-400">📄</span>}
@@ -627,6 +633,7 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
           {[1, 2].map(slot => {
             const design = slot === 2 ? item.assigned_design_2 : item.assigned_design
             const model = slot === 2 ? item.device_model_override_2 : item.device_model_override
+            const varyasyon = slot === 2 ? item.kilif_varyasyon_2 : item.kilif_varyasyon
             return (
               <div key={slot} className="bg-brand-card/50 rounded-lg p-2 space-y-2">
                 <div className="text-[11px] text-gray-300 font-medium">{slot}. kılıf {design ? '✓' : ''}</div>
@@ -634,10 +641,26 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
                   placeholder="Telefon modeli seç / ara"
                   onBlur={e => { const v = e.target.value.trim(); if (v !== (model || '')) saveModel(slot, v) }}
                   className="input !text-xs w-full" />
+                <select key={varyasyon || ''} defaultValue={varyasyon || ''}
+                  onChange={e => saveVaryasyon(slot, e.target.value)} className="input !text-xs w-full">
+                  <option value="">Kılıf varyasyonu (otomatik)</option>
+                  {KILIF_VARYASYONLARI.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
                 <div className="flex justify-end">{renderDesign(design, slot)}</div>
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!isCouple && (
+        <div className="mt-2 flex items-center justify-end gap-2 border-t border-brand-border/40 pt-2">
+          <span className="text-[11px] text-gray-400">Kılıf varyasyonu:</span>
+          <select key={item.kilif_varyasyon || ''} defaultValue={item.kilif_varyasyon || ''}
+            onChange={e => saveVaryasyon(1, e.target.value)} className="input !text-xs !py-1 w-48">
+            <option value="">Otomatik (renge göre)</option>
+            {KILIF_VARYASYONLARI.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
         </div>
       )}
 

@@ -500,6 +500,8 @@ class LineItem(Base):
     )
     device_model_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
     device_model_override_2: Mapped[str | None] = mapped_column(String(100), nullable=True)  # couple 2. kılıf modeli
+    kilif_varyasyon: Mapped[str | None] = mapped_column(String(20), nullable=True)  # kişiye özel kılıf rengi/varyasyon
+    kilif_varyasyon_2: Mapped[str | None] = mapped_column(String(20), nullable=True)  # couple 2. kılıf varyasyonu
     product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # shopify_urun_gorseli
 
     order: Mapped[Order] = relationship(back_populates="line_items")
@@ -846,6 +848,9 @@ class PhoneModel(Base):
     # Mockup: gerçek ürün fotoğrafı şablonu + tasarım alanı dikdörtgeni (kesirsel 0..1)
     mockup_template_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     mockup_rect: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {x,y,w,h}
+    # Varyasyon başına gerçek foto şablonu: {"<VAR>": {"template_url": str, "rect": {...}}}
+    # Eşleşme yoksa mockup_template_url/mockup_rect (varsayılan) kullanılır.
+    mockup_variants: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

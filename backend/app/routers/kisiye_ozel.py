@@ -166,6 +166,8 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
         "assigned_design_2": assigned_2,
         "device_model_override": li.device_model_override,
         "device_model_override_2": li.device_model_override_2,
+        "kilif_varyasyon": li.kilif_varyasyon,
+        "kilif_varyasyon_2": li.kilif_varyasyon_2,
         "birincil_renk": li.birincil_renk,
         "ikincil_renk": li.ikincil_renk,
         "ucuncu_renk": li.ucuncu_renk,
@@ -409,6 +411,8 @@ class LineItemPatch(BaseModel):
     assigned_design_id_2: str | None = None        # couple 2. kılıf tasarımı
     device_model_override: str | None = None        # couple 1. kılıf modeli (veya tekil model)
     device_model_override_2: str | None = None       # couple 2. kılıf modeli
+    kilif_varyasyon: str | None = None               # kılıf rengi/varyasyonu (tekil veya 1. kılıf)
+    kilif_varyasyon_2: str | None = None             # couple 2. kılıf varyasyonu
     fields_to_update: list[str] = []
 
 
@@ -449,6 +453,10 @@ def update_line_item(
         li.device_model_override = (payload.device_model_override or "").strip() or None
     if "device_model_override_2" in fields:
         li.device_model_override_2 = (payload.device_model_override_2 or "").strip() or None
+    if "kilif_varyasyon" in fields:
+        li.kilif_varyasyon = (payload.kilif_varyasyon or "").strip() or None
+    if "kilif_varyasyon_2" in fields:
+        li.kilif_varyasyon_2 = (payload.kilif_varyasyon_2 or "").strip() or None
 
     db.commit()
     db.refresh(li)

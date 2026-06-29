@@ -284,19 +284,17 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
     by_o: dict = {}                    # order_number -> kisa (son care)
     if order_numbers:
         mis = db.scalars(select(MoldItem).where(MoldItem.order_number.in_(order_numbers))).all()
+        from app.services import kisa_kod as _kk
         mold_cache: dict = {}
         for mi in mis:
             if mi.mold_id not in mold_cache:
                 md = db.get(_Mold, mi.mold_id)
-                kodlar = (md.kod or "").split("-") if md and md.kod else []
-                gruplar = md.kalip_kodlari if md and md.kalip_kodlari else []
-                mold_cache[mi.mold_id] = (kodlar, gruplar)
-            kodlar, gruplar = mold_cache[mi.mold_id]
-            kisa = None
-            if mi.kalip_kodu in gruplar:
-                idx = gruplar.index(mi.kalip_kodu)
-                if idx < len(kodlar):
-                    kisa = kodlar[idx]
+                kod_str = (md.kod or "") if md else ""
+                gruplar = (md.kalip_kodlari or []) if md else []
+                mold_cache[mi.mold_id] = (kod_str, gruplar)
+            kod_str, gruplar = mold_cache[mi.mold_id]
+            # Grubun kalibın kod string'indeki DOGRU kisa kodu (pozisyon ezbere degil)
+            kisa = _kk.resolve_kod_for(mi.kalip_kodu, gruplar, kod_str)
             if not kisa:
                 continue
             onum = str(mi.order_number)

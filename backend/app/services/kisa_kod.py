@@ -92,3 +92,40 @@ def kisa_kodlar(grup_kodlari: list, harfler: str = "GHJ") -> list:
         if kk not in seen:
             seen.append(kk)
     return seen
+
+
+def _slot_of(grup_kodu: str):
+    slot = _KOD_TO_SLOT.get(grup_kodu)
+    if slot is None and grup_kodu and "|BEYAZ" in grup_kodu:
+        slot = _KOD_TO_SLOT.get(grup_kodu.replace("|BEYAZ", "|SIYAH"))
+    return slot
+
+
+def _canon_id(grup_kodu: str):
+    """Harf-bagimsiz benzersiz kimlik — kisa_kodlar dedup'i ile AYNI ayrim.
+    Slot'u olan gruplar (block,number) ile, olmayanlar fallback kisa string ile."""
+    s = _slot_of(grup_kodu)
+    if s is not None:
+        return s
+    return (grup_kodu or "").split("|")[0].replace("-GROUP", "")[:4]
+
+
+def resolve_kod_for(grup_kodu: str, kalip_kodlari: list, kod_str: str) -> str | None:
+    """Bir grubun, kalibin kod string'indeki (or. 'Z9-X2') DOGRU kisa kodunu dondur.
+    Pozisyon ezbere DEGIL: kod_str = kisa_kodlar(kalip_kodlari) ile ayni dedup
+    sirasinda uretildigi icin, ayni canon-id dedup'ini yapip index'i buluruz.
+    Boylece grup -> kisa kod eslesmesi harf/sira karismasindan etkilenmez."""
+    parts = [p for p in (kod_str or "").split("-") if p]
+    if not parts:
+        return None
+    seen = []
+    for gk in (kalip_kodlari or []):
+        c = _canon_id(gk)
+        if c not in seen:
+            seen.append(c)
+    tc = _canon_id(grup_kodu)
+    if tc in seen:
+        idx = seen.index(tc)
+        if 0 <= idx < len(parts):
+            return parts[idx]
+    return None

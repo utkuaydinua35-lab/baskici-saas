@@ -257,6 +257,7 @@ def plan_molds(
                             "design_code": _cd.code,
                             "variation": _var,
                             "kod": _kod,
+                            "satir_kod": pr.satir_kod(_kod, _cm),
                             "kilif_rengi": pr.kod_to_renk(_kod, _var),
                             "is_kisiye_ozel": False,
                             "title": li.title,
@@ -315,6 +316,7 @@ def plan_molds(
                     "design_code": design.code,
                     "variation": variation,
                     "kod": kod,
+                    "satir_kod": pr.satir_kod(kod, model),
                     "kilif_rengi": pr.kod_to_renk(kod, variation),
                     "is_kisiye_ozel": is_ko,
                     "title": li.title,
@@ -327,20 +329,23 @@ def plan_molds(
                     "is_telafi": bool(getattr(order, "is_telafi", False)),
                 })
 
-    # (kod, variation) grupla, 27 üstü parçala
+    # (satir_kod, variation) grupla, 27 üstü parçala. Özel varyasyonlar (SEFFAF/
+    # PARLAK/MAGSAFE) satir_kod ile gruba bölünür -> farklı boyutlar ayrı satıra;
+    # gerçek kod ("SEFFAF") display/kısa kod için korunur.
     groups: dict[tuple, list[dict]] = {}
     for u in units:
-        groups.setdefault((u["kod"], u["variation"]), []).append(u)
+        groups.setdefault((u["satir_kod"], u["variation"]), []).append(u)
 
     queue: list[dict] = []
-    for (kod, variation), items in groups.items():
+    for (_skod, variation), items in groups.items():
+        real_kod = items[0]["kod"]  # gerçek kalıp kodu (kısa kod/display için)
         for i in range(0, len(items), pr.KALIP_MAX_BOXES):
             chunk = items[i:i + pr.KALIP_MAX_BOXES]
             queue.append({
                 "items": chunk,
                 "count": len(chunk),
                 "variation": variation,
-                "kodlar": [kod],
+                "kodlar": [real_kod],
                 "is_merged": False,
             })
 
@@ -377,6 +382,7 @@ def plan_molds(
             "items": [
                 {
                     "kod": it["kod"],
+                    "satir_kod": it.get("satir_kod", it["kod"]),
                     "design_code": it["design_code"],
                     "model": it["model"],
                     "order_number": it["order_number"],

@@ -229,6 +229,35 @@ def _kod_group(kod: str) -> str:
     return kod.split("|", 1)[0]
 
 
+# Özel varyasyon kodları: kalıp tek kalır ama satır model grubuna göre ayrılır.
+SPECIAL_KODLAR = ("SEFFAF", "PARLAK", "MAGSAFE")
+
+
+def satir_kod(kod: str, model: str | None) -> str:
+    """Satır gruplama anahtarı. Özel varyasyon kalıpları (SEFFAF/PARLAK/MAGSAFE) tek
+    kalıpta kalır ama farklı boyut grupları aynı satırda karışmasın diye gruba göre
+    alt-bölünür ('SEFFAF@IPHONE-11-GROUP'). Normal kodlar olduğu gibi döner."""
+    if kod in SPECIAL_KODLAR:
+        return f"{kod}@{get_model_group(model or '')}"
+    return kod
+
+
+def _row_bucket(it: dict) -> str:
+    """Item'ın satır kovası — önceden hesaplanmış 'satir_kod' varsa onu, yoksa
+    kod+model'den türet (kaydedilmiş MoldItem reflow'u için)."""
+    rk = it.get("satir_kod")
+    if rk:
+        return rk
+    return satir_kod(it.get("kod", "UNKNOWN"), it.get("model"))
+
+
+def _row_bucket_priority(rk: str) -> int:
+    """Satır kovasının baskı-sırası önceliği (küçük = alt satır)."""
+    if "@" in rk:
+        return group_priority(rk.split("@", 1)[1])
+    return kod_to_group_priority(rk)
+
+
 def kod_to_group_priority(kod: str, k: KalipKodlari = DEFAULT_KODLARI) -> int:
     """Kalıp kodunun baskı-sırası önceliği (küçük = önce/alt satır)."""
     return group_priority(_kod_group(kod))
@@ -241,8 +270,8 @@ def kod_to_group_priority(kod: str, k: KalipKodlari = DEFAULT_KODLARI) -> int:
 def _count_rows(items: list[dict]) -> int:
     group_counts: dict[str, int] = {}
     for it in items:
-        kod = it.get("kod", "UNKNOWN")
-        group_counts[kod] = group_counts.get(kod, 0) + 1
+        rk = _row_bucket(it)
+        group_counts[rk] = group_counts.get(rk, 0) + 1
     total = 0
     for count in group_counts.values():
         total += -(-count // KALIP_COLS)
@@ -318,8 +347,8 @@ def assign_slots(items: list[dict]) -> list[dict]:
         return items
     by_kod: dict[str, list[dict]] = {}
     for it in items:
-        by_kod.setdefault(it.get("kod", "UNKNOWN"), []).append(it)
-    sorted_kods = sorted(by_kod.keys(), key=kod_to_group_priority)
+        by_kod.setdefault(_row_bucket(it), []).append(it)
+    sorted_kods = sorted(by_kod.keys(), key=_row_bucket_priority)
     out = []
     row_cursor = 0
     for kod in sorted_kods:

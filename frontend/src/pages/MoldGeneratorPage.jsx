@@ -425,7 +425,9 @@ const _GROUP_PRIORITY = {
 }
 function _kodPriority(kod) {
   if (!kod) return 999
-  const grp = (kod.indexOf('|') >= 0) ? kod.split('|')[0] : kod
+  let grp
+  if (kod.indexOf('@') >= 0) grp = kod.split('@')[1]            // SEFFAF@IPHONE-11-GROUP
+  else grp = (kod.indexOf('|') >= 0) ? kod.split('|')[0] : kod  // IPHONE-15-GROUP|SIYAH
   return _GROUP_PRIORITY[grp] != null ? _GROUP_PRIORITY[grp] : 999
 }
 
@@ -439,12 +441,14 @@ function MoldGrid({ items, onAssignSlot, harfler }) {
       if (sn) bySlot[sn] = it
     }
   } else {
-    // onizleme: kodlari priority'ye gore sirala, dusuk->alt satir (row 0 = slot 1-9)
+    // onizleme: satir kovalarini priority'ye gore sirala, dusuk->alt satir (row 0 = slot 1-9).
+    // Ozel varyasyonlar (SEFFAF/PARLAK/MAGSAFE) satir_kod ile gruba bolunur -> ayri satir.
     const byKod = {}
     const kods = []
     for (const it of items) {
-      if (!byKod[it.kod]) { byKod[it.kod] = []; kods.push(it.kod) }
-      byKod[it.kod].push(it)
+      const rk = it.satir_kod || it.kod
+      if (!byKod[rk]) { byKod[rk] = []; kods.push(rk) }
+      byKod[rk].push(it)
     }
     kods.sort((a, b) => _kodPriority(a) - _kodPriority(b))
     let rowCursor = 0

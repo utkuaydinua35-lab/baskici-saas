@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, setToken } from '../lib/api'
 import { useToast } from '../components/Toast'
 
 function fmtDate(d) {
@@ -317,6 +317,14 @@ function TenantProfiles({ tenantId }) {
     try { await api.del(`/api/platform/users/${u.id}`); toast.success('Profil silindi'); load() }
     catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
   }
+  const impersonate = async (u) => {
+    if (!confirm(`"${u.full_name || u.email}" hesabına giriş yapılacak.\nKendi oturumun kapanır; geri dönmek için tekrar giriş yaparsın. Devam?`)) return
+    try {
+      const r = await api.post(`/api/platform/users/${u.id}/impersonate`, {})
+      setToken(r.access_token)
+      window.location.href = '/'
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Giriş yapılamadı') }
+  }
 
   if (users === null) return <p className="text-xs text-gray-500 py-2">Profiller yükleniyor…</p>
   if (users.length === 0) return <p className="text-xs text-gray-500 py-2">Profil yok.</p>
@@ -335,6 +343,12 @@ function TenantProfiles({ tenantId }) {
           </div>
           {!u.is_platform_admin && (
             <>
+              {u.is_active && (
+                <button onClick={() => impersonate(u)}
+                  className="text-[11px] px-2 py-1 rounded border border-accent/40 text-accent hover:bg-accent/10 whitespace-nowrap">
+                  Bu hesaba gir
+                </button>
+              )}
               <button onClick={() => toggle(u)}
                 className={`text-[11px] px-2 py-1 rounded border whitespace-nowrap ${u.is_active
                   ? 'border-amber-500/30 text-amber-300 hover:bg-amber-500/10'

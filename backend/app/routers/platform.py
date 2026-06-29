@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_platform_admin
 from app.auth.schemas import slugify
-from app.auth.security import hash_password
+from app.auth.security import create_access_token, hash_password
 from app.database import get_db
 from app.models import Order, Store, Tenant, User
 
@@ -247,6 +247,30 @@ def platform_delete_user(
         db.rollback()
         raise HTTPException(409, "Bu profile bağlı kayıtlar var; silmek yerine girişini engelle.")
     return {"ok": True}
+
+
+@router.post("/users/{user_id}/impersonate", response_model=dict)
+def impersonate_user(
+    user_id: uuid.UUID,
+    user: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    """Platform admini bu profil olarak giriş yapsın — hedef kullanıcı için token üret.
+    Hedef profil ve atölyesi aktif olmalı (yoksa token zaten anında geçersiz olur)."""
+    u = db.scalar(select(User).where(User.id == user_id))
+    if not u:
+        raise HTTPException(404, "Profil bulunamadı")
+    if not u.is_active:
+        raise HTTPException(400, "Pasif profile giriş yapılamaz — önce girişini aç")
+    t = db.scalar(select(Tenant).where(Tenant.id == u.tenant_id))
+    if not t or not t.is_active:
+        raise HTTPException(400, "Atölye pasif — önce aktifleştir")
+    import logging
+    logging.getLogger("platform").warning(
+        "IMPERSONATE: admin=%s -> user=%s (tenant=%s)", user.email, u.email, t.slug
+    )
+    token = create_access_token(user_id=str(u.id), tenant_id=str(u.tenant_id), email=u.email)
+    return {"access_token": token, "user_email": u.email, "tenant_name": t.name}
 
 
 # ─── Veritabanı yedekleri (platform admin) ───────────────────

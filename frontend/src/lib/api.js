@@ -43,6 +43,12 @@ async function request(method, url, body) {
   }
 
   if (!res.ok) {
+    // Oturum geçersizleştiyse (engellendi/silindi/token süresi doldu) anında çıkış yap.
+    // Auth uçları (login/2fa) hariç — orada 401 normal hata akışıdır.
+    if (res.status === 401 && token && !url.includes('/api/auth/')) {
+      setToken(null)
+      if (!location.pathname.startsWith('/login')) location.href = '/login'
+    }
     const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`
     throw new ApiError(res.status, detail)
   }

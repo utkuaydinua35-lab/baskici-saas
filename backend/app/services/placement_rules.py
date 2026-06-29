@@ -229,15 +229,18 @@ def _kod_group(kod: str) -> str:
     return kod.split("|", 1)[0]
 
 
-# Özel varyasyon kodları: kalıp tek kalır ama satır model grubuna göre ayrılır.
 SPECIAL_KODLAR = ("SEFFAF", "PARLAK", "MAGSAFE")
+# Bu özel varyasyon(lar)da kalıp tek kalır ama satır model grubuna göre ayrılır.
+# ŞEFFAF: farklı boyutlar yan yana basılamaz. PARLAK/MAGSAFE: model/marka farklı
+# olsa da yan yana basılabilir -> ayrılmaz (Utku onayladı).
+SATIR_AYRI_KODLAR = ("SEFFAF",)
 
 
 def satir_kod(kod: str, model: str | None) -> str:
-    """Satır gruplama anahtarı. Özel varyasyon kalıpları (SEFFAF/PARLAK/MAGSAFE) tek
+    """Satır gruplama anahtarı. SATIR_AYRI_KODLAR'daki özel varyasyonlar (ŞEFFAF) tek
     kalıpta kalır ama farklı boyut grupları aynı satırda karışmasın diye gruba göre
-    alt-bölünür ('SEFFAF@IPHONE-11-GROUP'). Normal kodlar olduğu gibi döner."""
-    if kod in SPECIAL_KODLAR:
+    alt-bölünür ('SEFFAF@IPHONE-11-GROUP'). Diğer kodlar olduğu gibi döner."""
+    if kod in SATIR_AYRI_KODLAR:
         return f"{kod}@{get_model_group(model or '')}"
     return kod
 

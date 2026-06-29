@@ -88,6 +88,7 @@ class OrderListItem(BaseModel):
     kalipta_count: int = 0
     total_li_count: int = 0
     mold_kodlari: list[str] = []
+    molds: list[dict] = []  # [{id, kod}] — tıklanabilir kalıp linkleri
     is_acil: bool = False
     kalip_haric: bool = False
     current_stage: int = 1
@@ -455,21 +456,20 @@ def list_orders(
 
     rows = db.scalars(q.options(selectinload(Order.line_items))).all()
 
-    # Tüm sipariş ID'leri için kalıp kodlarını tek query'de topla
-    mold_codes_by_order = {}
+    # Sipariş -> kalıp(lar) {id, kod}. order_number stabil (line_item_id senkronda NULL olur).
+    mold_links_by_onum: dict = {}
     if rows:
-        order_ids = [o.id for o in rows]
-        mc_rows = db.execute(
-            select(LineItem.order_id, Mold.kod)
-            .join(MoldItem, MoldItem.line_item_id == LineItem.id)
-            .join(Mold, Mold.id == MoldItem.mold_id)
-            .where(LineItem.order_id.in_(order_ids))
-            .distinct()
-        ).all()
-        for order_id, kod in mc_rows:
-            mold_codes_by_order.setdefault(order_id, []).append(kod)
-        for k in mold_codes_by_order:
-            mold_codes_by_order[k].sort()
+        onums = [str(o.order_number) for o in rows if o.order_number is not None]
+        if onums:
+            for onum, mid, kod in db.execute(
+                select(MoldItem.order_number, Mold.id, Mold.kod)
+                .join(Mold, Mold.id == MoldItem.mold_id)
+                .where(Mold.tenant_id == user.tenant_id, MoldItem.order_number.in_(onums))
+                .distinct()
+            ).all():
+                lst = mold_links_by_onum.setdefault(str(onum), [])
+                if not any(x["id"] == str(mid) for x in lst):
+                    lst.append({"id": str(mid), "kod": kod})
 
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
 
@@ -489,7 +489,9 @@ def list_orders(
         item["kalipta_count"] = sum(
             1 for li in o.line_items if getattr(li, "is_kaliba_eklendi", False)
         )
-        item["mold_kodlari"] = mold_codes_by_order.get(o.id, [])
+        _links = sorted(mold_links_by_onum.get(str(o.order_number), []), key=lambda m: m["kod"] or "")
+        item["molds"] = _links
+        item["mold_kodlari"] = [m["kod"] for m in _links]
         _ki = o.kargo_info or {}
         item["kargo_status"] = _ki.get("status")
         item["kargo_takip"] = _ki.get("takip_no")

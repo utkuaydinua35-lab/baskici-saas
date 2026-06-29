@@ -508,15 +508,18 @@ export default function OrdersPage() {
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            {o.mold_kodlari?.length ? (
+                            {o.molds?.length ? (
                               <div className="flex flex-wrap gap-1">
-                                {o.mold_kodlari.slice(0, 3).map(k => (
-                                  <span key={k} className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                                    {k}
-                                  </span>
+                                {o.molds.slice(0, 3).map(m => (
+                                  <button key={m.id}
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/kalip/${m.id}`) }}
+                                    title={`${m.kod} kalıbını aç`}
+                                    className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition-colors">
+                                    {m.kod}
+                                  </button>
                                 ))}
-                                {o.mold_kodlari.length > 3 && (
-                                  <span className="text-[10px] text-gray-500">+{o.mold_kodlari.length - 3}</span>
+                                {o.molds.length > 3 && (
+                                  <span className="text-[10px] text-gray-500">+{o.molds.length - 3}</span>
                                 )}
                               </div>
                             ) : (

@@ -138,8 +138,13 @@ export default function MoldGeneratorPage() {
         </div>
         <div className="flex items-center gap-2">
           <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 w-full sm:w-auto sm:min-w-[200px]">
-            <option value="">Tüm Mağazalar</option>
-            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="">Tümü (Mağaza + Bayi)</option>
+            <optgroup label="Mağazalar">
+              {stores.filter(s => s.platform !== 'bayii').map(s => <option key={s.id} value={s.id}>🏪 {s.name}</option>)}
+            </optgroup>
+            <optgroup label="Bayiler">
+              {stores.filter(s => s.platform === 'bayii').map(s => <option key={s.id} value={s.id}>🤝 {s.name.replace(/^Bayii:\s*/, '')}</option>)}
+            </optgroup>
           </select>
           <button onClick={handleCreateEmpty} className="btn-secondary !text-sm whitespace-nowrap" title="Boş kalıp oluştur, + ile doldur">➕ Boş Kalıp</button>
         </div>

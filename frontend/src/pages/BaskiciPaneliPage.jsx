@@ -18,6 +18,8 @@ export default function BaskiciPaneliPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [stores, setStores] = useState([])
+  const [storeId, setStoreId] = useState('')
   const [analyzing, setAnalyzing] = useState({})    // { moldId: true }
   const [busyStatus, setBusyStatus] = useState({})
   const [totalMissing, setTotalMissing] = useState(null)   // modal verisi
@@ -28,17 +30,20 @@ export default function BaskiciPaneliPage() {
   const [confirmPrint, setConfirmPrint] = useState(null)   // eksik stoklu basildi onayi {mold}
   const [clearBusy, setClearBusy] = useState(false)
 
-  const load = async () => {
+  const load = async (sid = storeId) => {
     setLoading(true)
     try {
-      const r = await api.get('/api/molds')
+      const r = await api.get(`/api/molds${sid ? `?store_id=${sid}` : ''}`)
       const all = Array.isArray(r) ? r : (r?.items || [])
       // Bos (hic kilif yok) + taslak (stage 1, henuz kaydedilmemis) kaliplar panele dusmez
       setMolds(all.filter(m => (m.kilif_sayisi || 0) > 0 && (m.current_stage == null || (m.current_stage > 1 && m.current_stage < 5))))
     } catch { toast.error('Kalıplar yüklenemedi') }
     finally { setLoading(false) }
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [storeId])
+  useEffect(() => {
+    api.get('/api/stores?include_bayii=true').then(s => setStores(Array.isArray(s) ? s : [])).catch(() => {})
+  }, [])
 
   const counts = useMemo(() => {
     const c = { all: molds.length, bekliyor: 0, basildi: 0, eksik_var: 0, hatali_basildi: 0 }
@@ -158,6 +163,15 @@ export default function BaskiciPaneliPage() {
           <FilterBtn key={s.value} active={filter === s.value} onClick={() => setFilter(s.value)}
             label={`${s.icon} ${s.label}`} count={counts[s.value] || 0} cls={s.cls} />
         ))}
+        <select value={storeId} onChange={e => setStoreId(e.target.value)} className="input !text-sm !py-1.5 min-w-[170px]">
+          <option value="">Tümü (Mağaza + Bayi)</option>
+          <optgroup label="Mağazalar">
+            {stores.filter(s => s.platform !== 'bayii').map(s => <option key={s.id} value={s.id}>🏪 {s.name}</option>)}
+          </optgroup>
+          <optgroup label="Bayiler">
+            {stores.filter(s => s.platform === 'bayii').map(s => <option key={s.id} value={s.id}>🤝 {s.name.replace(/^Bayii:\s*/, '')}</option>)}
+          </optgroup>
+        </select>
         <div className="flex-1 min-w-[160px]">
           <input className="input w-full !py-1.5 text-sm" placeholder="Kalıp ara… (kod / kalıp kodları)"
             value={search} onChange={e => setSearch(e.target.value)} />

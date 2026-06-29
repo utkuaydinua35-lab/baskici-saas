@@ -122,7 +122,7 @@ export default function MoldDetailPage() {
 
   if (loading) return <div className="text-gray-500 text-sm text-center py-16">Yükleniyor...</div>
   if (error) return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <button onClick={geriDon} className="text-accent text-sm hover:underline mb-3">← Geri</button>
       <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
     </div>

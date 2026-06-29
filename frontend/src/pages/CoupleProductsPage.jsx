@@ -175,7 +175,7 @@ export default function CoupleProductsPage() {
   })
 
   return (
-    <div className="max-w-[1100px]">
+    <div className="mx-auto max-w-[1100px]">
       <div className="mb-5">
         <h1 className="text-2xl font-semibold text-gray-100">👫 Couple Ürünler</h1>
         <p className="text-sm text-gray-500 mt-1">

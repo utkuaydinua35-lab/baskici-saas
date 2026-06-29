@@ -54,7 +54,7 @@ export default function StockPage() {
   const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 3500) }
 
   return (
-    <div className="max-w-5xl">
+    <div className="mx-auto max-w-5xl">
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">🗃️ Stok</h1>

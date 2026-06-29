@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const _isAdmin = (_me?.role === 'yonetici' || _me?.role === 'owner')
   const [tab, setTab] = useState(_isAdmin ? 'stores' : 'brand')
   return (
-    <div className="max-w-5xl animate-fadein">
+    <div className="mx-auto max-w-5xl animate-fadein">
       <div className="mb-5">
         <h1 className="text-2xl font-semibold text-gray-100">⚙️ Ayarlar</h1>
         <p className="text-sm text-gray-500 mt-1">Mağaza, marka ve hesap ayarları</p>

@@ -125,7 +125,7 @@ export default function PackagingPage() {
   const stageEmoji = (icon) => STAGE_EMOJI[icon] || '•'
 
   return (
-    <div className="max-w-[1400px]">
+    <div className="mx-auto max-w-[1400px]">
       {/* Ust bar: kargo geri sayim + kalan */}
       <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
         <div className="text-sm text-gray-300">

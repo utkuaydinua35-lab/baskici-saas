@@ -284,7 +284,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="max-w-[1400px]">
+    <div className="mx-auto max-w-[1400px]">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">Siparişler</h1>

@@ -129,7 +129,7 @@ export default function MoldGeneratorPage() {
   } : null
 
   return (
-    <div className="max-w-6xl">
+    <div className="mx-auto max-w-6xl">
       <MoldTabs />
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>

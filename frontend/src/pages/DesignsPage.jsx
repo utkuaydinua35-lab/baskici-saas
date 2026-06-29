@@ -169,7 +169,7 @@ export default function DesignsPage() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div className="mx-auto max-w-7xl">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">Tasarımlar</h1>

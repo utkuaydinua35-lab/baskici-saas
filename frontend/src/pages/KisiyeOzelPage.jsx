@@ -156,7 +156,7 @@ export default function KisiyeOzelPage() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div className="mx-auto max-w-7xl">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="text-2xl">✨</span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import SplashScreen from './SplashScreen'
 import { createPortal } from 'react-dom'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
@@ -16,16 +16,29 @@ export default function Layout() {
 
   const location = useLocation()
   const [mobileMenu, setMobileMenu] = useState(false)
+  const [cmdOpen, setCmdOpen] = useState(false)
   const [showSplash, setShowSplash] = useState(() => {
     try { return sessionStorage.getItem('freshLogin') === '1' } catch { return false }
   })
   useEffect(() => {
     if (showSplash) { try { sessionStorage.removeItem('freshLogin') } catch {} }
   }, [])
+  // ⌘K / Ctrl+K -> komut paleti
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault(); setCmdOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="h-full flex flex-col">
+      <AppBackground />
       {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {cmdOpen && <CommandPalette onClose={() => setCmdOpen(false)} />}
 
       {/* ÜST MENÜ — yatay, bölüm dropdown'lı */}
       <header className="sticky top-0 z-[60] border-b border-brand-border/70 bg-brand-bg/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
@@ -49,6 +62,11 @@ export default function Layout() {
           <DesktopNav />
 
           <div className="ml-auto flex items-center gap-1 shrink-0">
+            <button onClick={() => setCmdOpen(true)} title="Ara (⌘K)"
+              className="hidden md:flex items-center gap-2 px-2.5 h-9 rounded-full bg-brand-input/60 border border-brand-border text-gray-400 hover:text-gray-200 text-xs transition-colors">
+              <span>🔍</span><span className="hidden lg:inline">Ara</span>
+              <kbd className="hidden lg:inline text-[10px] px-1.5 py-0.5 rounded bg-brand-bg/70 border border-brand-border text-gray-500">⌘K</kbd>
+            </button>
             <SyncButton />
             <NotificationBell />
             <ProfileDropdown user={user} onLogout={handleLogout} />
@@ -59,7 +77,7 @@ export default function Layout() {
       {mobileMenu && <MobileNav onClose={() => setMobileMenu(false)} />}
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div key={location.pathname} className="page-enter">
+        <div key={location.pathname} className="mx-auto w-full max-w-[1400px] page-enter">
           <Outlet />
         </div>
       </main>
@@ -524,6 +542,78 @@ function visibleNav(can) {
   return out
 }
 
+// Tüm pencerelerde yumuşak hareketli yeşil/teal ışıma (içerik arkasında, etkileşimsiz)
+function AppBackground() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div className="login-blob absolute -top-40 -left-32 w-[40rem] h-[40rem] rounded-full opacity-[0.16] blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)' }} />
+      <div className="login-blob absolute top-1/3 -right-48 w-[44rem] h-[44rem] rounded-full opacity-[0.11] blur-3xl"
+        style={{ background: 'radial-gradient(circle, #22d3ee 0%, transparent 70%)', animationDelay: '6s' }} />
+      <div className="login-blob absolute -bottom-48 left-1/4 w-[36rem] h-[36rem] rounded-full opacity-[0.12] blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)', animationDelay: '11s' }} />
+    </div>
+  )
+}
+
+// ⌘K komut paleti — sayfalar arası hızlı geçiş
+function CommandPalette({ onClose }) {
+  const can = usePerm()
+  const navigate = useNavigate()
+  const [q, setQ] = useState('')
+  const [idx, setIdx] = useState(0)
+  const all = useMemo(() => {
+    const items = []
+    for (const e of visibleNav(can)) {
+      if (e.to) items.push({ to: e.to, label: e.label, icon: e.icon, group: '' })
+      else for (const it of e.items) items.push({ to: it.to, label: it.label, icon: it.icon, group: e.label })
+    }
+    if (can('ayarlar')) items.push(
+      { to: '/ayarlar', label: 'Ayarlar', icon: '⚙', group: 'Sistem' },
+      { to: '/denetim', label: 'Denetim Kaydı', icon: '📜', group: 'Sistem' },
+    )
+    return items
+  }, [])  // eslint-disable-line
+  const results = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return s ? all.filter(i => (i.label + ' ' + i.group).toLowerCase().includes(s)) : all
+  }, [q, all])
+  useEffect(() => { setIdx(0) }, [q])
+  const go = (i) => { const r = results[i]; if (r) { navigate(r.to); onClose() } }
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i + 1, results.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => Math.max(i - 1, 0)) }
+    else if (e.key === 'Enter') { e.preventDefault(); go(idx) }
+    else if (e.key === 'Escape') { onClose() }
+  }
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 bg-black/60 backdrop-blur-sm"
+      onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-lg bg-brand-card border border-brand-border rounded-2xl shadow-2xl overflow-hidden menu-pop">
+        <div className="flex items-center gap-2 px-4 border-b border-brand-border">
+          <span className="text-gray-500">🔍</span>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKey}
+            placeholder="Sayfa ara…" className="flex-1 bg-transparent py-3 text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none" />
+          <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input border border-brand-border text-gray-500">esc</kbd>
+        </div>
+        <div className="max-h-80 overflow-y-auto p-1.5">
+          {results.length === 0 ? (
+            <div className="px-3 py-6 text-center text-sm text-gray-500">Sonuç yok</div>
+          ) : results.map((r, i) => (
+            <button key={r.to + r.label} onMouseEnter={() => setIdx(i)} onClick={() => go(i)}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-[13px] transition-colors ${
+                i === idx ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-brand-input/70'
+              }`}>
+              <span className="w-7 h-7 rounded-lg bg-brand-input/70 flex items-center justify-center shrink-0">{r.icon}</span>
+              <span className="flex-1">{r.label}</span>
+              {r.group && <span className="text-[10px] text-gray-600">{r.group}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>, document.body)
+}
+
 // Üst yatay menü (masaüstü)
 function DesktopNav() {
   const can = usePerm()
@@ -557,11 +647,14 @@ function NavDropdown({ entry }) {
   const active = entry.items.some(it => loc.pathname === it.to.split('?')[0])
 
   // Menü, üst menünün overflow'una takılmasın diye portal + sabit konum (button rect'ten)
+  const closeTimer = useRef(null)
   const place = () => {
     const b = btnRef.current?.getBoundingClientRect()
     if (b) setPos({ left: Math.max(8, Math.min(b.left, window.innerWidth - 232)), top: b.bottom + 8 })
   }
   const toggle = () => { if (!open) place(); setOpen(o => !o) }
+  const hoverOpen = () => { clearTimeout(closeTimer.current); place(); setOpen(true) }
+  const hoverClose = () => { closeTimer.current = setTimeout(() => setOpen(false), 130) }
 
   useEffect(() => {
     if (!open) return
@@ -583,7 +676,7 @@ function NavDropdown({ entry }) {
 
   return (
     <>
-      <button ref={btnRef} onClick={toggle}
+      <button ref={btnRef} onClick={toggle} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
           active || open ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
         }`}>
@@ -592,6 +685,7 @@ function NavDropdown({ entry }) {
       </button>
       {open && pos && createPortal(
         <div ref={menuRef} style={{ position: 'fixed', left: pos.left, top: pos.top }}
+          onMouseEnter={() => clearTimeout(closeTimer.current)} onMouseLeave={hoverClose}
           className="w-56 bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[200] menu-pop">
           {entry.items.map(it => <DropItem key={it.to} {...it} onClick={() => setOpen(false)} />)}
         </div>, document.body)}

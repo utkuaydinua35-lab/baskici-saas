@@ -49,7 +49,7 @@ export default function MoldTemplatePage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="mx-auto max-w-5xl">
       <MoldTabs active="sablon" />
       <div className="mb-5">
         <h1 className="text-2xl font-semibold text-gray-100">🧩 Kalıp Şablonu</h1>

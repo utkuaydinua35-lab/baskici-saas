@@ -259,7 +259,7 @@ export default function BaskiciPaneliPage() {
 
       {preview && (
         <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onMouseDown={() => setPreview(null)}>
-          <div className="max-w-2xl max-h-[85vh] flex flex-col items-center" onMouseDown={e => e.stopPropagation()}>
+          <div className="mx-auto max-w-2xl max-h-[85vh] flex flex-col items-center" onMouseDown={e => e.stopPropagation()}>
             <img src={preview.url} alt={preview.title} className="max-w-full max-h-[75vh] object-contain rounded-lg" />
             <div className="mt-2 text-sm text-gray-300">{preview.title}</div>
             <button onClick={() => setPreview(null)} className="mt-2 btn-secondary !text-xs">Kapat</button>

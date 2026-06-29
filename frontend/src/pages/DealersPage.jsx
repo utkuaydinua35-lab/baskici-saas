@@ -31,7 +31,7 @@ export default function DealersPage() {
   const fmt = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 
   return (
-    <div className="max-w-5xl animate-fadein">
+    <div className="mx-auto max-w-5xl animate-fadein">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-5">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">🤝 Bayiler</h1>

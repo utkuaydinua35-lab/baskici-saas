@@ -29,7 +29,7 @@ export default function SlotAssignDialog({ open, mold, kalipKodu, onClose, onAss
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
       onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
     >
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">

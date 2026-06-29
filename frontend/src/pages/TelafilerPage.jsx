@@ -595,7 +595,7 @@ function SebepInput({ value, onChange }) {
 
 function Overlay({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-fadein" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 animate-fadein" onClick={onClose}>
       <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} max-h-[92vh] sm:max-h-[88vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-card p-4 shadow-2xl animate-popin`}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3 sticky -top-4 -mt-4 pt-4 pb-2 bg-brand-card z-10">

@@ -197,7 +197,7 @@ function Backups() {
 
 function Modal({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
       onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin">
         <div className="flex items-center justify-between mb-4">

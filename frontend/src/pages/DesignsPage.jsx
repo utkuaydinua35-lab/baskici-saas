@@ -759,7 +759,7 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-start p-5 pb-3 shrink-0 border-b border-brand-border">
@@ -1057,7 +1057,7 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-5 pb-3 shrink-0 border-b border-brand-border">

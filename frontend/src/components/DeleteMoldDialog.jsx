@@ -28,7 +28,7 @@ export default function DeleteMoldDialog({ open, mold, onClose, onDeleted }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="card max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-gray-100 mb-2">Kalıbı Sil</h2>
         <div className="text-sm text-gray-300 space-y-2 mb-4">

@@ -367,7 +367,7 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
     } catch (e) { alert('Birleştirilemedi: ' + (e?.detail || '')); setBusy(false) }
   }
   return createPortal((
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin max-h-[80vh] flex flex-col">
         <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu model ekle</h2>
         <p className="text-xs text-gray-500 mb-1"><span className="text-gray-300">{mergeFor.anaKey}</span> ile aynı kalıbı paylaşan modeller:</p>
@@ -619,7 +619,7 @@ function MovementsDialog({ item, onClose }) {
 
 function Modal({ title, children, onClose, wide }) {
   return createPortal((
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className={`bg-brand-card border border-brand-border rounded-xl w-full ${wide ? 'max-w-xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-5`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-100">{title}</h2>

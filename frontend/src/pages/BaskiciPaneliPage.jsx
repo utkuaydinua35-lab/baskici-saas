@@ -180,7 +180,7 @@ export default function BaskiciPaneliPage() {
       )}
 
       {totalMissing && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setTotalMissing(null)}>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && setTotalMissing(null)}>
           <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 max-h-[85vh] overflow-y-auto animate-popin">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-gray-100">📊 Toplam Stok Eksiği</h2>
@@ -210,7 +210,7 @@ export default function BaskiciPaneliPage() {
       )}
 
       {requiredModels && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setRequiredModels(null)}>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && setRequiredModels(null)}>
           <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 max-h-[85vh] overflow-y-auto animate-popin">
             <div className="flex items-center justify-between mb-3 gap-2">
               <h2 className="text-lg font-semibold text-gray-100">📋 Kalıplarda Gereken Modeller</h2>
@@ -244,7 +244,7 @@ export default function BaskiciPaneliPage() {
       )}
 
       {confirmPrint && (
-        <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setConfirmPrint(null)}>
+        <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && setConfirmPrint(null)}>
           <div className="bg-brand-card border border-red-500/30 rounded-xl w-full max-w-sm p-5 animate-popin">
             <h3 className="text-base font-semibold text-gray-100 mb-2">⚠️ Stok Eksiği Var</h3>
             <p className="text-sm text-gray-400 mb-4"><span className="text-gray-200 font-medium">{confirmPrint.mold.kod}</span> kalıbında stok eksiği görünüyor. Stok tedariği sağlandıysa basıldı olarak işaretleyebilirsin.</p>
@@ -258,7 +258,7 @@ export default function BaskiciPaneliPage() {
       )}
 
       {preview && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onMouseDown={() => setPreview(null)}>
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/80 p-4" onMouseDown={() => setPreview(null)}>
           <div className="mx-auto max-w-2xl max-h-[85vh] flex flex-col items-center" onMouseDown={e => e.stopPropagation()}>
             <img src={preview.url} alt={preview.title} className="max-w-full max-h-[75vh] object-contain rounded-lg" />
             <div className="mt-2 text-sm text-gray-300">{preview.title}</div>

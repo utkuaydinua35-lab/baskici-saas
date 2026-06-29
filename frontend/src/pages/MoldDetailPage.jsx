@@ -193,7 +193,7 @@ export default function MoldDetailPage() {
       />
 
       {renamePrompt && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5 animate-popin">
             <h3 className="text-base font-semibold text-gray-100 mb-1">Kalıba isim ver</h3>
             <p className="text-xs text-gray-500 mb-3">İsim verince kalıp hazır olur ve baskıcı paneline düşer.</p>
@@ -283,7 +283,7 @@ export default function MoldDetailPage() {
       )}
 
       {removeTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
              onMouseDown={(e) => e.target === e.currentTarget && setRemoveTarget(null)}>
           <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5">
             <h2 className="text-lg font-semibold text-gray-100 mb-1">Slotu Kalıptan Çıkar</h2>

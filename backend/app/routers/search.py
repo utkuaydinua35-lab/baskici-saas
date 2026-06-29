@@ -40,7 +40,12 @@ def quick_search(
             select(Order)
             .where(
                 Order.tenant_id == user.tenant_id,
-                or_(Order.order_number.ilike(like), Order.name.ilike(like)),
+                or_(
+                    Order.order_number.ilike(like),
+                    Order.name.ilike(like),
+                    Order.customer_name.ilike(like),
+                    Order.kargo_info["takip_no"].astext.ilike(like),
+                ),
             )
             .order_by(Order.created_at_platform.desc())
             .limit(8)

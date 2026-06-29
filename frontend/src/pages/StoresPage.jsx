@@ -380,7 +380,7 @@ function AddStoreDialog({ platforms, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl p-5 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-100 mb-4">Yeni Mağaza Ekle</h2>

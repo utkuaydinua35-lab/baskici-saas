@@ -124,7 +124,7 @@ function DealerDialog({ dealer, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-100">{isNew ? 'Yeni Bayii' : 'Bayiyi Düzenle'}</h2>
@@ -228,7 +228,7 @@ function CariDialog({ dealer, onClose, onChanged }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 animate-popin">
         <div className="flex items-center justify-between mb-1 gap-2">
           <h2 className="text-lg font-semibold text-gray-100 min-w-0 truncate">{dealer.name} — Cari Hesap</h2>
@@ -365,7 +365,7 @@ function OrderDialog({ dealer, onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-2xl p-5 my-8 animate-popin">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold text-gray-100">{dealer.name} — Yeni Sipariş</h2>
@@ -467,7 +467,7 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
   const isPdf = file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name))
 
   return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
+    <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/70 p-4" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 animate-popin">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-gray-100">📎 Yeni Tasarım</h3>

@@ -334,7 +334,7 @@ function ShortcutDialog({ storeId, shortcut, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl p-5 w-full max-w-md">
         <h2 className="text-lg font-semibold text-gray-100 mb-4">
@@ -438,7 +438,7 @@ function ImportDialog({ storeId, onClose, onImported }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl p-5 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-gray-100 mb-1">Kısayol JSON İçe Aktar</h2>

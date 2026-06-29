@@ -796,7 +796,7 @@ function TrashDialog({ onClose, onRestored }) {
   const fmt = (iso) => { try { return new Date(iso).toLocaleString('tr-TR') } catch { return '' } }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4" onClick={onClose}>
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-card p-4 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-100">🗑 Çöp Kutusu — Silinen Siparişler</h3>
@@ -954,7 +954,7 @@ function OrderDetailDrawer({ orderId, onClose }) {
   }, [orderId])
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border-l border-brand-border w-full max-w-2xl h-full overflow-y-auto">
         <div className="sticky top-0 bg-brand-card border-b border-brand-border px-5 py-3 flex items-center justify-between z-10">

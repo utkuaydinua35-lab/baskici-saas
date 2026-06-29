@@ -41,7 +41,7 @@ export default function Layout() {
       {cmdOpen && <CommandPalette onClose={() => setCmdOpen(false)} />}
 
       {/* ÜST MENÜ — yatay, bölüm dropdown'lı */}
-      <header className="sticky top-0 z-[60] border-b border-brand-border/70 bg-brand-bg/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
+      <header className="sticky top-0 z-[60] border-b border-brand-border/70 bg-brand-bg/95 pt-[env(safe-area-inset-top)]">
         <div className="px-3 md:px-5 h-14 flex items-center gap-2 md:gap-3">
           <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -391,11 +391,6 @@ function ProfileDropdown({ user, onLogout }) {
               <span className="w-5 text-center">📜</span> Denetim Kaydı
             </button>
           )}
-          {user?.is_platform_admin && (
-            <button onClick={() => { _nav('/platform'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
-              <span className="w-5 text-center">🏢</span> Atölyeler
-            </button>
-          )}
           <div className="border-t border-brand-border my-1" />
           <button onClick={onLogout} className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2">
             <span className="w-5 text-center">⎋</span> Çıkış Yap
@@ -441,7 +436,7 @@ function ChangePasswordModal({ onClose }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-sm p-5">
         <div className="flex justify-between items-center mb-3">
@@ -616,7 +611,7 @@ function CommandPalette({ onClose }) {
 
   let lastGroup = null
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 bg-black/60 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 bg-black/60"
       onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-lg bg-brand-card border border-brand-border rounded-2xl shadow-2xl overflow-hidden menu-pop">
         <div className="flex items-center gap-2 px-4 border-b border-brand-border">
@@ -754,7 +749,7 @@ function MobileNav({ onClose }) {
   const items = visibleNav(can)
   return (
     <div className="fixed inset-0 z-[80] md:hidden">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] bg-brand-card border-r border-brand-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto animate-slidein">
         <div className="flex items-center justify-between mb-3 px-1">
           <span className="text-sm font-semibold text-gray-100">Menü</span>

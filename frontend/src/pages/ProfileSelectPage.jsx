@@ -118,7 +118,7 @@ export default function ProfileSelectPage() {
       </div>
 
       {pinFor && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setPinFor(null)}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setPinFor(null)}>
           <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-xs p-6 animate-popin text-center">
             <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden bg-brand-input border border-brand-border flex items-center justify-center mb-3">
               {pinFor.avatar_url ? <img src={pinFor.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -140,7 +140,7 @@ export default function ProfileSelectPage() {
       )}
 
       {adminFor && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setAdminFor(null)}>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setAdminFor(null)}>
           <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-xs p-6 animate-popin text-center">
             <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden bg-brand-input border border-brand-border flex items-center justify-center mb-3">
               {adminFor.avatar_url ? <img src={adminFor.avatar_url} alt="" className="w-full h-full object-cover" />

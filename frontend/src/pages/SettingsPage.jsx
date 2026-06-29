@@ -4,10 +4,12 @@ import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
 import StoresPage from './StoresPage'
 import BayiYonetim from './BayiYonetim'
+import PlatformPage from './PlatformPage'
 
 export default function SettingsPage() {
   const { user: _me } = useAuth()
   const _isAdmin = (_me?.role === 'yonetici' || _me?.role === 'owner')
+  const _isPlatform = !!_me?.is_platform_admin
   const [tab, setTab] = useState(_isAdmin ? 'stores' : 'brand')
   return (
     <div className="mx-auto max-w-5xl animate-fadein">
@@ -23,6 +25,7 @@ export default function SettingsPage() {
         {_isAdmin && <TabBtn active={tab === 'bayiler'} onClick={() => setTab('bayiler')}>🤝 Bayiler</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'users'} onClick={() => setTab('users')}>👥 Kullanıcılar</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'ai'} onClick={() => setTab('ai')}>🤖 AI Destek</TabBtn>}
+        {_isPlatform && <TabBtn active={tab === 'platform'} onClick={() => setTab('platform')}>🏢 Atölyeler</TabBtn>}
       </div>
 
       {tab === 'stores' && _isAdmin && <div className="-mt-2"><StoresPage embedded /></div>}
@@ -31,6 +34,7 @@ export default function SettingsPage() {
       {tab === 'bayiler' && _isAdmin && <BayiYonetim />}
       {tab === 'users' && _isAdmin && <UsersTab />}
       {tab === 'ai' && _isAdmin && <AISettingsTab />}
+      {tab === 'platform' && _isPlatform && <div className="-mt-2"><PlatformPage /></div>}
     </div>
   )
 }
@@ -223,7 +227,7 @@ function ChangePasswordModal({ onClose }) {
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Şifre değiştirilemedi'); setBusy(false) }
   }
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 animate-popin">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-100">Şifre Değiştir</h2>
@@ -292,7 +296,7 @@ function TwoFactorModal({ enabled, onClose, onChanged }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 animate-popin max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-100">İki Adımlı Doğrulama</h2>
@@ -689,7 +693,7 @@ function UserDialog({ user, meta, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 animate-popin">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-100">{isNew ? 'Yeni Kullanıcı' : 'Kullanıcıyı Düzenle'}</h2>

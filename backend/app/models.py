@@ -39,6 +39,10 @@ class Tenant(Base):
     plan: Mapped[str] = mapped_column(String(30), default="trial")
     active_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Yeni self-servis kayıtlar yönetici onayı bekler; onaylanana kadar giriş yapılamaz.
+    is_approved: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # White-label markalama: accent renk (#rrggbb) + uygulama adı (None ise name).

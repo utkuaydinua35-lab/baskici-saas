@@ -88,6 +88,10 @@ export function AuthProvider({ children }) {
     const data = await api.post('/api/auth/register', {
       email, password, full_name, tenant_name,
     })
+    // Yeni kayıt yönetici onayı bekler — token dönmez, giriş yapılmaz.
+    if (data?.pending_approval || !data?.access_token) {
+      return { pending: true, message: data?.message }
+    }
     setToken(data.access_token)
     const me = await api.get('/api/auth/me')
     setUser(me.user)

@@ -22,6 +22,11 @@ export default function PlatformPage() {
   }
   useEffect(() => { load() }, [])
 
+  const approve = async (t) => {
+    try { await api.patch(`/api/platform/tenants/${t.id}`, { is_approved: true }); toast.success('Atölye onaylandı'); load() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Onaylanamadı') }
+  }
+
   return (
     <div className="max-w-[1100px]">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
@@ -68,11 +73,17 @@ export default function PlatformPage() {
                       <td className="px-4 py-2.5 text-center text-gray-300">{t.user_count}</td>
                       <td className="px-4 py-2.5 text-center text-gray-400">{t.order_count}</td>
                       <td className="px-4 py-2.5 text-center">
-                        {t.is_active
-                          ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aktif</span>
-                          : <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-300">pasif</span>}
+                        <div className="flex items-center justify-center gap-1 flex-wrap">
+                          {!t.is_approved && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">onay bekliyor</span>}
+                          {t.is_active
+                            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">aktif</span>
+                            : <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-300">pasif</span>}
+                        </div>
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        {!t.is_approved && (
+                          <button onClick={() => approve(t)} className="!text-xs px-2 py-1 mr-1 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">✓ Onayla</button>
+                        )}
                         <button onClick={() => setEditing(t)} className="btn-secondary !text-xs">Düzenle</button>
                       </td>
                     </tr>
@@ -254,6 +265,7 @@ function EditTenant({ tenant, onClose, onDone }) {
   const toast = useToast()
   const [f, setF] = useState({
     name: tenant.name || '', plan: tenant.plan || 'trial', is_active: tenant.is_active,
+    is_approved: tenant.is_approved !== false,
     active_until: tenant.active_until ? tenant.active_until.slice(0, 10) : '',
     brand_color: tenant.brand_color || '#7c5cff', app_name: tenant.app_name || '',
   })
@@ -273,7 +285,7 @@ function EditTenant({ tenant, onClose, onDone }) {
     setBusy(true)
     try {
       await api.patch(`/api/platform/tenants/${tenant.id}`, {
-        name: f.name, plan: f.plan, is_active: f.is_active,
+        name: f.name, plan: f.plan, is_active: f.is_active, is_approved: f.is_approved,
         active_until: f.active_until || null,
         clear_active_until: !f.active_until,
         brand_color: f.brand_color || null, app_name: f.app_name || null,
@@ -296,6 +308,10 @@ function EditTenant({ tenant, onClose, onDone }) {
         <Field label="Accent rengi"><input type="color" className="w-full h-9 rounded-lg bg-transparent border border-brand-border p-0.5" value={f.brand_color} onChange={e => set('brand_color', e.target.value)} /></Field>
         <Field label="Uygulama adı"><input className="input w-full" value={f.app_name} onChange={e => set('app_name', e.target.value)} /></Field>
       </div>
+      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+        <input type="checkbox" checked={f.is_approved} onChange={e => set('is_approved', e.target.checked)} className="accent-accent" />
+        <span className="text-sm text-gray-200">Onaylı (kapatılırsa giriş "onay aşamasında" olur)</span>
+      </label>
       <label className="flex items-center gap-2 mb-4 cursor-pointer">
         <input type="checkbox" checked={f.is_active} onChange={e => set('is_active', e.target.checked)} className="accent-accent" />
         <span className="text-sm text-gray-200">Aktif (kapatılırsa giriş engellenir)</span>

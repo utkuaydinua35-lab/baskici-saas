@@ -14,6 +14,7 @@ export default function RegisterPage() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pending, setPending] = useState('')
 
   const setField = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
@@ -26,13 +27,30 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      await register(form)
+      const res = await register(form)
+      if (res?.pending) {
+        setPending(res.message || 'Kaydınız alındı. Hesabınız onay aşamasında — onay için yöneticiyle iletişime geçiniz.')
+        return
+      }
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.detail || 'Kayıt başarısız')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (pending) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center card">
+          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-3xl">⏳</div>
+          <h1 className="text-lg font-semibold text-gray-100">Onay bekleniyor</h1>
+          <p className="text-sm text-gray-400 mt-2 leading-relaxed">{pending}</p>
+          <Link to="/login" className="btn-secondary !text-sm inline-block mt-4">Giriş ekranına dön</Link>
+        </div>
+      </div>
+    )
   }
 
   return (

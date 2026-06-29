@@ -58,6 +58,7 @@ def _ser_tenant(db: Session, t: Tenant) -> dict:
         "slug": t.slug,
         "plan": t.plan,
         "is_active": t.is_active,
+        "is_approved": bool(getattr(t, "is_approved", True)),
         "active_until": t.active_until.isoformat() if t.active_until else None,
         "logo_url": t.logo_url,
         "brand_color": t.brand_color,
@@ -127,6 +128,7 @@ class UpdateTenantRequest(BaseModel):
     name: str | None = None
     plan: str | None = None
     is_active: bool | None = None
+    is_approved: bool | None = None
     active_until: date | None = None
     clear_active_until: bool = False
     brand_color: str | None = None
@@ -150,6 +152,8 @@ def update_tenant(
         t.plan = req.plan.strip() or t.plan
     if req.is_active is not None:
         t.is_active = req.is_active
+    if req.is_approved is not None:
+        t.is_approved = req.is_approved
     if req.clear_active_until:
         t.active_until = None
     elif req.active_until is not None:

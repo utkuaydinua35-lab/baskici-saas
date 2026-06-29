@@ -53,13 +53,13 @@ def _issue_token(user: User) -> TokenResponse:
     )
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(req: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@router.post("/register", response_model=None, status_code=status.HTTP_201_CREATED)
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
     """
     Yeni hesap aç:
-    - Yeni Tenant oluştur (plan=trial)
+    - Yeni Tenant oluştur (plan=trial, is_approved=False — yönetici onayı bekler)
     - Yeni User oluştur (role=owner)
-    - JWT döndür
+    - JWT DÖNMEZ; hesap onaylanana kadar giriş yapılamaz.
 
     Email zaten kayıtlıysa 409 Conflict.
     Tenant slug çakışırsa otomatik suffix eklenir.
@@ -92,8 +92,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespon
                 detail="Slug üretilemedi, firma adını değiştir",
             )
 
-    # Tenant
-    tenant = Tenant(name=req.tenant_name, slug=slug, plan="trial", is_active=True)
+    # Tenant — yönetici onayı bekler (is_approved=False)
+    tenant = Tenant(name=req.tenant_name, slug=slug, plan="trial", is_active=True, is_approved=False)
     db.add(tenant)
     db.flush()  # tenant.id elde edilsin
 
@@ -105,7 +105,6 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespon
         full_name=req.full_name,
         role="owner",
         is_active=True,
-        last_login_at=datetime.now(UTC),
     )
     db.add(user)
 
@@ -118,8 +117,12 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)) -> TokenRespon
             detail="Kayıt sırasında çakışma — büyük ihtimalle email kullanılıyor",
         ) from e
 
-    db.refresh(user)
-    return _issue_token(user)
+    # Token DÖNMEZ — hesap onay bekliyor.
+    return {
+        "ok": True,
+        "pending_approval": True,
+        "message": "Kaydınız alındı. Hesabınız onay aşamasında — onay için yöneticiyle iletişime geçiniz.",
+    }
 
 
 _login_hits: dict[str, list[float]] = {}
@@ -186,6 +189,11 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # Abonelik kontrolü (white-label kiralama) — platform admin muaf
     if not user.is_platform_admin:
         tenant = db.scalar(select(Tenant).where(Tenant.id == user.tenant_id))
+        if tenant and not getattr(tenant, "is_approved", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Hesabınız onay aşamasında. Onay için yöneticiyle iletişime geçiniz.",
+            )
         if tenant and not tenant.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
@@ -36,12 +36,24 @@ export default function PackagingPage() {
   const [ilIlce, setIlIlce] = useState(null)            // { il: [ilçe, ...] }
   const [selIl, setSelIl] = useState('')
   const [selIlce, setSelIlce] = useState('')
+  const [search, setSearch] = useState('')
+  const [brand, setBrand] = useState('')
+  const [readyOnly, setReadyOnly] = useState(false)
   const { clock, h, m, passed } = useCargoCountdown()
+
+  // Filtreleri ref'te tut — loadIndex kimliği stabil kalsın
+  const filtersRef = useRef({ search: '', brand: '', readyOnly: false })
+  filtersRef.current = { search, brand, readyOnly }
 
   const loadIndex = useCallback(async (idx) => {
     setLoading(true); setMsg(null); setManualAddr(false)
     try {
-      const r = await api.get(`/api/packaging/queue?index=${idx}`)
+      const f = filtersRef.current
+      const params = new URLSearchParams({ index: String(idx) })
+      if (f.search.trim()) params.set('search', f.search.trim())
+      if (f.brand) params.set('brand', f.brand)
+      if (f.readyOnly) params.set('ready_only', 'true')
+      const r = await api.get(`/api/packaging/queue?${params}`)
       setQueue(r)
       try { localStorage.setItem(LAST_INDEX_KEY, String(r.index)) } catch {}
     } catch (e) {
@@ -50,11 +62,19 @@ export default function PackagingPage() {
   }, [])
 
   // ilk acilis: localStorage'daki son index (yoksa 0 = en eski)
+  const _first = useRef(true)
   useEffect(() => {
     let start = 0
     try { const v = parseInt(localStorage.getItem(LAST_INDEX_KEY) || '0', 10); if (!isNaN(v) && v >= 0) start = v } catch {}
     loadIndex(start)
   }, [loadIndex])
+
+  // filtre değişince başa dön (debounced)
+  useEffect(() => {
+    if (_first.current) { _first.current = false; return }
+    const t = setTimeout(() => loadIndex(0), 300)
+    return () => clearTimeout(t)
+  }, [search, brand, readyOnly, loadIndex])
 
   const total = queue.total || 0
   const index = queue.index || 0
@@ -136,8 +156,28 @@ export default function PackagingPage() {
             : <span className="text-gray-300">KARGO SAATİNE <b className="text-gray-100">{h} SAAT {m} DAKİKA</b> KALDI</span>}
         </div>
         <div className="text-sm text-gray-400">
-          KALAN PAKETLENECEK SİPARİŞ: <b className="text-gray-100">{total} ADET</b>
+          {readyOnly ? 'PAKETLEMEYE UYGUN' : 'KALAN PAKETLENECEK'} SİPARİŞ: <b className="text-gray-100">{total} ADET</b>
         </div>
+      </div>
+
+      {/* Filtreler: arama + marka + paketleme uygunluğu */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Sipariş no / müşteri ara…" className="input w-full !pl-9 !text-sm" />
+        </div>
+        <select value={brand} onChange={e => setBrand(e.target.value)} className="input !text-sm !py-2 w-auto">
+          <option value="">Tüm markalar</option>
+          {(queue.brands || []).map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <button onClick={() => setReadyOnly(v => !v)}
+          title="Sadece tüm ürünleri basılı kalıpta / hazır olan siparişler"
+          className={`!text-sm px-4 py-2 rounded-full border whitespace-nowrap transition-colors ${
+            readyOnly ? 'bg-accent/15 text-accent border-accent/40' : 'bg-brand-input/60 text-gray-300 border-brand-border hover:text-gray-100'
+          }`}>
+          {readyOnly ? '✓ ' : ''}Paketlemeye uygun
+        </button>
       </div>
 
       {msg && (
@@ -152,7 +192,9 @@ export default function PackagingPage() {
       {!loading && total === 0 && (
         <div className="card text-center py-16 text-gray-500">
           <div className="text-3xl mb-2">📦</div>
-          Paketlenecek (gönderilmemiş) sipariş yok.
+          {search || brand || readyOnly
+            ? 'Filtreyle eşleşen sipariş yok.'
+            : 'Paketlenecek (gönderilmemiş) sipariş yok.'}
         </div>
       )}
 

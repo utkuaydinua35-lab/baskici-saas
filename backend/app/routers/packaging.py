@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.auth.dependencies import get_current_user, require_permission
 from app.adapters import get_adapter
 from app.database import get_db
-from app.models import Design, LineItem, MoldItem, Order, OrderStatusHistory, Store, User
+from app.models import (
+    AccessoryProduct, Design, LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User,
+)
 from app.services import basit_kargo, label_pdf, packaging as pkg, storage
 from app import stages as stage_defs
 
@@ -449,28 +451,140 @@ def _order_payload(db, order) -> dict:
     }
 
 
+def _brand_of(model: str | None) -> str:
+    import re as _re
+    m = (model or "").upper()
+    if "IPHONE" in m:
+        return "Apple"
+    if ("SAMSUNG" in m or "GALAXY" in m or "NOTE" in m
+            or _re.search(r"\bS\d", m) or _re.match(r"^A\d", m) or _re.match(r"^M\d", m) or _re.match(r"^J\d", m)):
+        return "Samsung"
+    if any(x in m for x in ("XIAOMI", "REDMI", "POCO")):
+        return "Xiaomi"
+    if "REALME" in m:
+        return "Realme"
+    if "OPPO" in m:
+        return "Oppo"
+    if "VIVO" in m:
+        return "Vivo"
+    if "HUAWEI" in m:
+        return "Huawei"
+    if "TECNO" in m:
+        return "Tecno"
+    if "INFINIX" in m:
+        return "Infinix"
+    return "Diğer" if m else "?"
+
+
+def _nm(s: str | None) -> str:
+    from app.services import phone_models as _pm
+    try:
+        return _pm.normalize_key(s or "")
+    except Exception:  # noqa: BLE001
+        return (s or "").strip().upper()
+
+
+def _printed_maps(db, tenant_id):
+    """Tüm MoldItem'ları kalıbın print_status'üyle: line_item_id ve (order_no, model)
+    bazında 'basıldı mı' listesi."""
+    rows = db.execute(
+        select(MoldItem.line_item_id, MoldItem.order_number, MoldItem.model, Mold.print_status)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(Mold.tenant_id == tenant_id)
+    ).all()
+    by_li: dict = {}
+    by_om: dict = {}
+    for li_id, onum, model, pstat in rows:
+        printed = (pstat == "basildi")
+        if li_id:
+            by_li.setdefault(str(li_id), []).append(printed)
+        if onum and model:
+            by_om.setdefault((str(onum), _nm(model)), []).append(printed)
+    return by_li, by_om
+
+
+def _accessory_ids(db, tenant_id) -> set:
+    return {
+        str(pid) for (pid,) in db.execute(
+            select(AccessoryProduct.product_id)
+            .join(Store, Store.id == AccessoryProduct.store_id)
+            .where(Store.tenant_id == tenant_id, AccessoryProduct.product_id.isnot(None))
+        ).all()
+    }
+
+
+def _order_ready(order, by_li, by_om, acc_ids) -> bool:
+    """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar.
+    Herhangi bir ürün basılmamış kalıpta ya da henüz hazırlanmamışsa -> False."""
+    onum = str(order.order_number) if order.order_number is not None else None
+    has_item = False
+    for li in (order.line_items or []):
+        has_item = True
+        if li.product_id and str(li.product_id) in acc_ids:
+            continue  # aksesuar — kalıp gerekmez
+        ms = by_li.get(str(li.id))
+        if not ms and onum:
+            ms = by_om.get((onum, _nm(_extract_model(li))))
+        if ms:
+            if not all(ms):       # eşleşen kalıplardan biri bile basılmadıysa hazır değil
+                return False
+        elif not getattr(li, "is_hazir", False):
+            return False          # kalıpta değil ve hazır değil -> bekliyor
+    return has_item
+
+
 @router.get("/queue", response_model=dict)
 def packaging_queue(
     index: int = 0,
+    search: str | None = None,
+    brand: str | None = None,
+    ready_only: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Acik siparis kuyrugu — EN ESKIDEN sirali. index'teki siparisi tam detayla dondurur."""
+    """Açık sipariş kuyruğu — EN ESKİDEN sıralı. Filtreler: sipariş no/müşteri arama,
+    marka, ve 'paketlemeye uygun' (tüm ürünleri basılı kalıpta / hazır)."""
     flt = _queue_filter(user.tenant_id)
-    total = db.scalar(select(func.count(Order.id)).where(flt)) or 0
-    if total == 0:
-        return {"total": 0, "index": 0, "order": None, "stages": stage_defs.all_stages_payload()}
-    idx = max(0, min(index, total - 1))
-    order = db.scalar(
-        select(Order)
-        .where(flt)
+    s = (search or "").strip()
+    if s:
+        like = f"%{s}%"
+        flt = flt & or_(
+            Order.order_number.ilike(like), Order.name.ilike(like), Order.customer_name.ilike(like)
+        )
+
+    orders = db.scalars(
+        select(Order).where(flt)
         .options(selectinload(Order.line_items))
         .order_by(asc(Order.created_at_platform), asc(Order.id))
-        .offset(idx).limit(1)
-    )
-    return {
-        "total": total,
-        "index": idx,
-        "order": _order_payload(db, order) if order else None,
+    ).all()
+
+    # Mevcut açık siparişlerdeki markalar (filtre menüsü için)
+    brands = sorted({b for o in orders for li in (o.line_items or [])
+                     if (b := _brand_of(_extract_model(li))) and b != "?"})
+
+    by_li = by_om = None
+    acc_ids: set = set()
+    if ready_only:
+        by_li, by_om = _printed_maps(db, user.tenant_id)
+        acc_ids = _accessory_ids(db, user.tenant_id)
+
+    def _passes(o):
+        if brand and not any(_brand_of(_extract_model(li)) == brand for li in (o.line_items or [])):
+            return False
+        if ready_only and not _order_ready(o, by_li, by_om, acc_ids):
+            return False
+        return True
+
+    filtered = [o for o in orders if _passes(o)] if (brand or ready_only) else orders
+    total = len(filtered)
+    base = {
         "stages": stage_defs.all_stages_payload(),
+        "brands": brands,
+        "search": s or None,
+        "brand": brand or None,
+        "ready_only": ready_only,
     }
+    if total == 0:
+        return {"total": 0, "index": 0, "order": None, **base}
+    idx = max(0, min(index, total - 1))
+    return {"total": total, "index": idx, "order": _order_payload(db, filtered[idx]), **base}

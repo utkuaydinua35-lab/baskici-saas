@@ -65,6 +65,7 @@ class LineItemResponse(BaseModel):
     is_kaliba_eklendi: bool = False
     is_hazir: bool = False
     tedarik_status: str = "bekliyor"
+    molds: list[dict] = []  # [{id, kod}] — bu kalemin eklendiği kalıp(lar)
 
 
 class OrderListItem(BaseModel):
@@ -793,20 +794,27 @@ def get_order(
     data["kalipta_count"] = sum(
         1 for li in order.line_items if getattr(li, "is_kaliba_eklendi", False)
     )
-    data["line_items"] = [
-        LineItemResponse.model_validate(li).model_dump(mode="json")
-        for li in order.line_items
-    ]
+    # Kalem -> eklendiği kalıp(lar): {line_item_id: [{id, kod}]}
+    molds_by_li: dict = {}
+    li_ids = [li.id for li in order.line_items]
+    if li_ids:
+        for li_id, mid, kod in db.execute(
+            select(MoldItem.line_item_id, Mold.id, Mold.kod)
+            .join(Mold, Mold.id == MoldItem.mold_id)
+            .where(MoldItem.line_item_id.in_(li_ids))
+            .distinct()
+        ).all():
+            molds_by_li.setdefault(li_id, []).append({"id": str(mid), "kod": kod})
 
-    # Mold kodları
-    mc_rows = db.execute(
-        select(Mold.kod)
-        .join(MoldItem, MoldItem.mold_id == Mold.id)
-        .join(LineItem, MoldItem.line_item_id == LineItem.id)
-        .where(LineItem.order_id == order.id)
-        .distinct()
-    ).all()
-    data["mold_kodlari"] = sorted(r[0] for r in mc_rows)
+    _li_dicts = []
+    for li in order.line_items:
+        d = LineItemResponse.model_validate(li).model_dump(mode="json")
+        d["molds"] = sorted(molds_by_li.get(li.id, []), key=lambda m: m["kod"] or "")
+        _li_dicts.append(d)
+    data["line_items"] = _li_dicts
+
+    # Mold kodları (sipariş geneli)
+    data["mold_kodlari"] = sorted({m["kod"] for v in molds_by_li.values() for m in v if m["kod"]})
 
     # is_acil
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)

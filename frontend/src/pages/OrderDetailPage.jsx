@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -50,6 +50,7 @@ function resolveSecondModel(item) {
 export default function OrderDetailPage() {
   const { orderId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const toast = useToast()
 
   const [detail, setDetail] = useState(null)
@@ -648,12 +649,16 @@ function ProductRow({ item, onPatch, onZoom }) {
         >🎁 Askıya At</button>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[10px] uppercase text-gray-600">Kalıp:</span>
-          {item.is_kaliba_eklendi && item.kalip_kodu ? (
-            <a
-              href="/kalip-olustur"
-              title={`${item.kalip_kodu} kalibinda`}
-              className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
-            >🧩 {item.kalip_kodu}</a>
+          {(item.molds && item.molds.length > 0) ? (
+            item.molds.map(m => (
+              <a
+                key={m.id}
+                href={`/kalip/${m.id}`}
+                onClick={e => { e.preventDefault(); navigate(`/kalip/${m.id}`, { state: { from: location.pathname } }) }}
+                title={`${m.kod} kalıbını aç`}
+                className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
+              >🧩 {m.kod}</a>
+            ))
           ) : item.is_kaliba_eklendi ? (
             <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
               ✓ Kalıba eklendi

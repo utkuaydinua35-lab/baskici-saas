@@ -1059,6 +1059,42 @@ def total_missing(
     return {"items": items, "total_models": len(items), "total_missing": sum(i["total_missing"] for i in items)}
 
 
+@router.get("/print/required-models")
+def required_models(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stok bakmadan: panel (üretim) kalıplarında gereken telefon modelleri + adet.
+    Basılmış kalıplar ve panel dışı (taslak/teslim) aşamalar hariç."""
+    from collections import defaultdict
+
+    molds = db.scalars(
+        select(Mold).where(Mold.tenant_id == user.tenant_id).options(selectinload(Mold.items))
+    ).all()
+
+    agg: dict = defaultdict(lambda: {"count": 0, "molds": set()})
+    for mo in molds:
+        if mo.print_status == "basildi":
+            continue
+        st = mo.current_stage
+        # Baskıcı panelindeki ile aynı aralık: taslak(1) ve teslim(>=5) hariç
+        if not (st is None or (1 < st < 5)):
+            continue
+        for it in mo.items:
+            model = (it.model or "").strip() or "(model belirtilmemiş)"
+            var = mold_planner.pr.kod_to_renk(it.kalip_kodu) or (mo.variation or "")
+            key = (var, model)
+            agg[key]["count"] += 1
+            agg[key]["molds"].add(str(mo.id))
+
+    items = [
+        {"variation": var, "model": model, "count": v["count"], "mold_count": len(v["molds"])}
+        for (var, model), v in agg.items()
+    ]
+    items.sort(key=lambda x: (-x["count"], x["model"] or ""))
+    return {"items": items, "total_models": len(items), "total_count": sum(i["count"] for i in items)}
+
+
 @router.get("/{mold_id}/analyze")
 def analyze_mold(
     mold_id: uuid.UUID,

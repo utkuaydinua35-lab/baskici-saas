@@ -22,6 +22,8 @@ export default function BaskiciPaneliPage() {
   const [busyStatus, setBusyStatus] = useState({})
   const [totalMissing, setTotalMissing] = useState(null)   // modal verisi
   const [tmBusy, setTmBusy] = useState(false)
+  const [requiredModels, setRequiredModels] = useState(null)  // gerekli modeller modal
+  const [rmBusy, setRmBusy] = useState(false)
   const [preview, setPreview] = useState(null)             // buyuk onizleme {url, title}
   const [confirmPrint, setConfirmPrint] = useState(null)   // eksik stoklu basildi onayi {mold}
   const [clearBusy, setClearBusy] = useState(false)
@@ -107,6 +109,15 @@ export default function BaskiciPaneliPage() {
     finally { setTmBusy(false) }
   }
 
+  const loadRequiredModels = async () => {
+    setRmBusy(true)
+    try {
+      const r = await api.get('/api/molds/print/required-models')
+      setRequiredModels(r)
+    } catch { toast.error('Gerekli modeller hesaplanamadı') }
+    finally { setRmBusy(false) }
+  }
+
   const analyzeAll = async () => {
     const pending = molds.filter(m => (m.print_status || 'bekliyor') !== 'basildi')
     if (!pending.length) { toast.info('Analiz edilecek kalıp yok'); return }
@@ -124,6 +135,7 @@ export default function BaskiciPaneliPage() {
         </div>
         <div className="flex gap-2">
           <a href="/stok" className="btn-secondary !text-sm whitespace-nowrap">🗃️ Stok</a>
+          <button onClick={loadRequiredModels} disabled={rmBusy} className="btn-secondary !text-sm whitespace-nowrap">{rmBusy ? '…' : '📋 Gerekli Modeller'}</button>
           <button onClick={loadTotalMissing} disabled={tmBusy} className="btn-secondary !text-sm whitespace-nowrap">{tmBusy ? '…' : '📊 Toplam Eksik'}</button>
           <button onClick={clearPrinted} disabled={clearBusy} className="!text-sm px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 border border-rose-500/25 whitespace-nowrap">{clearBusy ? '…' : '🗑️ Basılanları Temizle'}</button>
           <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
@@ -179,6 +191,35 @@ export default function BaskiciPaneliPage() {
                         <div className="text-[10px] text-gray-500">{it.variation} · {it.mold_count} kalıpta</div>
                       </div>
                       {it.not_in_system && <span className="text-[10px] text-red-400/80 whitespace-nowrap">📦 stokta yok</span>}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {requiredModels && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && setRequiredModels(null)}>
+          <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 max-h-[85vh] overflow-y-auto animate-popin">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-100">📋 Kalıplarda Gereken Modeller</h2>
+              <button onClick={() => setRequiredModels(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+            </div>
+            {requiredModels.items.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">Panelde (basılmamış) kalıp yok.</div>
+            ) : (
+              <>
+                <div className="text-xs text-gray-500 mb-3">{requiredModels.total_models} model · toplam {requiredModels.total_count} kılıf · stok bakılmadı</div>
+                <div className="space-y-1.5">
+                  {requiredModels.items.map((it, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">
+                      <span className="text-accent font-bold tabular-nums text-sm w-12">{it.count}×</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-200 truncate">{it.model}</div>
+                        <div className="text-[10px] text-gray-500">{it.variation} · {it.mold_count} kalıpta</div>
+                      </div>
                     </div>
                   ))}
                 </div>

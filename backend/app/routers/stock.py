@@ -245,14 +245,17 @@ def add_group_item(group_id: uuid.UUID, body: GroupItemCreate,
     if not _models:
         raise HTTPException(400, "En az bir model gerekli")
     _var = (body.variation or "").strip() or None
-    # Cakisma: bu gruptaki diger alt kalemlerde ayni model var mi? (bir model tek alt keleme ait)
+    _varU = (_var or "").upper()
+    # Cakisma: ayni gruptaki AYNI VARYASYONDA bu model var mi? (model+varyasyon tek kayit)
     existing = db.scalars(select(StockItem).where(
         StockItem.group_id == g.id, StockItem.is_active.is_(True))).all()
     for ex in existing:
+        if (ex.variation or "").upper() != _varU:
+            continue
         ex_models = set(ex.models or ([ex.model] if ex.model else []))
         clash = ex_models & set(_models)
         if clash:
-            raise HTTPException(409, f"Bu modeller bu ana kalemde zaten baska bir alt kalemde: {', '.join(sorted(clash))}")
+            raise HTTPException(409, f"Bu modeller bu varyasyonda zaten ekli: {', '.join(sorted(clash))}")
     # etiket: verilmemisse modellerden uret
     label = (body.name or "").strip() or " / ".join(_models)
     # benzersiz sku
@@ -521,11 +524,14 @@ def update_item(
             others = db.scalars(select(StockItem).where(
                 StockItem.group_id == it.group_id, StockItem.id != it.id,
                 StockItem.is_active.is_(True))).all()
+            _itvarU = (it.variation or "").upper()
             for ox in others:
+                if (ox.variation or "").upper() != _itvarU:
+                    continue
                 ox_models = set(ox.models or ([ox.model] if ox.model else []))
                 clash = ox_models & set(_new)
                 if clash:
-                    raise HTTPException(409, f"Bu modeller baska bir alt kalemde: {', '.join(sorted(clash))}")
+                    raise HTTPException(409, f"Bu modeller bu varyasyonda baska bir kayitta: {', '.join(sorted(clash))}")
         it.models = _new
         it.model = _new[0]
     if body.low_stock_threshold is not None:

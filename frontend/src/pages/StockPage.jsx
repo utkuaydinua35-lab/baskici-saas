@@ -1,102 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../lib/api'
 
-export default function StockPage() {
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(null)       // acik ana kalem id
-  const [showNewGroup, setShowNewGroup] = useState(false)
-  const [addItemGroup, setAddItemGroup] = useState(null)  // alt kalem ekleme dialogu
-  const [linkGroup, setLinkGroup] = useState(null)        // urun eslestirme dialogu
-  const [adjItem, setAdjItem] = useState(null)            // stok ayarlama
-  const [editItem, setEditItem] = useState(null)          // alt kalem duzenleme
-  const [moveItem, setMoveItem] = useState(null)          // hareket gecmisi
-  const [msg, setMsg] = useState(null)
-  const [search, setSearch] = useState('')
-
-  const load = async () => {
-    setLoading(true)
-    try {
-      const r = await api.get('/api/stock/groups')
-      setGroups(r.groups || [])
-    } catch { setGroups([]) } finally { setLoading(false) }
-  }
-  useEffect(() => { load() }, [])
-
-  const toplamStok = groups.reduce((a, g) => a + (g.toplam_stok || 0), 0)
-  const dusukToplam = groups.reduce((a, g) => a + (g.dusuk_count || 0), 0)
-
-  return (
-    <div className="max-w-5xl">
-      <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-100">🗃️ Stok</h1>
-          <p className="text-sm text-gray-500 mt-1">Ana kalem (ürün) · alt kalem (model) bazlı stok takibi</p>
-        </div>
-        <button onClick={() => setShowNewGroup(true)} className="btn-primary !text-sm">➕ Yeni Ana Kalem</button>
-      </div>
-
-      {msg && <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>{msg.text}</div>}
-
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <Kpi label="Ana Kalem" value={groups.length} />
-        <Kpi label="Toplam Stok" value={toplamStok} />
-        <Kpi label="Düşük Stok" value={dusukToplam} color={dusukToplam > 0 ? 'amber' : 'gray'} />
-      </div>
-
-      <div className="mb-4">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Model ara (örn. iPhone 13, S21)..."
-          className="input w-full !text-sm" />
-      </div>
-
-      {loading ? (
-        <div className="card text-center py-12 text-gray-500">Yükleniyor...</div>
-      ) : groups.length === 0 ? (
-        <div className="card text-center py-12 text-gray-500">
-          <div className="text-3xl mb-2">📦</div>
-          Henüz ana kalem yok. "Yeni Ana Kalem" ile başla (örn. "Ekran Koruyucu").
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {groups.map(g => (
-            <GroupCard
-              key={g.id} g={g} search={search} onReload={load}
-              expanded={expanded === g.id || (!!search && (g.items || []).some(it => ((it.models && it.models.length ? it.models : [it.model]).filter(Boolean).join(' ')).toLowerCase().includes(search.toLowerCase())))}
-              onToggle={() => setExpanded(expanded === g.id ? null : g.id)}
-              onAddItem={() => setAddItemGroup(g)}
-              onLink={() => setLinkGroup(g)}
-              onAdjust={(it) => setAdjItem(it)}
-              onMove={(it) => setMoveItem(it)}
-              onEdit={(it) => setEditItem(it)}
-              onDeleteGroup={async () => {
-                if (!confirm(`"${g.name}" ana kalemi ve tüm alt kalemleri silinecek. Emin misin?`)) return
-                try { await api.del(`/api/stock/groups/${g.id}`); load() }
-                catch (e) { setMsg({ ok: false, text: 'Silinemedi: ' + (e?.detail || '') }) }
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {showNewGroup && <NewGroupDialog onClose={() => setShowNewGroup(false)} onSaved={() => { setShowNewGroup(false); load() }} />}
-      {addItemGroup && <AddItemDialog group={addItemGroup} onClose={() => setAddItemGroup(null)} onSaved={() => { setAddItemGroup(null); load() }} />}
-      {linkGroup && <LinkProductsDialog group={linkGroup} onClose={() => setLinkGroup(null)} onSaved={() => { setLinkGroup(null); load() }} />}
-      {adjItem && <AdjustDialog item={adjItem} onClose={() => setAdjItem(null)} onSaved={() => { setAdjItem(null); load() }} />}
-      {editItem && <EditItemDialog item={editItem} onClose={() => setEditItem(null)} onSaved={() => { setEditItem(null); load() }} />}
-      {moveItem && <MovementsDialog item={moveItem} onClose={() => setMoveItem(null)} />}
-    </div>
-  )
-}
-
 const VARYASYON_SIRA = ['SİYAH', 'BEYAZ', 'MAGSAFE', 'PARLAK', 'ŞEFFAF']
 
-// Model adindan marka cikar
+// Model adından marka çıkar
 function markaBul(modelKey) {
   const m = (modelKey || '').toUpperCase()
   if (m.includes('IPHONE')) return 'APPLE'
-  if (m.startsWith('S') && /^S\d/.test(m.replace(/[^A-Z0-9].*/, ''))) return 'SAMSUNG'
-  if (m.includes('SAMSUNG') || m.includes('NOTE') || /\bS\d/.test(m) || m.startsWith('A') || m.startsWith('M') || m.startsWith('J')) return 'SAMSUNG'
+  if (m.includes('SAMSUNG') || m.includes('NOTE') || /\bS\d/.test(m) || /^A\d/.test(m) || /^M\d/.test(m) || /^J\d/.test(m)) return 'SAMSUNG'
   if (m.includes('XIAOMI') || m.includes('REDMI') || m.includes('POCO') || m.startsWith('MI ')) return 'XIAOMI'
   if (m.includes('REALME')) return 'REALME'
   if (m.includes('OPPO')) return 'OPPO'
@@ -108,120 +20,317 @@ function markaBul(modelKey) {
   if (m.includes('GENERAL')) return 'GENERAL MOBILE'
   return 'DİĞER'
 }
+const MARKA_ONCELIK = ['APPLE', 'SAMSUNG', 'XIAOMI', 'REALME', 'OPPO', 'VIVO', 'HUAWEI', 'TECNO', 'INFINIX']
 
-function ModelGroupedItems({ items, search, groupId, onReload, onEdit, onAdjust, onMove }) {
-  const [openBrand, setOpenBrand] = useState(null)
-  const [openModel, setOpenModel] = useState(null)
-  const [mergeFor, setMergeFor] = useState(null)  // { anaKey, anaModel, mevcut }
-  // Model bazinda grupla (uyumlu modeller tek satir)
-  const mgroups = {}
-  for (const it of items) {
-    const modelsArr = (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)
-    const key = modelsArr.join(' / ') || '—'
-    if (!mgroups[key]) mgroups[key] = { key, models: modelsArr, items: [] }
-    mgroups[key].items.push(it)
+export default function StockPage() {
+  const [groups, setGroups] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [activeId, setActiveId] = useState(null)
+  const [search, setSearch] = useState('')
+  const [msg, setMsg] = useState(null)
+  // dialoglar
+  const [showNewGroup, setShowNewGroup] = useState(false)
+  const [addItemGroup, setAddItemGroup] = useState(null)
+  const [linkGroup, setLinkGroup] = useState(null)
+  const [editItem, setEditItem] = useState(null)
+  const [moveItem, setMoveItem] = useState(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await api.get('/api/stock/groups')
+      const gs = r.groups || []
+      setGroups(gs)
+      setActiveId(prev => (prev && gs.some(g => g.id === prev)) ? prev : (gs[0]?.id || null))
+    } catch { setGroups([]) } finally { setLoading(false) }
   }
-  let modelList = Object.values(mgroups)
-  if (search) {
-    const q = search.toLowerCase()
-    modelList = modelList.filter(mg => mg.key.toLowerCase().includes(q))
-  }
-  // Marka bazinda grupla
-  const brands = {}
-  for (const mg of modelList) {
-    const b = markaBul(mg.key)
-    if (!brands[b]) brands[b] = []
-    brands[b].push(mg)
-  }
-  // Marka sirasi: APPLE, SAMSUNG, sonra alfabetik
-  const ONCELIK = ['APPLE', 'SAMSUNG', 'XIAOMI', 'REALME', 'OPPO', 'VIVO', 'HUAWEI', 'TECNO', 'INFINIX']
-  const brandList = Object.keys(brands).sort((a, b) => {
-    const ia = ONCELIK.indexOf(a), ib = ONCELIK.indexOf(b)
-    if (ia < 0 && ib < 0) return a.localeCompare(b, 'tr')
-    if (ia < 0) return 1
-    if (ib < 0) return -1
-    return ia - ib
-  })
-  if (modelList.length === 0) {
-    return <p className="text-xs text-gray-500 py-2">Aramayla eşleşen model yok.</p>
-  }
-  const varSort = (a, b) => {
-    const ia = VARYASYON_SIRA.indexOf((a.variation || '').toUpperCase())
-    const ib = VARYASYON_SIRA.indexOf((b.variation || '').toUpperCase())
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  }
-  // Arama varsa markalar+modeller acik gelsin
-  const autoOpen = !!search
+  useEffect(() => { load() }, [])
+
+  const toplamStok = groups.reduce((a, g) => a + (g.toplam_stok || 0), 0)
+  const dusukToplam = groups.reduce((a, g) => a + (g.dusuk_count || 0), 0)
+  const cesit = groups.reduce((a, g) => a + (g.item_count || 0), 0)
+  const active = groups.find(g => g.id === activeId) || null
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg(null), 3500) }
+
   return (
-    <div className="space-y-1">
-      {brandList.map(brand => {
-        const bModels = [...brands[brand]].sort((a, b) => a.key.localeCompare(b.key, 'tr'))
-        const bToplam = bModels.reduce((a, mg) => a + mg.items.reduce((s, it) => s + (it.quantity || 0), 0), 0)
-        const bAcik = autoOpen || openBrand === brand
-        return (
-          <div key={brand} className="border border-brand-border/40 rounded-lg overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 bg-brand-input/30 cursor-pointer hover:bg-brand-input/50" onClick={() => setOpenBrand(bAcik && !autoOpen ? null : brand)}>
-              <span className="text-gray-500 text-xs">{bAcik ? '▾' : '▸'}</span>
-              <span className="flex-1 text-sm font-semibold text-gray-100">{brand}</span>
-              <span className="text-[11px] text-gray-500">{bModels.length} model</span>
-              <span className="text-sm font-semibold text-gray-300">{bToplam} adet</span>
-            </div>
-            {bAcik && (
-              <div className="divide-y divide-brand-border/30 px-2">
-                {bModels.map(mg => {
-                  const toplam = mg.items.reduce((a, it) => a + (it.quantity || 0), 0)
-                  const mAcik = autoOpen || openModel === mg.key
-                  const dusuk = mg.items.some(it => it.is_low)
-                  // 5 varyasyonu doldur (eksik = 0, kayit yok)
-                  const byVar = {}
-                  for (const it of mg.items) byVar[(it.variation || '').toUpperCase()] = it
-                  const tumVar = VARYASYON_SIRA.map(v => byVar[v] || { _bos: true, variation: v, quantity: 0, model: mg.models[0], models: mg.models })
-                  return (
-                    <div key={mg.key}>
-                      <div className="flex items-center gap-2 py-2 pl-4 cursor-pointer hover:bg-brand-input/20" onClick={() => setOpenModel(mAcik && !autoOpen ? null : mg.key)}>
-                        <span className="text-gray-500 text-xs">{mAcik ? '▾' : '▸'}</span>
-                        <span className="flex-1 text-sm text-gray-200 truncate">{mg.key}</span>
-                        {mg.models.length > 1 && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300" title={mg.models.join(' / ')}>🔗 {mg.models.length}</span>}
-                        {dusuk && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
-                        <span className="text-sm font-semibold text-gray-200">{toplam} adet</span>
-                        <button onClick={(e) => { e.stopPropagation(); setMergeFor({ anaKey: mg.key, anaModel: mg.models[0], mevcut: mg.models }) }}
-                          className="text-[11px] text-blue-300/80 hover:text-blue-200 hover:underline whitespace-nowrap" title="Bu modelle uyumlu (ayni kalip) modeller ekle">🔗 Uyumlu</button>
-                      </div>
-                      {mAcik && (
-                        <div className="pl-8 pb-2 space-y-1">
-                          {[...tumVar].sort(varSort).map((it, vi) => (
-                            <div key={it.id || ('bos-' + vi)} className="flex items-center gap-3 py-1.5 border-l-2 border-brand-border/40 pl-3">
-                              <span className={`flex-1 text-xs ${it._bos ? 'text-gray-600' : 'text-gray-300'}`}>{it.variation || '—'}</span>
-                              {it.is_low && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">düşük</span>}
-                              <span className={`text-sm font-semibold ${it._bos ? 'text-gray-600' : it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
-                              {it._bos ? (
-                                <span className="text-[10px] text-gray-600">kayıt yok</span>
-                              ) : (
-                                <>
-                                  <button onClick={() => onEdit(it)} className="text-xs text-gray-400 hover:text-accent hover:underline">✎</button>
-                                  <button onClick={() => onAdjust(it)} className="text-xs text-accent hover:underline">± Ayarla</button>
-                                  <button onClick={() => onMove(it)} className="text-xs text-gray-400 hover:underline">Geçmiş</button>
-                                </>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+    <div className="max-w-5xl">
+      <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-100">🗃️ Stok</h1>
+          <p className="text-sm text-gray-500 mt-1">Model × varyasyon matrisi — hücreye tıkla, yerinde düzenle</p>
+        </div>
+        <button onClick={() => setShowNewGroup(true)} className="btn-secondary !text-sm">➕ Yeni ana kalem</button>
+      </div>
+
+      {msg && <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>{msg.text}</div>}
+
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <Kpi label="Toplam stok" value={toplamStok} />
+        <Kpi label="Çeşit (model)" value={cesit} />
+        <Kpi label="Düşük stok" value={dusukToplam} color={dusukToplam > 0 ? 'amber' : 'gray'} />
+      </div>
+
+      {loading ? (
+        <div className="card text-center py-12 text-gray-500">Yükleniyor...</div>
+      ) : groups.length === 0 ? (
+        <div className="card text-center py-12 text-gray-500">
+          <div className="text-3xl mb-2">📦</div>
+          Henüz ana kalem yok. "Yeni ana kalem" ile başla (örn. "Boş Kılıf").
+        </div>
+      ) : (
+        <>
+          {/* Grup filtre chip'leri */}
+          <div className="flex gap-2 mb-3 flex-wrap items-center">
+            {groups.map(g => (
+              <button key={g.id} onClick={() => setActiveId(g.id)}
+                className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${activeId === g.id
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-brand-input/50 text-gray-300 border-brand-border hover:text-gray-100'}`}>
+                {g.name}
+                <span className={`ml-1.5 text-[11px] ${activeId === g.id ? 'text-white/80' : 'text-gray-500'}`}>{g.toplam_stok}</span>
+                {g.dusuk_count > 0 && <span className="ml-1 text-[10px] text-amber-300">●{g.dusuk_count}</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Arama + grup araçları */}
+          <div className="flex gap-2 items-center mb-3 flex-wrap">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Model ara — iPhone 13, S24…"
+              className="input flex-1 min-w-[200px] !text-sm" />
+            {active && (
+              <>
+                <button onClick={() => setAddItemGroup(active)} className="btn-secondary !text-sm whitespace-nowrap">➕ Model ekle</button>
+                <GroupMenu group={active}
+                  onLink={() => setLinkGroup(active)}
+                  onDelete={async () => {
+                    if (!confirm(`"${active.name}" ana kalemi ve tüm modelleri silinecek. Emin misin?`)) return
+                    try { await api.del(`/api/stock/groups/${active.id}`); flash(true, 'Ana kalem silindi'); load() }
+                    catch (e) { flash(false, 'Silinemedi: ' + (e?.detail || '')) }
+                  }} />
+              </>
             )}
           </div>
-        )
-      })}
+
+          {active && (
+            <StockMatrix
+              group={active} search={search} onReload={load} onFlash={flash}
+              onEdit={(it) => setEditItem(it)} onMove={(it) => setMoveItem(it)} />
+          )}
+        </>
+      )}
+
+      {showNewGroup && <NewGroupDialog onClose={() => setShowNewGroup(false)} onSaved={(id) => { setShowNewGroup(false); load().then(() => id && setActiveId(id)) }} />}
+      {addItemGroup && <AddItemDialog group={addItemGroup} onClose={() => setAddItemGroup(null)} onSaved={() => { setAddItemGroup(null); load() }} />}
+      {linkGroup && <LinkProductsDialog group={linkGroup} onClose={() => setLinkGroup(null)} onSaved={() => { setLinkGroup(null); load() }} />}
+      {editItem && <EditItemDialog item={editItem} onClose={() => setEditItem(null)} onSaved={() => { setEditItem(null); load() }} />}
+      {moveItem && <MovementsDialog item={moveItem} onClose={() => setMoveItem(null)} />}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// Matris: satır = model (uyumlu modeller tek satır), sütun = varyasyon
+// ═══════════════════════════════════════════════════════════
+
+function StockMatrix({ group, search, onReload, onFlash, onEdit, onMove }) {
+  const [edit, setEdit] = useState(null)      // { rowKey, col }
+  const [editVal, setEditVal] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [menuRow, setMenuRow] = useState(null)
+  const [mergeFor, setMergeFor] = useState(null)
+
+  // Sütunlar: grupta herhangi bir varyasyon varsa 5 standart sütunu hep göster
+  // (boş hücreler tıklanıp doldurulabilsin). Hiç yoksa tek "Genel" sütun.
+  const cols = useMemo(() => {
+    const present = new Set(); let hasVar = false, hasNull = false
+    for (const it of group.items) {
+      const v = (it.variation || '').toUpperCase()
+      if (v) { present.add(v); hasVar = true } else hasNull = true
+    }
+    if (!hasVar) return ['']
+    const extra = [...present].filter(v => !VARYASYON_SIRA.includes(v)).sort()
+    const c = [...VARYASYON_SIRA, ...extra]
+    if (hasNull) c.push('')
+    return c
+  }, [group.items])
+
+  // Satırlar: model-key bazında grupla
+  const rows = useMemo(() => {
+    const map = {}
+    for (const it of group.items) {
+      const models = (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)
+      const key = models.join(' / ') || '—'
+      if (!map[key]) map[key] = { key, models, byVar: {}, toplam: 0 }
+      map[key].byVar[(it.variation || '').toUpperCase()] = it
+      map[key].toplam += it.quantity || 0
+    }
+    let list = Object.values(map)
+    if (search.trim()) { const q = search.toLowerCase(); list = list.filter(r => r.key.toLowerCase().includes(q)) }
+    list.sort((a, b) => {
+      const ba = markaBul(a.key), bb = markaBul(b.key)
+      const ia = MARKA_ONCELIK.indexOf(ba), ib = MARKA_ONCELIK.indexOf(bb)
+      const pa = ia < 0 ? 99 : ia, pb = ib < 0 ? 99 : ib
+      if (pa !== pb) return pa - pb
+      if (ba !== bb) return ba.localeCompare(bb, 'tr')
+      return a.key.localeCompare(b.key, 'tr')
+    })
+    return list
+  }, [group.items, search])
+
+  const startEdit = (row, col) => {
+    const it = row.byVar[col]
+    setEdit({ rowKey: row.key, col }); setEditVal(String(it?.quantity ?? ''))
+  }
+  const saveCell = async (row, col) => {
+    const target = parseInt(editVal, 10)
+    if (isNaN(target) || target < 0) { setEdit(null); return }
+    const it = row.byVar[col]
+    setBusy(true)
+    try {
+      if (it) {
+        const delta = target - (it.quantity || 0)
+        if (delta !== 0) await api.post(`/api/stock/${it.id}/adjust`, { delta, reason: 'manuel' })
+      } else if (target > 0) {
+        await api.post(`/api/stock/groups/${group.id}/items`, { models: row.models, variation: col || null, quantity: target })
+      }
+      setEdit(null); onReload()
+    } catch (e) { onFlash(false, 'Kaydedilemedi: ' + (e?.detail || '')) }
+    finally { setBusy(false) }
+  }
+  const bump = (d) => setEditVal(v => String(Math.max(0, (parseInt(v, 10) || 0) + d)))
+
+  const delRow = async (row) => {
+    const items = Object.values(row.byVar)
+    if (!confirm(`"${row.key}" satırı (${items.length} kayıt) silinecek. Emin misin?`)) return
+    try { for (const it of items) await api.del(`/api/stock/${it.id}`); onFlash(true, 'Satır silindi'); onReload() }
+    catch (e) { onFlash(false, 'Silinemedi: ' + (e?.detail || '')) }
+    setMenuRow(null)
+  }
+
+  const allModels = useMemo(() => [...new Set(group.items.flatMap(it => (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)))], [group.items])
+
+  if (group.items.length === 0) {
+    return <div className="card text-center py-10 text-gray-500"><div className="text-2xl mb-2">📭</div>Bu ana kalemde henüz model yok. "Model ekle" ile başla.</div>
+  }
+
+  // marka ayraçları için son markayı takip et
+  let lastBrand = null
+
+  return (
+    <div className="card !p-0 overflow-x-auto">
+      <table className="w-full text-sm" style={{ minWidth: 520 }}>
+        <thead>
+          <tr className="bg-brand-input/30 text-gray-400">
+            <th className="text-left font-medium px-3 py-2.5">Model</th>
+            {cols.map(c => <th key={c || '_'} className="font-medium px-2 py-2.5 text-center w-[78px]">{c || 'Genel'}</th>)}
+            <th className="font-medium px-3 py-2.5 text-right w-[64px]">Toplam</th>
+            <th className="w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr><td colSpan={cols.length + 3} className="text-center text-gray-500 py-6">Aramayla eşleşen model yok.</td></tr>
+          ) : rows.map(row => {
+            const brand = markaBul(row.key)
+            const showBrand = brand !== lastBrand; lastBrand = brand
+            return (
+              <RowWithBrand key={row.key} showBrand={showBrand} brand={brand} colSpan={cols.length + 3}>
+                <td className="px-3 py-2 align-middle">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-200 truncate">{row.key}</span>
+                    {row.models.length > 1 && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-500/15 text-blue-300 shrink-0" title={row.models.join(' / ')}>🔗{row.models.length}</span>}
+                  </div>
+                </td>
+                {cols.map(col => {
+                  const it = row.byVar[col]
+                  const editing = edit && edit.rowKey === row.key && edit.col === col
+                  if (editing) {
+                    return (
+                      <td key={col || '_'} className="px-1 py-1 text-center bg-accent/10">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <button onClick={() => bump(-1)} className="w-6 h-7 rounded bg-brand-input text-gray-300 hover:text-white">−</button>
+                          <input autoFocus type="number" value={editVal} onChange={e => setEditVal(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveCell(row, col); if (e.key === 'Escape') setEdit(null) }}
+                            className="w-12 h-7 text-center rounded bg-brand-card border border-brand-border text-gray-100 text-sm" />
+                          <button onClick={() => bump(1)} className="w-6 h-7 rounded bg-brand-input text-gray-300 hover:text-white">+</button>
+                          <button disabled={busy} onClick={() => saveCell(row, col)} className="w-7 h-7 rounded bg-accent text-white" title="Kaydet">✓</button>
+                        </div>
+                        {it && <button onClick={() => { onMove(it); setEdit(null) }} className="text-[10px] text-gray-400 hover:underline mt-0.5">geçmiş</button>}
+                      </td>
+                    )
+                  }
+                  return (
+                    <td key={col || '_'} onClick={() => startEdit(row, col)}
+                      className={`px-2 py-2 text-center cursor-pointer hover:bg-accent/10 transition-colors ${it?.is_low ? 'bg-amber-500/15' : ''}`}>
+                      {it ? (
+                        <span className={`font-semibold ${it.is_low ? 'text-amber-300' : 'text-gray-200'}`}>{it.quantity}</span>
+                      ) : (
+                        <span className="text-gray-600">—</span>
+                      )}
+                    </td>
+                  )
+                })}
+                <td className="px-3 py-2 text-right font-semibold text-gray-200">{row.toplam}</td>
+                <td className="px-1 py-2 text-center relative">
+                  <button onClick={() => setMenuRow(menuRow === row.key ? null : row.key)} className="text-gray-500 hover:text-gray-200 px-1">⋯</button>
+                  {menuRow === row.key && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuRow(null)} />
+                      <div className="absolute right-2 top-8 z-20 w-44 bg-brand-card border border-brand-border rounded-lg shadow-lg py-1 text-left">
+                        <button onClick={() => { setMergeFor({ anaKey: row.key, anaModel: row.models[0], mevcut: row.models }); setMenuRow(null) }} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-brand-input/50">🔗 Uyumlu model ekle</button>
+                        <button onClick={() => { onEdit(Object.values(row.byVar)[0]); setMenuRow(null) }} className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-brand-input/50">✎ Modeli düzenle</button>
+                        <button onClick={() => delRow(row)} className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10">🗑 Satırı sil</button>
+                      </div>
+                    </>
+                  )}
+                </td>
+              </RowWithBrand>
+            )
+          })}
+        </tbody>
+      </table>
+
       {mergeFor && (
-        <MergeModelDialog groupId={groupId} mergeFor={mergeFor} allModels={[...new Set(items.flatMap(it => (it.models && it.models.length ? it.models : [it.model]).filter(Boolean)))]}
-          onClose={() => setMergeFor(null)} onDone={() => { setMergeFor(null); onReload && onReload() }} />
+        <MergeModelDialog groupId={group.id} mergeFor={mergeFor} allModels={allModels}
+          onClose={() => setMergeFor(null)} onDone={() => { setMergeFor(null); onReload() }} />
       )}
     </div>
   )
 }
+
+function RowWithBrand({ showBrand, brand, colSpan, children }) {
+  return (
+    <>
+      {showBrand && (
+        <tr className="bg-brand-bg/40"><td colSpan={colSpan} className="px-3 py-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wide border-t border-brand-border/60">{brand}</td></tr>
+      )}
+      <tr className="border-t border-brand-border/40 hover:bg-brand-input/10">{children}</tr>
+    </>
+  )
+}
+
+function GroupMenu({ group, onLink, onDelete }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(o => !o)} className="btn-secondary !text-sm">⋯</button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-10 z-20 w-48 bg-brand-card border border-brand-border rounded-lg shadow-lg py-1">
+            <button onClick={() => { onLink(); setOpen(false) }} className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-brand-input/50">🔗 Ürün eşleştir ({group.linked_products?.length || 0})</button>
+            <button onClick={() => { onDelete(); setOpen(false) }} className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10">🗑 Ana kalemi sil</button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// Dialoglar (korundu)
+// ═══════════════════════════════════════════════════════════
 
 function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   const [sel, setSel] = useState([])
@@ -229,7 +338,6 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   const [q, setQ] = useState('')
   const [katalog, setKatalog] = useState([])
   useEffect(() => { api.get('/api/stock/_models').then(r => setKatalog(r.models || [])).catch(() => setKatalog([])) }, [])
-  // Katalog (tum modeller) + gruptaki mevcut modeller, ana ile zaten birlesik olanlar haric
   const mevcutSet = new Set(mergeFor.mevcut.map(m => m.toUpperCase()))
   const havuz = [...new Set([...(katalog || []), ...(allModels || [])])]
   let secilebilir = havuz.filter(m => !mevcutSet.has(m.toUpperCase())).sort((a, b) => a.localeCompare(b, 'tr'))
@@ -246,9 +354,9 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   return createPortal((
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5 my-8 animate-popin max-h-[80vh] flex flex-col">
-        <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu Model Ekle</h2>
+        <h2 className="text-base font-semibold text-gray-100 mb-1">🔗 Uyumlu model ekle</h2>
         <p className="text-xs text-gray-500 mb-1"><span className="text-gray-300">{mergeFor.anaKey}</span> ile aynı kalıbı paylaşan modeller:</p>
-        <p className="text-[11px] text-gray-600 mb-3">Seçilen modeller bu stok havuzuna eklenir; ayrı kayıtları varsa pasifleşir (stok bu modelden yönetilir).</p>
+        <p className="text-[11px] text-gray-600 mb-3">Seçilen modeller bu stok havuzuna eklenir; ayrı kayıtları varsa pasifleşir.</p>
         <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Model ara..." className="input w-full !text-sm mb-2" />
         {sel.length > 0 && <p className="text-[11px] text-blue-300 mb-2">{sel.length} model seçili</p>}
         <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1">
@@ -270,35 +378,6 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
   ), document.body)
 }
 
-function GroupCard({ g, search, expanded, onToggle, onAddItem, onLink, onAdjust, onMove, onEdit, onDeleteGroup, onReload }) {
-  return (
-    <div className="card !p-0 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 hover:bg-brand-input/30 cursor-pointer" onClick={onToggle}>
-        <span className="text-gray-500 text-sm">{expanded ? '▾' : '▸'}</span>
-        <span className="font-medium text-gray-100 flex-1">{g.name}</span>
-        {g.dusuk_count > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">⚠ {g.dusuk_count} düşük</span>}
-        <span className="text-xs text-gray-400">{g.item_count} model</span>
-        <span className="text-sm font-semibold text-gray-200">{g.toplam_stok} adet</span>
-        {(g.linked_products?.length || 0) > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300">🔗 {g.linked_products.length}</span>}
-      </div>
-      {expanded && (
-        <div className="border-t border-brand-border px-4 py-3 bg-brand-bg/30">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <button onClick={onAddItem} className="btn-secondary !text-xs">➕ Model Ekle</button>
-            <button onClick={onLink} className="btn-secondary !text-xs">🔗 Ürün Eşleştir ({g.linked_products?.length || 0})</button>
-            <button onClick={onDeleteGroup} className="text-xs text-red-400/70 hover:text-red-300 ml-auto">🗑 Ana Kalemi Sil</button>
-          </div>
-          {g.items.length === 0 ? (
-            <p className="text-xs text-gray-500 py-2">Henüz model eklenmemiş. "Model Ekle" ile telefon modeli + adet gir.</p>
-          ) : (
-            <ModelGroupedItems items={g.items} search={search} groupId={g.id} onReload={onReload} onEdit={onEdit} onAdjust={onAdjust} onMove={onMove} />
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function NewGroupDialog({ onClose, onSaved }) {
   const [name, setName] = useState('')
   const [threshold, setThreshold] = useState('')
@@ -308,14 +387,14 @@ function NewGroupDialog({ onClose, onSaved }) {
     if (!name.trim()) { setErr('İsim gerekli'); return }
     setSaving(true); setErr('')
     try {
-      await api.post('/api/stock/groups', { name: name.trim(), low_stock_threshold: threshold === '' ? 0 : parseInt(threshold, 10) })
-      onSaved()
+      const r = await api.post('/api/stock/groups', { name: name.trim(), low_stock_threshold: threshold === '' ? 0 : parseInt(threshold, 10) })
+      onSaved(r?.id)
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
   return (
-    <Modal title="Yeni Ana Kalem" onClose={onClose}>
+    <Modal title="Yeni ana kalem" onClose={onClose}>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
-      <F label="Ana kalem adı"><input className="input w-full" placeholder="Örn. Ekran Koruyucu" value={name} onChange={e => setName(e.target.value)} autoFocus /></F>
+      <F label="Ana kalem adı"><input className="input w-full" placeholder="Örn. Boş Kılıf" value={name} onChange={e => setName(e.target.value)} autoFocus /></F>
       <F label="Düşük stok uyarı eşiği (varsayılan)"><input type="number" className="input w-full" placeholder="0" value={threshold} onChange={e => setThreshold(e.target.value)} /></F>
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
@@ -398,14 +477,14 @@ function AddItemDialog({ group, onClose, onSaved }) {
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
   return (
-    <Modal title={`Alt Kalem Ekle — ${group.name}`} onClose={onClose}>
+    <Modal title={`Model ekle — ${group.name}`} onClose={onClose}>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
       <F label="Uyumlu telefon modelleri">
         <ModelPicker models={models} setModels={setModels} modelList={modelList} />
-        <span className="block text-[10px] text-gray-500 mt-1">Bu alt kalem tek stok tutar; eklediğin modellerden herhangi biri sipariş edilince buradan düşer.</span>
+        <span className="block text-[10px] text-gray-500 mt-1">Eklediğin modellerden herhangi biri sipariş edilince buradan düşer.</span>
       </F>
-      <F label="Etiket (opsiyonel)"><input className="input w-full" placeholder="Boş bırakılırsa modellerden üretilir" value={name} onChange={e => setName(e.target.value)} /></F>
       <F label="Varyasyon (opsiyonel)"><input className="input w-full" placeholder="siyah / beyaz / şeffaf — boş bırakılabilir" value={variation} onChange={e => setVariation(e.target.value)} /></F>
+      <F label="Etiket (opsiyonel)"><input className="input w-full" placeholder="Boş bırakılırsa modellerden üretilir" value={name} onChange={e => setName(e.target.value)} /></F>
       <F label="Başlangıç adedi"><input type="number" className="input w-full" placeholder="0" value={quantity} onChange={e => setQuantity(e.target.value)} /></F>
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
@@ -431,7 +510,7 @@ function EditItemDialog({ item, onClose, onSaved }) {
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
   return (
-    <Modal title="Alt Kalem Düzenle" onClose={onClose}>
+    <Modal title="Modeli düzenle" onClose={onClose}>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
       <F label="Uyumlu telefon modelleri">
         <ModelPicker models={models} setModels={setModels} modelList={modelList} />
@@ -452,21 +531,18 @@ function LinkProductsDialog({ group, onClose, onSaved }) {
   const [filter, setFilter] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
-
   useEffect(() => {
     api.get('/api/stock/groups/_assignable-products')
       .then(r => setProducts(r.products || []))
       .catch(() => setErr('Ürünler yüklenemedi'))
       .finally(() => setLoading(false))
   }, [])
-
   const toggle = (pid) => {
     const next = new Set(selected)
     if (next.has(pid)) next.delete(pid); else next.add(pid)
     setSelected(next)
   }
   const filtered = products.filter(p => !filter || (p.title || '').toLowerCase().includes(filter.toLowerCase()))
-
   const save = async () => {
     setSaving(true); setErr('')
     try {
@@ -476,10 +552,9 @@ function LinkProductsDialog({ group, onClose, onSaved }) {
       onSaved()
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi'); setSaving(false) }
   }
-
   return (
-    <Modal title={`Ürün Eşleştir — ${group.name}`} onClose={onClose} wide>
-      <p className="text-xs text-gray-500 mb-3">Bu ana kaleme bağlı ürünler kargoya verilince, siparişteki modele göre alt kalem stoğu düşer.</p>
+    <Modal title={`Ürün eşleştir — ${group.name}`} onClose={onClose} wide>
+      <p className="text-xs text-gray-500 mb-3">Bu ana kaleme bağlı ürünler kargoya verilince, siparişteki modele göre stok düşer.</p>
       {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
       <input className="input w-full mb-3 !text-sm" placeholder="Ürün ara..." value={filter} onChange={e => setFilter(e.target.value)} />
       {loading ? <p className="text-sm text-gray-500 py-4">Yükleniyor...</p> : (
@@ -502,40 +577,6 @@ function LinkProductsDialog({ group, onClose, onSaved }) {
   )
 }
 
-function AdjustDialog({ item, onClose, onSaved }) {
-  const [sign, setSign] = useState(1)
-  const [amount, setAmount] = useState('')
-  const [reason, setReason] = useState('manuel')
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
-  const save = async () => {
-    const n = parseInt(amount, 10)
-    if (!n || n <= 0) { setErr('Geçerli miktar gir'); return }
-    setSaving(true); setErr('')
-    try {
-      await api.post(`/api/stock/${item.id}/adjust`, { delta: sign * n, reason, note: note || null })
-      onSaved()
-    } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Hata'); setSaving(false) }
-  }
-  return (
-    <Modal title={`Stok Ayarla — ${item.model || item.name}`} onClose={onClose}>
-      {err && <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2 mb-3">{err}</div>}
-      <p className="text-sm text-gray-400 mb-3">Mevcut: <span className="font-semibold text-gray-200">{item.quantity}</span> adet</p>
-      <div className="flex gap-2 mb-3">
-        <button onClick={() => setSign(1)} className={`flex-1 py-2 rounded-lg text-sm ${sign === 1 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-brand-input text-gray-400'}`}>➕ Giriş</button>
-        <button onClick={() => setSign(-1)} className={`flex-1 py-2 rounded-lg text-sm ${sign === -1 ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-brand-input text-gray-400'}`}>➖ Çıkış</button>
-      </div>
-      <F label="Miktar"><input type="number" className="input w-full" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} autoFocus /></F>
-      <F label="Not (opsiyonel)"><input className="input w-full" value={note} onChange={e => setNote(e.target.value)} /></F>
-      <div className="flex justify-end gap-2 mt-4">
-        <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
-        <button onClick={save} disabled={saving} className="btn-primary !text-sm">{saving ? '...' : 'Uygula'}</button>
-      </div>
-    </Modal>
-  )
-}
-
 function MovementsDialog({ item, onClose }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -543,7 +584,7 @@ function MovementsDialog({ item, onClose }) {
     api.get(`/api/stock/${item.id}/movements`).then(r => setRows(r.items || [])).catch(() => setRows([])).finally(() => setLoading(false))
   }, [item.id])
   return (
-    <Modal title={`Hareket Geçmişi — ${item.model || item.name}`} onClose={onClose} wide>
+    <Modal title={`Hareket geçmişi — ${item.model || item.name}${item.variation ? ' · ' + item.variation : ''}`} onClose={onClose} wide>
       {loading ? <p className="text-sm text-gray-500 py-4">Yükleniyor...</p> : rows.length === 0 ? (
         <p className="text-sm text-gray-500 py-4 text-center">Henüz hareket yok</p>
       ) : (
@@ -562,7 +603,7 @@ function MovementsDialog({ item, onClose }) {
 }
 
 function Modal({ title, children, onClose, wide }) {
-  return (
+  return createPortal((
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className={`bg-brand-card border border-brand-border rounded-xl w-full ${wide ? 'max-w-xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto p-5`}>
         <div className="flex items-center justify-between mb-4">
@@ -572,7 +613,7 @@ function Modal({ title, children, onClose, wide }) {
         {children}
       </div>
     </div>
-  )
+  ), document.body)
 }
 
 function F({ label, children }) {

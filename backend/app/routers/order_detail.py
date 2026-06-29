@@ -120,6 +120,64 @@ def _mold_info(li: LineItem, db) -> dict:
     return {"kalip_kodu": None, "mold_id": None}
 
 
+def _nk_model(s: str | None) -> str:
+    try:
+        from app.services import phone_models as _pm
+        return _pm.normalize_key(s or "")
+    except Exception:  # noqa: BLE001
+        return (s or "").strip().lower()
+
+
+def _molds_by_line_item(db, order) -> dict:
+    """{line_item_id: [{id, kod}]}. Sipariş senkronu line_item_id'yi NULL'a düşürdüğü
+    için kademeli eşleşme: line_item_id > (order_number+design_code) > (order_number+model).
+    MoldItem.order_number stabil olduğundan aday kayıtlar onunla çekilir."""
+    if db is None:
+        return {}
+    from app.services.mold_planner import extract_phone_model
+    line_items = order.line_items or []
+    onum = str(order.order_number) if order.order_number is not None else None
+    li_ids = [li.id for li in line_items]
+    if onum:
+        where_clause = MoldItem.order_number == onum
+    elif li_ids:
+        where_clause = MoldItem.line_item_id.in_(li_ids)
+    else:
+        return {}
+    rows = db.execute(
+        select(MoldItem, Mold.id, Mold.kod)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(Mold.tenant_id == order.tenant_id, where_clause)
+    ).all()
+    if not rows:
+        return {}
+    li_by_id = {li.id: li for li in line_items}
+    li_by_code: dict = {}
+    li_by_model: dict = {}
+    for li in line_items:
+        code = li.assigned_design.code if getattr(li, "assigned_design", None) else None
+        if code:
+            li_by_code.setdefault(code, []).append(li)
+        mk = _nk_model(extract_phone_model(li))
+        if mk:
+            li_by_model.setdefault(mk, []).append(li)
+    out: dict = {}
+    for mi, mid, kod in rows:
+        target = None
+        if mi.line_item_id and mi.line_item_id in li_by_id:
+            target = li_by_id[mi.line_item_id]
+        elif mi.design_code and li_by_code.get(mi.design_code):
+            target = li_by_code[mi.design_code][0]
+        elif mi.model and li_by_model.get(_nk_model(mi.model)):
+            target = li_by_model[_nk_model(mi.model)][0]
+        if not target:
+            continue
+        lst = out.setdefault(target.id, [])
+        if not any(x["id"] == str(mid) for x in lst):
+            lst.append({"id": str(mid), "kod": kod})
+    return out
+
+
 def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None) -> dict:
     assigned = None
     if li.assigned_design_id and li.assigned_design:
@@ -221,6 +279,13 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
 
     si = stage_info(order.current_stage)
 
+    _molds_map = _molds_by_line_item(db, order)
+    _li_list = []
+    for li in (order.line_items or []):
+        _d = _serialize_line_item(li, db, adapter)
+        _d["molds"] = sorted(_molds_map.get(li.id, []), key=lambda m: m["kod"] or "")
+        _li_list.append(_d)
+
     return {
         "id": str(order.id),
         "store_id": str(order.store_id),
@@ -276,7 +341,7 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
             "payment_status": order.financial_status,
         },
 
-        "line_items": [_serialize_line_item(li, db, adapter) for li in (order.line_items or [])],
+        "line_items": _li_list,
         "status_history": [
             {
                 "id": str(h.id),

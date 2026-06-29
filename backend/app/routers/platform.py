@@ -17,7 +17,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func as sql_func, select
+from sqlalchemy import delete as sql_delete, func as sql_func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -165,6 +165,45 @@ def update_tenant(
     db.commit()
     db.refresh(t)
     return _ser_tenant(db, t)
+
+
+@router.delete("/tenants/{tenant_id}", response_model=dict)
+def delete_tenant(
+    tenant_id: uuid.UUID,
+    user: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    """Atölyeyi ve TÜM verisini kalıcı sil (CASCADE). Geri alınamaz.
+    Kendi atölyen ve platform yöneticisi barındıran atölye silinemez."""
+    t = db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not t:
+        raise HTTPException(404, "Atölye bulunamadı")
+    if user.tenant_id == t.id:
+        raise HTTPException(400, "Kendi atölyeni silemezsin")
+    has_admin = db.scalar(
+        select(sql_func.count(User.id)).where(
+            User.tenant_id == t.id, User.is_platform_admin == True)  # noqa: E712
+    ) or 0
+    if has_admin:
+        raise HTTPException(400, "Bu atölyede platform yöneticisi var; silinemez")
+
+    import logging
+    logging.getLogger("platform").warning(
+        "DELETE TENANT: admin=%s -> tenant=%s (%s)", user.email, t.name, t.slug
+    )
+    # Tüm tenant_id FK'lari ondelete=CASCADE -> tek DELETE ile alt veri temizlenir
+    db.execute(sql_delete(Tenant).where(Tenant.id == t.id))
+    db.commit()
+    # Dosyaları da temizle (best-effort)
+    try:
+        import shutil
+        from app.services.storage import STORAGE_ROOT
+        d = STORAGE_ROOT / "tenants" / str(t.id)
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True}
 
 
 # ─── Atölye profilleri (kullanıcı) yönetimi ──────────────────

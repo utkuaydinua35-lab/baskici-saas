@@ -260,6 +260,15 @@ function EditTenant({ tenant, onClose, onDone }) {
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
 
+  const removeTenant = async () => {
+    const typed = window.prompt(`Bu atölyeyi ve TÜM verisini (profiller, siparişler, kalıplar, stok, dosyalar) kalıcı silmek üzeresin.\nOnaylamak için atölye adını yaz:\n\n${tenant.name}`)
+    if (typed == null) return
+    if (typed.trim() !== (tenant.name || '').trim()) { toast.error('Ad eşleşmedi — silme iptal edildi'); return }
+    setBusy(true)
+    try { await api.del(`/api/platform/tenants/${tenant.id}`); toast.success('Atölye silindi'); onDone() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi'); setBusy(false) }
+  }
+
   const submit = async () => {
     setBusy(true)
     try {
@@ -296,6 +305,15 @@ function EditTenant({ tenant, onClose, onDone }) {
       <div className="mt-5 pt-4 border-t border-brand-border">
         <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Profiller</div>
         <TenantProfiles tenantId={tenant.id} />
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-red-500/20">
+        <div className="text-xs uppercase tracking-wide text-red-400/80 mb-2">Tehlikeli bölge</div>
+        <button onClick={removeTenant} disabled={busy}
+          className="w-full text-sm px-3 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
+          🗑 Atölyeyi tamamen sil
+        </button>
+        <p className="text-[10px] text-gray-600 mt-1">Tüm profiller, siparişler, kalıplar, stok ve dosyalar kalıcı silinir. Geri alınamaz.</p>
       </div>
     </Modal>
   )

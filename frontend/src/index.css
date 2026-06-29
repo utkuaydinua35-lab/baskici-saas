@@ -150,7 +150,9 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 .menu-pop { animation: menu-pop 0.16s cubic-bezier(0.2,0.8,0.3,1) both; transform-origin: top; }
-.page-enter { animation: fade-in-up 0.3s ease-out both; }
+/* DİKKAT: page-enter'da transform KULLANMA — içerdiği position:fixed modallar
+   transform'lu ataya göre konumlanır ve scroll'da bozulur. Sadece opacity. */
+.page-enter { animation: fadein 0.28s ease-out; }
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: reduce) {

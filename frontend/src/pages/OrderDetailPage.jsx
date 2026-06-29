@@ -913,6 +913,9 @@ function actionLabel(h) {
     onay_gonderildi: `📤 Müşteri onayına gönderildi ${h.note ? '(' + h.note + ')' : ''}`,
     musteri_onay: '✅ Müşteri tasarımı onayladı',
     musteri_revizyon: `✏️ Müşteri revizyon istedi${h.note ? ': ' + h.note : ''}`,
+    kalem_model_degisti: `✎ Cihaz modeli değiştirildi${h.note ? ' — ' + h.note : ''}`,
+    kargo_iptal: `✕ Kargo iptal edildi${h.note ? ' · ' + h.note : ''}`,
+    kargoya_verildi: `🚚 Kargoya verildi${h.note ? ' · ' + h.note : ''}`,
   }
   return map[h.action] || h.action
 }

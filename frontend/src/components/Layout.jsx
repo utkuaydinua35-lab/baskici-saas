@@ -539,14 +539,17 @@ function visibleNav(can) {
 
 // Tüm pencerelerde yumuşak hareketli yeşil/teal ışıma (içerik arkasında, etkileşimsiz)
 function AppBackground() {
+  // Not: 'blur-3xl' (filter) + sürekli transform animasyonu çok pahalıydı (her karede
+  // yeniden raster). Radial gradient'in kendisi zaten yumuşak; blur yok → animasyon
+  // sadece GPU-compositing (ucuz). Akıcılık korunur.
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
-      <div className="login-blob absolute -top-40 -left-32 w-[40rem] h-[40rem] rounded-full opacity-[0.16] blur-3xl"
-        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)' }} />
-      <div className="login-blob absolute top-1/3 -right-48 w-[44rem] h-[44rem] rounded-full opacity-[0.11] blur-3xl"
-        style={{ background: 'radial-gradient(circle, #22d3ee 0%, transparent 70%)', animationDelay: '6s' }} />
-      <div className="login-blob absolute -bottom-48 left-1/4 w-[36rem] h-[36rem] rounded-full opacity-[0.12] blur-3xl"
-        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)', animationDelay: '11s' }} />
+      <div className="login-blob absolute -top-40 -left-32 w-[40rem] h-[40rem] rounded-full opacity-[0.18]"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb) / 0.9) 0%, transparent 68%)' }} />
+      <div className="login-blob absolute top-1/3 -right-48 w-[44rem] h-[44rem] rounded-full opacity-[0.13]"
+        style={{ background: 'radial-gradient(circle, #22d3ee 0%, transparent 68%)', animationDelay: '6s' }} />
+      <div className="login-blob absolute -bottom-48 left-1/4 w-[36rem] h-[36rem] rounded-full opacity-[0.14]"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb) / 0.9) 0%, transparent 68%)', animationDelay: '11s' }} />
     </div>
   )
 }

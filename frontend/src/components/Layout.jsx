@@ -556,16 +556,19 @@ function AppBackground() {
   )
 }
 
-// ⌘K komut paleti — sayfalar arası hızlı geçiş
+// ⌘K komut paleti — sayfalar + sipariş no + kalıp kodu araması
 function CommandPalette({ onClose }) {
   const can = usePerm()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [idx, setIdx] = useState(0)
-  const all = useMemo(() => {
+  const [remote, setRemote] = useState({ orders: [], molds: [] })
+  const [loading, setLoading] = useState(false)
+
+  const pages = useMemo(() => {
     const items = []
     for (const e of visibleNav(can)) {
-      if (e.to) items.push({ to: e.to, label: e.label, icon: e.icon, group: '' })
+      if (e.to) items.push({ to: e.to, label: e.label, icon: e.icon, group: 'Sayfa' })
       else for (const it of e.items) items.push({ to: it.to, label: it.label, icon: it.icon, group: e.label })
     }
     if (can('ayarlar')) items.push(
@@ -574,11 +577,35 @@ function CommandPalette({ onClose }) {
     )
     return items
   }, [])  // eslint-disable-line
+
+  // Sipariş no + kalıp kodu için backend araması (debounced)
+  useEffect(() => {
+    const s = q.trim()
+    if (s.length < 2) { setRemote({ orders: [], molds: [] }); setLoading(false); return }
+    setLoading(true)
+    const t = setTimeout(async () => {
+      try { setRemote(await api.get(`/api/search?q=${encodeURIComponent(s)}`)) }
+      catch { setRemote({ orders: [], molds: [] }) }
+      finally { setLoading(false) }
+    }, 250)
+    return () => clearTimeout(t)
+  }, [q])
+
   const results = useMemo(() => {
     const s = q.trim().toLowerCase()
-    return s ? all.filter(i => (i.label + ' ' + i.group).toLowerCase().includes(s)) : all
-  }, [q, all])
-  useEffect(() => { setIdx(0) }, [q])
+    const pageHits = s ? pages.filter(i => (i.label + ' ' + i.group).toLowerCase().includes(s)) : pages
+    const orderHits = (remote.orders || []).map(o => ({
+      to: `/orders/${o.id}`, icon: '📦', group: 'Sipariş',
+      label: o.name || `#${o.order_number}`, sub: o.customer || '',
+    }))
+    const moldHits = (remote.molds || []).map(m => ({
+      to: `/kalip/${m.id}`, icon: '🧩', group: 'Kalıp',
+      label: m.kod, sub: m.variation || '',
+    }))
+    return [...pageHits, ...orderHits, ...moldHits]
+  }, [q, pages, remote])
+
+  useEffect(() => { setIdx(0) }, [q, remote])
   const go = (i) => { const r = results[i]; if (r) { navigate(r.to); onClose() } }
   const onKey = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i + 1, results.length - 1)) }
@@ -586,6 +613,8 @@ function CommandPalette({ onClose }) {
     else if (e.key === 'Enter') { e.preventDefault(); go(idx) }
     else if (e.key === 'Escape') { onClose() }
   }
+
+  let lastGroup = null
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4 bg-black/60 backdrop-blur-sm"
       onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -593,22 +622,30 @@ function CommandPalette({ onClose }) {
         <div className="flex items-center gap-2 px-4 border-b border-brand-border">
           <span className="text-gray-500">🔍</span>
           <input autoFocus value={q} onChange={e => setQ(e.target.value)} onKeyDown={onKey}
-            placeholder="Sayfa ara…" className="flex-1 bg-transparent py-3 text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none" />
+            placeholder="Sayfa, sipariş no veya kalıp kodu ara…"
+            className="flex-1 bg-transparent py-3 text-sm text-gray-100 placeholder:text-gray-600 focus:outline-none" />
+          {loading && <span className="text-[11px] text-gray-500 animate-pulse">…</span>}
           <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input border border-brand-border text-gray-500">esc</kbd>
         </div>
         <div className="max-h-80 overflow-y-auto p-1.5">
           {results.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm text-gray-500">Sonuç yok</div>
-          ) : results.map((r, i) => (
-            <button key={r.to + r.label} onMouseEnter={() => setIdx(i)} onClick={() => go(i)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-[13px] transition-colors ${
-                i === idx ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-brand-input/70'
-              }`}>
-              <span className="w-7 h-7 rounded-lg bg-brand-input/70 flex items-center justify-center shrink-0">{r.icon}</span>
-              <span className="flex-1">{r.label}</span>
-              {r.group && <span className="text-[10px] text-gray-600">{r.group}</span>}
-            </button>
-          ))}
+            <div className="px-3 py-6 text-center text-sm text-gray-500">{q.trim() ? 'Sonuç yok' : 'Aramaya başla…'}</div>
+          ) : results.map((r, i) => {
+            const showGroup = r.group !== lastGroup; lastGroup = r.group
+            return (
+              <div key={r.to + r.label + i}>
+                {showGroup && <div className="text-[9px] uppercase tracking-wider text-gray-600 px-2.5 pt-2 pb-1">{r.group}</div>}
+                <button onMouseEnter={() => setIdx(i)} onClick={() => go(i)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-[13px] transition-colors ${
+                    i === idx ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-brand-input/70'
+                  }`}>
+                  <span className="w-7 h-7 rounded-lg bg-brand-input/70 flex items-center justify-center shrink-0">{r.icon}</span>
+                  <span className="flex-1 truncate">{r.label}</span>
+                  {r.sub && <span className="text-[10px] text-gray-500 truncate max-w-[40%]">{r.sub}</span>}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>, document.body)

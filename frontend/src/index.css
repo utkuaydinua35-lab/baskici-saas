@@ -35,10 +35,26 @@
     @apply bg-brand-input/60 hover:bg-brand-input border border-brand-border text-gray-200
            rounded-full px-5 py-2 text-sm font-medium transition-colors;
   }
+  /* Cam kart: yarı saydam + arkadaki animasyonu hafif bulanıklaştırır */
   .card {
-    @apply bg-brand-card border border-brand-border rounded-2xl p-5;
+    @apply bg-brand-card/70 border border-brand-border rounded-2xl p-5 backdrop-blur-sm;
   }
 }
+
+/* ─── Tipografi + scrollbar + tablo ince işçiliği ─── */
+h1, h2, h3 { letter-spacing: -0.02em; }
+.card table { font-variant-numeric: tabular-nums; }
+.card tbody tr { transition: background-color 0.12s ease; }
+
+/* İnce, temalı scrollbar (premium dokunuş) */
+* { scrollbar-color: rgb(var(--accent-rgb) / 0.28) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--accent-rgb) / 0.20);
+  border-radius: 9999px; border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--accent-rgb) / 0.36); background-clip: padding-box; }
 
 /* ─── Kalıp aşama animasyonları (Paket 16) ─── */
 @keyframes heartbeat {

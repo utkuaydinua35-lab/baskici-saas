@@ -292,6 +292,61 @@ function EditTenant({ tenant, onClose, onDone }) {
         <span className="text-sm text-gray-200">Aktif (kapatılırsa giriş engellenir)</span>
       </label>
       <button onClick={submit} disabled={busy} className="btn-primary !text-sm w-full disabled:opacity-50">{busy ? 'Kaydediliyor…' : 'Kaydet'}</button>
+
+      <div className="mt-5 pt-4 border-t border-brand-border">
+        <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Profiller</div>
+        <TenantProfiles tenantId={tenant.id} />
+      </div>
     </Modal>
+  )
+}
+
+function TenantProfiles({ tenantId }) {
+  const toast = useToast()
+  const [users, setUsers] = useState(null)
+  const load = () => api.get(`/api/platform/tenants/${tenantId}/users`)
+    .then(r => setUsers(r.items || [])).catch(() => setUsers([]))
+  useEffect(() => { load() }, [tenantId])
+
+  const toggle = async (u) => {
+    try { await api.patch(`/api/platform/users/${u.id}`, { is_active: !u.is_active }); load() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
+  }
+  const del = async (u) => {
+    if (!confirm(`"${u.full_name || u.email}" profili silinsin mi?\nBu işlem geri alınamaz.`)) return
+    try { await api.del(`/api/platform/users/${u.id}`); toast.success('Profil silindi'); load() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
+  }
+
+  if (users === null) return <p className="text-xs text-gray-500 py-2">Profiller yükleniyor…</p>
+  if (users.length === 0) return <p className="text-xs text-gray-500 py-2">Profil yok.</p>
+  return (
+    <div className="space-y-1.5 max-h-72 overflow-y-auto">
+      {users.map(u => (
+        <div key={u.id} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-2.5 py-2">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm text-gray-200 truncate flex items-center gap-1">
+              {u.full_name || u.email}
+              {u.is_platform_admin && <span className="text-[9px] px-1 rounded bg-purple-500/20 text-purple-300">platform</span>}
+              {u.role === 'owner' && <span className="text-[9px] px-1 rounded bg-blue-500/20 text-blue-300">sahip</span>}
+              {!u.is_active && <span className="text-[9px] px-1 rounded bg-red-500/20 text-red-300">engelli</span>}
+            </div>
+            <div className="text-[10px] text-gray-500 truncate">{u.email}</div>
+          </div>
+          {!u.is_platform_admin && (
+            <>
+              <button onClick={() => toggle(u)}
+                className={`text-[11px] px-2 py-1 rounded border whitespace-nowrap ${u.is_active
+                  ? 'border-amber-500/30 text-amber-300 hover:bg-amber-500/10'
+                  : 'border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10'}`}>
+                {u.is_active ? 'Girişi engelle' : 'Girişi aç'}
+              </button>
+              <button onClick={() => del(u)}
+                className="text-[11px] px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10">Sil</button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }

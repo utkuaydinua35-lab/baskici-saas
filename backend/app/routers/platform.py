@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func as sql_func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_platform_admin
@@ -164,6 +165,88 @@ def update_tenant(
     db.commit()
     db.refresh(t)
     return _ser_tenant(db, t)
+
+
+# ─── Atölye profilleri (kullanıcı) yönetimi ──────────────────
+def _ser_user(u: User) -> dict:
+    return {
+        "id": str(u.id),
+        "email": u.email,
+        "full_name": u.full_name,
+        "role": u.role,
+        "is_active": u.is_active,
+        "is_platform_admin": bool(getattr(u, "is_platform_admin", False)),
+        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+    }
+
+
+@router.get("/tenants/{tenant_id}/users", response_model=dict)
+def list_tenant_users(
+    tenant_id: uuid.UUID,
+    user: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    """Atölyenin profilleri (kullanıcıları)."""
+    t = db.scalar(select(Tenant).where(Tenant.id == tenant_id))
+    if not t:
+        raise HTTPException(404, "Atölye bulunamadı")
+    rows = db.scalars(
+        select(User).where(User.tenant_id == tenant_id).order_by(User.created_at)
+    ).all()
+    return {"items": [_ser_user(u) for u in rows]}
+
+
+class PlatformUserUpdate(BaseModel):
+    is_active: bool
+
+
+@router.patch("/users/{user_id}", response_model=dict)
+def platform_set_user_active(
+    user_id: uuid.UUID,
+    req: PlatformUserUpdate,
+    user: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    """Profilin girişini engelle / aç (is_active)."""
+    u = db.scalar(select(User).where(User.id == user_id))
+    if not u:
+        raise HTTPException(404, "Profil bulunamadı")
+    if req.is_active is False and (u.is_platform_admin or u.id == user.id):
+        raise HTTPException(400, "Platform yöneticisinin / kendi girişin engellenemez")
+    u.is_active = req.is_active
+    db.commit()
+    db.refresh(u)
+    return _ser_user(u)
+
+
+@router.delete("/users/{user_id}", response_model=dict)
+def platform_delete_user(
+    user_id: uuid.UUID,
+    user: User = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+):
+    """Profili sil. Platform yöneticisi, kendisi ve atölyenin tek sahibi silinemez."""
+    u = db.scalar(select(User).where(User.id == user_id))
+    if not u:
+        raise HTTPException(404, "Profil bulunamadı")
+    if u.id == user.id:
+        raise HTTPException(400, "Kendi profilini silemezsin")
+    if u.is_platform_admin:
+        raise HTTPException(400, "Platform yöneticisi silinemez")
+    if u.role == "owner":
+        owner_count = db.scalar(
+            select(sql_func.count(User.id)).where(
+                User.tenant_id == u.tenant_id, User.role == "owner")
+        ) or 0
+        if owner_count <= 1:
+            raise HTTPException(400, "Atölyenin tek sahibi silinemez")
+    try:
+        db.delete(u)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Bu profile bağlı kayıtlar var; silmek yerine girişini engelle.")
+    return {"ok": True}
 
 
 # ─── Veritabanı yedekleri (platform admin) ───────────────────

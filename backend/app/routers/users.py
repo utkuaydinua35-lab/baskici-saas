@@ -129,6 +129,9 @@ def set_pin(user_id: uuid.UUID, req: PinSet, user: User = Depends(require_permis
     u = db.scalar(select(User).where(User.id == user_id, User.tenant_id == user.tenant_id))
     if not u:
         raise HTTPException(404, "Kullanici bulunamadi")
+    # Yönetici profilleri PIN kullanmaz (profil seçiminde 2FA/parola ile korunur).
+    if req.pin and (u.role or "").lower() in ("owner", "yonetici"):
+        raise HTTPException(400, "Yönetici profiline PIN atanamaz — 2FA kullanın.")
     u.pin_hash = hash_password(req.pin) if req.pin else None
     db.commit(); db.refresh(u)
     return _ser(u)

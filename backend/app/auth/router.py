@@ -484,9 +484,14 @@ def twofa_verify_login(
 from pydantic import BaseModel as _PfBaseModel  # profil semalari
 
 
+_ADMIN_ROLES = {"owner", "yonetici"}
+
+
 class _SelectProfileRequest(_PfBaseModel):
     user_id: str
     pin: str | None = None
+    code: str | None = None       # yönetici profili için 2FA kodu (veya yedek kod)
+    password: str | None = None   # yönetici profili 2FA kurulu değilse parola
 
 
 @router.get("/profiles", response_model=None)
@@ -501,16 +506,20 @@ def list_profiles(
             User.is_active.is_(True),
         ).order_by(User.created_at)
     ).all()
-    return [
-        {
+    out = []
+    for u in rows:
+        is_admin = (u.role or "").lower() in _ADMIN_ROLES
+        out.append({
             "id": str(u.id),
             "full_name": u.full_name or u.email.split("@")[0],
             "avatar_url": u.avatar_url,
             "role": u.role,
-            "has_pin": bool(u.pin_hash),
-        }
-        for u in rows
-    ]
+            "is_admin": is_admin,
+            "requires_2fa": is_admin and bool(u.totp_enabled),
+            # Yönetici profilinde PIN kullanılmaz (2FA/parola ile korunur)
+            "has_pin": (not is_admin) and bool(u.pin_hash),
+        })
+    return out
 
 
 @router.post("/select-profile", response_model=TokenResponse)
@@ -536,10 +545,40 @@ def select_profile(
     if not target:
         raise HTTPException(status_code=404, detail="Profil bulunamadi")
 
-    # PIN'liyse dogrula
-    if target.pin_hash:
-        if not req.pin or not verify_password(req.pin, target.pin_hash):
-            raise HTTPException(status_code=401, detail="PIN yanlis")
+    is_admin = (target.role or "").lower() in _ADMIN_ROLES
+
+    if is_admin:
+        # Yönetici profiline başka bir profilden geçişte 2FA (yoksa parola) gerekir.
+        # Kendi profilini seçiyorsa (zaten giriş yaptı) tekrar sorulmaz.
+        if target.id != user.id:
+            if target.totp_enabled and target.totp_secret:
+                from app.services import totp_service
+                code = (req.code or "").strip()
+                ok = False
+                if code:
+                    secret = totp_service.decrypt_secret(target.totp_secret)
+                    ok = bool(secret and totp_service.verify_code(secret, code))
+                    if not ok:
+                        idx = totp_service.consume_backup_code(target.totp_backup_codes or [], code)
+                        if idx is not None:
+                            remaining = list(target.totp_backup_codes)
+                            remaining.pop(idx)
+                            target.totp_backup_codes = remaining
+                            ok = True
+                if not ok:
+                    raise HTTPException(status_code=401, detail="Yönetici profili için 2FA kodu gerekli veya yanlış.")
+            else:
+                if not req.password or not target.password_hash \
+                        or not verify_password(req.password, target.password_hash):
+                    raise HTTPException(status_code=401, detail="Yönetici profili için parola gerekli (veya 2FA kurun).")
+        # Yönetici profilinde PIN kullanılmaz — varsa kaldır.
+        if target.pin_hash:
+            target.pin_hash = None
+    else:
+        # PIN'liyse dogrula (kendi profilin haric — zaten giriş yaptın)
+        if target.id != user.id and target.pin_hash:
+            if not req.pin or not verify_password(req.pin, target.pin_hash):
+                raise HTTPException(status_code=401, detail="PIN yanlis")
 
     target.last_login_at = datetime.now(UTC)
     db.commit()

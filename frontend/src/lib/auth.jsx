@@ -107,8 +107,13 @@ export function AuthProvider({ children }) {
     } catch {}
   }
 
-  const selectProfile = async (userId, pin) => {
-    const data = await api.post('/api/auth/select-profile', { user_id: userId, pin: pin || null })
+  const selectProfile = async (userId, creds = {}) => {
+    const data = await api.post('/api/auth/select-profile', {
+      user_id: userId,
+      pin: creds.pin || null,
+      code: creds.code || null,
+      password: creds.password || null,
+    })
     setToken(data.access_token)
     const me = await api.get('/api/auth/me')
     setUser(me.user)

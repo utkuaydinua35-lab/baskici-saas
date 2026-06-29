@@ -5,12 +5,14 @@ import { useAuth } from '../lib/auth'
 
 export default function ProfileSelectPage() {
   const navigate = useNavigate()
-  const { selectProfile, tenant } = useAuth()
+  const { selectProfile, tenant, user } = useAuth()
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [pinFor, setPinFor] = useState(null)
   const [pin, setPin] = useState('')
+  const [adminFor, setAdminFor] = useState(null)  // yönetici profili (2FA/parola)
+  const [secret, setSecret] = useState('')        // 2FA kodu veya parola
   const [busy, setBusy] = useState(false)
   const [entering, setEntering] = useState(null)  // tam ekran gecis yapilan profil
 
@@ -24,29 +26,36 @@ export default function ProfileSelectPage() {
     })()
   }, [])
 
-  const enter = async (p, pinVal) => {
+  const enter = async (p, creds = {}) => {
     setBusy(true); setErr('')
     try {
-      await selectProfile(p.id, pinVal || null)
+      await selectProfile(p.id, creds)
       // Tek parca gecis: avatar tam ekrana buyur + karsilama, sonra panele fade. Splash YOK.
-      setPinFor(null)
+      setPinFor(null); setAdminFor(null)
       setEntering(p)
       setTimeout(() => navigate('/', { replace: true }), 1700)
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Giriş başarısız')
       setBusy(false)
-      setPin('')
+      setPin(''); setSecret('')
     }
   }
 
   const onPick = (p) => {
     if (busy || entering) return
-    if (p.has_pin) { setPinFor(p); setPin(''); setErr('') }
-    else enter(p)
+    // Kendi profilin (zaten giriş yaptın) — yönetici olsa bile tekrar sorma
+    if (user && p.id === user.id) { enter(p, {}); return }
+    if (p.is_admin) { setAdminFor(p); setSecret(''); setErr('') }
+    else if (p.has_pin) { setPinFor(p); setPin(''); setErr('') }
+    else enter(p, {})
   }
   const submitPin = () => {
     if (pin.length < 4) { setErr('PIN en az 4 hane'); return }
-    enter(pinFor, pin)
+    enter(pinFor, { pin })
+  }
+  const submitAdmin = () => {
+    if (!secret.trim()) { setErr(adminFor.requires_2fa ? '2FA kodu gir' : 'Parola gir'); return }
+    enter(adminFor, adminFor.requires_2fa ? { code: secret.trim() } : { password: secret })
   }
 
   const firstName = (p) => (p?.full_name || '').split(' ')[0] || p?.full_name || ''
@@ -97,8 +106,10 @@ export default function ProfileSelectPage() {
               {p.avatar_url
                 ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
                 : <span className="text-4xl md:text-5xl font-bold text-gray-300">{(p.full_name || '?').charAt(0).toUpperCase()}</span>}
-              {p.has_pin && (
-                <span className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 backdrop-blur flex items-center justify-center text-xs">🔒</span>
+              {(p.has_pin || p.is_admin) && (
+                <span className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 backdrop-blur flex items-center justify-center text-xs">
+                  {p.is_admin ? (p.requires_2fa ? '🛡️' : '🔑') : '🔒'}
+                </span>
               )}
             </div>
             <span className="text-sm md:text-base text-gray-400 group-hover:text-gray-100 transition-colors">{p.full_name}</span>
@@ -124,6 +135,40 @@ export default function ProfileSelectPage() {
               <button onClick={() => !busy && setPinFor(null)} className="btn-secondary !text-sm flex-1">İptal</button>
               <button onClick={submitPin} disabled={busy} className="btn-primary !text-sm flex-1">{busy ? '…' : 'Gir'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {adminFor && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onMouseDown={e => e.target === e.currentTarget && !busy && setAdminFor(null)}>
+          <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-xs p-6 animate-popin text-center">
+            <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden bg-brand-input border border-brand-border flex items-center justify-center mb-3">
+              {adminFor.avatar_url ? <img src={adminFor.avatar_url} alt="" className="w-full h-full object-cover" />
+                : <span className="text-2xl font-bold text-gray-300">{(adminFor.full_name || '?').charAt(0).toUpperCase()}</span>}
+            </div>
+            <h3 className="text-base font-semibold text-gray-100 mb-1">{adminFor.full_name}</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              {adminFor.requires_2fa ? 'Yönetici profili — Authenticator kodunu gir' : 'Yönetici profili — hesap parolasını gir'}
+            </p>
+            {adminFor.requires_2fa ? (
+              <input autoFocus type="text" inputMode="numeric" autoComplete="one-time-code" value={secret}
+                onChange={e => setSecret(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submitAdmin()}
+                className="input w-full text-center text-2xl tracking-[0.4em] mb-3" placeholder="000000" />
+            ) : (
+              <input autoFocus type="password" value={secret}
+                onChange={e => setSecret(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && submitAdmin()}
+                className="input w-full text-center mb-3" placeholder="••••••••" />
+            )}
+            {err && <div className="text-xs text-red-300 mb-3">{err}</div>}
+            <div className="flex gap-2">
+              <button onClick={() => !busy && setAdminFor(null)} className="btn-secondary !text-sm flex-1">İptal</button>
+              <button onClick={submitAdmin} disabled={busy} className="btn-primary !text-sm flex-1">{busy ? '…' : 'Gir'}</button>
+            </div>
+            {adminFor.requires_2fa && (
+              <p className="text-[10px] text-gray-600 mt-3">Telefonuna erişemiyorsan yedek kodunu da girebilirsin.</p>
+            )}
           </div>
         </div>
       )}

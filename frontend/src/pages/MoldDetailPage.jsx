@@ -46,6 +46,19 @@ export default function MoldDetailPage() {
   }
   useEffect(() => { load() }, [moldId])
 
+  // Kalıplar arası gezinme (▲ önceki / ▼ sonraki) — liste sırasına göre
+  const [moldIds, setMoldIds] = useState([])
+  useEffect(() => {
+    api.get('/api/molds').then(r => {
+      const all = Array.isArray(r) ? r : (r?.items || [])
+      setMoldIds(all.map(m => m.id))
+    }).catch(() => {})
+  }, [])
+  const navIdx = moldIds.indexOf(moldId)
+  const prevId = navIdx > 0 ? moldIds[navIdx - 1] : null
+  const nextId = navIdx >= 0 && navIdx < moldIds.length - 1 ? moldIds[navIdx + 1] : null
+  const goMold = (id) => { if (id) navigate(`/kalip/${id}`, { state: location.state }) }
+
   const patchStage = async (body) => {
     try {
       const d = await api.patch(`/api/molds/${moldId}/stage`, body)
@@ -124,13 +137,21 @@ export default function MoldDetailPage() {
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-start gap-3">
           <button onClick={geriDon} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
+          {moldIds.length > 1 && (
+            <div className="flex flex-col gap-1 mt-0.5">
+              <button onClick={() => goMold(prevId)} disabled={!prevId} title="Önceki kalıp"
+                className="w-7 h-6 flex items-center justify-center rounded bg-brand-input/60 text-gray-300 hover:text-white hover:bg-brand-input disabled:opacity-30 disabled:cursor-not-allowed text-xs">▲</button>
+              <button onClick={() => goMold(nextId)} disabled={!nextId} title="Sonraki kalıp"
+                className="w-7 h-6 flex items-center justify-center rounded bg-brand-input/60 text-gray-300 hover:text-white hover:bg-brand-input disabled:opacity-30 disabled:cursor-not-allowed text-xs">▼</button>
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-semibold text-gray-100 font-mono">{mold.kod}</h1>
               <span className={`text-[10px] px-2 py-0.5 rounded-full border ${vc}`}>{mold.variation}</span>
               {mold.is_hatali && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">⚠ HATALI BASKI</span>}
             </div>
-            <p className="text-xs text-gray-500 mt-1">{mold.kilif_sayisi}/27 slot dolu · {mold.rows_used} satır · {mold.hazir_count} hazır</p>
+            <p className="text-xs text-gray-500 mt-1">{mold.kilif_sayisi}/27 slot dolu · {mold.rows_used} satır · {mold.hazir_count} hazır{navIdx >= 0 && moldIds.length > 1 ? ` · ${navIdx + 1}/${moldIds.length} kalıp` : ''}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

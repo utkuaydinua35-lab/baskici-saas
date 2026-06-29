@@ -94,6 +94,27 @@
 .animate-popin    { animation: popin 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 .animate-slidein  { animation: slidein-left 0.3s ease-out both; }
 
+/* Login arka plan blob'lari + logo float */
+@keyframes blob-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(30px, -40px) scale(1.08); }
+  66%  { transform: translate(-25px, 25px) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes login-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+@keyframes sheen {
+  0%   { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
+}
+.login-blob   { animation: blob-drift 16s ease-in-out infinite; will-change: transform; }
+.login-logo   { animation: login-float 4.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .login-blob, .login-logo { animation: none; }
+}
+
 /* Kademeli kart girisi — ardisik gecikmelerle (stagger) */
 .stagger > * { animation: fade-in-up 0.4s ease-out both; }
 .stagger > *:nth-child(1) { animation-delay: 0.02s; }

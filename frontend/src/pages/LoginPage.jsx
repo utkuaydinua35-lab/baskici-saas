@@ -1,15 +1,62 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+
+// Animasyonlu dekoratif arka plan — drift eden renkli blob'lar + ince nokta ızgara
+function AuthBackground() {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <div className="login-blob absolute -top-24 -left-24 w-[26rem] h-[26rem] rounded-full opacity-30 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)' }} />
+      <div className="login-blob absolute top-1/3 -right-32 w-[30rem] h-[30rem] rounded-full opacity-25 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #9b5cff 0%, transparent 70%)', animationDelay: '4s' }} />
+      <div className="login-blob absolute -bottom-32 left-1/4 w-[24rem] h-[24rem] rounded-full opacity-20 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #2dd4bf 0%, transparent 70%)', animationDelay: '8s' }} />
+      <div className="absolute inset-0 opacity-[0.05]"
+        style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+    </div>
+  )
+}
+
+function Logo({ emoji }) {
+  return (
+    <div className="login-logo w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg"
+      style={{ boxShadow: '0 10px 40px -8px rgb(var(--accent-rgb) / 0.6)' }}>
+      {emoji || 'B'}
+    </div>
+  )
+}
+
+const IconMail = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 6L2 7" />
+  </svg>
+)
+const IconLock = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+)
+
+// Modül seviyesinde — render içinde tanımlanırsa her tuşta remount olup input focus'u kaybolur
+function AuthShell({ children }) {
+  return (
+    <div className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden">
+      <AuthBackground />
+      <div className="relative w-full max-w-sm animate-fadeinup">{children}</div>
+    </div>
+  )
+}
+
+const CARD_CLS = "rounded-2xl border border-white/10 bg-brand-card/70 backdrop-blur-xl p-6 shadow-2xl"
 
 export default function LoginPage() {
   const { login, verifyTwoFactor } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-  const from = location.state?.from?.pathname || '/'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -19,137 +66,119 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError('')
-    setLoading(true)
+    setError(''); setLoading(true)
     try {
       const res = await login(email, password)
-      if (res?.requires_2fa) {
-        setMfaToken(res.mfa_token)
-      } else {
-        navigate('/profil-sec', { replace: true })
-      }
+      if (res?.requires_2fa) setMfaToken(res.mfa_token)
+      else navigate('/profil-sec', { replace: true })
     } catch (err) {
       setError(err.detail || 'Giriş başarısız')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   const handleVerify = async (e) => {
     e.preventDefault()
-    setError('')
-    setLoading(true)
+    setError(''); setLoading(true)
     try {
       await verifyTwoFactor(mfaToken, code.trim())
       navigate('/profil-sec', { replace: true })
     } catch (err) {
       setError(err.detail || 'Kod doğrulanamadı')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
+
+  const errBox = error && (
+    <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
+  )
 
   if (mfaToken) {
     return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-2xl font-bold">🔐</div>
-            <h1 className="text-xl font-semibold text-gray-100">İki Adımlı Doğrulama</h1>
-            <p className="text-sm text-gray-500 mt-1">Authenticator uygulamandaki 6 haneli kodu gir</p>
-          </div>
-          <form onSubmit={handleVerify} className="card space-y-3">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Kod</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                required
-                autoFocus
-                value={code}
-                onChange={e => setCode(e.target.value)}
-                className="input w-full text-center tracking-[0.5em] text-lg"
-                placeholder="000000"
-              />
-              <p className="text-[11px] text-gray-600 mt-1.5">Telefonuna erişemiyorsan yedek kodunu da girebilirsin.</p>
-            </div>
-            {error && (
-              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
-            )}
-            <button type="submit" disabled={loading} className="btn-primary w-full">
-              {loading ? 'Doğrulanıyor...' : 'Doğrula ve Gir'}
-            </button>
-            <div className="text-center pt-1">
-              <button type="button" onClick={() => { setMfaToken(''); setCode(''); setError('') }}
-                className="text-xs text-gray-500 hover:text-accent">← Geri dön</button>
-            </div>
-          </form>
+      <AuthShell>
+        <div className="text-center mb-6">
+          <Logo emoji="🔐" />
+          <h1 className="text-xl font-semibold text-gray-100">İki Adımlı Doğrulama</h1>
+          <p className="text-sm text-gray-500 mt-1">Authenticator uygulamandaki 6 haneli kodu gir</p>
         </div>
-      </div>
+        <form onSubmit={handleVerify} className={`${CARD_CLS} space-y-4`}>
+          <div>
+            <label className="text-xs text-gray-400 block mb-1.5">Doğrulama kodu</label>
+            <input type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus
+              value={code} onChange={e => setCode(e.target.value)}
+              className="input w-full text-center tracking-[0.5em] text-lg" placeholder="000000" />
+            <p className="text-[11px] text-gray-600 mt-1.5">Telefonuna erişemiyorsan yedek kodunu da girebilirsin.</p>
+          </div>
+          {errBox}
+          <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5">
+            {loading ? 'Doğrulanıyor…' : 'Doğrula ve gir'}
+          </button>
+          <div className="text-center">
+            <button type="button" onClick={() => { setMfaToken(''); setCode(''); setError('') }}
+              className="text-xs text-gray-500 hover:text-accent transition-colors">← Geri dön</button>
+          </div>
+        </form>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="h-full flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
-            B
+    <AuthShell>
+      <div className="text-center mb-6">
+        <Logo />
+        <h1 className="text-2xl font-semibold text-gray-100 tracking-tight">Baskıcı Paneli</h1>
+        <p className="text-sm text-gray-500 mt-1">Hesabınla giriş yap, üretime devam et</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className={`${CARD_CLS} space-y-4`}>
+        <div>
+          <label className="text-xs text-gray-400 block mb-1.5">E-posta</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+              <IconMail />
+            </span>
+            <input type="email" required autoFocus value={email} onChange={e => setEmail(e.target.value)}
+              className="input w-full !pl-10" placeholder="ornek@firma.com" />
           </div>
-          <h1 className="text-xl font-semibold text-gray-100">Baskıcı Paneli</h1>
-          <p className="text-sm text-gray-500 mt-1">Hesabınla giriş yap</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card space-y-3">
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">E-posta</label>
-            <input
-              type="email"
-              required
-              autoFocus
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="input w-full"
-              placeholder="ornek@firma.com"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-400 block mb-1">Şifre</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="input w-full"
-              placeholder="••••••••"
-            />
-          </div>
-
-          {error && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
-
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-          </button>
-
-          <div className="text-center pt-1">
-            <Link to="/sifre-unuttum" className="text-xs text-gray-500 hover:text-accent">
-              Şifremi unuttum
-            </Link>
-          </div>
-
-          <div className="text-center text-xs text-gray-500 pt-1 border-t border-brand-border mt-1">
-            <span className="block pt-2">Hesabın yok mu?{' '}
-              <Link to="/register" className="text-accent hover:underline">Kayıt ol</Link>
+        <div>
+          <label className="text-xs text-gray-400 block mb-1.5">Şifre</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+              <IconLock />
             </span>
+            <input type={showPw ? 'text' : 'password'} required value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="input w-full !pl-10 !pr-12" placeholder="••••••••" />
+            <button type="button" onClick={() => setShowPw(s => !s)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-500 hover:text-accent px-2 py-1 transition-colors"
+              tabIndex={-1}>
+              {showPw ? 'Gizle' : 'Göster'}
+            </button>
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+
+        {errBox}
+
+        <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 relative overflow-hidden">
+          {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
+        </button>
+
+        <div className="text-center">
+          <Link to="/sifre-unuttum" className="text-xs text-gray-500 hover:text-accent transition-colors">
+            Şifremi unuttum
+          </Link>
+        </div>
+
+        <div className="text-center text-xs text-gray-500 pt-3 border-t border-brand-border/70">
+          <span className="block pt-3">Hesabın yok mu?{' '}
+            <Link to="/register" className="text-accent hover:underline font-medium">Kayıt ol</Link>
+          </span>
+        </div>
+      </form>
+
+      <p className="text-center text-[11px] text-gray-600 mt-5 tracking-wide">
+        BERNZ Company · Baskıcı Paneli
+      </p>
+    </AuthShell>
   )
 }

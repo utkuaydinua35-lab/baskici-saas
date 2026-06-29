@@ -133,6 +133,11 @@ export default function OrderDetailPage() {
     }
   }
 
+  const removeFromMolds = async (liId) => {
+    try { await api.post(`/api/orders/${orderId}/line-items/${liId}/remove-from-molds`, {}) }
+    catch (e) { toast.error(errMsg(e, 'Kalıptan çıkarılamadı')) }
+  }
+
   const handleDuplicate = async () => {
     if (!confirm('Bu siparişi yeni bir sipariş olarak çoğalt?')) return
     try {
@@ -275,6 +280,8 @@ export default function OrderDetailPage() {
                   item={li}
                   onPatch={body => patchLineItem(li.id, body)}
                   onZoom={setLightbox}
+                  onOpenMold={(mid) => navigate(`/kalip/${mid}`, { state: { from: location.pathname } })}
+                  onRemoveFromMolds={() => removeFromMolds(li.id)}
                 />
               ))}
             </div>
@@ -553,7 +560,7 @@ function KalipOzeti({ lineItems }) {
 }
 
 
-function ProductRow({ item, onPatch, onZoom }) {
+function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
   const [editModel, setEditModel] = useState(false)
   const [modelVal, setModelVal] = useState(item.device_model_override || '')
 
@@ -631,7 +638,15 @@ function ProductRow({ item, onPatch, onZoom }) {
         />
         <CheckPill
           checked={item.is_hazir}
-          onChange={c => onPatch({ is_hazir: c, fields_to_update: ['is_hazir'] })}
+          onChange={async c => {
+            if (c && item.molds && item.molds.length > 0) {
+              const kods = item.molds.map(m => m.kod).join(', ')
+              if (confirm(`Bu ürün ${kods} kalıbına ekli. Hazır işaretlenince kalıptan çıkarılsın mı?`)) {
+                await onRemoveFromMolds?.()
+              }
+            }
+            onPatch({ is_hazir: c, fields_to_update: ['is_hazir'] })
+          }}
           label="📦 Hazır"
         />
         <button
@@ -654,7 +669,7 @@ function ProductRow({ item, onPatch, onZoom }) {
               <a
                 key={m.id}
                 href={`/kalip/${m.id}`}
-                onClick={e => { e.preventDefault(); navigate(`/kalip/${m.id}`, { state: { from: location.pathname } }) }}
+                onClick={e => { e.preventDefault(); onOpenMold?.(m.id) }}
                 title={`${m.kod} kalıbını aç`}
                 className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
               >🧩 {m.kod}</a>

@@ -774,6 +774,106 @@ def recompute_deadlines(
     return {"ok": True, "updated": updated, "total": len(orders)}
 
 
+def _nk_model(s: str | None) -> str:
+    try:
+        from app.services import phone_models as _pm
+        return _pm.normalize_key(s or "")
+    except Exception:  # noqa: BLE001
+        return (s or "").strip().lower()
+
+
+def _molds_by_line_item(db: Session, tenant_id, order) -> dict:
+    """order.line_items -> {line_item_id: [{id, kod}]}. Sipariş senkronu line_item_id'yi
+    NULL'a düşürdüğü için kademeli eşleşme: line_item_id > (order_no+design_code) > (order_no+model)."""
+    from app.services.mold_planner import extract_phone_model
+    onum = str(order.order_number) if order.order_number is not None else None
+    if not onum:
+        return {}
+    rows = db.execute(
+        select(MoldItem, Mold.id, Mold.kod)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(Mold.tenant_id == tenant_id, MoldItem.order_number == onum)
+    ).all()
+    if not rows:
+        return {}
+    li_by_id = {li.id: li for li in order.line_items}
+    li_by_code: dict = {}
+    li_by_model: dict = {}
+    for li in order.line_items:
+        code = li.assigned_design.code if getattr(li, "assigned_design", None) else None
+        if code:
+            li_by_code.setdefault(code, []).append(li)
+        mk = _nk_model(extract_phone_model(li))
+        if mk:
+            li_by_model.setdefault(mk, []).append(li)
+    out: dict = {}
+    for mi, mid, kod in rows:
+        target = None
+        if mi.line_item_id and mi.line_item_id in li_by_id:
+            target = li_by_id[mi.line_item_id]
+        elif mi.design_code and li_by_code.get(mi.design_code):
+            target = li_by_code[mi.design_code][0]
+        elif mi.model and li_by_model.get(_nk_model(mi.model)):
+            target = li_by_model[_nk_model(mi.model)][0]
+        if not target:
+            continue
+        lst = out.setdefault(target.id, [])
+        if not any(x["id"] == str(mid) for x in lst):
+            lst.append({"id": str(mid), "kod": kod})
+    return out
+
+
+@router.post("/{order_id}/line-items/{li_id}/remove-from-molds", response_model=None)
+def remove_line_item_from_molds(
+    order_id: uuid.UUID,
+    li_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kalemi eklendiği kalıp(lar)dan çıkar (Hazır işaretlenince). Kademeli eşleşme;
+    en kesin tier (line_item_id > design_code > model) kullanılır. is_kaliba_eklendi=False."""
+    from app.services import mold_planner
+    from app.services.mold_planner import extract_phone_model
+    order = db.scalar(
+        select(Order).where(Order.id == order_id, Order.tenant_id == user.tenant_id)
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
+    li = next((x for x in order.line_items if x.id == li_id), None)
+    if not li:
+        raise HTTPException(status_code=404, detail="Kalem bulunamadı")
+    onum = str(order.order_number) if order.order_number is not None else None
+    code = li.assigned_design.code if getattr(li, "assigned_design", None) else None
+    mk = _nk_model(extract_phone_model(li))
+    mis = db.scalars(select(MoldItem).where(
+        MoldItem.tenant_id == user.tenant_id, MoldItem.order_number == onum)).all() if onum else []
+    by_id = [mi for mi in mis if li.id and mi.line_item_id == li.id]
+    by_code = [mi for mi in mis if code and mi.design_code == code]
+    by_model = [mi for mi in mis if mk and _nk_model(mi.model) == mk]
+    targets = by_id or by_code or by_model
+    affected = set()
+    for mi in targets:
+        affected.add(mi.mold_id)
+        db.delete(mi)
+    if targets:
+        db.flush()
+        for mid in affected:
+            mo = db.get(Mold, mid)
+            if not mo:
+                continue
+            items = db.scalars(select(MoldItem).where(MoldItem.mold_id == mid)).all()
+            mo.kilif_sayisi = len(items)
+            if items:
+                placed = mold_planner.pr.assign_slots(
+                    [{"kod": x.kalip_kodu, "model": x.model, "_ref": x} for x in items])
+                for d in placed:
+                    d["_ref"].slot_index = d["slot_index"]
+    li.is_kaliba_eklendi = False
+    db.commit()
+    return {"ok": True, "removed": len(targets)}
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order(
     order_id: uuid.UUID,
@@ -783,7 +883,7 @@ def get_order(
     order = db.scalar(
         select(Order)
         .where(Order.id == order_id, Order.tenant_id == user.tenant_id)
-        .options(selectinload(Order.line_items))
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
     )
     if not order:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
@@ -794,17 +894,9 @@ def get_order(
     data["kalipta_count"] = sum(
         1 for li in order.line_items if getattr(li, "is_kaliba_eklendi", False)
     )
-    # Kalem -> eklendiği kalıp(lar): {line_item_id: [{id, kod}]}
-    molds_by_li: dict = {}
-    li_ids = [li.id for li in order.line_items]
-    if li_ids:
-        for li_id, mid, kod in db.execute(
-            select(MoldItem.line_item_id, Mold.id, Mold.kod)
-            .join(Mold, Mold.id == MoldItem.mold_id)
-            .where(MoldItem.line_item_id.in_(li_ids))
-            .distinct()
-        ).all():
-            molds_by_li.setdefault(li_id, []).append({"id": str(mid), "kod": kod})
+    # Kalem -> eklendiği kalıp(lar). Sipariş senkronu line_item_id'yi NULL'a düşürdüğü
+    # için kademeli eşleşme: line_item_id > (order_number+design_code) > (order_number+model).
+    molds_by_li = _molds_by_line_item(db, user.tenant_id, order)
 
     _li_dicts = []
     for li in order.line_items:

@@ -187,6 +187,13 @@ export default function LoginPage() {
       <p className="text-center text-[11px] text-gray-600 mt-5 tracking-wide">
         BERNZ Company · Baskıcı Paneli
       </p>
+      <img
+        src="/bernz-company.png"
+        alt="BERNZ Company"
+        draggable="false"
+        onError={e => { e.currentTarget.style.display = 'none' }}
+        className="mx-auto mt-4 w-28 rounded-xl border border-white/10 opacity-90 shadow-lg"
+      />
     </AuthShell>
   )
 }

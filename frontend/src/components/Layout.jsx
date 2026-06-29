@@ -336,6 +336,7 @@ function fmtTime(iso) {
 
 function ProfileDropdown({ user, onLogout }) {
   const _nav = useNavigate()
+  const can = usePerm()
   const [open, setOpen] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const ref = useRef(null)
@@ -367,6 +368,17 @@ function ProfileDropdown({ user, onLogout }) {
           <button onClick={() => { _nav('/ayarlar'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
             <span className="w-5 text-center">⚙</span> Ayarlar
           </button>
+          {can('ayarlar') && (
+            <button onClick={() => { _nav('/denetim'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+              <span className="w-5 text-center">📜</span> Denetim Kaydı
+            </button>
+          )}
+          {user?.is_platform_admin && (
+            <button onClick={() => { _nav('/platform'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+              <span className="w-5 text-center">🏢</span> Atölyeler
+            </button>
+          )}
+          <div className="border-t border-brand-border my-1" />
           <button onClick={onLogout} className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2">
             <span className="w-5 text-center">⎋</span> Çıkış Yap
           </button>
@@ -489,9 +501,7 @@ const NAV = [
   { label: 'Pazarlama', icon: '📣', items: [
     { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
   ] },
-  { label: 'Sistem', icon: '📜', items: [
-    { to: '/denetim', label: 'Denetim Kaydı', icon: '📜', perm: 'ayarlar' },
-  ] },
+  // Not: "Denetim Kaydı" ve "Atölyeler" üst menüde değil — profil menüsünde (sağ üst).
 ]
 
 function usePerm() {
@@ -502,9 +512,8 @@ function usePerm() {
 }
 
 // Görünür menü: perm filtresi; tek öğeli bölüm doğrudan linke iner; boş bölüm gizlenir.
-function visibleNav(can, user) {
+function visibleNav(can) {
   const out = []
-  if (user?.is_platform_admin) out.push({ to: '/platform', label: 'Atölyeler', icon: '🏢' })
   for (const sec of NAV) {
     if (sec.to) { if (can(sec.perm)) out.push(sec); continue }
     const its = (sec.items || []).filter(it => can(it.perm))
@@ -517,9 +526,8 @@ function visibleNav(can, user) {
 
 // Üst yatay menü (masaüstü)
 function DesktopNav() {
-  const { user } = useAuth()
   const can = usePerm()
-  const items = visibleNav(can, user)
+  const items = visibleNav(can)
   return (
     <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1">
       {items.map(e => e.items
@@ -542,31 +550,52 @@ function TopLink({ to, label, icon, end }) {
 
 function NavDropdown({ entry }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
   const loc = useLocation()
   const active = entry.items.some(it => loc.pathname === it.to.split('?')[0])
+
+  // Menü, üst menünün overflow'una takılmasın diye portal + sabit konum (button rect'ten)
+  const place = () => {
+    const b = btnRef.current?.getBoundingClientRect()
+    if (b) setPos({ left: Math.max(8, Math.min(b.left, window.innerWidth - 232)), top: b.bottom + 8 })
+  }
+  const toggle = () => { if (!open) place(); setOpen(o => !o) }
+
   useEffect(() => {
     if (!open) return
-    const f = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', f)
-    return () => document.removeEventListener('mousedown', f)
+    const onDoc = e => {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onReposition = () => place()
+    document.addEventListener('mousedown', onDoc)
+    window.addEventListener('resize', onReposition)
+    window.addEventListener('scroll', onReposition, true)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('resize', onReposition)
+      window.removeEventListener('scroll', onReposition, true)
+    }
   }, [open])
   useEffect(() => { setOpen(false) }, [loc.pathname, loc.search])
+
   return (
-    <div className="relative shrink-0" ref={ref}>
-      <button onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap transition-colors ${
+    <>
+      <button ref={btnRef} onClick={toggle}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
           active || open ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
         }`}>
         <span className="text-[13px]">{entry.icon}</span>{entry.label}
         <span className={`text-[8px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
       </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-2 w-56 bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[70] menu-pop">
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: 'fixed', left: pos.left, top: pos.top }}
+          className="w-56 bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[200] menu-pop">
           {entry.items.map(it => <DropItem key={it.to} {...it} onClick={() => setOpen(false)} />)}
-        </div>
-      )}
-    </div>
+        </div>, document.body)}
+    </>
   )
 }
 
@@ -590,9 +619,8 @@ function DropItem({ to, label, icon, end, legacy, onClick }) {
 
 // Mobil çekmece (dikey, bölümlü)
 function MobileNav({ onClose }) {
-  const { user } = useAuth()
   const can = usePerm()
-  const items = visibleNav(can, user)
+  const items = visibleNav(can)
   return (
     <div className="fixed inset-0 z-[80] md:hidden">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />

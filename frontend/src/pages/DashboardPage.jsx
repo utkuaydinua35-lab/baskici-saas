@@ -116,6 +116,8 @@ export default function DashboardPage() {
   const maxFunnel = Math.max(1, ...(data?.funnel || []).map(f => f.count))
 
   return (
+    <>
+    <DashboardBackground />
     <div className="max-w-[1400px]">
       <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
         <div>
@@ -275,6 +277,22 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+    </div>
+    </>
+  )
+}
+
+function DashboardBackground() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div className="login-blob absolute -top-32 -left-24 w-[34rem] h-[34rem] rounded-full opacity-25 blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)' }} />
+      <div className="login-blob absolute top-1/4 -right-40 w-[40rem] h-[40rem] rounded-full opacity-20 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #22d3ee 0%, transparent 70%)', animationDelay: '5s' }} />
+      <div className="login-blob absolute -bottom-44 left-1/3 w-[32rem] h-[32rem] rounded-full opacity-[0.18] blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)', animationDelay: '9s' }} />
+      <div className="absolute inset-0 opacity-[0.04]"
+        style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
     </div>
   )
 }

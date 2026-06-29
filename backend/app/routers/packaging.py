@@ -19,7 +19,7 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.adapters import get_adapter
 from app.database import get_db
 from app.models import (
-    AccessoryProduct, Design, LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User,
+    AccessoryProduct, Dealer, Design, LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User,
 )
 from app.services import basit_kargo, label_pdf, packaging as pkg, storage
 from app import stages as stage_defs
@@ -451,31 +451,6 @@ def _order_payload(db, order) -> dict:
     }
 
 
-def _brand_of(model: str | None) -> str:
-    import re as _re
-    m = (model or "").upper()
-    if "IPHONE" in m:
-        return "Apple"
-    if ("SAMSUNG" in m or "GALAXY" in m or "NOTE" in m
-            or _re.search(r"\bS\d", m) or _re.match(r"^A\d", m) or _re.match(r"^M\d", m) or _re.match(r"^J\d", m)):
-        return "Samsung"
-    if any(x in m for x in ("XIAOMI", "REDMI", "POCO")):
-        return "Xiaomi"
-    if "REALME" in m:
-        return "Realme"
-    if "OPPO" in m:
-        return "Oppo"
-    if "VIVO" in m:
-        return "Vivo"
-    if "HUAWEI" in m:
-        return "Huawei"
-    if "TECNO" in m:
-        return "Tecno"
-    if "INFINIX" in m:
-        return "Infinix"
-    return "Diğer" if m else "?"
-
-
 def _nm(s: str | None) -> str:
     from app.services import phone_models as _pm
     try:
@@ -537,13 +512,14 @@ def _order_ready(order, by_li, by_om, acc_ids) -> bool:
 def packaging_queue(
     index: int = 0,
     search: str | None = None,
-    brand: str | None = None,
+    store_id: str | None = None,
+    dealer_id: str | None = None,
     ready_only: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Açık sipariş kuyruğu — EN ESKİDEN sıralı. Filtreler: sipariş no/müşteri arama,
-    marka, ve 'paketlemeye uygun' (tüm ürünleri basılı kalıpta / hazır)."""
+    mağaza, bayi, ve 'paketlemeye uygun' (tüm ürünleri basılı kalıpta / hazır)."""
     flt = _queue_filter(user.tenant_id)
     s = (search or "").strip()
     if s:
@@ -551,6 +527,11 @@ def packaging_queue(
         flt = flt & or_(
             Order.order_number.ilike(like), Order.name.ilike(like), Order.customer_name.ilike(like)
         )
+    if store_id:
+        try:
+            flt = flt & (Order.store_id == uuid.UUID(store_id))
+        except (ValueError, AttributeError):
+            pass
 
     orders = db.scalars(
         select(Order).where(flt)
@@ -558,9 +539,11 @@ def packaging_queue(
         .order_by(asc(Order.created_at_platform), asc(Order.id))
     ).all()
 
-    # Mevcut açık siparişlerdeki markalar (filtre menüsü için)
-    brands = sorted({b for o in orders for li in (o.line_items or [])
-                     if (b := _brand_of(_extract_model(li))) and b != "?"})
+    # Filtre menüleri: mağazalar + bayiler
+    stores = [{"id": str(x.id), "name": x.name} for x in db.scalars(
+        select(Store).where(Store.tenant_id == user.tenant_id).order_by(Store.name)).all()]
+    dealers = [{"id": str(x.id), "name": x.name} for x in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == user.tenant_id).order_by(Dealer.name)).all()]
 
     by_li = by_om = None
     acc_ids: set = set()
@@ -568,20 +551,24 @@ def packaging_queue(
         by_li, by_om = _printed_maps(db, user.tenant_id)
         acc_ids = _accessory_ids(db, user.tenant_id)
 
+    _dealer = (dealer_id or "").strip()
+
     def _passes(o):
-        if brand and not any(_brand_of(_extract_model(li)) == brand for li in (o.line_items or [])):
+        if _dealer and str((o.raw or {}).get("dealer_id") or "") != _dealer:
             return False
         if ready_only and not _order_ready(o, by_li, by_om, acc_ids):
             return False
         return True
 
-    filtered = [o for o in orders if _passes(o)] if (brand or ready_only) else orders
+    filtered = [o for o in orders if _passes(o)] if (_dealer or ready_only) else orders
     total = len(filtered)
     base = {
         "stages": stage_defs.all_stages_payload(),
-        "brands": brands,
+        "stores": stores,
+        "dealers": dealers,
         "search": s or None,
-        "brand": brand or None,
+        "store_id": store_id or None,
+        "dealer_id": _dealer or None,
         "ready_only": ready_only,
     }
     if total == 0:

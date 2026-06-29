@@ -37,13 +37,13 @@ export default function PackagingPage() {
   const [selIl, setSelIl] = useState('')
   const [selIlce, setSelIlce] = useState('')
   const [search, setSearch] = useState('')
-  const [brand, setBrand] = useState('')
+  const [source, setSource] = useState('')   // '' | 'store:<id>' | 'dealer:<id>'
   const [readyOnly, setReadyOnly] = useState(false)
   const { clock, h, m, passed } = useCargoCountdown()
 
   // Filtreleri ref'te tut — loadIndex kimliği stabil kalsın
-  const filtersRef = useRef({ search: '', brand: '', readyOnly: false })
-  filtersRef.current = { search, brand, readyOnly }
+  const filtersRef = useRef({ search: '', source: '', readyOnly: false })
+  filtersRef.current = { search, source, readyOnly }
 
   const loadIndex = useCallback(async (idx) => {
     setLoading(true); setMsg(null); setManualAddr(false)
@@ -51,7 +51,8 @@ export default function PackagingPage() {
       const f = filtersRef.current
       const params = new URLSearchParams({ index: String(idx) })
       if (f.search.trim()) params.set('search', f.search.trim())
-      if (f.brand) params.set('brand', f.brand)
+      if (f.source.startsWith('store:')) params.set('store_id', f.source.slice(6))
+      else if (f.source.startsWith('dealer:')) params.set('dealer_id', f.source.slice(7))
       if (f.readyOnly) params.set('ready_only', 'true')
       const r = await api.get(`/api/packaging/queue?${params}`)
       setQueue(r)
@@ -74,7 +75,7 @@ export default function PackagingPage() {
     if (_first.current) { _first.current = false; return }
     const t = setTimeout(() => loadIndex(0), 300)
     return () => clearTimeout(t)
-  }, [search, brand, readyOnly, loadIndex])
+  }, [search, source, readyOnly, loadIndex])
 
   const total = queue.total || 0
   const index = queue.index || 0
@@ -167,9 +168,18 @@ export default function PackagingPage() {
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Sipariş no / müşteri ara…" className="input w-full !pl-9 !text-sm" />
         </div>
-        <select value={brand} onChange={e => setBrand(e.target.value)} className="input !text-sm !py-2 w-auto">
-          <option value="">Tüm markalar</option>
-          {(queue.brands || []).map(b => <option key={b} value={b}>{b}</option>)}
+        <select value={source} onChange={e => setSource(e.target.value)} className="input !text-sm !py-2 w-auto max-w-[200px]">
+          <option value="">Tüm mağaza / bayi</option>
+          {(queue.stores || []).length > 0 && (
+            <optgroup label="Mağazalar">
+              {queue.stores.map(s => <option key={s.id} value={`store:${s.id}`}>🏪 {s.name}</option>)}
+            </optgroup>
+          )}
+          {(queue.dealers || []).length > 0 && (
+            <optgroup label="Bayiler">
+              {queue.dealers.map(d => <option key={d.id} value={`dealer:${d.id}`}>🤝 {d.name}</option>)}
+            </optgroup>
+          )}
         </select>
         <button onClick={() => setReadyOnly(v => !v)}
           title="Sadece tüm ürünleri basılı kalıpta / hazır olan siparişler"
@@ -192,7 +202,7 @@ export default function PackagingPage() {
       {!loading && total === 0 && (
         <div className="card text-center py-16 text-gray-500">
           <div className="text-3xl mb-2">📦</div>
-          {search || brand || readyOnly
+          {search || source || readyOnly
             ? 'Filtreyle eşleşen sipariş yok.'
             : 'Paketlenecek (gönderilmemiş) sipariş yok.'}
         </div>

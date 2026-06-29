@@ -198,7 +198,8 @@ def plan_molds(
     for order in orders:
         order_store_id = order.store_id
         for li in (order.line_items or []):
-            if li.is_kaliba_eklendi:
+            # Kalıba eklenmiş VEYA hazır işaretlenmiş kalemler plana girmez
+            if li.is_kaliba_eklendi or getattr(li, "is_hazir", False):
                 continue
             pid = str(li.product_id) if li.product_id else None
             model = extract_phone_model(li)

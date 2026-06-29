@@ -290,14 +290,16 @@ def _build_tab_filter(q, tab: str):
             .group_by(LineItem.order_id)
             .having(
                 sql_func.count(LineItem.id)
-                == sql_func.sum(case((LineItem.is_kaliba_eklendi == True, 1), else_=0))
+                == sql_func.sum(case(
+                    ((LineItem.is_kaliba_eklendi == True) | (LineItem.is_hazir == True), 1), else_=0))
             )
             .having(sql_func.count(LineItem.id) > 0)
         )
         q = q.where(Order.id.in_(all_in_mold))
     elif tab == "kalip_bekliyor":
-        # En az bir line item kalıba eklenmemiş + tamamlanmamış + iptal değil
-        has_pending = select(LineItem.order_id).where(LineItem.is_kaliba_eklendi == False)
+        # En az bir line item kalıba eklenmemiş + hazır değil + tamamlanmamış + iptal değil
+        has_pending = select(LineItem.order_id).where(
+            LineItem.is_kaliba_eklendi == False, LineItem.is_hazir == False)
         q = q.where(
             Order.id.in_(has_pending),
             Order.cancelled_at.is_(None),

@@ -539,7 +539,8 @@ function TedarikToggle({ value, onChange }) {
 function KalipOzeti({ lineItems }) {
   const total = lineItems.length
   const eklenmis = lineItems.filter(li => li.is_kaliba_eklendi).length
-  const eksik = total - eklenmis
+  // Hazır işaretli kalemler kalıp gerektirmez -> eksik sayılmaz
+  const eksik = lineItems.filter(li => !li.is_kaliba_eklendi && !li.is_hazir).length
 
   return (
     <div className="card">
@@ -674,6 +675,10 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
                 className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
               >🧩 {m.kod}</a>
             ))
+          ) : item.is_hazir ? (
+            <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
+              ✓ Hazır (kalıp gerekmiyor)
+            </span>
           ) : item.is_kaliba_eklendi ? (
             <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
               ✓ Kalıba eklendi

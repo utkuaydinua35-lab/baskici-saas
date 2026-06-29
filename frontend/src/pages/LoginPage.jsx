@@ -20,9 +20,12 @@ function AuthBackground() {
 
 function Logo({ emoji }) {
   return (
-    <div className="login-logo w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg"
-      style={{ boxShadow: '0 10px 40px -8px rgb(var(--accent-rgb) / 0.6)' }}>
-      {emoji || 'B'}
+    <div className="login-logo relative w-16 h-16 mx-auto mb-4 rounded-2xl bg-brand-card border border-white/10 flex items-center justify-center overflow-hidden"
+      style={{ boxShadow: '0 12px 44px -8px rgb(var(--accent-rgb) / 0.55)' }}>
+      {emoji
+        ? <span className="text-3xl">{emoji}</span>
+        : <img src="/favicon.svg" alt="BERNZ" className="w-9 h-9" draggable="false" />}
+      <span className="login-sheen" aria-hidden="true" />
     </div>
   )
 }
@@ -57,6 +60,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
+  const [capsLock, setCapsLock] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -135,7 +139,7 @@ export default function LoginPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
               <IconMail />
             </span>
-            <input type="email" required autoFocus value={email} onChange={e => setEmail(e.target.value)}
+            <input type="email" required autoFocus autoComplete="username" value={email} onChange={e => setEmail(e.target.value)}
               className="input w-full !pl-10" placeholder="ornek@firma.com" />
           </div>
         </div>
@@ -146,8 +150,9 @@ export default function LoginPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
               <IconLock />
             </span>
-            <input type={showPw ? 'text' : 'password'} required value={password}
+            <input type={showPw ? 'text' : 'password'} required autoComplete="current-password" value={password}
               onChange={e => setPassword(e.target.value)}
+              onKeyUp={e => setCapsLock(typeof e.getModifierState === 'function' && e.getModifierState('CapsLock'))}
               className="input w-full !pl-10 !pr-12" placeholder="••••••••" />
             <button type="button" onClick={() => setShowPw(s => !s)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-500 hover:text-accent px-2 py-1 transition-colors"
@@ -155,6 +160,9 @@ export default function LoginPage() {
               {showPw ? 'Gizle' : 'Göster'}
             </button>
           </div>
+          {capsLock && (
+            <p className="text-[11px] text-amber-400 mt-1.5 flex items-center gap-1">⇪ Caps Lock açık</p>
+          )}
         </div>
 
         {errBox}

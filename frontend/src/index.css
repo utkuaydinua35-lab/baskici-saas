@@ -111,8 +111,14 @@
 }
 .login-blob   { animation: blob-drift 16s ease-in-out infinite; will-change: transform; }
 .login-logo   { animation: login-float 4.5s ease-in-out infinite; }
+.login-sheen  {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.22) 50%, transparent 65%);
+  background-size: 250% 100%;
+  animation: sheen 5.5s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
-  .login-blob, .login-logo { animation: none; }
+  .login-blob, .login-logo, .login-sheen { animation: none; }
 }
 
 /* Kademeli kart girisi — ardisik gecikmelerle (stagger) */

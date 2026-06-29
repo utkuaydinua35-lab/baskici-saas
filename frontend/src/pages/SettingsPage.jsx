@@ -65,20 +65,20 @@ function BrandTab() {
 
 function BrandIdentity({ onSaved }) {
   const toast = useToast()
-  const [color, setColor] = useState('#7c5cff')
+  const [color, setColor] = useState('#16c784')
   const [appName, setAppName] = useState('')
   const [orig, setOrig] = useState({ color: '', appName: '' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api.get('/api/tenant/settings').then(r => {
-      setColor(r.brand_color || '#7c5cff')
+      setColor(r.brand_color || '#16c784')
       setAppName(r.app_name || '')
       setOrig({ color: r.brand_color || '', appName: r.app_name || '' })
     }).catch(() => {})
   }, [])
 
-  const dirty = (color !== (orig.color || '#7c5cff')) || (appName !== orig.appName)
+  const dirty = (color !== (orig.color || '#16c784')) || (appName !== orig.appName)
 
   const save = async () => {
     setSaving(true)
@@ -107,7 +107,7 @@ function BrandIdentity({ onSaved }) {
             <input type="color" value={color} onChange={e => setColor(e.target.value)}
               className="w-10 h-9 rounded-lg bg-transparent border border-brand-border cursor-pointer p-0.5" />
             <input type="text" value={color} onChange={e => setColor(e.target.value)}
-              placeholder="#7c5cff" className="input !text-sm font-mono w-28" />
+              placeholder="#16c784" className="input !text-sm font-mono w-28" />
             <span className="text-xs px-2 py-1 rounded-lg text-white" style={{ background: color }}>Önizleme</span>
           </div>
         </div>
@@ -410,7 +410,7 @@ function Toggle({ on, onChange }) {
       role="switch"
       aria-checked={on}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent/40 ${
-        on ? 'bg-gradient-to-r from-accent to-purple-600' : 'bg-brand-input'
+        on ? 'bg-gradient-to-r from-accent to-emerald-600' : 'bg-brand-input'
       }`}
     >
       <span

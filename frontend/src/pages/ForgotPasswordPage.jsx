@@ -23,7 +23,7 @@ export default function ForgotPasswordPage() {
     <div className="h-full flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-2xl font-bold">B</div>
+          <div className="w-14 h-14 mx-auto mb-3 rounded-xl bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-2xl font-bold">B</div>
           <h1 className="text-xl font-semibold text-gray-100">Şifre Sıfırlama</h1>
           <p className="text-sm text-gray-500 mt-1">E-posta adresine sıfırlama bağlantısı gönderelim</p>
         </div>

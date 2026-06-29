@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --accent-rgb: 124 92 255;   /* varsayılan accent (#7c5cff); tenant brand_color ile override edilir */
+  --accent-rgb: 22 199 132;   /* emerald #16c784 (Cryptix yeşili); tenant brand_color ile override edilir */
 }
 
 @layer base {
@@ -12,25 +12,31 @@
   }
   body {
     @apply bg-brand-bg text-gray-200 font-sans antialiased;
+    /* Üstten yumuşak yeşil ışıma (Cryptix hero glow) */
+    background-image: radial-gradient(1100px 520px at 50% -180px, rgb(var(--accent-rgb) / 0.14), transparent 72%);
+    background-attachment: fixed;
   }
 }
 
 @layer components {
   /* Yardımcı bileşen sınıfları */
   .input {
-    @apply bg-brand-input border border-brand-border rounded-lg px-3 py-2 text-sm text-gray-100
-           focus:outline-none focus:border-accent/50 placeholder:text-gray-600 transition-colors;
+    @apply bg-brand-input border border-brand-border rounded-xl px-3 py-2 text-sm text-gray-100
+           focus:outline-none focus:border-accent/60 placeholder:text-gray-600 transition-colors;
   }
+  /* Birincil aksiyon: emerald pill + yeşil glow, koyu metin (Cryptix CTA) */
   .btn-primary {
-    @apply bg-accent hover:bg-accent/90 text-white rounded-lg px-4 py-2 text-sm font-medium
-           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-accent text-[#04130d] rounded-full px-5 py-2 text-sm font-semibold
+           transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+    box-shadow: 0 8px 26px -8px rgb(var(--accent-rgb) / 0.55);
   }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
   .btn-secondary {
-    @apply bg-brand-input hover:bg-brand-card border border-brand-border text-gray-300
-           rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+    @apply bg-brand-input/60 hover:bg-brand-input border border-brand-border text-gray-200
+           rounded-full px-5 py-2 text-sm font-medium transition-colors;
   }
   .card {
-    @apply bg-brand-card border border-brand-border rounded-xl p-5;
+    @apply bg-brand-card border border-brand-border rounded-2xl p-5;
   }
 }
 
@@ -53,22 +59,22 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 8px 2px rgba(124, 92, 255, 0.6); }
-  50%      { box-shadow: 0 0 16px 5px rgba(124, 92, 255, 0.9); }
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(22, 199, 132, 0.6); }
+  50%      { box-shadow: 0 0 16px 5px rgba(22, 199, 132, 0.9); }
 }
 
 .stage-active-beat { animation: heartbeat 1.6s ease-in-out infinite; }
 .stage-glow { animation: glow-pulse 1.8s ease-in-out infinite; }
 .stage-ring {
   position: absolute; inset: -4px; border-radius: 9999px;
-  border: 4px solid rgba(124, 92, 255, 0.9);
-  box-shadow: 0 0 12px 2px rgba(124, 92, 255, 0.5);
+  border: 4px solid rgba(22, 199, 132, 0.9);
+  box-shadow: 0 0 12px 2px rgba(22, 199, 132, 0.5);
   animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   pointer-events: none;
 }
 .stage-ring-2 {
   position: absolute; inset: -4px; border-radius: 9999px;
-  border: 3px solid rgba(124, 92, 255, 0.7);
+  border: 3px solid rgba(22, 199, 132, 0.7);
   animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   animation-delay: 0.5s;
   pointer-events: none;
@@ -164,7 +170,7 @@ tr, .row-hover { transition: background-color 0.15s ease; }
 
 /* === Splash / sinematik giris === */
 .splash-root {
-  background: radial-gradient(ellipse at center, #15131f 0%, #0a0910 70%, #060509 100%);
+  background: radial-gradient(ellipse at center, #0e1a15 0%, #08110c 70%, #050a07 100%);
   transition: opacity 0.55s ease;
 }
 .splash-leaving { opacity: 0; }
@@ -198,7 +204,7 @@ tr, .row-hover { transition: background-color 0.15s ease; }
 .splash-glow {
   position: absolute; top: 50%; left: 50%;
   width: 600px; height: 600px; transform: translate(-50%, -50%) scale(0.6);
-  background: radial-gradient(circle, rgba(124,92,255,0.30) 0%, rgba(168,85,247,0.12) 40%, rgba(124,92,255,0) 70%);
+  background: radial-gradient(circle, rgba(22,199,132,0.30) 0%, rgba(16,150,110,0.12) 40%, rgba(22,199,132,0) 70%);
   opacity: 0; transition: opacity 1s ease, transform 1.4s ease;
 }
 .splash-glow.on { opacity: 1; transform: translate(-50%, -50%) scale(1); animation: splash-glow-breathe 3s ease-in-out 1.4s infinite; }

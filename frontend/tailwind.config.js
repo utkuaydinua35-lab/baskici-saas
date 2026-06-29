@@ -9,10 +9,10 @@ export default {
       colors: {
         // Marka renkleri — BERNZ paletinden esinlenildi, gerekirse değiştir
         brand: {
-          bg:     '#0e0f17',   // sayfa arka plan
-          card:   '#171a26',   // kart arka plan
-          input:  '#1f2231',   // input arka plan
-          border: '#262a3a',
+          bg:     '#070d0a',   // sayfa arka plan (koyu yeşil-siyah)
+          card:   '#0e1612',   // kart / panel arka plan
+          input:  '#16201b',   // input arka plan
+          border: '#21302a',   // ince kenarlık
         },
         // Accent runtime CSS değişkeninden gelir (white-label per-tenant override).
         // Opacity modifier'lar (accent/15 vb.) için RGB kanalları kullanılır.

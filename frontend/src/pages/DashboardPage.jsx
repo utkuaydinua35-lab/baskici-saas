@@ -190,7 +190,7 @@ export default function DashboardPage() {
                   <div key={f.no} className="flex items-center gap-2">
                     <div className="w-28 text-xs text-gray-400 shrink-0 truncate">{f.no}. {f.label}</div>
                     <div className="flex-1 bg-brand-input rounded-full h-5 overflow-hidden relative">
-                      <div className="h-full bg-gradient-to-r from-accent to-purple-600 rounded-full transition-all"
+                      <div className="h-full bg-gradient-to-r from-accent to-emerald-600 rounded-full transition-all"
                            style={{ width: `${(f.count / maxFunnel) * 100}%`, minWidth: f.count > 0 ? '8px' : '0' }} />
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-300">{f.count}</span>
                     </div>

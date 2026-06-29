@@ -34,7 +34,7 @@ export default function Layout() {
             {tenant?.logo_url ? (
               <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-11 max-w-[190px] object-contain rounded-lg" />
             ) : (
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-sm font-bold">
                 {(tenant?.name || 'B').charAt(0).toUpperCase()}
               </div>
             )}
@@ -121,7 +121,7 @@ function InstallPrompt() {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] w-[92%] max-w-md animate-fadein">
       <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl p-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
         <div className="min-w-0 flex-1">
           {deferred ? (
             <>
@@ -361,7 +361,7 @@ function ProfileDropdown({ user, onLogout }) {
         {user?.avatar_url ? (
           <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
         ) : (
-          <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-purple-600 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
+          <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-emerald-600 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
         )}
         <span className="text-xs text-gray-300 hidden sm:block">{user?.full_name || user?.email}</span>
         <span className="text-gray-500 text-xs">⌄</span>
@@ -538,22 +538,35 @@ function NavItem({ to, label, icon, end = false, disabled = false, legacy = fals
       </div>
     )
   }
+  const _calc = (_ia) => (_forceInactive ? false : (_forceActive ? true : _ia))
   return (
     <NavLink
       to={to}
       end={end}
       onClick={() => onNavigate?.()}
-      className={({ isActive: _ia }) => { const isActive = _forceInactive ? false : (_forceActive ? true : _ia); return (
-        `flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+      className={({ isActive: _ia }) => {
+        const isActive = _calc(_ia)
+        return `group relative flex items-center gap-2.5 pl-3 pr-3 py-1.5 rounded-xl transition-colors ${
           isActive
-            ? 'bg-accent/15 text-accent'
+            ? 'bg-accent/12 text-accent'
             : legacy
-              ? 'text-gray-500 hover:bg-brand-input hover:text-gray-300'
-              : 'text-gray-400 hover:bg-brand-input hover:text-gray-200'
-        }` ) }}
+              ? 'text-gray-500 hover:bg-brand-input/60 hover:text-gray-300'
+              : 'text-gray-400 hover:bg-brand-input/60 hover:text-gray-200'
+        }`
+      }}
     >
-      <span className="w-5 text-center">{icon}</span>
-      <span className={legacy ? 'italic' : ''}>{label}</span>
+      {({ isActive: _ia }) => {
+        const isActive = _calc(_ia)
+        return (
+          <>
+            {isActive && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent" />}
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[13px] shrink-0 transition-colors ${
+              isActive ? 'bg-accent/20' : 'bg-brand-input/70 group-hover:bg-brand-input'
+            }`}>{icon}</span>
+            <span className={`text-[13px] ${legacy ? 'italic' : ''}`}>{label}</span>
+          </>
+        )
+      }}
     </NavLink>
   )
 }

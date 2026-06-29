@@ -122,8 +122,8 @@ function TemplatePreview({ tpl }) {
           {tpl.boxes.map((b, i) => (
             <g key={i}>
               <rect x={b.x0} y={b.y0} width={b.w} height={b.h}
-                fill="none" stroke="#7c5cff" strokeWidth="3" rx="14" />
-              <text x={b.x0 + b.w / 2} y={b.y0 + b.h / 2} fill="#7c5cff"
+                fill="none" stroke="#16c784" strokeWidth="3" rx="14" />
+              <text x={b.x0 + b.w / 2} y={b.y0 + b.h / 2} fill="#16c784"
                 fontSize="60" textAnchor="middle" dominantBaseline="middle">{i + 1}</text>
             </g>
           ))}

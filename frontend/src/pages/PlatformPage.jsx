@@ -61,7 +61,7 @@ export default function PlatformPage() {
                     <tr key={t.id} className="border-b border-brand-border/40 hover:bg-brand-input/40">
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-full shrink-0" style={{ background: t.brand_color || '#7c5cff' }} />
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ background: t.brand_color || '#16c784' }} />
                           <div className="min-w-0">
                             <div className="text-gray-100">{t.app_name || t.name}</div>
                             <div className="text-[10px] text-gray-500 font-mono">{t.slug}</div>
@@ -216,7 +216,7 @@ function Field({ label, children }) {
 
 function CreateTenant({ onClose, onDone }) {
   const toast = useToast()
-  const [f, setF] = useState({ tenant_name: '', owner_email: '', owner_password: '', owner_name: '', plan: 'trial', active_until: '', brand_color: '#7c5cff', app_name: '' })
+  const [f, setF] = useState({ tenant_name: '', owner_email: '', owner_password: '', owner_name: '', plan: 'trial', active_until: '', brand_color: '#16c784', app_name: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
 
@@ -267,7 +267,7 @@ function EditTenant({ tenant, onClose, onDone }) {
     name: tenant.name || '', plan: tenant.plan || 'trial', is_active: tenant.is_active,
     is_approved: tenant.is_approved !== false,
     active_until: tenant.active_until ? tenant.active_until.slice(0, 10) : '',
-    brand_color: tenant.brand_color || '#7c5cff', app_name: tenant.app_name || '',
+    brand_color: tenant.brand_color || '#16c784', app_name: tenant.app_name || '',
   })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))

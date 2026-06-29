@@ -200,6 +200,13 @@ function StockMatrix({ group, search, onReload, onFlash, onEdit, onMove }) {
   }
   const bump = (d) => setEditVal(v => String(Math.max(0, (parseInt(v, 10) || 0) + d)))
 
+  // "Genel" (varyasyonsuz) kaydı bir varyasyona taşı (toplu temizlik için tek tek)
+  const moveToVariation = async (it, v) => {
+    if (!v) return
+    try { await api.patch(`/api/stock/${it.id}`, { variation: v }); setEdit(null); onReload() }
+    catch (e) { onFlash(false, 'Taşınamadı: ' + (e?.detail || '')) }
+  }
+
   const delRow = async (row) => {
     const items = Object.values(row.byVar)
     if (!confirm(`"${row.key}" satırı (${items.length} kayıt) silinecek. Emin misin?`)) return
@@ -257,6 +264,14 @@ function StockMatrix({ group, search, onReload, onFlash, onEdit, onMove }) {
                           <button disabled={busy} onClick={() => saveCell(row, col)} className="w-7 h-7 rounded bg-accent text-white" title="Kaydet">✓</button>
                         </div>
                         {it && <button onClick={() => { onMove(it); setEdit(null) }} className="text-[10px] text-gray-400 hover:underline mt-0.5">geçmiş</button>}
+                        {col === '' && it && (
+                          <select defaultValue="" onClick={e => e.stopPropagation()}
+                            onChange={e => moveToVariation(it, e.target.value)}
+                            className="mt-1 input !text-[10px] !py-0.5 w-full" title="Bu varyasyonsuz kaydı bir varyasyona taşı">
+                            <option value="">→ varyasyona taşı…</option>
+                            {VARYASYON_SIRA.map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        )}
                       </td>
                     )
                   }

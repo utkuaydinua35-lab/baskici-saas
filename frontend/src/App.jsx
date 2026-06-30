@@ -22,6 +22,7 @@ function lazyWithReload(factory) {
 // Route bazli code-splitting — her sayfa ayri chunk, ilk yuk kucuk.
 const DashboardPage = lazyWithReload(() => import('./pages/DashboardPage'))
 const DesignsPage = lazyWithReload(() => import('./pages/DesignsPage'))
+const VaryantliUrunlerPage = lazyWithReload(() => import('./pages/VaryantliUrunlerPage'))
 const NotesPage = lazyWithReload(() => import('./pages/NotesPage'))
 const TelafilerPage = lazyWithReload(() => import('./pages/TelafilerPage'))
 const KisiyeOzelPage = lazyWithReload(() => import('./pages/KisiyeOzelPage'))
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="/paketleme" element={<PackagingPage />} />
             <Route path="/destek" element={<DestekPage />} />
             <Route path="/designs" element={<DesignsPage />} />
+            <Route path="/varyantli-urunler" element={<VaryantliUrunlerPage />} />
             <Route path="/aksesuarlar" element={<AccessoriesPage />} />
             <Route path="/couple" element={<CoupleProductsPage />} />
             <Route path="/bayiler" element={<DealersPage />} />

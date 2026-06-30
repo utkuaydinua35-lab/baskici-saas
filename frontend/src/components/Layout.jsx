@@ -510,6 +510,7 @@ const NAV = [
   ] },
   { label: 'Tasarım', icon: '🎨', items: [
     { to: '/designs', label: 'Tasarımlar', icon: '🎨', perm: 'tasarim' },
+    { to: '/varyantli-urunler', label: 'Varyantlı Ürünler', icon: '🎭', perm: 'tasarim' },
     { to: '/kisiye-ozel', label: 'Kişiye Özel', icon: '✨', perm: 'kisiye_ozel' },
     { to: '/aksesuarlar', label: 'Aksesuarlar', icon: '🧷', perm: 'aksesuar' },
     { to: '/couple', label: 'Couple Ürünler', icon: '👫', perm: 'couple' },

@@ -225,6 +225,29 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         db.add(order)
         db.flush()
 
+    # Shopify fulfillment takip no'sunu otomatik kargo_info'ya cek (musteri Shopify'da
+    # dogrudan kargolarsa webhook gelmez; sync penceresindeki siparisler icin takip burada
+    # icer alinir). App ici kargo akisiyla yazilan mevcut takip_no'yu ASLA ezme.
+    _ff = raw.get("fulfillments")
+    if _ff:
+        try:
+            from app.services import tracker as _tracker
+            _ti = _tracker.extract_tracking_info(raw)
+            _tnos = _ti.get("tracking_numbers") or []
+            _ki = dict(order.kargo_info or {})
+            if _tnos and not _ki.get("takip_no"):
+                _ki["takip_no"] = _tnos[0]
+                if _ti.get("tracking_urls"):
+                    _ki["takip_url"] = _ti["tracking_urls"][0]
+                if _ti.get("carrier"):
+                    _ki["handler_name"] = _ti["carrier"]
+                _ki.setdefault("status", "kargoya_verildi")
+                _ki["kaynak"] = "shopify_sync"
+                order.kargo_info = _ki
+                was_updated = True
+        except Exception:
+            pass
+
     _preserved_assign = locals().get("_preserved_assign", {})
     _preserved_ko = locals().get("_preserved_ko", {})
     _preserved_flow = locals().get("_preserved_flow", {})

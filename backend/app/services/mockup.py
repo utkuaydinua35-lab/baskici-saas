@@ -109,12 +109,71 @@ def _load_design_image(file_path: str, file_format: str | None) -> Image.Image |
         return None
 
 
+def _solve8(A, b):
+    """8x8 lineer sistemi Gauss eliminasyonuyla coz (numpy'siz). x ya da None."""
+    n = 8
+    M = [A[i][:] + [b[i]] for i in range(n)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(M[r][col]))
+        if abs(M[piv][col]) < 1e-12:
+            return None
+        M[col], M[piv] = M[piv], M[col]
+        pv = M[col][col]
+        for j in range(col, n + 1):
+            M[col][j] /= pv
+        for r in range(n):
+            if r != col and abs(M[r][col]) > 1e-12:
+                f = M[r][col]
+                for j in range(col, n + 1):
+                    M[r][j] -= f * M[col][j]
+    return [M[i][n] for i in range(n)]
+
+
+def _perspective_coeffs(dst, src):
+    """PIL PERSPECTIVE katsayilari (cikti->girdi eslemesi). dst: cikti quad noktalari,
+    src: kaynak (tasarim) dikdortgeni koseleri. Ikisi de 4 (x,y)."""
+    A, b = [], []
+    for (dx, dy), (sx, sy) in zip(dst, src):
+        A.append([dx, dy, 1, 0, 0, 0, -sx * dx, -sx * dy]); b.append(sx)
+        A.append([0, 0, 0, dx, dy, 1, -sy * dx, -sy * dy]); b.append(sy)
+    return _solve8(A, b)
+
+
+def _render_quad(design: Image.Image, tpl: Image.Image, quad, overlay: bool) -> Image.Image:
+    """Tasarimi 4 noktali perspektif quad'a (TL,TR,BR,BL) yerlestir.
+    overlay=True: tasarim ARKADA, sablon (seffaf pencere) USTTE."""
+    TW, TH = tpl.size
+    pts = [(float(p[0]) * TW, float(p[1]) * TH) for p in quad]
+    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+    bw = max(1, int(max(xs) - min(xs))); bh = max(1, int(max(ys) - min(ys)))
+    # Quad'in sinir kutusu cozunurlugunde cover-fit (yeterli detay icin)
+    fitted = _cover(design, bw, bh).convert("RGBA")
+    fw, fh = fitted.size
+    src = [(0, 0), (fw, 0), (fw, fh), (0, fh)]  # TL,TR,BR,BL kaynak koseleri
+    coeffs = _perspective_coeffs(pts, src)
+    if not coeffs:
+        return tpl
+    warped = fitted.transform((TW, TH), Image.PERSPECTIVE, coeffs,
+                              resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0))
+    if overlay:
+        return Image.alpha_composite(warped, tpl)  # tasarim altta, sablon ustte
+    return Image.alpha_composite(tpl, warped)       # tasarim sablonun ustunde
+
+
 def render_with_template(design: Image.Image, template_path: str, rect: dict) -> Image.Image:
     """Tasarımı gerçek ürün fotoğrafı şablonunun rect alanına oturt.
     rect: {x,y,w,h,radius,shadow,overlay,cutouts:[{x,y,w,h,radius}]} kesirsel (0..1).
+    Alternatif: rect.quad = [[x,y]*4] (TL,TR,BR,BL) -> perspektif yerlesim.
     Köşeler/boş alanlar supersample ile anti-alias; gölge şiddeti ayarlanabilir."""
     tpl = Image.open(template_path).convert("RGBA")
     TW, TH = tpl.size
+
+    # ── Perspektif quad (acili/3B foto sablonlari icin) ──
+    _quad = rect.get("quad") if isinstance(rect, dict) else None
+    if isinstance(_quad, (list, tuple)) and len(_quad) == 4 and all(
+        isinstance(p, (list, tuple)) and len(p) == 2 for p in _quad
+    ):
+        return _render_quad(design, tpl, _quad, bool(rect.get("overlay")))
     rx = int(float(rect.get("x", 0)) * TW)
     ry = int(float(rect.get("y", 0)) * TH)
     rw = int(float(rect.get("w", 1)) * TW)

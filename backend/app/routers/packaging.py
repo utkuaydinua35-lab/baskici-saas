@@ -366,16 +366,12 @@ def _design_for_line_item(db, order, li, mi, adapter=None):
 
 
 def _extract_model(li) -> str | None:
-    if getattr(li, "device_model_override", None):
-        return li.device_model_override
-    for p in (li.properties or []):
-        if isinstance(p, dict):
-            name = (p.get("name") or "")
-            if name.endswith("Model") and not name.startswith("_"):
-                v = (p.get("value") or "").strip()
-                if v:
-                    return v
-    return li.variant_title or None
+    # ÖNEMLİ: MoldItem.model kalip olusturulurken mold_planner.extract_phone_model ile
+    # dolduruluyor. Paketleme uygunlugu (by_om) eslesmesi icin AYNI cikariciyi kullan,
+    # aksi halde modeli raw.variant_title'da olan urunler eslesmiyor (basili kalipta olsa
+    # bile "paketlemeye uygun" listesine girmiyor).
+    from app.services.mold_planner import extract_phone_model
+    return extract_phone_model(li)
 
 
 def _kalip_kodu_for(db, li) -> str | None:

@@ -309,13 +309,15 @@ def label(
 
 # ─── Paketleme Kuyrugu (Paket: paketleme yeniden tasarim) ─────────────
 def _queue_filter(tenant_id):
-    """Acik (gonderilmemis, iptal olmayan) siparisler."""
+    """Acik (gonderilmemis, iptal olmayan, tamamlanmamis) siparisler."""
     return (
         (Order.tenant_id == tenant_id)
         & (Order.is_iptal == False)  # noqa: E712
         & (or_(Order.fulfillment_status.is_(None), Order.fulfillment_status != "fulfilled"))
         & (Order.cancelled_at.is_(None))
         & (or_(Order.financial_status.is_(None), Order.financial_status != "refunded"))
+        # Kargoya verilmis/teslim (stage 8 Kargoda, 9 Teslim) = tamamlanmis -> kuyrukta gosterme
+        & (or_(Order.current_stage.is_(None), Order.current_stage < 8))
     )
 
 
@@ -496,14 +498,18 @@ def _order_ready(order, by_li, by_om, acc_ids) -> bool:
         has_item = True
         if li.product_id and str(li.product_id) in acc_ids:
             continue  # aksesuar — kalıp gerekmez
+        if getattr(li, "is_hazir", False):
+            continue  # elle hazır işaretli — üretildi sayılır
+        # Kalıba eklenmemiş (hiç eklenmemiş YA DA tamamlanan kalıptan geri çıkarılmış) ->
+        # üretilmedi, sipariş paketlemeye uygun değil. (geri planla is_kaliba_eklendi=False yapar.)
+        if not getattr(li, "is_kaliba_eklendi", False):
+            return False
+        # Kalıpta: o kalıp(lar) basılı/ tamamlanmış mı?
         ms = by_li.get(str(li.id))
         if not ms and onum:
             ms = by_om.get((onum, _nm(_extract_model(li))))
-        if ms:
-            if not all(ms):       # eşleşen kalıplardan biri bile basılmadıysa hazır değil
-                return False
-        elif not getattr(li, "is_hazir", False):
-            return False          # kalıpta değil ve hazır değil -> bekliyor
+        if not ms or not all(ms):   # eşleşen kalıp yok ya da biri bile basılmadıysa hazır değil
+            return False
     return has_item
 
 

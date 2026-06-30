@@ -140,6 +140,7 @@ def build_note_lines(db: Session, tenant_id, store_id=None, dealer_id=None, gond
                     "checked": bool(k.get("hazir")),
                     "kind": "kalem",
                     "line_item_id": k["line_item_id"],
+                    "external_id": k.get("external_id"),
                     "order_id": sip["order_id"],
                     "uyari": k.get("uyari"),
                 })
@@ -167,15 +168,26 @@ def merge_lines(yeni_auto: list, mevcut: list) -> list:
         elif l.get("kind") == "siparis" and l.get("order_id"):
             fresh_siparis[l["order_id"]] = l
 
-    # checked taşımak için: key -> checked, line_item_id -> checked (yedek)
+    # checked taşımak için: key -> checked, line_item_id -> checked,
+    # external_id -> checked (EN STABİL: sync line item'ları silip yeniden olusturdugunda
+    # li.id ve key DEGISIR; Shopify line item id (external_id) sabit kalir -> checked kaybolmasin).
     checked_by_key = {l.get("key"): l.get("checked") for l in mevcut if l.get("kind") == "kalem"}
     checked_by_li: dict = {}
+    checked_by_ext: dict = {}
     for l in mevcut:
-        if l.get("kind") == "kalem" and l.get("line_item_id") and l["line_item_id"] not in checked_by_li:
+        if l.get("kind") != "kalem":
+            continue
+        if l.get("line_item_id") and l["line_item_id"] not in checked_by_li:
             checked_by_li[l["line_item_id"]] = l.get("checked")
+        if l.get("external_id") and l["external_id"] not in checked_by_ext:
+            checked_by_ext[l["external_id"]] = l.get("checked")
 
     def _restore(fl):
-        c = checked_by_key.get(fl.get("key"))
+        c = None
+        if fl.get("external_id"):
+            c = checked_by_ext.get(fl["external_id"])
+        if c is None:
+            c = checked_by_key.get(fl.get("key"))
         if c is None:
             c = checked_by_li.get(fl.get("line_item_id"))
         return {**fl, "checked": bool(c)}
@@ -456,6 +468,7 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                     toplam += qty
                     kalemler.append({
                         "line_item_id": str(li.id), "slot": slot, "sira": sira,
+                        "external_id": getattr(li, "external_id", None),
                         "model": m, "tasarim": tas,
                         "kalip_kodu": _kk_for(onum, li.id, dcode, m),
                         "kaliba_eklendi": bool(li.is_kaliba_eklendi),
@@ -484,6 +497,7 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
             toplam += qty
             kalemler.append({
                 "line_item_id": str(li.id), "slot": None, "sira": sira,
+                "external_id": getattr(li, "external_id", None),
                 "model": model, "tasarim": tasarim,
                 "kalip_kodu": None if _is_acc else _kk_for(onum, li.id, _dcode, model),
                 "kaliba_eklendi": bool(li.is_kaliba_eklendi),

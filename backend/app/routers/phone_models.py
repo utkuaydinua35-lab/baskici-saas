@@ -215,7 +215,20 @@ def update_model(
         m.notes = body.notes
     if body.mockup_rect is not None:
         r = body.mockup_rect or {}
-        if all(k in r for k in ("x", "y", "w", "h")):
+        rect = None
+        _q = r.get("quad")
+        _q_ok = (isinstance(_q, (list, tuple)) and len(_q) == 4
+                 and all(isinstance(p, (list, tuple)) and len(p) == 2 for p in _q))
+        if _q_ok:
+            # Perspektif quad (4 nokta TL,TR,BR,BL) — kesirsel, 0..1 kıstır
+            try:
+                rect = {"quad": [[min(1.0, max(0.0, round(float(p[0]), 5))),
+                                  min(1.0, max(0.0, round(float(p[1]), 5)))] for p in _q]}
+                if r.get("overlay"):
+                    rect["overlay"] = True
+            except (TypeError, ValueError):
+                rect = None
+        elif all(k in r for k in ("x", "y", "w", "h")):
             rect = {k: round(float(r[k]), 5) for k in ("x", "y", "w", "h")}
             try:
                 if "radius" in r:
@@ -247,6 +260,8 @@ def update_model(
                     rect["cutouts"] = [{**{k: round(float(cam[k]), 5) for k in ("x", "y", "w", "h")}, "radius": 0.18}]
             if r.get("overlay"):
                 rect["overlay"] = True
+        # Persist — quad ya da x/y/w/h rect'i (varyasyona ya da varsayilana)
+        if rect is not None:
             vk = _var_key(body.mockup_variation)
             if vk:
                 variants = dict(m.mockup_variants or {})

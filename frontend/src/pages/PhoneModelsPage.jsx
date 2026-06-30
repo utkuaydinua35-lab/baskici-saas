@@ -409,11 +409,21 @@ function MockupEditor({ model, onClose, onSaved }) {
     const cs = [...(prev?.cutouts || [])]; cs[sel] = { ...cs[sel], radius: v }; return { ...prev, cutouts: cs }
   })
 
-  const startNew = (e) => { e.preventDefault(); const p = frac(e); drag.current = { type: 'new', startP: p }; setActive({ x: p.x, y: p.y, w: 0, h: 0 }) }
+  const quad = Array.isArray(rect?.quad) && rect.quad.length === 4 ? rect.quad : null
+  const isQuad = !!quad
+  const QLABELS = ['SÜ', 'SAĞ Ü', 'SAĞ A', 'SA']  // TL, TR, BR, BL
+  const startCorner = (e, i) => { e.preventDefault(); e.stopPropagation(); drag.current = { type: 'corner', idx: i } }
+  const setCorner = (i, p) => setRect(prev => {
+    const q = (prev?.quad || []).map((pt, j) => j === i ? [p.x, p.y] : pt)
+    return { ...prev, quad: q }
+  })
+
+  const startNew = (e) => { if (isQuad) return; e.preventDefault(); const p = frac(e); drag.current = { type: 'new', startP: p }; setActive({ x: p.x, y: p.y, w: 0, h: 0 }) }
   const startDrag = (e, type) => { e.preventDefault(); e.stopPropagation(); if (active) drag.current = { type, startP: frac(e), startBox: { ...active } } }
   const onMove = (e) => {
     if (!drag.current) return
     const p = frac(e), { type, startP, startBox } = drag.current
+    if (type === 'corner') { setCorner(drag.current.idx, p); return }
     if (type === 'new') { setActive({ x: Math.min(startP.x, p.x), y: Math.min(startP.y, p.y), w: Math.abs(p.x - startP.x), h: Math.abs(p.y - startP.y) }); return }
     const dx = p.x - startP.x, dy = p.y - startP.y
     let { x, y, w, h } = startBox
@@ -450,7 +460,8 @@ function MockupEditor({ model, onClose, onSaved }) {
   const designBr = `${(rect?.radius ?? 0.08) * Math.min((rect?.w || 0) * boxSz.w, (rect?.h || 0) * boxSz.h)}px`
 
   const saveRect = async () => {
-    if (!rect || rect.w < 0.02 || rect.h < 0.02) { setErr('Önce fotoğraf üzerinde tasarım alanını çiz'); return }
+    const okQuad = Array.isArray(rect?.quad) && rect.quad.length === 4
+    if (!okQuad && (!rect || rect.w < 0.02 || rect.h < 0.02)) { setErr('Önce fotoğraf üzerinde tasarım alanını çiz'); return }
     setSaving(true); setErr('')
     try { await api.patch(`/api/phone-models/${model.id}`, { mockup_rect: rect, mockup_variation: varSel || null }); onSaved?.(); onClose() }
     catch (e2) { setErr(e2.detail || 'Kaydedilemedi') }
@@ -488,10 +499,12 @@ function MockupEditor({ model, onClose, onSaved }) {
           <>
             <div className="flex items-center gap-2 mb-2 text-xs">
               <span className="text-gray-500">Şablon tipi:</span>
-              <button onClick={() => setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: false }))}
-                className={`px-2 py-1 rounded ${!overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Düz foto</button>
-              <button onClick={() => { setSel('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: true })) }}
-                className={`px-2 py-1 rounded ${overlay ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Şeffaf pencere</button>
+              <button onClick={() => { setSel('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: false, quad: null })) }}
+                className={`px-2 py-1 rounded ${!overlay && !isQuad ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Düz foto</button>
+              <button onClick={() => { setSel('design'); setRect(p => ({ ...(p || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 }), overlay: true, quad: null })) }}
+                className={`px-2 py-1 rounded ${overlay && !isQuad ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Şeffaf pencere</button>
+              <button onClick={() => setRect(p => ({ ...(p || {}), overlay: true, quad: [[0.2, 0.15], [0.8, 0.15], [0.8, 0.85], [0.2, 0.85]] }))}
+                className={`px-2 py-1 rounded ${isQuad ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Perspektif (4 nokta)</button>
             </div>
             {!overlay && (
               <div className="flex items-center gap-1.5 mb-2 flex-wrap">
@@ -506,7 +519,9 @@ function MockupEditor({ model, onClose, onSaved }) {
               </div>
             )}
             <p className="text-xs text-gray-400 mb-2">
-              {overlay
+              {isQuad
+                ? <>Perspektif: <b className="text-accent">4 köşeyi</b> (SÜ, SAĞ Ü, SAĞ A, SA) açılı fotoğraftaki kılıf yüzeyine sürükle. Tasarım bu dörtgene perspektifle oturur (tasarım <b className="text-accent">arkada</b>, şablon üstte).</>
+                : overlay
                 ? <>Şeffaf pencereli PNG — tasarım <b className="text-accent">arkada</b>, şablon (kamera/gölge) üstte. <b className="text-accent">Tasarım alanını</b> pencereye hizala: çiz, sonra kenar/köşelerden tutup oturt.</>
                 : sel === 'design'
                   ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> çiz; kenar/köşelerden tutup tam oturt.</>
@@ -515,9 +530,27 @@ function MockupEditor({ model, onClose, onSaved }) {
             <div ref={boxRef} onMouseDown={startNew} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
               className="relative select-none rounded-lg overflow-hidden border border-brand-border" style={{ cursor: 'crosshair' }}>
               <img src={tplUrl} alt="" onLoad={measure} className="w-full block pointer-events-none" draggable={false} />
-              {renderBox(rect && rect.w > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null, 'accent', sel === 'design', designBr, 'design')}
-              {!overlay && cuts.map((c, i) => renderBox(c, 'amber', sel === i,
-                `${(c.radius ?? 0.2) * Math.min(c.w * boxSz.w, c.h * boxSz.h)}px`, i))}
+              {isQuad ? (
+                <>
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polygon points={quad.map(p => `${p[0] * 100},${p[1] * 100}`).join(' ')}
+                      fill="rgb(20 184 166 / 0.18)" stroke="rgb(20 184 166)" strokeWidth="0.4" />
+                  </svg>
+                  {quad.map((p, i) => (
+                    <div key={i} onMouseDown={e => startCorner(e, i)}
+                      className="absolute w-3.5 h-3.5 bg-white border-2 border-accent rounded-full"
+                      style={{ left: `${p[0] * 100}%`, top: `${p[1] * 100}%`, transform: 'translate(-50%,-50%)', cursor: 'grab', pointerEvents: 'auto' }}>
+                      <span className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[8px] font-semibold text-accent whitespace-nowrap">{QLABELS[i]}</span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {renderBox(rect && rect.w > 0 ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null, 'accent', sel === 'design', designBr, 'design')}
+                  {!overlay && cuts.map((c, i) => renderBox(c, 'amber', sel === i,
+                    `${(c.radius ?? 0.2) * Math.min(c.w * boxSz.w, c.h * boxSz.h)}px`, i))}
+                </>
+              )}
             </div>
             {active && active.w > 0 && (
               <div className="flex items-center gap-2 mt-2">

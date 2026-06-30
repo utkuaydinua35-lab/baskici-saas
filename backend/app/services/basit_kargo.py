@@ -112,9 +112,17 @@ def create_shipment(
         body["brandId"] = s.basit_kargo_brand_id
 
     try:
+        # (connect, read): barkod + etiket üretimi yavaş olabilir -> read timeout uzun.
         r = requests.post(
-            f"{BASE_URL}/v2/order/barcode", json=body, headers=_headers(), timeout=40
+            f"{BASE_URL}/v2/order/barcode", json=body, headers=_headers(), timeout=(10, 90)
         )
+    except requests.exceptions.Timeout:
+        # Basit Kargo zamanında yanıt vermedi. Gönderi onların tarafında OLUŞMUŞ olabilir;
+        # tekrar denemeden ÖNCE Basit Kargo panelinden kontrol et (çift kargo riski).
+        return {"ok": False, "timeout": True, "message": (
+            "Basit Kargo zamanında yanıt vermedi (zaman aşımı). Gönderi oluşmuş olabilir — "
+            "tekrar denemeden önce Basit Kargo panelinden bu siparişi kontrol et (çift kargo riski)."
+        )}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:180]}"}
 

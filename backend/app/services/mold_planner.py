@@ -8,6 +8,7 @@ her slot'un kendi store_id'si üzerinden ayrılır.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import select
@@ -40,6 +41,48 @@ def extract_phone_model(line_item: LineItem) -> str | None:
         if rvt:
             return rvt
     return None
+
+
+# Müşterinin seçtiği kılıf varyasyonu — KESİN anahtar eşleşmesi (yanlış pozitif düşük).
+# Spesifik olanlar önce; SİYAH en sonda (varsayılan/zayıf).
+_VAR_PATTERNS = [
+    ("BEYAZ", re.compile(r"\b(BEYAZ|WHITE)\b")),
+    ("ŞEFFAF", re.compile(r"\b(ŞEFFAF|SEFFAF|CLEAR|TRANSPARAN)\b")),
+    ("PARLAK", re.compile(r"\b(PARLAK|GLITTER|SİMLİ|SIMLI)\b")),
+    ("MAGSAFE", re.compile(r"\b(MAGSAFE|MAG ?SAFE)\b")),
+    ("SİYAH", re.compile(r"\b(SİYAH|SIYAH|BLACK)\b")),
+]
+# Bu isimlerden birini taşıyan property = kılıf tipi/varyasyon alanı (en güvenilir kaynak).
+_CASE_HINT = re.compile(r"KILIF|KILIF|RENK|VARYASYON|KAPAK|COVER|CASE|COLOR|TİP|TIP", re.I)
+
+
+def _match_variation(text: str) -> str | None:
+    t = (text or "").upper()
+    for var, pat in _VAR_PATTERNS:
+        if pat.search(t):
+            return var
+    return None
+
+
+def variation_from_props(line_item) -> str | None:
+    """Müşterinin line item property'lerinden seçtiği kılıf varyasyonu (SİYAH/BEYAZ/ŞEFFAF/
+    PARLAK/MAGSAFE) ya da None. İsmi kılıf/renk/tip içeren property en güvenilir; yoksa
+    herhangi bir property değerindeki açık eşleşme."""
+    other = None
+    for p in (line_item.properties or []):
+        if not isinstance(p, dict):
+            continue
+        name = p.get("name") or ""
+        if name.startswith("_"):
+            continue
+        v = _match_variation(p.get("value") or "")
+        if not v:
+            continue
+        if _CASE_HINT.search(name):
+            return v          # isim ipuçlu alan -> doğrudan kullan
+        if other is None:
+            other = v          # ipuçsuz ama değer eşleşti -> yedek
+    return other
 
 
 def extract_couple_models(line_item: LineItem) -> tuple[str | None, str | None]:
@@ -324,7 +367,11 @@ def plan_molds(
                 add_eksik("model_belirsiz", li, order, model)
                 continue
 
-            variation = pr.normalize_variation(design.kalip_tipi)
+            # Kılıf varyasyonu: müşteri property ile seçtiyse ONU kullan; yoksa tasarımın
+            # kalip_tipi'ne düş. (Aynı tasarım farklı varyasyonla satılan ürünler doğru
+            # kalıp satırına/koduna gitsin.)
+            _cust_var = variation_from_props(li)
+            variation = _cust_var or pr.normalize_variation(design.kalip_tipi)
             variation = pr.effective_variation(pr.get_model_group(model), variation)
             kod = pr.resolve_kalip_kodu(model, variation, k)
             if not kod:

@@ -94,7 +94,7 @@ class ShopifyAdapter(StorePlatform):
         }
         all_orders: list[dict] = []
         next_url: str | None = url
-        max_pages = 10
+        max_pages = 15  # 15 × 250 = 3750 siparis: eski siparislerin fulfillment/takip durumu da tazelensin
         page = 0
         while next_url and page < max_pages:
             page += 1

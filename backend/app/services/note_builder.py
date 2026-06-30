@@ -177,12 +177,24 @@ def merge_lines(yeni_auto: list, mevcut: list) -> list:
             c = checked_by_li.get(fl.get("line_item_id"))
         return {**fl, "checked": bool(c)}
 
+    # Taze listede bulunan (hâlâ acik/uygun) siparis id'leri. Bunda OLMAYAN otomatik
+    # siparis bloklari = artik kapanmis (gonderilmis/iptal) -> nottan dusurulur.
+    fresh_order_ids = set(fresh_siparis.keys())
+
     # Mevcut'u dolaş: sipariş bloklarındaki eski kalemleri taze kalemlerle değiştir
     out = []
     mevcut_order_ids = set()
     i, n = 0, len(mevcut)
     while i < n:
         l = mevcut[i]
+        # Kapanmis otomatik siparis blogunu at (siparis satiri + ardisik kalemleri).
+        # Elle eklenen satirlar (kind=='elle', order_id yok) bu kosula girmez, korunur.
+        if l.get("kind") == "siparis" and l.get("order_id") and l["order_id"] not in fresh_order_ids:
+            j = i + 1
+            while j < n and mevcut[j].get("kind") == "kalem":
+                j += 1
+            i = j
+            continue
         if l.get("order_id"):
             mevcut_order_ids.add(l["order_id"])
         if l.get("kind") == "siparis" and l.get("order_id") in fresh_kalem:
@@ -230,7 +242,27 @@ def merge_lines(yeni_auto: list, mevcut: list) -> list:
             i = j
             continue
         i += 1
-    return mevcut + yeni_eklenecek
+
+    birlesik = mevcut + yeni_eklenecek
+
+    # Blok budamasi sonrasi altinda hic icerik kalmayan tarih basliklarini temizle.
+    temiz = []
+    k, m = 0, len(birlesik)
+    while k < m:
+        if birlesik[k].get("kind") == "tarih":
+            j = k + 1
+            dolu = False
+            while j < m and birlesik[j].get("kind") != "tarih":
+                if birlesik[j].get("kind") in ("siparis", "kalem", "elle", "ayrac"):
+                    dolu = True
+                    break
+                j += 1
+            if not dolu:
+                k += 1
+                continue
+        temiz.append(birlesik[k])
+        k += 1
+    return temiz
 
 
 def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, gonderilmis: bool = False) -> dict:

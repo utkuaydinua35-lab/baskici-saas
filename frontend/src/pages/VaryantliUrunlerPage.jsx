@@ -83,7 +83,11 @@ export default function VaryantliUrunlerPage() {
   const variantDesigns = useMemo(
     () => designs.filter(d => d.product_id === selProduct && (d.variant_title || '').trim()),
     [designs, selProduct])
-  const prodInfo = products.find(p => p.product_id === selProduct)
+  // ÖNEMLİ: seçili ürün Shopify katalog aramasından (shopMatches) gelmiş olabilir; yalnızca
+  // yerel `products`'ta aramak undefined döndürüp form submit'ini bozuyordu.
+  const prodInfo = useMemo(
+    () => [...products, ...shopMatches].find(p => p.product_id === selProduct) || (selProduct ? { product_id: selProduct, title: '', image: '' } : null),
+    [products, shopMatches, selProduct])
 
   return (
     <div className="mx-auto w-full max-w-[1100px] page-enter">
@@ -182,6 +186,7 @@ function AddVariantForm({ storeId, product, onAdded }) {
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
+    if (!product?.product_id) { toast.error('Önce bir ürün seç'); return }
     if (!variantAdi.trim()) { toast.error('Müşteri varyant adını yaz (örn. Şeffaf)'); return }
     if (!file) { toast.error('Tasarım dosyası seç'); return }
     const code = (kod.trim() || `${(product?.product_id || '').slice(-5)}-${variantAdi.trim()}`).slice(0, 50)
@@ -224,8 +229,13 @@ function AddVariantForm({ storeId, product, onAdded }) {
         </div>
         <div>
           <label className="block text-[10px] uppercase text-gray-500 mb-1">Tasarım dosyası</label>
-          <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf"
-            onChange={e => setFile(e.target.files?.[0] || null)} className="text-xs text-gray-400 w-full" />
+          <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-dashed border-brand-border hover:border-accent bg-brand-input/40 px-3 py-2 text-sm text-gray-300 transition-colors">
+            <span className="text-base shrink-0">📁</span>
+            <span className="truncate flex-1">{file ? file.name : 'Dosya seç (png / jpg / webp / pdf)'}</span>
+            {file && <span className="text-[10px] text-accent shrink-0">değiştir</span>}
+            <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf"
+              onChange={e => setFile(e.target.files?.[0] || null)} className="hidden" />
+          </label>
         </div>
       </div>
       <p className="text-[11px] text-gray-500 mt-2">Müşteri Shopify'da bu adı (ya da içeren bir değer) seçtiğinde bu tasarım + kılıf varyasyonu kalıba eklenir.</p>

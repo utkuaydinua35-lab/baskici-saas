@@ -284,7 +284,13 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
     if gonderilmis:
         q = q.where(Order.fulfillment_status == "fulfilled")
     else:
-        q = q.where((Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)))
+        # GERCEK acik: fulfilled degil + Shopify'da iptal (cancelled_at) degil + iade (refunded) degil.
+        # is_iptal Shopify iptalinden senkronlanmadigi icin cancelled_at/financial_status ile de eler.
+        q = q.where(
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            Order.cancelled_at.is_(None),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+        )
 
     orders = db.scalars(q).all()
 

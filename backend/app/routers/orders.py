@@ -330,10 +330,13 @@ def _build_tab_filter(q, tab: str):
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         )
     elif tab == "gonderilmeyen":
-        # Henüz kargolanmamış (fulfilled değil) ve iptal edilmemiş tüm siparişler
+        # Henüz kargolanmamış GERÇEK açık siparişler: fulfilled değil + iptal değil
+        # (cancelled_at / is_iptal) + iade (refunded) değil.
         q = q.where(
             Order.cancelled_at.is_(None),
+            Order.is_iptal == False,  # noqa: E712
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         )
     elif tab == "tamamlandi":
         q = q.where(

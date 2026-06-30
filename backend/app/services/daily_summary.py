@@ -22,6 +22,31 @@ logger = logging.getLogger("daily_summary")
 
 _TR = ZoneInfo("Europe/Istanbul")
 
+
+def _marker_path():
+    from app.services.storage import STORAGE_ROOT
+    return STORAGE_ROOT.parent / ".daily_summary_last"
+
+
+def _today_str() -> str:
+    return datetime.now(_TR).date().isoformat()
+
+
+def _already_sent_today() -> bool:
+    try:
+        return _marker_path().read_text(encoding="utf-8").strip() == _today_str()
+    except Exception:
+        return False
+
+
+def _mark_sent_today() -> None:
+    try:
+        p = _marker_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_today_str(), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
 # Sabah özetini alacak markalar — slug VEYA isim içinde bu anahtarları arar
 # (tam slug eşleşmesi yerine esnek; "bernz-company" gibi varyasyonları da yakalar).
 _SUMMARY_KEYS = ("bernz", "lunera")
@@ -208,4 +233,19 @@ def send_daily_summary(db) -> int:
         except Exception as e:
             logger.warning(f"[daily_summary] uretim ozeti hata: {e}")
 
+    if sent > 0:
+        _mark_sent_today()  # catch-up'in ayni gun tekrar gondermesini onle
     return sent
+
+
+def send_daily_summary_catchup(db) -> int:
+    """Backend 08:00'dan SONRA restart edilirse o gunku 08:00 cron'u atlanir
+    (in-memory scheduler). Acilista cagrilir: saat 08:00'i gectiyse ve bugun
+    henuz BASARIYLA gonderilmediyse ozeti bir kez gonderir."""
+    now = datetime.now(_TR)
+    if now.hour < 8:
+        return 0  # 08:00 cron'u zaten gonderecek
+    if _already_sent_today():
+        return 0
+    logger.info("[daily_summary] catch-up: bugunku ozet atlanmis -> simdi gonderiliyor")
+    return send_daily_summary(db)

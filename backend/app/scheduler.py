@@ -43,6 +43,19 @@ def _daily_summary_job():
         db.close()
 
 
+def _daily_summary_catchup_job():
+    logger.info("[scheduler] sabah ozeti catch-up kontrolu")
+    db = SessionLocal()
+    try:
+        sent = daily_summary.send_daily_summary_catchup(db)
+        if sent:
+            logger.info(f"[scheduler] catch-up: {sent} mesaj gonderildi")
+    except Exception as e:
+        logger.exception(f"[scheduler] catch-up hata: {e}")
+    finally:
+        db.close()
+
+
 def _backup_job():
     logger.info("[scheduler] gunluk yedek aliniyor")
     try:
@@ -86,7 +99,13 @@ def start_scheduler():
                        id="stage_automation", max_instances=1, coalesce=True)
     # Sabah ozeti — her gun 08:00 (Europe/Istanbul)
     _scheduler.add_job(_daily_summary_job, "cron", hour=8, minute=0,
-                       id="daily_summary", max_instances=1, coalesce=True)
+                       id="daily_summary", max_instances=1, coalesce=True,
+                       misfire_grace_time=3600)
+    # Acilis catch-up: 08:00'dan sonra restart olduysa bugunku ozet atlanmistir;
+    # ~45 sn sonra kontrol et, gerekiyorsa bir kez gonder.
+    _scheduler.add_job(_daily_summary_catchup_job, "date",
+                       run_date=datetime.now() + timedelta(seconds=45),
+                       id="daily_summary_catchup", max_instances=1)
     # Gunluk veritabani yedegi — her gece 03:30 (Europe/Istanbul)
     _scheduler.add_job(_backup_job, "cron", hour=3, minute=30,
                        id="daily_backup", max_instances=1, coalesce=True)

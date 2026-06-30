@@ -157,11 +157,25 @@ def update_lines(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Kullanicinin duzenledigi satir listesini kaydet (serbest yazi + checkbox)."""
+    """Kullanicinin duzenledigi satir listesini kaydet (serbest yazi + checkbox).
+    Bir kalem satirinin SONUNA '✅' eklenirse o urun hazir isaretlenir (is_hazir=True)
+    -> kalip planina dahil edilmez (mold_planner is_hazir olanlari atlar)."""
+    from app.models import LineItem
     n = db.scalar(select(Note).where(Note.id == note_id, Note.tenant_id == user.tenant_id))
     if not n:
         raise HTTPException(status_code=404, detail="Not bulunamadi")
-    n.lines = body.lines or []
+    lines = body.lines or []
+    for l in lines:
+        if not isinstance(l, dict):
+            continue
+        li_id = l.get("line_item_id")
+        if li_id and (l.get("text") or "").rstrip().endswith("✅"):
+            l["checked"] = True
+            li = db.scalar(select(LineItem).where(
+                LineItem.id == li_id, LineItem.tenant_id == user.tenant_id))
+            if li and not li.is_hazir:
+                li.is_hazir = True
+    n.lines = lines
     db.commit()
     return _ser(n, detay=True)
 

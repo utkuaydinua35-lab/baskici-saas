@@ -14,6 +14,8 @@ export default function VaryantliUrunlerPage() {
   const [loading, setLoading] = useState(false)
   const [selProduct, setSelProduct] = useState('')  // product_id
   const [search, setSearch] = useState('')
+  const [shopMatches, setShopMatches] = useState([])  // Shopify katalog arama sonuclari
+  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
     api.get('/api/stores?include_bayii=true').then(s => {
@@ -52,11 +54,31 @@ export default function VaryantliUrunlerPage() {
     return [...map.values()].sort((a, b) => (b.variants - a.variants) || (a.title || '').localeCompare(b.title || '', 'tr'))
   }, [designs, unmatched])
 
+  // Arama: yereldeki ürünler (tasarım/sipariş) + Shopify kataloğu (debounced) -> birleşik.
+  // Boş aramada yalnızca yereldekiler (varyant sayısıyla) listelenir.
+  useEffect(() => {
+    const q = search.trim()
+    if (!q || !storeId) { setShopMatches([]); setSearching(false); return }
+    setSearching(true)
+    let cancelled = false
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.get(`/api/designs/_meta/products?store_id=${storeId}&search=${encodeURIComponent(q)}`)
+        if (!cancelled) setShopMatches((r?.items || []).map(p => ({ product_id: String(p.id), title: p.title || '', image: p.image_url || '', variants: 0 })))
+      } catch { if (!cancelled) setShopMatches([]) }
+      finally { if (!cancelled) setSearching(false) }
+    }, 350)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [search, storeId])
+
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return products
-    return products.filter(p => (p.title || '').toLowerCase().includes(q) || (p.product_id || '').toLowerCase().includes(q))
-  }, [products, search])
+    const local = products.filter(p => (p.title || '').toLowerCase().includes(q) || (p.product_id || '').toLowerCase().includes(q))
+    const seen = new Set(local.map(p => p.product_id))
+    const extra = shopMatches.filter(p => !seen.has(p.product_id))
+    return [...local, ...extra]
+  }, [products, shopMatches, search])
 
   const variantDesigns = useMemo(
     () => designs.filter(d => d.product_id === selProduct && (d.variant_title || '').trim()),
@@ -91,7 +113,7 @@ export default function VaryantliUrunlerPage() {
           </div>
           <div className="max-h-[70vh] overflow-y-auto">
             {loading ? <div className="p-4 text-sm text-gray-500">Yükleniyor…</div>
-              : filteredProducts.length === 0 ? <div className="p-4 text-sm text-gray-600">{search.trim() ? 'Eşleşen ürün yok.' : 'Ürün yok.'}</div>
+              : filteredProducts.length === 0 ? <div className="p-4 text-sm text-gray-600">{searching ? 'Aranıyor…' : search.trim() ? 'Eşleşen ürün yok.' : 'Ürün yok.'}</div>
               : filteredProducts.map(p => (
                 <button key={p.product_id} onClick={() => setSelProduct(p.product_id)}
                   className={`w-full text-left px-3 py-2.5 border-b border-brand-border/40 flex items-center gap-2.5 hover:bg-brand-input/40 ${selProduct === p.product_id ? 'bg-accent/10' : ''}`}>

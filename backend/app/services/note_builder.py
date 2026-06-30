@@ -245,23 +245,44 @@ def merge_lines(yeni_auto: list, mevcut: list) -> list:
 
     birlesik = mevcut + yeni_eklenecek
 
-    # Blok budamasi sonrasi altinda hic icerik kalmayan tarih basliklarini temizle.
+    # 1) Yapisal yetimleri at: siparise bagli olmayan kalem; siparis/kalem ardindan
+    #    gelmeyen ayrac (budanan bloklardan kalan bos ayraclar dahil).
+    ara = []
+    blokta_siparis = False  # son tarihten beri siparis goruldu mu
+    for l in birlesik:
+        k = l.get("kind")
+        if k == "tarih":
+            blokta_siparis = False
+            ara.append(l)
+        elif k == "siparis":
+            blokta_siparis = True
+            ara.append(l)
+        elif k == "kalem":
+            if blokta_siparis:
+                ara.append(l)  # yetim kalem (siparissiz) atilir
+        elif k == "ayrac":
+            if ara and ara[-1].get("kind") in ("siparis", "kalem"):
+                ara.append(l)  # yetim ayrac atilir
+        else:  # elle vb. kullanici satirlari korunur
+            ara.append(l)
+
+    # 2) Altinda gercek icerik (siparis/elle) kalmayan tarih basliklarini at.
     temiz = []
-    k, m = 0, len(birlesik)
-    while k < m:
-        if birlesik[k].get("kind") == "tarih":
-            j = k + 1
+    k2, m = 0, len(ara)
+    while k2 < m:
+        if ara[k2].get("kind") == "tarih":
+            j = k2 + 1
             dolu = False
-            while j < m and birlesik[j].get("kind") != "tarih":
-                if birlesik[j].get("kind") in ("siparis", "kalem", "elle", "ayrac"):
+            while j < m and ara[j].get("kind") != "tarih":
+                if ara[j].get("kind") in ("siparis", "elle"):
                     dolu = True
                     break
                 j += 1
             if not dolu:
-                k += 1
+                k2 += 1
                 continue
-        temiz.append(birlesik[k])
-        k += 1
+        temiz.append(ara[k2])
+        k2 += 1
     return temiz
 
 

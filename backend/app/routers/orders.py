@@ -225,6 +225,12 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         db.add(order)
         db.flush()
 
+    # Shopify'da iptal edilen siparisi otomatik 'iptal' isaretle -> hazirlik/plan/notlardan
+    # cikar. (is_iptal aksi halde yalnizca elle set ediliyordu.) Elle is_iptal'i geri ALMA.
+    if order_data["cancelled_at"] is not None and not order.is_iptal:
+        order.is_iptal = True
+        was_updated = True
+
     # Shopify fulfillment takip no'sunu otomatik kargo_info'ya cek (musteri Shopify'da
     # dogrudan kargolarsa webhook gelmez; sync penceresindeki siparisler icin takip burada
     # icer alinir). App ici kargo akisiyla yazilan mevcut takip_no'yu ASLA ezme.

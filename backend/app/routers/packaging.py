@@ -459,14 +459,17 @@ def _printed_maps(db, tenant_id):
     """Tüm MoldItem'ları kalıbın print_status'üyle: line_item_id ve (order_no, model)
     bazında 'basıldı mı' listesi."""
     rows = db.execute(
-        select(MoldItem.line_item_id, MoldItem.order_number, MoldItem.model, Mold.print_status)
+        select(MoldItem.line_item_id, MoldItem.order_number, MoldItem.model,
+               Mold.print_status, Mold.current_stage)
         .join(Mold, Mold.id == MoldItem.mold_id)
         .where(Mold.tenant_id == tenant_id)
     ).all()
     by_li: dict = {}
     by_om: dict = {}
-    for li_id, onum, model, pstat in rows:
-        printed = (pstat == "basildi")
+    for li_id, onum, model, pstat, stage in rows:
+        # Basili sayilir: print_status='basildi' (Baskici paneli) VEYA kalip stage 5
+        # 'Tamamlandi' (asama akisindan tamamlanan kaliplar print_status'u basildi olmayabilir).
+        printed = (pstat == "basildi") or (stage == 5)
         if li_id:
             by_li.setdefault(str(li_id), []).append(printed)
         if onum and model:

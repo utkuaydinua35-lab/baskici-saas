@@ -99,6 +99,9 @@ def _tasarim_str(li: LineItem, design: Design | None) -> tuple[str, str | None]:
 
 def _kalem_satir_text(k: dict) -> str:
     """Kalem dict -> tek satir metin: '1 - Galaxy S23 \"reverentia - b325\"-L9'."""
+    if k.get("aksesuar"):
+        # Aksesuar: tasarim/kalip yok — yalnizca urun adi
+        return f'{k["sira"]} - {k.get("model") or "Aksesuar"}'
     if k.get("kalip_kodu"):
         kk = f'-{k["kalip_kodu"]}'
     else:
@@ -315,6 +318,16 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
 
     orders = db.scalars(q).all()
 
+    # Aksesuar product_id'leri (ekran koruyucu / kirilmaz cam vb.) — notta model yerine
+    # urun adi gosterilir, '?' yazilmaz.
+    from app.models import AccessoryProduct as _Acc
+    acc_ids = {
+        str(pid) for (pid,) in db.execute(
+            select(_Acc.product_id).join(Store, Store.id == _Acc.store_id)
+            .where(Store.tenant_id == tenant_id, _Acc.product_id.isnot(None))
+        ).all()
+    }
+
     # bayii filtresi (raw.dealer_id)
     if dealer_id:
         orders = [o for o in orders if (o.raw or {}).get("dealer_id") == str(dealer_id)]
@@ -450,19 +463,25 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                     })
                 continue
 
-            # Tekli kalem — tasarımı (kişiye özel ya da katalog) çözüp kodundan eşleştir
-            model = _model_from_props(li) or "?"
-            li_design = _li_design(li, o.store_id)
-            tasarim, uyari = _tasarim_str(li, li_design)
-            _dcode = str(li_design.code) if li_design and li_design.code else None
+            # Aksesuar (ekran koruyucu / kirilmaz cam vb.): tasarim/kalip yok, urun adini goster
+            _is_acc = bool(li.product_id) and str(li.product_id) in acc_ids
+            if _is_acc:
+                model = (li.title or li.product_title or "Aksesuar").strip()
+                tasarim, uyari, _dcode = None, None, None
+            else:
+                # Tekli kalem — tasarımı (kişiye özel ya da katalog) çözüp kodundan eşleştir
+                model = _model_from_props(li) or (li.title or "?")
+                li_design = _li_design(li, o.store_id)
+                tasarim, uyari = _tasarim_str(li, li_design)
+                _dcode = str(li_design.code) if li_design and li_design.code else None
             sira += 1
             toplam += qty
             kalemler.append({
                 "line_item_id": str(li.id), "slot": None, "sira": sira,
                 "model": model, "tasarim": tasarim,
-                "kalip_kodu": _kk_for(onum, li.id, _dcode, model),
+                "kalip_kodu": None if _is_acc else _kk_for(onum, li.id, _dcode, model),
                 "kaliba_eklendi": bool(li.is_kaliba_eklendi),
-                "hazir": gonderildi, "uyari": uyari,
+                "hazir": gonderildi, "uyari": uyari, "aksesuar": _is_acc,
             })
 
         if sira_key not in gunler_map:

@@ -463,10 +463,16 @@ def build_note_content(db: Session, tenant_id, store_id=None, dealer_id=None, go
                     })
                 continue
 
-            # Aksesuar (ekran koruyucu / kirilmaz cam vb.): tasarim/kalip yok, urun adini goster
+            # Aksesuar (ekran koruyucu / kirilmaz cam vb.): tasarim/kalip yok,
+            # urun adi + (varsa) telefon modeli gosterilir.
             _is_acc = bool(li.product_id) and str(li.product_id) in acc_ids
             if _is_acc:
-                model = (li.title or li.product_title or "Aksesuar").strip()
+                from app.services.mold_planner import extract_phone_model as _epm
+                _ad = (li.title or li.product_title or "Aksesuar").strip()
+                # iki cikariciyi da dene: epm raw.variant_title'i, _model_from_props
+                # "Telefon Modeli" gibi anahtarlari yakalar (tamamlayici kapsam)
+                _mdl = (_epm(li) or _model_from_props(li) or "").strip()
+                model = f"{_ad} — {_mdl}" if _mdl else _ad
                 tasarim, uyari, _dcode = None, None, None
             else:
                 # Tekli kalem — tasarımı (kişiye özel ya da katalog) çözüp kodundan eşleştir

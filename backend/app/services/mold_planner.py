@@ -220,17 +220,20 @@ def plan_molds(
     # is_kaliba_eklendi bayrağı sync sırasında Shopify line item id (external_id) ile
     # korunur; ancak Shopify'da sipariş DÜZENLENİRSE line item'lar YENİ id alır ve bayrak
     # kaybolur -> kalem TEKRAR planlanır (aynı ürün 2 kez kalıba girer). Bunu önlemek için
-    # fiziksel MoldItem kayıtları source-of-truth: bu sipariş+model zaten kalıptaysa atla.
+    # fiziksel MoldItem kayıtları source-of-truth: bu (sipariş, tasarım, model) zaten
+    # kalıptaysa atla. ANAHTAR design_code DAHİL: aksi halde aynı modelden hâlâ kalıpta olan
+    # kardeş ürün, geri planladığın FARKLI tasarımlı ürünü yanlışlıkla "kapsayıp" tekrar
+    # planlanmasını engelliyordu.
     from app.models import Mold as _Mold, MoldItem as _MoldItem
     from app.services.phone_models import normalize_key as _normkey
     _molded_left: dict = {}
-    for _on, _md in db.execute(
-        select(_MoldItem.order_number, _MoldItem.model)
+    for _on, _dc, _md in db.execute(
+        select(_MoldItem.order_number, _MoldItem.design_code, _MoldItem.model)
         .join(_Mold, _Mold.id == _MoldItem.mold_id)
         .where(_Mold.tenant_id == tenant_id, _MoldItem.order_number.isnot(None))
     ).all():
         if _md:
-            _k = (str(_on), _normkey(_md))
+            _k = (str(_on), str(_dc or ""), _normkey(_md))
             _molded_left[_k] = _molded_left.get(_k, 0) + 1
 
     units: list[dict] = []
@@ -265,16 +268,6 @@ def plan_molds(
             model = extract_phone_model(li)
             if pid and (order_store_id, pid) in acc_keys:
                 continue  # aksesuar — kalipa da eksik listesine de girmez
-
-            # Çift planlama koruması: bu sipariş+model zaten kalıp(lar)da tam adetiyle varsa
-            # (bayrak kaybolsa bile) tekrar planlama. Kısmen kalıptaysa planlanır (eksik birim
-            # kaybolmasın); tam kapsanıyorsa atla (kopya basım olmasın).
-            _onum = str(order.order_number) if order.order_number is not None else None
-            _need = li.quantity or 1
-            _mk = (_onum, _normkey(model)) if (_onum and model) else None
-            if _mk and _molded_left.get(_mk, 0) >= _need:
-                _molded_left[_mk] -= _need
-                continue
 
             # Couple (cift kilif): 2 ayri tasarim, ayni model, 2 birim
             couple = couple_map.get((order_store_id, pid)) if pid else None
@@ -379,6 +372,17 @@ def plan_molds(
                 continue
 
             qty = li.quantity or 1
+
+            # Çift planlama koruması: bu (sipariş, tasarım, model) zaten kalıp(lar)da tam
+            # adetiyle varsa (is_kaliba_eklendi bayrağı Shopify düzenlemesiyle kaybolsa bile)
+            # tekrar planlama. design_code dahil olduğu için, geri planladığın farklı tasarımlı
+            # kalemler aynı modeldeki kardeşler tarafından yanlışlıkla "kapsanmaz".
+            _onum = str(order.order_number) if order.order_number is not None else None
+            _mk = (_onum, str(design.code or ""), _normkey(model)) if _onum else None
+            if _mk and _molded_left.get(_mk, 0) >= qty:
+                _molded_left[_mk] -= qty
+                continue
+
             for _ in range(qty):
                 units.append({
                     "line_item_id": str(li.id),

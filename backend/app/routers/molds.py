@@ -499,13 +499,10 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
     db.delete(it)
     db.flush()
-    # Kalan item'lari yeniden yerlestir (slot bosluklarini doldur, grup/priority duzenini koru)
-    _kalanlar = [x for x in mo.items if x.id != it.id]
-    if _kalanlar:
-        _dicts = [{"kod": x.kalip_kodu, "model": x.model, "_ref": x} for x in _kalanlar]
-        _yeni = mold_planner.pr.assign_slots(_dicts)
-        for _d in _yeni:
-            _d["_ref"].slot_index = _d["slot_index"]
+    # NOT: Kalan item'lar YENIDEN DIZILMEZ. Eskiden assign_slots ile tum kalanlar yeniden
+    # yerlestiriliyordu; bu, cikarilan slotla ALAKASIZ gruplarin (farkli telefon modelleri)
+    # yerini degistirip operatorun yanlis tasarimi yanlis modele basmasina yol aciyordu.
+    # Artik cikarilan slot bos kalir, digerleri yerinde durur (kararli yerlesim).
     # kalıp boşaldıysa kilif_sayisi güncelle
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
     db.commit()

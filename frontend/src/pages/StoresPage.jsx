@@ -258,14 +258,24 @@ function SlaEditor({ store, onSaved }) {
 
 
 // Basit Kargo firma seçenekleri (handlerCode -> etiket). Backend HANDLER_NAMES ile eş.
-const KARGO_OPTIONS = [
-  ['ECONOMIC', 'Ekonomik (en ucuz)'],
-  ['FAST', 'Hızlı (en hızlı)'],
-  ['ARAS', 'Aras Kargo'],
-  ['YURTICI', 'Yurtiçi Kargo'],
-  ['MNG', 'MNG Kargo'],
-  ['PTT', 'PTT Kargo'],
-  ['SURAT', 'Sürat Kargo'],
+// SELF_* = kendi kargo anlaşman (firma doğrudan faturalandırır, Basit Kargo bakiyesi düşmez).
+const KARGO_GROUPS = [
+  ['Basit Kargo anlaşmalı (bakiyeden düşer)', [
+    ['ECONOMIC', 'Ekonomik (en ucuz)'],
+    ['FAST', 'Hızlı (en hızlı)'],
+    ['ARAS', 'Aras Kargo'],
+    ['YURTICI', 'Yurtiçi Kargo'],
+    ['MNG', 'MNG Kargo'],
+    ['PTT', 'PTT Kargo'],
+    ['SURAT', 'Sürat Kargo'],
+  ]],
+  ['Kendi anlaşmam (firma faturalandırır)', [
+    ['SELF_ARAS', 'Aras — Kendi Anlaşmam'],
+    ['SELF_YURTICI', 'Yurtiçi — Kendi Anlaşmam'],
+    ['SELF_MNG', 'MNG — Kendi Anlaşmam'],
+    ['SELF_PTT', 'PTT — Kendi Anlaşmam'],
+    ['SELF_SURAT', 'Sürat — Kendi Anlaşmam'],
+  ]],
 ]
 
 function KargoEditor({ store, onSaved }) {
@@ -291,8 +301,12 @@ function KargoEditor({ store, onSaved }) {
     <div className="mt-2 flex items-center gap-2">
       <span className="text-xs text-gray-500">📦 Kargo firması:</span>
       <select value={val} onChange={e => save(e.target.value)} disabled={busy}
-        className="input !text-xs !py-1 w-44">
-        {KARGO_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        className="input !text-xs !py-1 w-56">
+        {KARGO_GROUPS.map(([grp, opts]) => (
+          <optgroup key={grp} label={grp}>
+            {opts.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </optgroup>
+        ))}
       </select>
       <span className="text-[10px] text-gray-600">(gönderide kullanılır)</span>
     </div>

@@ -85,6 +85,37 @@ def variation_from_props(line_item) -> str | None:
     return other
 
 
+def _li_property_values(line_item) -> list[str]:
+    """Line item property DEĞERLERİ (casefold), internal (_) hariç."""
+    out = []
+    for p in (line_item.properties or []):
+        if not isinstance(p, dict):
+            continue
+        if (p.get("name") or "").startswith("_"):
+            continue
+        v = (p.get("value") or "").strip()
+        if v:
+            out.append(v.casefold())
+    return out
+
+
+def match_variant_design(line_item, variant_list):
+    """variant_list: [(match_norm, Design)] (match_norm casefold). Müşterinin property'den
+    seçtiği değere göre eşleşen varyant tasarımı; yoksa None. Önce tam, sonra içerme eşleşmesi."""
+    if not variant_list:
+        return None
+    vals = _li_property_values(line_item)
+    if not vals:
+        return None
+    for mv, d in variant_list:
+        if any(v == mv for v in vals):
+            return d
+    for mv, d in variant_list:
+        if mv and any(mv in v or v in mv for v in vals):
+            return d
+    return None
+
+
 def extract_couple_models(line_item: LineItem) -> tuple[str | None, str | None]:
     """Couple urun: properties'ten 2 telefon modeli cikar.
     1. model (erkek) = ' Model' ile biten ilk kayit (orn 'Apple Model').
@@ -164,6 +195,9 @@ def plan_molds(
     designs = db.scalars(design_q).all()
     # Iki seviyeli: (store, product, variant) varyant-ozel + (store, product, None) default
     design_by_key: dict[tuple, Design] = {}
+    # Varyantlı ürünler: müşterinin property'den seçtiği değere (variant_title = match değeri)
+    # göre tasarım. (store, product_id) -> [(match_norm, Design)]
+    variant_designs: dict[tuple, list] = {}
     for d in designs:
         pid = str(d.product_id)
         vid = str(d.variant_id) if getattr(d, "variant_id", None) else None
@@ -171,6 +205,9 @@ def plan_molds(
         # variant'siz default: ilk gelen ya da variant_id None olan (None oncelikli)
         if vid is None or (d.store_id, pid, None) not in design_by_key:
             design_by_key[(d.store_id, pid, None)] = d
+        _mv = (getattr(d, "variant_title", None) or "").strip()
+        if _mv:
+            variant_designs.setdefault((d.store_id, pid), []).append((_mv.casefold(), d))
 
     # Couple (cift kilif) urunleri: (store_id, product_id) -> CoupleProduct
     couple_q = (
@@ -347,11 +384,19 @@ def plan_molds(
                 add_eksik("kisiye_ozel_tasarim_eksik", li, order, model)
                 continue
             else:
+                design = None
+                # Varyantlı ürün: müşterinin property seçimine (variant_title=match) göre tasarım
+                _matched_variant = False
                 if pid:
-                    _vid = str(li.variant_id) if getattr(li, "variant_id", None) else None
-                    design = design_by_key.get((order_store_id, pid, _vid)) or design_by_key.get((order_store_id, pid, None))
-                else:
-                    design = None
+                    _vl = variant_designs.get((order_store_id, pid))
+                    if _vl:
+                        _vd = match_variant_design(li, _vl)
+                        if _vd is not None:
+                            design = _vd
+                            _matched_variant = True
+                    if design is None:
+                        _vid = str(li.variant_id) if getattr(li, "variant_id", None) else None
+                        design = design_by_key.get((order_store_id, pid, _vid)) or design_by_key.get((order_store_id, pid, None))
                 if design is None:
                     add_eksik("urun_tasarima_baglanmamis", li, order, model)
                     continue
@@ -360,11 +405,14 @@ def plan_molds(
                 add_eksik("model_belirsiz", li, order, model)
                 continue
 
-            # Kılıf varyasyonu: müşteri property ile seçtiyse ONU kullan; yoksa tasarımın
-            # kalip_tipi'ne düş. (Aynı tasarım farklı varyasyonla satılan ürünler doğru
-            # kalıp satırına/koduna gitsin.)
-            _cust_var = variation_from_props(li)
-            variation = _cust_var or pr.normalize_variation(design.kalip_tipi)
+            # Kılıf varyasyonu önceliği:
+            # 1) Eşleşen varyant tasarımı varsa ONUN kalip_tipi'si (kullanıcı varyanta özel seçti)
+            # 2) Müşteri property'den varyasyon seçtiyse o
+            # 3) Tasarımın kalip_tipi'si (varsayılan)
+            if locals().get("_matched_variant"):
+                variation = pr.normalize_variation(design.kalip_tipi)
+            else:
+                variation = variation_from_props(li) or pr.normalize_variation(design.kalip_tipi)
             variation = pr.effective_variation(pr.get_model_group(model), variation)
             kod = pr.resolve_kalip_kodu(model, variation, k)
             if not kod:

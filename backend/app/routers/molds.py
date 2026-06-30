@@ -270,8 +270,20 @@ def _replan_mold_item(db: Session, tenant_id, mi) -> None:
             LineItem.is_kaliba_eklendi == True,  # noqa: E712
         )
     ).all()
-    for c in cands:
-        c.is_kaliba_eklendi = False
+    if not cands:
+        return
+    # KRITIK: Ayni siparis + ayni tasarim (orn. 3 urun de SEFFAF) birden cok line item
+    # dondurebilir. Bir slot = bir line item oldugu icin TUMUNU geri planlamak, ayni
+    # siparisteki (zaten basilmis olabilecek) kardes urunleri yanlislikla plana dondurur
+    # ve tekrar basilmalarina yol acar. Bu yuzden yalnizca bu slot'un modeline uyan TEK
+    # line item'i geri planla.
+    if len(cands) > 1 and mi.model:
+        from app.services.phone_models import normalize_key
+        _target = normalize_key(mi.model)
+        _matched = [c for c in cands if normalize_key(mold_planner.extract_phone_model(c) or "") == _target]
+        if _matched:
+            cands = _matched
+    cands[0].is_kaliba_eklendi = False
 
 
 def _serialize_mold_detail(mo, db):

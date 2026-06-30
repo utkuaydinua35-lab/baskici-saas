@@ -104,6 +104,7 @@ const TABS = [
   { key: 'tedarik', label: 'Tedarik', emoji: '📦' },
   { key: 'kaliplanmis', label: 'Kalıplanmış', emoji: '✓', activeColor: 'text-emerald-300', activeBorder: 'border-emerald-500' },
   { key: 'kalip_bekliyor', label: 'Kalıp Bekliyor', emoji: '🧩', activeColor: 'text-amber-300', activeBorder: 'border-amber-500' },
+  { key: 'gonderilmeyen', label: 'Gönderilmeyen', emoji: '🚚', activeColor: 'text-orange-300', activeBorder: 'border-orange-500' },
   { key: 'tamamlandi', label: 'Tamamlandı', emoji: '✅', activeColor: 'text-emerald-300', activeBorder: 'border-emerald-500' },
 ]
 

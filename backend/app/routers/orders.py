@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/orders", tags=["orders"],
 # Acil eşik: kaç gün geçince "Acil" sayılır
 ACIL_THRESHOLD_DAYS = 5
 
-TAB_KEYS = ["tumu", "acil", "barkod", "tedarik", "kaliplanmis", "kalip_bekliyor", "tamamlandi"]
+TAB_KEYS = ["tumu", "acil", "barkod", "tedarik", "kaliplanmis", "kalip_bekliyor", "gonderilmeyen", "tamamlandi"]
 
 
 # ─── Schemas ─────────────────────────────────────────────────
@@ -303,6 +303,12 @@ def _build_tab_filter(q, tab: str):
             LineItem.is_kaliba_eklendi == False, LineItem.is_hazir == False)
         q = q.where(
             Order.id.in_(has_pending),
+            Order.cancelled_at.is_(None),
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+        )
+    elif tab == "gonderilmeyen":
+        # Henüz kargolanmamış (fulfilled değil) ve iptal edilmemiş tüm siparişler
+        q = q.where(
             Order.cancelled_at.is_(None),
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         )

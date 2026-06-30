@@ -269,7 +269,13 @@ export default function MoldGeneratorPage() {
             </div>
           ) : (
             <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
-              {molds.map(m => (
+              {[...molds].sort((a, b) => {
+                // Basilmamis (olusturuldu) ustte, basilmis (basildi) altta
+                const rank = s => (s === 'olusturuldu' ? 0 : s === 'basildi' ? 2 : 1)
+                const d = rank(a.status) - rank(b.status)
+                if (d !== 0) return d
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0)
+              }).map(m => (
                 <MoldRow
                   key={m.id}
                   mold={m}

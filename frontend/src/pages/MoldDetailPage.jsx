@@ -234,6 +234,35 @@ export default function MoldDetailPage() {
               {mold.updated_at && <InfoRow label="Son güncelleme" value={fmtDate(mold.updated_at)} />}
             </div>
             <div className="card">
+              <h2 className="text-sm font-medium text-gray-200 mb-3">Kalıp İçeriği</h2>
+              {(() => {
+                const groups = new Map()
+                for (const it of (mold.items || [])) {
+                  const renk = (it.kilif_rengi || '').toUpperCase().trim()
+                  const model = (it.model || '—').trim()
+                  const key = `${renk}||${model}`
+                  groups.set(key, (groups.get(key) || 0) + 1)
+                }
+                const rows = [...groups.entries()]
+                  .map(([k, n]) => { const [renk, model] = k.split('||'); return { renk, model, n } })
+                  .sort((a, b) => a.renk.localeCompare(b.renk, 'tr') || a.model.localeCompare(b.model, 'tr'))
+                if (rows.length === 0) return <p className="text-xs text-gray-500 italic">Kalıpta ürün yok.</p>
+                return (
+                  <ul className="space-y-1.5 text-sm">
+                    {rows.map((r, i) => (
+                      <li key={i} className="flex items-baseline gap-2">
+                        <span className="tabular-nums text-accent font-semibold shrink-0">{r.n} ad.</span>
+                        <span className="text-gray-300">
+                          {r.renk && <span className="text-gray-400 font-medium">{r.renk} </span>}
+                          {r.model}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+            </div>
+            <div className="card">
               <h2 className="text-sm font-medium text-gray-200 mb-3">İşlemler</h2>
               <div className="space-y-2">
                 <button onClick={downloadPdf} disabled={pdfBusy}

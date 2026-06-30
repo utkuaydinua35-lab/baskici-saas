@@ -13,6 +13,7 @@ export default function VaryantliUrunlerPage() {
   const [unmatched, setUnmatched] = useState([])
   const [loading, setLoading] = useState(false)
   const [selProduct, setSelProduct] = useState('')  // product_id
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     api.get('/api/stores?include_bayii=true').then(s => {
@@ -51,6 +52,12 @@ export default function VaryantliUrunlerPage() {
     return [...map.values()].sort((a, b) => (b.variants - a.variants) || (a.title || '').localeCompare(b.title || '', 'tr'))
   }, [designs, unmatched])
 
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return products
+    return products.filter(p => (p.title || '').toLowerCase().includes(q) || (p.product_id || '').toLowerCase().includes(q))
+  }, [products, search])
+
   const variantDesigns = useMemo(
     () => designs.filter(d => d.product_id === selProduct && (d.variant_title || '').trim()),
     [designs, selProduct])
@@ -78,10 +85,14 @@ export default function VaryantliUrunlerPage() {
         {/* Ürün listesi */}
         <div className="card !p-0 overflow-hidden self-start">
           <div className="px-3 py-2 border-b border-brand-border text-xs text-gray-500 uppercase tracking-wide">Ürün seç</div>
+          <div className="p-2 border-b border-brand-border">
+            <input className="input w-full !text-sm !py-1.5" placeholder="🔍 Ürün ara (ad / id)"
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
           <div className="max-h-[70vh] overflow-y-auto">
             {loading ? <div className="p-4 text-sm text-gray-500">Yükleniyor…</div>
-              : products.length === 0 ? <div className="p-4 text-sm text-gray-600">Ürün yok.</div>
-              : products.map(p => (
+              : filteredProducts.length === 0 ? <div className="p-4 text-sm text-gray-600">{search.trim() ? 'Eşleşen ürün yok.' : 'Ürün yok.'}</div>
+              : filteredProducts.map(p => (
                 <button key={p.product_id} onClick={() => setSelProduct(p.product_id)}
                   className={`w-full text-left px-3 py-2.5 border-b border-brand-border/40 flex items-center gap-2.5 hover:bg-brand-input/40 ${selProduct === p.product_id ? 'bg-accent/10' : ''}`}>
                   {p.image ? <img src={p.image} alt="" className="w-9 h-9 rounded object-cover shrink-0" />

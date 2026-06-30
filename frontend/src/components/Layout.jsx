@@ -196,11 +196,13 @@ function SyncButton() {
   )
 }
 
+const WL_BELL_KEY = 'wl_bell'  // {date, shown, dismissed} — dashboard ziyaretinden bagimsiz
+
 function wlBellState() {
   try {
-    const s = JSON.parse(localStorage.getItem('wl_state') || '{}')
+    const s = JSON.parse(localStorage.getItem(WL_BELL_KEY) || '{}')
     const today = new Date().toISOString().slice(0, 10)
-    return s.date === today && s.count >= 5 && !s.bellDismissed
+    return s.date === today && s.shown && !s.dismissed
   } catch { return false }
 }
 
@@ -248,6 +250,21 @@ function NotificationBell() {
   }
 
   useEffect(() => { load() }, [])
+  // Worklist zili — dashboard ziyaretinden BAGIMSIZ: gun icinde ilk yuklemede
+  // worklist'i cek; yapilacak is varsa (items>0) zili goster. Gun basina 1 kez.
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    let st = {}
+    try { st = JSON.parse(localStorage.getItem(WL_BELL_KEY) || '{}') } catch {}
+    if (st.date === today && st.dismissed) return        // bugun kullanici kapatti
+    if (st.date === today && st.shown) { setWlBadge(true); return }  // bugun zaten gosterildi
+    api.get('/api/dashboard/worklist').then(wl => {
+      if (((wl && wl.items) || []).length > 0) {
+        setWlBadge(true)
+        localStorage.setItem(WL_BELL_KEY, JSON.stringify({ date: today, shown: true, dismissed: false }))
+      }
+    }).catch(() => {})
+  }, [])
   // 60 sn'de bir + senk sonrası tazele
   useEffect(() => {
     const t = setInterval(load, 20000)
@@ -282,8 +299,8 @@ function NotificationBell() {
   const dismissWlBadge = () => {
     setWlBadge(false)
     try {
-      const s = JSON.parse(localStorage.getItem('wl_state') || '{}')
-      localStorage.setItem('wl_state', JSON.stringify({ ...s, bellDismissed: true }))
+      const today = new Date().toISOString().slice(0, 10)
+      localStorage.setItem(WL_BELL_KEY, JSON.stringify({ date: today, shown: true, dismissed: true }))
     } catch {}
   }
 

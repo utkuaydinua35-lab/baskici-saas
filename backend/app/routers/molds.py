@@ -512,14 +512,16 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
     db.delete(it)
     db.flush()
-    # Kalan item'ları SIRALARINI KORUYARAK ardışık slotlara sıkıştır (boşlukları doldur).
-    # Bu YALNIZCA boşluğun üstündeki item'ları aşağı kaydırır; birbirlerine göre sıraları
-    # (dolayısıyla tasarım-model eşleşmesi) DEĞİŞMEZ -> alakasız grup yer değiştirmesi olmaz,
-    # ama boş satırlar kalkar -> baskı süresi kısalır.
+    # Kalan item'ları GRUP-FARKINDA yeniden yerleştir: aynı model grubu (satır kovası) aynı
+    # satır(lar)da toplanır, farklı gruplar AYRI satırlarda kalır, boş satırlar kalkar ->
+    # baskı süresi kısalır. Her item KENDİ tasarımını korur (slot_index'i sıralı vererek
+    # grup-içi sırayı stabil tutuyoruz; tasarım-model eşleşmesi asla karışmaz).
     _kalanlar = sorted((x for x in mo.items if x.id != it.id), key=lambda x: x.slot_index or 0)
-    for _new, x in enumerate(_kalanlar, start=1):
-        if x.slot_index != _new:
-            x.slot_index = _new
+    if _kalanlar:
+        _dicts = [{"kod": x.kalip_kodu, "model": x.model, "_ref": x} for x in _kalanlar]
+        _yeni = mold_planner.pr.assign_slots(_dicts)
+        for _d in _yeni:
+            _d["_ref"].slot_index = _d["slot_index"]
     # kalıp boşaldıysa kilif_sayisi güncelle
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
     db.commit()

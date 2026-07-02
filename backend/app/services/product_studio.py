@@ -109,11 +109,13 @@ def build_content(analysis: dict, brand_name: str) -> dict:
     return {"title": title, "body_html": body_html, "tags": tags, "design_name": dname}
 
 
-def next_design_code(db: Session, store_id, prefix: str) -> str:
+def next_design_code(db: Session, store_id, prefix: str, reserved=None) -> str:
     """Marka öneki + sıralı numara ile benzersiz tasarım kodu (örn B777, B778).
-    Mevcut '{prefix}<sayı>' kodlarının en büyüğü + 1; hiç yoksa {prefix}777."""
+    Mevcut '{prefix}<sayı>' kodlarının + reserved'in en büyüğü + 1; hiç yoksa {prefix}777."""
     prefix = (prefix or "X").upper()
-    rows = db.scalars(select(Design.code).where(Design.store_id == store_id)).all()
+    rows = list(db.scalars(select(Design.code).where(Design.store_id == store_id)).all())
+    if reserved:
+        rows += list(reserved)
     mx = 776
     pat = re.compile(rf"^{re.escape(prefix)}(\d+)$")
     for c in rows:
@@ -121,3 +123,10 @@ def next_design_code(db: Session, store_id, prefix: str) -> str:
         if m:
             mx = max(mx, int(m.group(1)))
     return f"{prefix}{mx + 1}"
+
+
+def default_prefix(brand_name: str) -> str:
+    for ch in (brand_name or ""):
+        if ch.isalpha():
+            return ch.upper()
+    return "X"

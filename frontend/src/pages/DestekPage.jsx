@@ -45,6 +45,20 @@ export default function DestekPage() {
   const [okMsg, setOkMsg] = useState('')
   const [showTpl, setShowTpl] = useState(false)
   const [customTpl, setCustomTpl] = useState(loadCustomTemplates())
+  const [editMsgId, setEditMsgId] = useState(null)
+  const [editBody, setEditBody] = useState('')
+
+  const startEdit = (m) => { setEditMsgId(m.id); setEditBody(m.body || '') }
+  const cancelEdit = () => { setEditMsgId(null); setEditBody('') }
+  const saveEdit = async () => {
+    const body = editBody.trim()
+    if (!body || !active) return
+    try {
+      const t = await api.patch(`/api/support/threads/${active.id}/messages/${editMsgId}`, { body })
+      setActive(t)
+      cancelEdit()
+    } catch (e) { setError(e.detail || 'Düzenlenemedi') }
+  }
 
   const fillTokens = (text) => (text || '')
     .replaceAll('{siparis}', active?.order_number || '...')
@@ -279,6 +293,9 @@ export default function DestekPage() {
                       {active.order_detail.cancelled ? 'İptal' : (active.order_detail.stage_label || '—')}
                     </span>
                   </div>
+                  {active.order_detail.created_at && (
+                    <div className="text-[10px] text-gray-500 mb-1.5">📅 Sipariş tarihi: {new Date(active.order_detail.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                  )}
                   <ul className="space-y-0.5 text-xs text-gray-300">
                     {(active.order_detail.items || []).map((it, i) => (
                       <li key={i} className="flex items-center gap-1.5">
@@ -304,11 +321,28 @@ export default function DestekPage() {
                   const mine = m.sender === 'admin'
                   return (
                     <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] rounded-xl px-3 py-2 ${
+                      <div className={`group max-w-[80%] rounded-xl px-3 py-2 ${
                         mine ? 'bg-emerald-500/15 text-emerald-100' : 'bg-white/5 text-gray-200'
                       }`}>
-                        <div className="text-[10px] opacity-60 mb-0.5">{mine ? 'Sen' : 'Müşteri'} · {fmt(m.created_at)}</div>
-                        {m.body && <div className="text-sm whitespace-pre-wrap leading-relaxed">{m.body}</div>}
+                        <div className="text-[10px] opacity-60 mb-0.5 flex items-center gap-2">
+                          <span>{mine ? 'Sen' : 'Müşteri'} · {fmt(m.created_at)}</span>
+                          {mine && active.status !== 'kapali' && editMsgId !== m.id && (
+                            <button onClick={() => startEdit(m)} className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-white" title="Düzenle">✎</button>
+                          )}
+                        </div>
+                        {editMsgId === m.id ? (
+                          <div>
+                            <textarea value={editBody} onChange={e => setEditBody(e.target.value)} rows={3}
+                              className="w-full bg-brand-input border border-white/15 rounded-lg px-2 py-1.5 text-sm text-gray-100 resize-y focus:outline-none focus:border-white/30"
+                              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit(); if (e.key === 'Escape') cancelEdit() }} />
+                            <div className="flex justify-end gap-2 mt-1">
+                              <button onClick={cancelEdit} className="text-[11px] text-gray-400 hover:text-gray-200">İptal</button>
+                              <button onClick={saveEdit} disabled={!editBody.trim()} className="text-[11px] text-accent hover:text-accent/80 disabled:opacity-40">Kaydet</button>
+                            </div>
+                          </div>
+                        ) : (
+                          m.body && <div className="text-sm whitespace-pre-wrap leading-relaxed">{m.body}</div>
+                        )}
                         {m.image_url && (
                           <a href={m.image_url} target="_blank" rel="noreferrer">
                             <img src={m.image_url} alt="" className="mt-1.5 max-w-[200px] max-h-[200px] rounded-lg border border-white/10" />

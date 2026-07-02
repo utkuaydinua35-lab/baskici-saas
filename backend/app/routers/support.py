@@ -109,10 +109,11 @@ def _order_detail_for_thread(db: Session, t: SupportThread) -> dict | None:
             Order.tenant_id == t.tenant_id, Order.external_id == str(t.shopify_order_id)))
     if not o:
         return {"found": False, "order_number": onum}
+    from app.services.mold_planner import extract_phone_model
     lis = db.scalars(select(LineItem).where(LineItem.order_id == o.id).order_by(LineItem.position)).all()
     items = [{
         "title": li.title,
-        "model": (li.device_model_override or li.variant_title or None),
+        "model": (extract_phone_model(li) or li.device_model_override or li.variant_title or None),
         "quantity": li.quantity or 1,
         "is_hazir": bool(getattr(li, "is_hazir", False)),
     } for li in lis]
@@ -146,6 +147,35 @@ def get_thread_detail(
         "messages": sup.messages_payload(db, t),
         "order_detail": _order_detail_for_thread(db, t),
     }
+
+
+class EditMessageIn(BaseModel):
+    body: str = ""
+
+
+@router.patch("/threads/{thread_id}/messages/{message_id}", response_model=dict)
+def edit_message(
+    thread_id: uuid.UUID,
+    message_id: uuid.UUID,
+    req: EditMessageIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kendi (admin) mesajını düzenle. Müşteri mesajı düzenlenemez."""
+    t = _get_thread(db, thread_id, user)
+    m = db.scalar(select(SupportMessage).where(
+        SupportMessage.id == message_id, SupportMessage.thread_id == t.id))
+    if not m:
+        raise HTTPException(404, "Mesaj bulunamadı")
+    if m.sender != "admin":
+        raise HTTPException(400, "Yalnızca kendi mesajlarınızı düzenleyebilirsiniz")
+    body = (req.body or "").strip()[:sup.MAX_MESSAGE_LEN]
+    if not body:
+        raise HTTPException(400, "Mesaj boş olamaz")
+    m.body = body
+    db.commit()
+    return {**_thread_summary(db, t), "messages": sup.messages_payload(db, t),
+            "order_detail": _order_detail_for_thread(db, t)}
 
 
 class ReplyRequest(BaseModel):

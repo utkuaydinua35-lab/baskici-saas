@@ -362,8 +362,8 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
 
   const [uploadIdx, setUploadIdx] = useState(null)  // hangi kalem icin yukleme acik
 
-  const onDesignChange = (idx, designId) => {
-    const d = designs.find(x => String(x.id) === String(designId))
+  const onDesignChange = (idx, designId, designObj) => {
+    const d = designObj || designs.find(x => String(x.id) === String(designId))
     setItems(arr => arr.map((it, i) => i === idx ? { ...it, design_id: designId, design_label: d ? designLabel(d) : '' } : it))
   }
 
@@ -418,19 +418,33 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
             </div>
 
             <div className="space-y-2 mb-3">
-              {items.map((it, idx) => (
+              {items.map((it, idx) => {
+                const selD = it.design_id ? designs.find(d => String(d.id) === String(it.design_id)) : null
+                const thumb = selD && (selD.thumbnail_url || selD.file_url)
+                return (
                 <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">
+                  {/* Seçili tasarım önizleme (kod + görsel) — hangi kaleme ne yüklü net */}
+                  {selD ? (
+                    <div className="flex items-center gap-1.5 shrink-0" title={selD.code}>
+                      {thumb ? <img src={thumb} alt="" className="w-9 h-9 rounded object-cover border border-accent/40" />
+                        : <div className="w-9 h-9 rounded bg-accent/15 flex items-center justify-center text-[9px] text-accent">🎨</div>}
+                      <span className="text-[10px] font-mono text-accent hidden sm:block">{selD.code}</span>
+                    </div>
+                  ) : (
+                    <div className="w-9 h-9 rounded border border-dashed border-brand-border/60 flex items-center justify-center text-gray-600 shrink-0" title="Tasarım yok">—</div>
+                  )}
                   <ModelSearch models={models} value={it.model}
                     onSelect={(v) => setItem(idx, 'model', v)} modelVal={modelVal} modelLabel={modelLabel} />
-                  <select className="input flex-1 min-w-[140px]" value={it.design_id} onChange={e => onDesignChange(idx, e.target.value)}>
+                  <select className="input flex-1 min-w-[120px]" value={it.design_id} onChange={e => onDesignChange(idx, e.target.value)}>
                     <option value="">Tasarım (ops.)…</option>
                     {designs.map((d, i) => <option key={i} value={d.id}>{designLabel(d)}</option>)}
                   </select>
                   <button type="button" onClick={() => setUploadIdx(idx)} className="btn-secondary !text-xs whitespace-nowrap" title="Yeni tasarım yükle">📎</button>
-                  <input className="input w-20" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
+                  <input className="input w-16" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
                   <button onClick={() => removeItem(idx)} className="text-gray-500 hover:text-red-300 px-1 text-lg" title="Kalemi sil">×</button>
                 </div>
-              ))}
+                )
+              })}
             </div>
             <button onClick={addItem} className="btn-secondary !text-xs mb-4">+ Kalem Ekle</button>
 
@@ -461,11 +475,15 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
         <UploadDesignModal
           storeId={dealer.store_id}
           onClose={() => setUploadIdx(null)}
-          onUploaded={async (newDesign) => {
-            await reloadDesigns()
-            if (newDesign?.id) onDesignChange(uploadIdx, String(newDesign.id))
+          onUploaded={(newDesign) => {
+            // Yeni tasarımı HEMEN listeye ekle (option görünsün) + o kaleme seç (stale lookup yok)
+            if (newDesign?.id) {
+              setDesigns(arr => [newDesign, ...arr.filter(x => String(x.id) !== String(newDesign.id))])
+              onDesignChange(uploadIdx, String(newDesign.id), newDesign)
+            }
             setUploadIdx(null)
-            toast.success('Tasarım yüklendi')
+            toast.success('Tasarım yüklendi ve seçildi')
+            reloadDesigns()  // arka planda tam listeyi tazele
           }}
         />
       )}

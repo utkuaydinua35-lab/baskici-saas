@@ -334,8 +334,11 @@ def plan_molds(
                 qty = li.quantity or 1
                 _ok = True
                 _pending = []
-                for (_cd, _cm) in ((d1, _m1), (d2, _m2)):
-                    _var = pr.normalize_variation(_cd.kalip_tipi)
+                _liv1 = (getattr(li, "kilif_varyasyon", None) or "").strip()
+                _liv2 = (getattr(li, "kilif_varyasyon_2", None) or "").strip()
+                for (_cd, _cm, _sv) in ((d1, _m1, _liv1), (d2, _m2, _liv2)):
+                    # Slot'a özel seçilen kılıf varyasyonu (ŞEFFAF vb.) > tasarımın kalip_tipi
+                    _var = pr.normalize_variation(_sv) if _sv else pr.normalize_variation(_cd.kalip_tipi)
                     _var = pr.effective_variation(pr.get_model_group(_cm), _var)
                     _kod = pr.resolve_kalip_kodu(_cm, _var, k)
                     if not _kod:
@@ -406,11 +409,15 @@ def plan_molds(
                 continue
 
             # Kılıf varyasyonu önceliği:
-            # 1) Eşleşen varyant tasarımı varsa ONUN kalip_tipi'si (kullanıcı varyanta özel seçti)
-            # 2) Müşteri property'den varyasyon seçtiyse o
-            # 3) Tasarımın kalip_tipi'si (varsayılan)
+            # 1) Eşleşen varyant tasarımı varsa ONUN kalip_tipi'si
+            # 2) Line item'a özel seçilen kılıf varyasyonu (kişiye özel panelde ŞEFFAF vb.)
+            # 3) Müşteri property'den varyasyon seçtiyse o
+            # 4) Tasarımın kalip_tipi'si (varsayılan)
+            _liv = (getattr(li, "kilif_varyasyon", None) or "").strip()
             if locals().get("_matched_variant"):
                 variation = pr.normalize_variation(design.kalip_tipi)
+            elif _liv:
+                variation = pr.normalize_variation(_liv)
             else:
                 variation = variation_from_props(li) or pr.normalize_variation(design.kalip_tipi)
             variation = pr.effective_variation(pr.get_model_group(model), variation)

@@ -346,7 +346,8 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
   const totalQty = items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
   const shipping = applyShipping ? shippingFee : 0
   const total = totalQty * unitPrice + shipping
-  const fmt = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
+  const _cur = dealer.currency === 'USD' ? 'USD' : 'TRY'
+  const fmt = (n) => new Intl.NumberFormat(_cur === 'USD' ? 'en-US' : 'tr-TR', { style: 'currency', currency: _cur }).format(n || 0)
 
   const setItem = (idx, key, val) => setItems(arr => arr.map((it, i) => i === idx ? { ...it, [key]: val } : it))
   const addItem = () => setItems(arr => [...arr, { model: '', design_id: '', design_label: '', quantity: 1 }])

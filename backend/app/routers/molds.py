@@ -512,10 +512,14 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
     db.delete(it)
     db.flush()
-    # NOT: Kalan item'lar YENIDEN DIZILMEZ. Eskiden assign_slots ile tum kalanlar yeniden
-    # yerlestiriliyordu; bu, cikarilan slotla ALAKASIZ gruplarin (farkli telefon modelleri)
-    # yerini degistirip operatorun yanlis tasarimi yanlis modele basmasina yol aciyordu.
-    # Artik cikarilan slot bos kalir, digerleri yerinde durur (kararli yerlesim).
+    # Kalan item'ları SIRALARINI KORUYARAK ardışık slotlara sıkıştır (boşlukları doldur).
+    # Bu YALNIZCA boşluğun üstündeki item'ları aşağı kaydırır; birbirlerine göre sıraları
+    # (dolayısıyla tasarım-model eşleşmesi) DEĞİŞMEZ -> alakasız grup yer değiştirmesi olmaz,
+    # ama boş satırlar kalkar -> baskı süresi kısalır.
+    _kalanlar = sorted((x for x in mo.items if x.id != it.id), key=lambda x: x.slot_index or 0)
+    for _new, x in enumerate(_kalanlar, start=1):
+        if x.slot_index != _new:
+            x.slot_index = _new
     # kalıp boşaldıysa kilif_sayisi güncelle
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
     db.commit()

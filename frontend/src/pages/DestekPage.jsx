@@ -296,14 +296,23 @@ export default function DestekPage() {
                   {active.order_detail.created_at && (
                     <div className="text-[10px] text-gray-500 mb-1.5">📅 Sipariş tarihi: {new Date(active.order_detail.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                   )}
-                  <ul className="space-y-0.5 text-xs text-gray-300">
-                    {(active.order_detail.items || []).map((it, i) => (
-                      <li key={i} className="flex items-center gap-1.5">
-                        <span className="tabular-nums text-gray-500 shrink-0">{it.quantity}×</span>
-                        <span className="truncate">{it.model || it.title || '—'}</span>
-                        {it.is_hazir && <span className="text-emerald-400 shrink-0" title="Hazır">✓</span>}
-                      </li>
-                    ))}
+                  <ul className="space-y-1 text-xs text-gray-300">
+                    {(active.order_detail.items || []).map((it, i) => {
+                      const model = it.model || ''
+                      const t = it.title || ''
+                      // Başlık modelle başlıyorsa çip ile tekrarı önlemek için kırp -> geriye tasarım/içerik kalır
+                      const content = model && t.toLowerCase().startsWith(model.toLowerCase())
+                        ? t.slice(model.length).replace(/^[\s\-–—:]+/, '').trim()
+                        : t
+                      return (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="tabular-nums text-gray-500 shrink-0">{it.quantity}×</span>
+                          {model && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent whitespace-nowrap">📱 {model}</span>}
+                          <span className="min-w-0">{content || t || '—'}</span>
+                          {it.is_hazir && <span className="text-emerald-400 shrink-0" title="Hazır">✓</span>}
+                        </li>
+                      )
+                    })}
                   </ul>
                   {active.order_detail.takip_no && (
                     <div className="text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-brand-border/40">

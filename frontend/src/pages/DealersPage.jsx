@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import ManualOrderDialog from '../components/ManualOrderDialog'
@@ -14,6 +15,7 @@ const KALIP_TIPLERI = [
 
 export default function DealersPage() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [dealers, setDealers] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)   // {} yeni, obj duzenle, null kapali
@@ -69,7 +71,7 @@ export default function DealersPage() {
                 )}
               </div>
               <div className="flex gap-1.5">
-                <button onClick={() => setOrdering(d)} className="btn-primary !text-xs">🛒 Sipariş</button>
+                <button onClick={() => navigate(`/bayiler/${d.id}`)} className="btn-primary !text-xs">📋 Bayii menüsü</button>
                 <button onClick={() => setDetail(d)} className="btn-secondary !text-xs">Cari</button>
               </div>
             </div>
@@ -165,7 +167,7 @@ function DealerDialog({ dealer, onClose, onSaved }) {
   )
 }
 
-function CariDialog({ dealer, onClose, onChanged }) {
+export function CariDialog({ dealer, onClose, onChanged }) {
   const toast = useToast()
   const [txs, setTxs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -292,7 +294,7 @@ function CariDialog({ dealer, onClose, onChanged }) {
   )
 }
 
-function OrderDialog({ dealer, onClose, onCreated }) {
+export function OrderDialog({ dealer, onClose, onCreated }) {
   const toast = useToast()
   const [models, setModels] = useState([])
   const [designs, setDesigns] = useState([])
@@ -301,6 +303,23 @@ function OrderDialog({ dealer, onClose, onCreated }) {
   const [applyShipping, setApplyShipping] = useState((dealer.shipping_fee || 0) > 0)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // Akıllı sipariş: serbest metin -> alıcı ad/telefon/adres/il/ilçe
+  const [rawText, setRawText] = useState('')
+  const [parsing, setParsing] = useState(false)
+  const [cust, setCust] = useState({ name: '', phone: '', address: '', il: '', ilce: '' })
+  const setCustF = (k) => (e) => setCust(c => ({ ...c, [k]: e.target.value }))
+
+  const parseText = async () => {
+    if (!rawText.trim()) { toast.error('Önce alıcı bilgilerini yapıştır'); return }
+    setParsing(true)
+    try {
+      const r = await api.post('/api/dealers/parse-contact', { text: rawText })
+      setCust({ name: r.name || '', phone: r.phone || '', address: r.address || '', il: r.il || '', ilce: r.ilce || '' })
+      if (!r.name && !r.phone && !r.address) toast.error('Bilgi ayrıştırılamadı — elle doldurabilirsin')
+      else toast.success('Ayrıştırıldı — kontrol edip düzenleyebilirsin')
+    } catch (e) { toast.error(e.detail || 'Ayrıştırılamadı') }
+    finally { setParsing(false) }
+  }
 
   useEffect(() => {
     (async () => {
@@ -358,6 +377,8 @@ function OrderDialog({ dealer, onClose, onCreated }) {
           design_label: it.design_label || null, quantity: Number(it.quantity),
         })),
         note: note || null, apply_shipping: applyShipping,
+        customer_name: cust.name || null, phone: cust.phone || null,
+        address: cust.address || null, il: cust.il || null, ilce: cust.ilce || null,
       })
       toast.success(`Sipariş #${r.order_number} oluşturuldu — ${fmt(r.total)}`)
       onCreated?.()
@@ -375,6 +396,25 @@ function OrderDialog({ dealer, onClose, onCreated }) {
 
         {loadingLists ? <div className="text-sm text-gray-500 py-6 text-center">Listeler yükleniyor…</div> : (
           <>
+            {/* Akıllı sipariş: Instagram/WhatsApp'tan yapıştır -> otomatik ayrıştır */}
+            <div className="bg-brand-input/30 rounded-lg p-3 mb-4 border border-brand-border/60">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-gray-300">🪄 Akıllı sipariş — alıcı bilgisini yapıştır</span>
+                <button type="button" onClick={parseText} disabled={parsing} className="btn-secondary !text-xs disabled:opacity-50">{parsing ? 'Ayrıştırılıyor…' : 'Ayrıştır'}</button>
+              </div>
+              <textarea className="input w-full !text-sm" rows={3}
+                placeholder={'Örn:\nramazan taş\nfırat mah. 96031 sk no 34 Şahinbey Gaziantep\n+90 546 815 91 02'}
+                value={rawText} onChange={e => setRawText(e.target.value)} />
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <input className="input !text-sm" placeholder="Ad Soyad" value={cust.name} onChange={setCustF('name')} />
+                <input className="input !text-sm" placeholder="Telefon" value={cust.phone} onChange={setCustF('phone')} />
+                <input className="input !text-sm col-span-2" placeholder="Adres" value={cust.address} onChange={setCustF('address')} />
+                <input className="input !text-sm" placeholder="İl" value={cust.il} onChange={setCustF('il')} />
+                <input className="input !text-sm" placeholder="İlçe" value={cust.ilce} onChange={setCustF('ilce')} />
+              </div>
+              <p className="text-[10px] text-gray-600 mt-1.5">Yapıştırıp "Ayrıştır"a bas; sistem yerleştirir, sen kontrol et. Boş bırakırsan alıcı = bayi adı.</p>
+            </div>
+
             <div className="space-y-2 mb-3">
               {items.map((it, idx) => (
                 <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">

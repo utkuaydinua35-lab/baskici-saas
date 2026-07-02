@@ -49,6 +49,7 @@ const DestekPage = lazyWithReload(() => import('./pages/DestekPage'))
 const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
 const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
 const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
+const DealerDashboardPage = lazyWithReload(() => import('./pages/DealerDashboardPage'))
 const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
 const PlatformPage = lazyWithReload(() => import('./pages/PlatformPage'))
 const PazarlamaPage = lazyWithReload(() => import('./pages/PazarlamaPage'))
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/aksesuarlar" element={<AccessoriesPage />} />
             <Route path="/couple" element={<CoupleProductsPage />} />
             <Route path="/bayiler" element={<DealersPage />} />
+            <Route path="/bayiler/:id" element={<DealerDashboardPage />} />
             <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />
             <Route path="/kalip-sablon" element={<MoldTemplatePage />} />
             <Route path="/kalip-olustur" element={<MoldGeneratorPage />} />

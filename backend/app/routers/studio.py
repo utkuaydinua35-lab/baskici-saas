@@ -45,6 +45,8 @@ def _studio_dir(tenant_id, store_id) -> Path:
 def _cfg(s: Store) -> dict:
     c = s.config or {}
     brand = _brand(s)
+    from app.config import get_settings
+    _s = get_settings()
     return {
         "store_id": str(s.id),
         "store_name": s.name,
@@ -52,6 +54,11 @@ def _cfg(s: Store) -> dict:
         "prefix": (c.get("kod_prefix") or ps.default_prefix(brand)).upper(),
         "price": c.get("studio_price"),
         "mockup_ready": bool(c.get("mockup_psd")),
+        "ai_expand": bool(c.get("ai_expand")),
+        "ai_provider": c.get("ai_provider") or "auto",
+        # hangi outpaint sağlayıcıları anahtarlı (UI'da göster)
+        "fal_ready": bool(_s.fal_key),
+        "gemini_ready": bool(_s.gemini_api_key),
     }
 
 
@@ -65,6 +72,8 @@ class ConfigIn(BaseModel):
     price: str | None = None
     prefix: str | None = None
     marka_adi: str | None = None
+    ai_expand: bool | None = None
+    ai_provider: str | None = None
 
 
 @router.patch("/config", response_model=dict)
@@ -77,6 +86,10 @@ def set_config(req: ConfigIn, user: User = Depends(require_permission("tasarim")
         cfg["kod_prefix"] = (req.prefix.strip() or None) and req.prefix.strip().upper()
     if req.marka_adi is not None:
         cfg["marka_adi"] = req.marka_adi.strip() or None
+    if req.ai_expand is not None:
+        cfg["ai_expand"] = bool(req.ai_expand)
+    if req.ai_provider is not None:
+        cfg["ai_provider"] = req.ai_provider if req.ai_provider in ("auto", "fal", "gemini") else "auto"
     s.config = cfg
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(s, "config")
@@ -148,13 +161,26 @@ async def analyze(
         except Exception:  # noqa: BLE001
             results.append({"ok": False, "filename": f.filename, "error": "Görsel okunamadı"})
             continue
-        # En-boy oranı telefon kılıfına (~1:2) uygun değilse KENARA AL, işleme dahil etme
+        # En-boy oranı telefon kılıfına (~1:2) uygun değilse:
+        # - ai_expand açıksa: alta yaslayıp üstünü AI ile genişlet (1:2)
+        # - değilse / başarısızsa: KENARA AL
+        ai_expanded = False
         if not ps.aspect_ok(img.width, img.height):
-            results.append({
-                "ok": False, "skipped": True, "filename": f.filename,
-                "error": f"En-boy oranı uygun değil ({img.width}×{img.height}) — telefon kılıfı ~1:2 olmalı, düzeltip tekrar yükle",
-            })
-            continue
+            _exp = None
+            if (s.config or {}).get("ai_expand"):
+                from app.services import outpaint
+                _exp = outpaint.expand_to_aspect(raw, ps.CASE_RATIO, provider=cfg.get("ai_provider") or "auto")
+            if _exp:
+                raw = _exp
+                img = Image.open(io.BytesIO(_exp)).convert("RGB")
+                ai_expanded = True
+            else:
+                results.append({
+                    "ok": False, "skipped": True, "filename": f.filename,
+                    "error": f"En-boy oranı uygun değil ({img.width}×{img.height}) — telefon kılıfı ~1:2 olmalı"
+                             + ((s.config or {}).get("ai_expand") and " (AI genişletme başarısız)" or " — AI genişletmeyi açabilir ya da düzeltip tekrar yükleyebilirsin"),
+                })
+                continue
         media = "image/png" if (f.filename or "").lower().endswith("png") else "image/jpeg"
         analysis = ps.analyze_design(raw, media_type=media) or {}
         content = ps.build_content(analysis, brand)
@@ -181,6 +207,7 @@ async def analyze(
             "analysis": analysis,
             "mockup_url": f"/storage/{rel}/mockup.jpg",
             "baski_url": f"/storage/{rel}/baski.jpg",
+            "ai_expanded": ai_expanded,
         })
     return {"ok": True, "store_id": str(store_id), "items": results}
 

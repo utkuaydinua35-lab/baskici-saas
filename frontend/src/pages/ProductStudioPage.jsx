@@ -203,15 +203,40 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
   const [price, setPrice] = useState(cfg.price || '')
   const [prefix, setPrefix] = useState(cfg.prefix || '')
   const [marka, setMarka] = useState(cfg.brand || '')
+  const [aiExpand, setAiExpand] = useState(!!cfg.ai_expand)
+  const [aiProvider, setAiProvider] = useState(cfg.ai_provider || 'auto')
+  const anyProvider = cfg.fal_ready || cfg.gemini_ready
   const save = async () => {
-    try { await api.patch('/api/studio/config', { store_id: storeId, price, prefix, marka_adi: marka }); toast.success('Kaydedildi'); onSaved() }
-    catch (e) { toast.error(e.detail || 'Kaydedilemedi') }
+    try {
+      await api.patch('/api/studio/config', { store_id: storeId, price, prefix, marka_adi: marka, ai_expand: aiExpand, ai_provider: aiProvider })
+      toast.success('Kaydedildi'); onSaved()
+    } catch (e) { toast.error(e.detail || 'Kaydedilemedi') }
   }
   return (
     <div className="mt-3 pt-3 border-t border-brand-border/60 grid sm:grid-cols-3 gap-2">
       <Field label="Marka adı (başlıkta)"><input className="input w-full !text-sm" value={marka} onChange={e => setMarka(e.target.value)} /></Field>
       <Field label="Kod öneki"><input className="input w-full !text-sm" value={prefix} onChange={e => setPrefix(e.target.value)} placeholder="B" /></Field>
       <Field label="Varsayılan fiyat"><input className="input w-full !text-sm" value={price} onChange={e => setPrice(e.target.value)} placeholder="örn. 299.90" /></Field>
+
+      {/* AI ile görsel genişletme (outpaint) */}
+      <div className="sm:col-span-3 rounded-lg bg-brand-input/30 border border-brand-border/60 p-2.5">
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-200">
+          <input type="checkbox" checked={aiExpand} onChange={e => setAiExpand(e.target.checked)} className="accent-accent" disabled={!anyProvider} />
+          🪄 Oran uymayan görselleri AI ile genişlet (alta yasla, üstü doldur → 1:2)
+        </label>
+        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
+          <span className="text-gray-500">Sağlayıcı:</span>
+          <select className="input !text-xs !py-1" value={aiProvider} onChange={e => setAiProvider(e.target.value)} disabled={!aiExpand}>
+            <option value="auto">Otomatik (varsa fal.ai, yoksa Gemini)</option>
+            <option value="fal">fal.ai (FLUX Fill)</option>
+            <option value="gemini">Gemini</option>
+          </select>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${cfg.fal_ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-500'}`}>fal.ai {cfg.fal_ready ? '✓' : 'anahtar yok'}</span>
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${cfg.gemini_ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-500'}`}>Gemini {cfg.gemini_ready ? '✓' : 'anahtar yok'}</span>
+        </div>
+        {!anyProvider && <p className="text-[10px] text-amber-300 mt-1.5">Aktifleştirmek için .env'e FAL_KEY ve/veya GEMINI_API_KEY ekleyip backend'i yeniden başlat.</p>}
+      </div>
+
       <div className="sm:col-span-3 flex items-center justify-between gap-2 flex-wrap">
         <label className={`text-xs cursor-pointer hover:underline ${mockupPct != null ? 'text-gray-500 pointer-events-none' : 'text-accent'}`}>
           📎 Mockup PSD yükle {cfg.mockup_ready && '(değiştir)'}
@@ -237,6 +262,7 @@ function PreviewCard({ it, onChange, onRemove }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent font-mono">{it.code}</span>
+            {it.ai_expanded && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300" title="Oran uymadığı için üstü AI ile genişletildi">🪄 AI genişletildi</span>}
             {it.published ? <span className="text-[10px] text-emerald-300">✓ Yüklendi</span>
               : it.pub_error ? <span className="text-[10px] text-red-300" title={it.pub_error}>⚠ {it.pub_error}</span> : null}
             <button onClick={onRemove} className="ml-auto text-gray-500 hover:text-red-300 text-sm">×</button>

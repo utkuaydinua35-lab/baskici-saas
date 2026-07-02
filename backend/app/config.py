@@ -56,6 +56,12 @@ class Settings(BaseSettings):
 
     # Claude API (AI destek taslak yaniti). Bos ise AI taslak ozelligi kapali.
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+
+    # Görsel genişletme (outpaint) — Ürün Stüdyosu'nda oran uymayan görselleri 1:2'ye tamamlar.
+    fal_key: str = Field("", alias="FAL_KEY")                       # fal.ai (FLUX Fill)
+    fal_model: str = Field("fal-ai/flux-pro/v1/fill", alias="FAL_MODEL")
+    gemini_api_key: str = Field("", alias="GEMINI_API_KEY")         # Google AI Studio (ABONELİK DEĞİL)
+    gemini_image_model: str = Field("gemini-2.5-flash-image", alias="GEMINI_IMAGE_MODEL")
     # AI model degisikligi icin master password. Bos ise model degisikligi engellenir.
     ai_model_master_password: str = Field("", alias="AI_MODEL_MASTER_PASSWORD")
 

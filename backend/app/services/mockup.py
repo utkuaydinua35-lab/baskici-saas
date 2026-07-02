@@ -309,58 +309,63 @@ def _placed_quad(layer):
 
 
 def _is_placeholder_so(layer, layer_name):
+    """Tasarımın konacağı 'Your Work Here' smart object'i (arka plan/renk katmanları HARİÇ)."""
     if layer.kind != "smartobject":
         return False
     if layer_name and layer.name == layer_name:
         return True
     so = getattr(layer, "smart_object", None)
     fn = (getattr(so, "filename", "") or "").lower()
-    return ("your work here" in fn) or ("design" in fn) or (layer.name.lower() in ("design", "w1", "bc"))
+    if "background" in fn or "color" in fn or "texture" in fn:
+        return False
+    return ("your work here" in fn) or (layer.name.lower() in ("design", "w1", "bc"))
+
+
+def _numpy_override(rgba_arr):
+    """psd-tools compositor'ün layer.numpy(channel=...) çağrısına yeni tasarımı döndür."""
+    import numpy as _np
+
+    def f(channel=None, **_k):
+        if channel == "color":
+            return rgba_arr[:, :, :3]
+        if channel in ("shape", "alpha", "mask"):
+            if rgba_arr.shape[2] >= 4:
+                return rgba_arr[:, :, 3:4]
+            return _np.ones((rgba_arr.shape[0], rgba_arr.shape[1], 1), dtype="float32")
+        return rgba_arr
+    return f
 
 
 def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None = None) -> Image.Image:
-    """PSD mockup'ı sunucuda derle (Photoshopsuz). Tasarım, placeholder smart object'in
-    YERLEŞİM z-SIRASINA konur: ALTINDA kalan katmanlar (case/gölge/arka plan) + tasarım +
-    ÜSTÜNDEKİ katmanlar (yansıma/parlama/logo). Böylece gerçekçi (tasarım yansımanın altında)."""
+    """PSD mockup'ı sunucuda Photoshop KALİTESİNDE derle. 'Your Work Here' smart object'lerin
+    piksel kaynağını (layer.numpy) yeni tasarımla değiştirip PSD'yi TAM derler — böylece
+    tüm dönüşüm/warp/maske/blend (kamera oyuğu, yansıma, 3B açı) Photoshop gibi uygulanır."""
+    import numpy as np
     from psd_tools import PSDImage
     psd = PSDImage.open(psd_path)
     W, H = psd.width, psd.height
-    leaves = [l for l in psd.descendants() if not l.is_group()]
-    orig = {id(l): l.visible for l in leaves}
-    placeholders = [l for l in leaves if _is_placeholder_so(l, layer_name)]
+    design_rgba = design.convert("RGBA")
+    placeholders = [l for l in psd.descendants() if _is_placeholder_so(l, layer_name)]
 
-    chosen = None
+    patched = 0
     for l in placeholders:
-        if layer_name and l.name == layer_name:
-            chosen = l
-            break
-        if chosen is None and l.visible:
-            chosen = l
-    if chosen is None and placeholders:
-        chosen = placeholders[0]
-    quad_px = _placed_quad(chosen) if chosen else [(0, 0), (W, 0), (W, H), (0, H)]
-    quad_frac = [[x / W, y / H] for (x, y) in quad_px]
-    z = leaves.index(chosen) if chosen in leaves else len(leaves)
+        try:
+            arr = l.numpy()
+            if arr is None or arr.ndim != 3:
+                continue
+            h, w = arr.shape[0], arr.shape[1]
+            rz = design_rgba.resize((w, h), Image.LANCZOS)
+            rgba = (np.asarray(rz).astype("float32") / 255.0)
+            l.numpy = _numpy_override(rgba)
+            patched += 1
+        except Exception:  # noqa: BLE001
+            continue
 
-    def _pass(keep):
-        for i, l in enumerate(leaves):
-            try:
-                l.visible = orig[id(l)] and (l not in placeholders) and keep(i)
-            except Exception:  # noqa: BLE001
-                pass
-        img = psd.composite(force=True)
-        return img.convert("RGBA") if img is not None else None
+    if patched == 0:
+        # Placeholder bulunamadıysa: prosedürel numuneye düş
+        return render_mockup(design, "siyah")
 
-    try:
-        below = _pass(lambda i: i < z) or Image.new("RGBA", (W, H), (255, 255, 255, 255))
-        result = _render_quad(design, below, quad_frac, overlay=False)   # tasarım altın üstüne
-        above = _pass(lambda i: i > z)                                    # yansıma/logo tasarımın üstüne
-        if above is not None:
-            result = Image.alpha_composite(result, above)
-    finally:
-        for l in leaves:
-            try:
-                l.visible = orig[id(l)]
-            except Exception:  # noqa: BLE001
-                pass
-    return result
+    img = psd.composite(force=True)
+    if img is None:
+        return render_mockup(design, "siyah")
+    return img.convert("RGBA")

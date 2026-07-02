@@ -148,6 +148,13 @@ async def analyze(
         except Exception:  # noqa: BLE001
             results.append({"ok": False, "filename": f.filename, "error": "Görsel okunamadı"})
             continue
+        # En-boy oranı telefon kılıfına (~1:2) uygun değilse KENARA AL, işleme dahil etme
+        if not ps.aspect_ok(img.width, img.height):
+            results.append({
+                "ok": False, "skipped": True, "filename": f.filename,
+                "error": f"En-boy oranı uygun değil ({img.width}×{img.height}) — telefon kılıfı ~1:2 olmalı, düzeltip tekrar yükle",
+            })
+            continue
         media = "image/png" if (f.filename or "").lower().endswith("png") else "image/jpeg"
         analysis = ps.analyze_design(raw, media_type=media) or {}
         content = ps.build_content(analysis, brand)

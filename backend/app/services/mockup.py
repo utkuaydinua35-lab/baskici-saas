@@ -319,33 +319,48 @@ def _is_placeholder_so(layer, layer_name):
 
 
 def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None = None) -> Image.Image:
-    """PSD mockup'ı sunucuda derle: placeholder design smart object'lerini gizle, PSD'yi
-    render et (case/gölge/yansıma), yeni tasarımı placeholder'ın yerleşim quad'ına warp edip
-    üstüne oturt. Photoshop gerektirmez."""
+    """PSD mockup'ı sunucuda derle (Photoshopsuz). Tasarım, placeholder smart object'in
+    YERLEŞİM z-SIRASINA konur: ALTINDA kalan katmanlar (case/gölge/arka plan) + tasarım +
+    ÜSTÜNDEKİ katmanlar (yansıma/parlama/logo). Böylece gerçekçi (tasarım yansımanın altında)."""
     from psd_tools import PSDImage
     psd = PSDImage.open(psd_path)
     W, H = psd.width, psd.height
-    targets = [l for l in psd.descendants() if _is_placeholder_so(l, layer_name)]
-    # Quad kaynağı: adı verilen ya da görünür ilk placeholder; yoksa ilk
+    leaves = [l for l in psd.descendants() if not l.is_group()]
+    orig = {id(l): l.visible for l in leaves}
+    placeholders = [l for l in leaves if _is_placeholder_so(l, layer_name)]
+
     chosen = None
-    for l in targets:
-        if (layer_name and l.name == layer_name) or (chosen is None and l.visible):
+    for l in placeholders:
+        if layer_name and l.name == layer_name:
             chosen = l
-            if layer_name and l.name == layer_name:
-                break
-    if chosen is None and targets:
-        chosen = targets[0]
+            break
+        if chosen is None and l.visible:
+            chosen = l
+    if chosen is None and placeholders:
+        chosen = placeholders[0]
     quad_px = _placed_quad(chosen) if chosen else [(0, 0), (W, 0), (W, H), (0, H)]
     quad_frac = [[x / W, y / H] for (x, y) in quad_px]
-    # Placeholder'ları gizle -> base render
-    for l in targets:
-        try:
-            l.visible = False
-        except Exception:  # noqa: BLE001
-            pass
-    base = psd.composite(force=True)
-    if base is None:
-        base = Image.new("RGBA", (W, H), (255, 255, 255, 255))
-    base = base.convert("RGBA")
-    # Tasarımı quad'a warp edip üstüne oturt (perspektif motoru)
-    return _render_quad(design, base, quad_frac, overlay=False)
+    z = leaves.index(chosen) if chosen in leaves else len(leaves)
+
+    def _pass(keep):
+        for i, l in enumerate(leaves):
+            try:
+                l.visible = orig[id(l)] and (l not in placeholders) and keep(i)
+            except Exception:  # noqa: BLE001
+                pass
+        img = psd.composite(force=True)
+        return img.convert("RGBA") if img is not None else None
+
+    try:
+        below = _pass(lambda i: i < z) or Image.new("RGBA", (W, H), (255, 255, 255, 255))
+        result = _render_quad(design, below, quad_frac, overlay=False)   # tasarım altın üstüne
+        above = _pass(lambda i: i > z)                                    # yansıma/logo tasarımın üstüne
+        if above is not None:
+            result = Image.alpha_composite(result, above)
+    finally:
+        for l in leaves:
+            try:
+                l.visible = orig[id(l)]
+            except Exception:  # noqa: BLE001
+                pass
+    return result

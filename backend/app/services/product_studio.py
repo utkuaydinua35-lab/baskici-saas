@@ -78,31 +78,43 @@ def analyze_design(image_bytes: bytes, media_type: str = "image/jpeg", model_key
         return None
 
 
+# Sabit ürün açıklaması. *x* -> kalın, **x** -> kalın + altı çizik.
+_DESC_TEMPLATE = """Ürünlerimiz stoklarımızda **baskısız olarak** bulunmaktadır; görseller yalnızca **baskı önizlemeleridir.**
+
+Tüm ürünlerimiz *sipariş üzerine, kişiye özel olarak* üretilmektedir.
+
+Bu nedenle *6502 sayılı Tüketicinin Korunması Hakkında Kanun’un 15. maddesi* uyarınca **cayma hakkı kapsamında iade veya iptal işlemi yapılamamaktadır.**
+
+Ancak ürünün üretiminde veya tesliminde bir hata olması durumunda **yenisiyle değişimi yapılır.**"""
+
+
+def _md_to_html(text: str) -> str:
+    """**x** -> <strong><u>x</u></strong>, *x* -> <strong>x</strong>. Paragraflar <p>."""
+    from html import escape
+    out = []
+    for p in [x.strip() for x in text.split("\n\n") if x.strip()]:
+        p = escape(p)
+        p = re.sub(r"\*\*(.+?)\*\*", r"<strong><u>\1</u></strong>", p)
+        p = re.sub(r"\*(.+?)\*", r"<strong>\1</strong>", p)
+        out.append(f"<p>{p}</p>")
+    return "".join(out)
+
+
+def description_html() -> str:
+    return _md_to_html(_DESC_TEMPLATE)
+
+
 def build_content(analysis: dict, brand_name: str) -> dict:
-    """Analizden Shopify başlığı/açıklaması/etiketleri üret."""
+    """Analizden Shopify başlığı + (sabit) açıklama + etiketleri üret."""
     a = analysis or {}
     dname = (a.get("design_name") or "Özel Tasarım").strip()
     coll = (a.get("collection") or a.get("niche") or "Özel").strip()
     colors = a.get("colors") or []
     keywords = a.get("keywords") or []
-    subject = (a.get("main_subject") or dname).strip()
     style = (a.get("style") or "").strip()
 
     title = f'{brand_name} "{dname}" Tasarım Telefon Kılıfı – {coll} Serisi'
-
-    intro = f"{subject} temalı bu özel tasarım, {style.lower() or 'şık'} bir görünüm sunar." if subject else ""
-    d1 = f"{coll} serisinden özgün {dname} deseni"
-    d2 = f"Baskın renkler: {', '.join(colors)}" if colors else "Canlı ve dengeli renk paleti"
-    d3 = f"{style} tarzı, günlük kullanıma uygun" if style else "Günlük kullanıma uygun şık tasarım"
-    body_html = (
-        f"<p><strong>{dname}</strong> {intro}</p>"
-        "<p><strong>Ürün Özellikleri:</strong></p><ul>"
-        "<li>Yüksek çözünürlüklü UV baskı teknolojisi</li>"
-        f"<li>{d1}</li><li>{d2}</li><li>{d3}</li>"
-        "<li>Solmayan, soyulmaya karşı dirençli canlı renkler</li>"
-        "<li>Tüm düğme ve kamera açıklıklarına tam uyum</li>"
-        "<li>İnce ve hafif yapı ile rahat kullanım</li></ul>"
-    )
+    body_html = description_html()
     tags = list(dict.fromkeys(
         [t for t in ([a.get("niche")] + keywords + colors + [style, coll]) if t]
     ))
@@ -123,6 +135,17 @@ def next_design_code(db: Session, store_id, prefix: str, reserved=None) -> str:
         if m:
             mx = max(mx, int(m.group(1)))
     return f"{prefix}{mx + 1}"
+
+
+# Telefon kılıfı baskı oranı ~ 1100:2162 (w/h ≈ 0.509). Bu banttan sapan görseller kenara alınır.
+CASE_RATIO = 1100 / 2162
+RATIO_MIN, RATIO_MAX = 0.44, 0.60  # ~1:2.27 .. 1:1.67
+
+
+def aspect_ok(w: int, h: int) -> bool:
+    if not w or not h:
+        return False
+    return RATIO_MIN <= (w / h) <= RATIO_MAX
 
 
 def default_prefix(brand_name: str) -> str:

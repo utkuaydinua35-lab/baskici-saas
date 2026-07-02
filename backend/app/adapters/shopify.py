@@ -195,6 +195,51 @@ class ShopifyAdapter(StorePlatform):
 
     # ─── Tracking ────────────────────────────────────────────
 
+    def create_product(
+        self,
+        *,
+        title: str,
+        body_html: str = "",
+        product_type: str = "Telefon Kılıfı",
+        tags=None,
+        image_b64: str | None = None,
+        image_filename: str = "mockup.jpg",
+        status: str = "active",
+        price: str | None = None,
+        vendor: str | None = None,
+    ) -> dict:
+        """Varyantsız ürün oluştur (POST /products.json). image_b64 = mockup görseli (base64,
+        prefix'siz). Dönüş: {ok, id, handle, admin_url} ya da {ok:False, error}."""
+        prod: dict = {
+            "title": title,
+            "body_html": body_html or "",
+            "product_type": product_type,
+            "status": status,  # active = yayında, draft = taslak
+        }
+        if vendor:
+            prod["vendor"] = vendor
+        if tags:
+            prod["tags"] = ", ".join(tags) if isinstance(tags, (list, tuple)) else str(tags)
+        if image_b64:
+            prod["images"] = [{"attachment": image_b64, "filename": image_filename}]
+        if price is not None:
+            prod["variants"] = [{"price": str(price)}]
+        url = f"{self._base_url()}/products.json"
+        try:
+            r = self.session.post(url, headers=self._headers(), json={"product": prod}, timeout=60)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"Bağlantı hatası: {str(e)[:180]}"}
+        if r.status_code not in (200, 201):
+            return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:300]}"}
+        p = (r.json() or {}).get("product", {})
+        pid = p.get("id")
+        return {
+            "ok": True,
+            "id": str(pid) if pid else None,
+            "handle": p.get("handle"),
+            "admin_url": f"https://{self.store_url}/admin/products/{pid}" if pid else None,
+        }
+
     def add_tracking(
         self,
         order_id: str,

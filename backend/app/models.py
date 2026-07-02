@@ -1270,3 +1270,175 @@ class MarketingSend(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+
+
+# ═════════════════════════════════════════════════════════════════════
+# VİTRİN (STOREFRONT) — kendi e-ticaret kanalımız
+# ═════════════════════════════════════════════════════════════════════
+
+class CatalogProduct(Base):
+    """Vitrin ürünü — kendi mağazamızın (platform='storefront') satış listesi.
+
+    Design/StockItem üretim varlıklarıdır; bu tablo müşteriye görünen
+    listelemedir (fiyat, slug, SEO, görseller). status: draft | active | archived.
+    """
+    __tablename__ = "catalog_products"
+    __table_args__ = (
+        UniqueConstraint("store_id", "slug", name="uq_catalog_product_store_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    slug: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(300))
+    # Düz metin/markdown saklanır, vitrin güvenli render eder (HTML enjeksiyonu yok).
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default=text("'draft'"), nullable=False, index=True
+    )
+
+    seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(400), nullable=True)
+
+    base_price: Mapped[float] = mapped_column(Numeric(12, 2))
+    compare_at_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="TRY", server_default=text("'TRY'"))
+
+    tags: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    variants: Mapped[list[CatalogVariant]] = relationship(
+        back_populates="product", cascade="all, delete-orphan", order_by="CatalogVariant.position"
+    )
+    images: Mapped[list[CatalogImage]] = relationship(
+        back_populates="product", cascade="all, delete-orphan", order_by="CatalogImage.position"
+    )
+
+
+class CatalogVariant(Base):
+    """Vitrin varyantı — telefon modeli × kılıf rengi (üretimin düşündüğü boyut).
+
+    model_key = PhoneModel.spec_key (string referans; PhoneModel global/tenant
+    katmanlı olduğundan FK değil). variation = StockItem.variation sözlüğü
+    (SİYAH/ŞEFFAF...). Fiyat: price_override yoksa ürünün base_price'ı.
+    """
+    __tablename__ = "catalog_variants"
+    __table_args__ = (
+        UniqueConstraint("product_id", "model_key", "variation", name="uq_catalog_variant_model_var"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_products.id", ondelete="CASCADE"), index=True
+    )
+
+    model_key: Mapped[str] = mapped_column(String(60))
+    model_display: Mapped[str] = mapped_column(String(120))
+    variation: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    price_override: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    quantity: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    track_stock: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Opsiyonel: fiziksel boş kılıf stoğuna bağ — satışta StockMovement yazılır.
+    stock_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_items.id", ondelete="SET NULL"), nullable=True
+    )
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    product: Mapped[CatalogProduct] = relationship(back_populates="variants")
+
+
+class CatalogImage(Base):
+    """Vitrin ürün görseli — /storage altından SafeStaticFiles ile servis edilir."""
+    __tablename__ = "catalog_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_products.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_variants.id", ondelete="SET NULL"), nullable=True
+    )
+
+    file_path: Mapped[str] = mapped_column(String(500))
+    alt: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    product: Mapped[CatalogProduct] = relationship(back_populates="images")
+
+
+class CheckoutSession(Base):
+    """Ödeme oturumu — denetim izi + terk edilmiş sepet kaydı.
+
+    Order YALNIZCA doğrulanmış ödeme callback'inde oluşturulur (hayalet sipariş
+    olmaz). status: pending | paid | failed | expired | cancelled.
+    token: sağlayıcı conversationId'si; lookup_token: müşteri sipariş takibi.
+    customer JSONB'si PII içerir — KVKK: başarısız/expired kayıtlardan 90 gün
+    sonra temizlenir (sweeper).
+    """
+    __tablename__ = "checkout_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    lookup_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default=text("'pending'"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(20))
+    provider_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    shipping_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), default=0, server_default=text("0")
+    )
+    currency: Mapped[str] = mapped_column(String(3), default="TRY", server_default=text("'TRY'"))
+
+    # Sunucu fiyatlarıyla doğrulanmış sepet: [{variant_id, title, variant_title,
+    # model_key, model_display, variation, sku, quantity, unit_price}]
+    cart_snapshot: Mapped[list] = mapped_column(JSONB, default=list)
+    # PII: {first_name, last_name, email, phone, address1, city, province, zip, note}
+    customer: Mapped[dict] = mapped_column(JSONB, default=dict)
+    kvkk_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    callback_raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

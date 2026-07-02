@@ -80,7 +80,12 @@ class TestConnectionResponse(BaseModel):
 
 # ─── Helpers ─────────────────────────────────────────────────
 
-_SECRET_KEYS = {"access_token", "client_secret", "api_secret", "api_key", "password", "secret", "token", "refresh_token", "webhook_secret", "private_key"}
+_SECRET_KEYS = {
+    "access_token", "client_secret", "api_secret", "api_key", "password", "secret",
+    "token", "refresh_token", "webhook_secret", "private_key",
+    "iyzico_api_key", "iyzico_secret_key",
+    "paytr_merchant_key", "paytr_merchant_salt",
+}
 
 
 def _mask_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -284,6 +289,21 @@ def list_platforms():
                 {"key": "store_id", "label": "Mağaza ID", "required": True},
                 {"key": "client_id", "label": "Client ID", "required": True},
                 {"key": "client_secret", "label": "Client Secret", "type": "password", "required": True},
+            ],
+        },
+        {
+            "id": "storefront",
+            "name": "Kendi Mağazam (Vitrin)",
+            "fields": [
+                {"key": "shop_domain", "label": "Vitrin Alan Adı", "placeholder": "magaza.bernzcompany.com", "required": True},
+                {"key": "payment_provider", "label": "Ödeme Sağlayıcı (iyzico | paytr)", "default": "iyzico", "required": True},
+                {"key": "iyzico_api_key", "label": "iyzico API Key", "type": "password"},
+                {"key": "iyzico_secret_key", "label": "iyzico Secret Key", "type": "password"},
+                {"key": "iyzico_base_url", "label": "iyzico Base URL", "default": "https://sandbox-api.iyzipay.com"},
+                {"key": "paytr_merchant_id", "label": "PayTR Merchant ID"},
+                {"key": "paytr_merchant_key", "label": "PayTR Merchant Key", "type": "password"},
+                {"key": "paytr_merchant_salt", "label": "PayTR Merchant Salt", "type": "password"},
+                {"key": "sla_days", "label": "Kargo Sözü (gün)", "default": "3"},
             ],
         },
     ]

@@ -10,12 +10,14 @@ from app.adapters.base import StorePlatform
 from app.adapters.ikas import IkasAdapter
 from app.adapters.shopify import ShopifyAdapter
 from app.adapters.bayii import BayiiAdapter
+from app.adapters.storefront import StorefrontAdapter
 from app.models import Store
 
 PLATFORM_REGISTRY: dict[str, type[StorePlatform]] = {
     "shopify": ShopifyAdapter,
     "ikas": IkasAdapter,
     "bayii": BayiiAdapter,
+    "storefront": StorefrontAdapter,
 }
 
 
@@ -38,4 +40,7 @@ def get_adapter(store: Store) -> StorePlatform:
     return adapter_cls(store.config or {})
 
 
-__all__ = ["get_adapter", "StorePlatform", "ShopifyAdapter", "IkasAdapter", "BayiiAdapter"]
+__all__ = [
+    "get_adapter", "StorePlatform", "ShopifyAdapter", "IkasAdapter",
+    "BayiiAdapter", "StorefrontAdapter",
+]

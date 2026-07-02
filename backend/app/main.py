@@ -38,6 +38,7 @@ from app.routers.telafiler import router as telafiler_router
 from app.routers.settings import router as tenant_settings_router
 from app.routers.shortcuts import router as shortcuts_router
 from app.routers.stores import router as stores_router
+from app.routers.catalog import router as catalog_router
 from app.routers.audit import router as audit_router
 from app.routers.search import router as search_router
 from app.scheduler import shutdown_scheduler, start_scheduler
@@ -107,6 +108,7 @@ app.include_router(support_router)
 app.include_router(aski.router)
 app.include_router(audit_router)
 app.include_router(search_router)
+app.include_router(catalog_router)
 
 
 # ─── Guvenli statik servis (SVG/HTML XSS korumasi) ────────────

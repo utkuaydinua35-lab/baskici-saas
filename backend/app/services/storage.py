@@ -198,3 +198,43 @@ def save_logo(tenant_id, kind: str, file_data: bytes, ext: str) -> str:
     with open(full_path, "wb") as f:
         f.write(file_data)
     return f"/storage/{rel_path.as_posix()}"
+
+
+# ─── Vitrin (katalog) görselleri ─────────────────────────────
+
+CATALOG_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+MAX_CATALOG_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def save_catalog_image(tenant_id, image_id, file_data: bytes, original_filename: str) -> str:
+    """Vitrin ürün görselini kaydet. Dönüş: relative_path (tenants/.../catalog/..)."""
+    ext = get_extension(original_filename)
+    if ext not in CATALOG_IMAGE_EXTENSIONS:
+        raise ValueError(
+            f"İzin verilen görsel formatları: {', '.join(sorted(CATALOG_IMAGE_EXTENSIONS))}. "
+            f"Yüklenen: .{ext}"
+        )
+    if len(file_data) > MAX_CATALOG_IMAGE_SIZE:
+        raise ValueError(f"Görsel çok büyük (max {MAX_CATALOG_IMAGE_SIZE // 1024 // 1024} MB)")
+
+    rel_dir = Path("tenants") / str(tenant_id) / "catalog"
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"{image_id}.{ext}"
+    with open(full_dir / fname, "wb") as f:
+        f.write(file_data)
+    return (rel_dir / fname).as_posix()
+
+
+def delete_catalog_image(relative_path: str) -> bool:
+    """Vitrin görselini diskten sil (yol storage kökü altında kalmalı)."""
+    if not relative_path:
+        return False
+    full = (STORAGE_ROOT / relative_path).resolve()
+    if not str(full).startswith(str(STORAGE_ROOT)):
+        return False  # path traversal koruması
+    try:
+        full.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False

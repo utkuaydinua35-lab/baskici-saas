@@ -14,7 +14,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func as sql_func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -314,6 +314,43 @@ class DealerOrderIn(BaseModel):
     items: list[DealerOrderItem] = Field(..., min_length=1)
     note: str | None = None
     apply_shipping: bool = True                      # bu siparise kargo yansisin mi
+    # Alıcı (nihai müşteri) bilgisi — akıllı siparişten gelir, kargo için saklanır
+    customer_name: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    il: str | None = None
+    ilce: str | None = None
+
+
+@router.get("/{dealer_id}/orders", response_model=list[dict])
+def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permission("bayii")), db: Session = Depends(get_db)):
+    """Bayinin siparişleri (mağaza sipariş listesi gibi) — en yeni önce."""
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    from sqlalchemy import desc as _desc
+    orders = db.scalars(
+        select(Order).where(Order.tenant_id == user.tenant_id, Order.store_id == d.store_id)
+        .order_by(_desc(Order.created_at_platform)).limit(500)
+    ).all()
+    out = []
+    for o in orders:
+        _raw = o.raw or {}
+        _qty = db.scalar(select(sql_func.coalesce(sql_func.sum(LineItem.quantity), 0)).where(LineItem.order_id == o.id)) or 0
+        out.append({
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "customer_name": o.customer_name,
+            "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "current_stage": o.current_stage,
+            "fulfillment_status": o.fulfillment_status,
+            "is_iptal": bool(o.is_iptal),
+            "total_qty": int(_qty),
+            "total_price": _raw.get("total_price"),
+            "currency": _raw.get("currency", "TRY"),
+            "note": o.note,
+        })
+    return out
 
 
 @router.post("/{dealer_id}/orders", response_model=dict, status_code=201)
@@ -349,23 +386,37 @@ def create_dealer_order(
     external_id = f"BAYII-{d.id.hex[:6]}-{seq}"
     order_number = f"B{seq}"
 
+    # Alıcı (nihai müşteri) — akıllı siparişten; yoksa bayi adı
+    _cust = (req.customer_name or "").strip() or d.name
+    _raw = {
+        "total_price": str(toplam),
+        "currency": (getattr(d, "currency", "TRY") or "TRY").upper(),
+        "source": "bayii",
+        "dealer_id": str(d.id),
+        "shipping_fee": str(shipping),
+    }
+    # Kargo için Shopify-benzeri shipping_address (packaging _addr_parts bunu okur)
+    if (req.address or req.phone or req.il):
+        _raw["shipping_address"] = {
+            "name": _cust,
+            "phone": (req.phone or "").strip(),
+            "address1": (req.address or "").strip(),
+            "city": (req.il or "").strip(),        # il
+            "province": (req.ilce or "").strip(),  # ilçe
+            "country": "Türkiye",
+        }
+        _raw["customer_phone"] = (req.phone or "").strip()
     order = Order(
         tenant_id=user.tenant_id,
         store_id=d.store_id,
         external_id=external_id,
         order_number=order_number,
         name=f"#{order_number}",
-        customer_name=d.name,
+        customer_name=_cust,
         created_at_platform=now,
         note=req.note,
         current_stage=1,
-        raw={
-            "total_price": str(toplam),
-            "currency": (getattr(d, "currency", "TRY") or "TRY").upper(),
-            "source": "bayii",
-            "dealer_id": str(d.id),
-            "shipping_fee": str(shipping),
-        },
+        raw=_raw,
     )
     db.add(order)
     db.flush()

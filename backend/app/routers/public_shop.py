@@ -309,3 +309,61 @@ async def paytr_webhook(
 
     checkout_svc.process_payment_result(db, session, result)
     return PlainTextResponse("OK")
+
+
+# ─── Müşteri sipariş takibi (lookup_token ile) ───────────────
+
+@router.get("/orders/{lookup_token}")
+def order_lookup(
+    lookup_token: str,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Sipariş durumu — tahmin edilemez lookup_token ile. Minimum veri döner
+    (tam adres/telefon asla yankılanmaz)."""
+    from app.models import Order
+    from app.stages import progress_percent, stage_label
+
+    session = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.lookup_token == lookup_token,
+        CheckoutSession.status == "paid",
+    ))
+    if not session or not session.order_id:
+        raise HTTPException(404, "Sipariş bulunamadı")
+    order = db.get(Order, session.order_id)
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı")
+
+    kargo = order.kargo_info or {}
+    stage_no = order.current_stage or 1
+    if order.is_iptal:
+        durum = {"key": "iptal", "label": "İptal Edildi", "progress": 0}
+    else:
+        durum = {
+            "key": str(stage_no),
+            "label": stage_label(stage_no),
+            "progress": progress_percent(stage_no),
+        }
+
+    return {
+        "order_number": order.order_number,
+        "created_at": order.created_at_platform.isoformat() if order.created_at_platform else None,
+        "durum": durum,
+        "kargo": {
+            "takip_no": kargo.get("takip_no"),
+            "takip_url": kargo.get("takip_url"),
+            "firma": kargo.get("handler_name"),
+        } if kargo.get("takip_no") else None,
+        "items": [
+            {
+                "title": li.title,
+                "variant_title": li.variant_title,
+                "quantity": li.quantity,
+            }
+            for li in order.line_items
+        ],
+        "amount": str(session.amount),
+        "shipping_amount": str(session.shipping_amount),
+        "currency": session.currency,
+    }

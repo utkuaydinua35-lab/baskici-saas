@@ -207,6 +207,9 @@ def process_payment_result(
 
 
 def finalize_paid_session(db: Session, session: CheckoutSession) -> None:
-    """Ödemesi doğrulanmış session'ı siparişe çevirir (PR4'te doldurulacak):
-    Order + LineItem oluşturma, stok düşümü, onay e-postası."""
-    # PR4: services/storefront_order.create_order_from_session(db, session)
+    """Ödemesi doğrulanmış session'ı siparişe çevirir: Order + LineItem,
+    stok düşümü, onay e-postası. İkinci kez sipariş oluşmasına karşı hem
+    process_payment_result'taki status kontrolü hem de orders tablosundaki
+    (store_id, external_id) tekilliği koruma sağlar."""
+    from app.services.storefront_order import create_order_from_session
+    create_order_from_session(db, session)

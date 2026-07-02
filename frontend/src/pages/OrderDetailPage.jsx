@@ -728,7 +728,7 @@ function MusteriTab({ detail }) {
         <div className="text-sm text-gray-200">{detail.customer_name || '?'}</div>
         {detail.customer_email && <div className="text-xs text-gray-400 mt-0.5">{detail.customer_email}</div>}
         {detail.customer_email && (
-          <EmailSender orderRef={detail.order_number} orderNo={detail.order_number}
+          <EmailSender orderRef={detail.id || detail.order_number} orderNo={detail.order_number}
             customer={detail.customer_name} email={detail.customer_email} />
         )}
       </PanelCard>
@@ -1194,7 +1194,10 @@ function EmailSender({ orderRef, orderNo, customer, email }) {
       await api.post(`/api/orders/${orderRef}/send-email`, { subject: subject.trim(), body_html: html, title: subject.trim() })
       toast.success('E-posta gönderildi')
       setOpen(false); setSubject(''); setBody('')
-    } catch (e) { toast.error(e.detail || 'Gönderilemedi') }
+    } catch (e) {
+      const d = e?.detail
+      toast.error(typeof d === 'string' ? d : (Array.isArray(d) ? 'Geçersiz alan' : 'E-posta gönderilemedi'))
+    }
     finally { setSending(false) }
   }
 

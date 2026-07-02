@@ -290,3 +290,62 @@ def generate_mockup_url(design, tenant_id, variation: str = "siyah", phone_model
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[mockup] üretim hatası: {e}")
         return None
+
+
+def _placed_quad(layer):
+    """Smart object yerleşim transform'undan 4 köşe (TL,TR,BR,BL) px olarak."""
+    from psd_tools.constants import Tag
+    rec = layer._record
+    for tg in (Tag.PLACED_LAYER2, Tag.PLACED_LAYER1):
+        try:
+            d = rec.tagged_blocks.get_data(tg)
+        except Exception:  # noqa: BLE001
+            d = None
+        if d is not None and getattr(d, "transform", None):
+            t = d.transform
+            return [(t[0], t[1]), (t[2], t[3]), (t[4], t[5]), (t[6], t[7])]
+    b = layer.bbox
+    return [(b[0], b[1]), (b[2], b[1]), (b[2], b[3]), (b[0], b[3])]
+
+
+def _is_placeholder_so(layer, layer_name):
+    if layer.kind != "smartobject":
+        return False
+    if layer_name and layer.name == layer_name:
+        return True
+    so = getattr(layer, "smart_object", None)
+    fn = (getattr(so, "filename", "") or "").lower()
+    return ("your work here" in fn) or ("design" in fn) or (layer.name.lower() in ("design", "w1", "bc"))
+
+
+def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None = None) -> Image.Image:
+    """PSD mockup'ı sunucuda derle: placeholder design smart object'lerini gizle, PSD'yi
+    render et (case/gölge/yansıma), yeni tasarımı placeholder'ın yerleşim quad'ına warp edip
+    üstüne oturt. Photoshop gerektirmez."""
+    from psd_tools import PSDImage
+    psd = PSDImage.open(psd_path)
+    W, H = psd.width, psd.height
+    targets = [l for l in psd.descendants() if _is_placeholder_so(l, layer_name)]
+    # Quad kaynağı: adı verilen ya da görünür ilk placeholder; yoksa ilk
+    chosen = None
+    for l in targets:
+        if (layer_name and l.name == layer_name) or (chosen is None and l.visible):
+            chosen = l
+            if layer_name and l.name == layer_name:
+                break
+    if chosen is None and targets:
+        chosen = targets[0]
+    quad_px = _placed_quad(chosen) if chosen else [(0, 0), (W, 0), (W, H), (0, H)]
+    quad_frac = [[x / W, y / H] for (x, y) in quad_px]
+    # Placeholder'ları gizle -> base render
+    for l in targets:
+        try:
+            l.visible = False
+        except Exception:  # noqa: BLE001
+            pass
+    base = psd.composite(force=True)
+    if base is None:
+        base = Image.new("RGBA", (W, H), (255, 255, 255, 255))
+    base = base.convert("RGBA")
+    # Tasarımı quad'a warp edip üstüne oturt (perspektif motoru)
+    return _render_quad(design, base, quad_frac, overlay=False)

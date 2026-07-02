@@ -2,25 +2,37 @@
 Public vitrin API'si — AUTH YOK (müşteriye açık).
 
 Next.js vitrini bu endpoint'leri SUNUCUDAN SUNUCUYA çağırır (tarayıcı doğrudan
-gelmez → CORS gerekmez). Ödeme sağlayıcı callback'leri de buraya gelir (PR3).
+gelmez → CORS gerekmez). Ödeme sağlayıcı callback'leri de buraya gelir.
 
-- GET /api/shop/{store_slug}/products               → aktif ürün listesi
-- GET /api/shop/{store_slug}/products/{product_slug} → ürün detayı (varyant+görsel)
+- GET  /api/shop/{store_slug}/products                → aktif ürün listesi
+- GET  /api/shop/{store_slug}/products/{product_slug} → ürün detayı
+- POST /api/shop/{store_slug}/checkout                → ödeme oturumu başlat
+- GET  /api/shop/checkout/{token}/status              → sonuç sayfası poll'u
+- POST /api/shop/payments/iyzico/callback/{token}     → iyzico dönüşü (doğrula+redirect)
+- POST /api/shop/payments/paytr/webhook               → PayTR bildirimi (hash+OK)
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import PlainTextResponse, RedirectResponse
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import CatalogProduct, CatalogVariant, Store
-from app.services.rate_limit import make_rate_limiter
+from app.models import CatalogProduct, CatalogVariant, CheckoutSession, Store
+from app.payments import get_payment_provider
+from app.services import checkout as checkout_svc
+from app.services.rate_limit import client_ip, make_rate_limiter
 
 router = APIRouter(prefix="/api/shop", tags=["public-shop"])
 
-# Okuma uçları için cömert limit (katalog gezinme), yazma uçları PR3'te ayrı sayaç.
+# Okuma uçları için cömert limit (katalog gezinme); yazma uçları ayrı, sıkı sayaç.
 read_rate_limit = make_rate_limiter(max_hits=60, window=60.0)
+checkout_rate_limit = make_rate_limiter(max_hits=10, window=60.0)
+status_rate_limit = make_rate_limiter(max_hits=30, window=60.0)
 
 
 def _resolve_store(db: Session, store_slug: str) -> Store:
@@ -159,3 +171,141 @@ def get_product(
 
     response.headers["Cache-Control"] = "public, max-age=60"
     return _serialize_product_detail(product)
+
+
+# ─── Checkout + Ödeme ────────────────────────────────────────
+
+class CheckoutItemIn(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(..., ge=1, le=20)
+
+
+class CheckoutCustomerIn(BaseModel):
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr
+    phone: str = Field(..., min_length=7, max_length=20)
+    address1: str = Field(..., min_length=5, max_length=300)
+    city: str = Field(..., min_length=2, max_length=60)
+    province: str | None = Field(None, max_length=60)
+    zip: str | None = Field(None, max_length=20)
+    note: str | None = Field(None, max_length=500)
+
+
+class CheckoutRequest(BaseModel):
+    items: list[CheckoutItemIn] = Field(..., min_length=1, max_length=30)
+    customer: CheckoutCustomerIn
+    kvkk_accept: bool
+
+
+@router.post("/{store_slug}/checkout")
+def create_checkout(
+    store_slug: str,
+    body: CheckoutRequest,
+    request: Request,
+    _rl: None = Depends(checkout_rate_limit),
+    db: Session = Depends(get_db),
+):
+    if not body.kvkk_accept:
+        raise HTTPException(422, "Devam etmek için KVKK aydınlatma metnini onaylamalısınız")
+
+    store = _resolve_store(db, store_slug)
+    try:
+        session, init = checkout_svc.create_session(
+            db,
+            store,
+            items=[{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items],
+            customer=body.customer.model_dump(),
+            client_ip=client_ip(request),
+        )
+    except checkout_svc.CheckoutError as e:
+        raise HTTPException(422, str(e))
+    except ValueError as e:
+        # Sağlayıcı config/başlatma hatası — müşteriye genel mesaj, log'a detay
+        print(f"[checkout] baslatma hatasi store={store.slug}: {e}")
+        raise HTTPException(502, "Ödeme başlatılamadı. Lütfen daha sonra tekrar deneyin.")
+
+    return {
+        "token": session.token,
+        "mode": init.mode,          # redirect | iframe
+        "url": init.url,
+        "amount": str(session.amount),
+        "shipping_amount": str(session.shipping_amount),
+    }
+
+
+@router.get("/checkout/{token}/status")
+def checkout_status(
+    token: str,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    session = checkout_svc.get_session_by_token(db, token)
+    if not session:
+        raise HTTPException(404, "Ödeme oturumu bulunamadı")
+    out: dict = {"status": session.status}
+    if session.status == "paid":
+        out["lookup_token"] = session.lookup_token
+        if session.order_id:
+            from app.models import Order
+            order = db.get(Order, session.order_id)
+            if order:
+                out["order_number"] = order.order_number
+    return out
+
+
+@router.post("/payments/iyzico/callback/{token}")
+async def iyzico_callback(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """iyzico tarayıcı dönüşü. Form'daki token'a GÜVENİLMEZ — sunucudan
+    sunucuya retrieve ile doğrulanır; sonra müşteri vitrine yönlendirilir."""
+    session = checkout_svc.get_session_by_token(db, token, for_update=True)
+    if not session or session.provider != "iyzico":
+        raise HTTPException(404)
+
+    form = dict(await request.form())
+    store = db.get(Store, session.store_id)
+    provider = get_payment_provider(store)
+    result = provider.handle_callback(form, session)
+    checkout_svc.process_payment_result(db, session, result)
+
+    return RedirectResponse(
+        checkout_svc.storefront_result_url(store, session), status_code=303
+    )
+
+
+@router.post("/payments/paytr/webhook")
+async def paytr_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """PayTR sunucudan sunucuya bildirim. Hash doğrulanır; yanıt HER ZAMAN
+    düz metin 'OK' olmalı (aksi halde PayTR tekrar dener)."""
+    form = dict(await request.form())
+    merchant_oid = str(form.get("merchant_oid") or "")
+    try:
+        session_id = uuid.UUID(hex=merchant_oid)
+    except ValueError:
+        raise HTTPException(404)
+
+    session = db.scalar(
+        select(CheckoutSession)
+        .where(CheckoutSession.id == session_id, CheckoutSession.provider == "paytr")
+        .with_for_update()
+    )
+    if not session:
+        raise HTTPException(404)
+
+    store = db.get(Store, session.store_id)
+    provider = get_payment_provider(store)
+    result = provider.handle_callback(form, session)
+    if result.status == "failed" and result.error == "hash doğrulanamadı":
+        # imzasız/bozuk istek — OK dönme ki saldırgan "işlendi" sanmasın
+        raise HTTPException(400, "hash gecersiz")
+
+    checkout_svc.process_payment_result(db, session, result)
+    return PlainTextResponse("OK")

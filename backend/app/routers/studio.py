@@ -196,6 +196,13 @@ async def analyze(
             results.append({"ok": False, "filename": f.filename, "error": f"Mockup üretilemedi: {str(e)[:120]}"})
             continue
         img.save(str(cdir / "baski.jpg"), "JPEG", quality=95)
+        # Üretim için CMYK PDF (mold akışı PDF bekler; JPG üretimde kullanılmaz)
+        _has_pdf = False
+        try:
+            (cdir / "baski.pdf").write_bytes(ps.make_print_pdf(img))
+            _has_pdf = True
+        except Exception:  # noqa: BLE001
+            _has_pdf = False
         rel = f"tenants/{user.tenant_id}/studio/{store_id}/{code}"
         results.append({
             "ok": True,
@@ -207,6 +214,7 @@ async def analyze(
             "analysis": analysis,
             "mockup_url": f"/storage/{rel}/mockup.jpg",
             "baski_url": f"/storage/{rel}/baski.jpg",
+            "baski_pdf_url": f"/storage/{rel}/baski.pdf" if _has_pdf else None,
             "ai_expanded": ai_expanded,
         })
     return {"ok": True, "store_id": str(store_id), "items": results}
@@ -254,16 +262,22 @@ def publish(req: PublishIn, user: User = Depends(require_permission("tasarim")),
             out.append({"code": code, "ok": False, "error": "Dosyalar bulunamadı (önce analiz)"})
             continue
 
-        # 1) Design kaydı (baskı dosyası = üretim tasarımı). Kod çakışırsa atla.
+        # 1) Design kaydı (üretim tasarımı = CMYK PDF varsa o, yoksa JPG). Kod çakışırsa atla.
+        pdf = cdir / "baski.pdf"
+        if pdf.exists():
+            _rel = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.pdf"
+            _fmt, _sz = "pdf", pdf.stat().st_size
+        else:
+            _rel = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.jpg"
+            _fmt, _sz = "jpg", baski.stat().st_size
         exists = db.scalar(select(Design).where(Design.store_id == s.id, Design.code == code))
         if exists:
             design = exists
         else:
-            rel_design = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.jpg"
             design = Design(
                 tenant_id=user.tenant_id, store_id=s.id, code=code,
-                name=it.title[:200], file_path=rel_design, file_format="jpg",
-                file_size_bytes=baski.stat().st_size,
+                name=it.title[:200], file_path=_rel, file_format=_fmt,
+                file_size_bytes=_sz,
             )
             db.add(design)
             db.flush()

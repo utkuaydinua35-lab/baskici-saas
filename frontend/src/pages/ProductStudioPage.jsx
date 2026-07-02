@@ -277,6 +277,7 @@ function PreviewCard({ it, onChange, onRemove }) {
         <button onClick={() => setOpen(o => !o)} className="text-gray-400 hover:text-gray-200">{open ? '▲ Açıklamayı gizle' : '▼ Açıklama'}</button>
         <a href={it.mockup_url} download={`${it.code}_mockup.jpg`} className="text-accent hover:underline">⬇ mockup.jpg</a>
         <a href={it.baski_url} download={`${it.code}_baski.jpg`} className="text-accent hover:underline">⬇ baskı.jpg</a>
+        {it.baski_pdf_url && <a href={it.baski_pdf_url} download={`${it.code}_baski.pdf`} className="text-emerald-300 hover:underline">⬇ baskı.pdf (CMYK)</a>}
         {it.admin_url && <a href={it.admin_url} target="_blank" rel="noreferrer" className="text-emerald-300 hover:underline ml-auto">Shopify'da aç →</a>}
       </div>
       {open && (

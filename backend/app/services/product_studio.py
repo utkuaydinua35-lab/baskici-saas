@@ -148,6 +148,22 @@ def aspect_ok(w: int, h: int) -> bool:
     return RATIO_MIN <= (w / h) <= RATIO_MAX
 
 
+def make_print_pdf(image, dpi: int = 300) -> bytes:
+    """Tasarımı baskı için CMYK PDF'e çevir (mold/üretim akışı PDF bekler).
+    Not: RIP/ICC profili olmadan naif RGB->CMYK; matbaa profili istenirse ICC eklenebilir."""
+    import io
+    from PIL import Image as _Img
+    img = image if hasattr(image, "convert") else _Img.open(io.BytesIO(image))
+    rgb = img.convert("RGB")
+    try:
+        out = rgb.convert("CMYK")
+    except Exception:  # noqa: BLE001
+        out = rgb
+    buf = io.BytesIO()
+    out.save(buf, "PDF", resolution=float(dpi))
+    return buf.getvalue()
+
+
 def default_prefix(brand_name: str) -> str:
     for ch in (brand_name or ""):
         if ch.isalpha():

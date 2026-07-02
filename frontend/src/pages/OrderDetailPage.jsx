@@ -727,6 +727,10 @@ function MusteriTab({ detail }) {
       <PanelCard title="Müşteri" icon="👤">
         <div className="text-sm text-gray-200">{detail.customer_name || '?'}</div>
         {detail.customer_email && <div className="text-xs text-gray-400 mt-0.5">{detail.customer_email}</div>}
+        {detail.customer_email && (
+          <EmailSender orderRef={detail.order_number} orderNo={detail.order_number}
+            customer={detail.customer_name} email={detail.customer_email} />
+        )}
       </PanelCard>
 
       {(ship.address1 || ship.city) && (
@@ -1144,4 +1148,75 @@ function fmtMoney(v, cur) {
 function paymentLabel(status) {
   const map = { paid: 'Ödendi', pending: 'Bekliyor', refunded: 'İade', partially_paid: 'Kısmi', voided: 'İptal' }
   return map[status] || status || '—'
+}
+
+// ─── Müşteriye şablonlu e-posta ─────────────────────────────
+const ORDER_EMAIL_TEMPLATES = [
+  {
+    name: 'Telefon modeli stokta yok',
+    subject: 'Sipariş #{siparis} — Ürün tedarik durumu',
+    body: 'Merhaba {musteri},\n\n#{siparis} numaralı siparişinizdeki telefon modeli şu anda stoklarımızda bulunmamaktadır. Tedarik süreci hakkında sizi en kısa sürede bilgilendireceğiz.\n\nAnlayışınız için teşekkür ederiz.',
+  },
+  {
+    name: 'Kişiye özel tasarım hazır (onay bekliyor)',
+    subject: 'Sipariş #{siparis} — Tasarımınız hazır, onayınızı bekliyoruz',
+    body: 'Merhaba {musteri},\n\n#{siparis} numaralı siparişiniz için kişiye özel tasarımınız hazırlandı. Onay sayfasından tasarımı inceleyip onaylayabilir ya da revizyon talep edebilirsiniz.\n\nYanıtınızı bekliyoruz 🌸',
+  },
+  {
+    name: 'Kargoya verildi',
+    subject: 'Sipariş #{siparis} kargoya verildi',
+    body: 'Merhaba {musteri},\n\n#{siparis} numaralı siparişiniz kargoya verildi. Takip numaranız: ... \n\nSağlıkla kullanın 😊',
+  },
+  {
+    name: 'Adres teyidi',
+    subject: 'Sipariş #{siparis} — Adres teyidi',
+    body: 'Merhaba {musteri},\n\nSiparişinizi göndermeden önce teslimat adresinizi teyit etmek istiyoruz: ...\n\nDoğru mudur? Bilginizi rica ederiz.',
+  },
+]
+
+function EmailSender({ orderRef, orderNo, customer, email }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const fill = (t) => (t || '')
+    .replaceAll('{siparis}', orderNo || '...')
+    .replaceAll('{musteri}', (customer || '').split(' ')[0] || 'Merhaba')
+  const applyTpl = (tpl) => { setSubject(fill(tpl.subject)); setBody(fill(tpl.body)) }
+
+  const send = async () => {
+    if (!subject.trim() || !body.trim()) { toast.error('Konu ve içerik gerekli'); return }
+    setSending(true)
+    try {
+      const html = body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
+      await api.post(`/api/orders/${orderRef}/send-email`, { subject: subject.trim(), body_html: html, title: subject.trim() })
+      toast.success('E-posta gönderildi')
+      setOpen(false); setSubject(''); setBody('')
+    } catch (e) { toast.error(e.detail || 'Gönderilemedi') }
+    finally { setSending(false) }
+  }
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)} className="mt-2 text-xs text-accent hover:underline">📧 E-posta gönder</button>
+  )
+  return (
+    <div className="mt-2 pt-2 border-t border-brand-border/50">
+      <div className="flex flex-wrap gap-1 mb-2">
+        {ORDER_EMAIL_TEMPLATES.map((t, i) => (
+          <button key={i} onClick={() => applyTpl(t)} className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-300 hover:text-white">{t.name}</button>
+        ))}
+      </div>
+      <input className="input w-full !text-xs mb-1" placeholder="Konu" value={subject} onChange={e => setSubject(e.target.value)} />
+      <textarea className="input w-full !text-xs" rows={5} placeholder="İçerik (şablon seçip düzenle; ... kısımlarını doldur)" value={body} onChange={e => setBody(e.target.value)} />
+      <div className="flex justify-between items-center mt-1.5">
+        <span className="text-[10px] text-gray-500 truncate">→ {email}</span>
+        <div className="flex gap-2">
+          <button onClick={() => setOpen(false)} className="text-[11px] text-gray-400 hover:text-gray-200">İptal</button>
+          <button onClick={send} disabled={sending} className="btn-primary !text-[11px] !py-1 !px-2.5 disabled:opacity-50">{sending ? '...' : 'Gönder'}</button>
+        </div>
+      </div>
+    </div>
+  )
 }

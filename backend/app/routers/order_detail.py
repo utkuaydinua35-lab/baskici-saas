@@ -502,6 +502,46 @@ def update_flags(
     return _serialize_detail(order, db)
 
 
+# ─── Müşteriye şablonlu e-posta ─────────────────────────────
+
+class CustomerEmailIn(BaseModel):
+    subject: str
+    body_html: str = ""
+    title: str | None = None
+
+
+@router.post("/{order_ref}/send-email", response_model=dict)
+def send_customer_email(
+    order_ref: str,
+    req: CustomerEmailIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sipariş müşterisine şablonlu (markalı) e-posta gönder."""
+    order = _resolve_order(db, order_ref, user.tenant_id, with_rels=False)
+    to = (order.customer_email or "").strip()
+    if not to:
+        raise HTTPException(400, "Bu siparişte müşteri e-postası yok")
+    from app.services import email_service
+    if not email_service.is_configured():
+        raise HTTPException(400, "E-posta ayarlı değil (.env SMTP_*)")
+    from app.models import Tenant
+    tenant = db.get(Tenant, user.tenant_id)
+    bk = email_service.brand_kwargs(tenant)
+    html = email_service.render_email(
+        title=(req.title or req.subject),
+        body_html=req.body_html or "",
+        footer=f"Sipariş #{order.order_number} · Bu e-posta siparişinizle ilgilidir.",
+        **bk,
+    )
+    ok = email_service.send_email(to, req.subject, html)
+    if not ok:
+        raise HTTPException(502, "E-posta gönderilemedi (SMTP)")
+    _log_history(db, order, user, action="musteri_email", note=(req.subject or "")[:80])
+    db.commit()
+    return {"ok": True, "to": to}
+
+
 # ─── Müşteri tasarım onayı ──────────────────────────────────
 
 class ApprovalCreate(BaseModel):

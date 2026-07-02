@@ -89,6 +89,51 @@ def _get_thread(db: Session, thread_id: uuid.UUID, user: User) -> SupportThread:
     return t
 
 
+_STAGE_LABEL = {
+    1: "Yeni", 2: "Tasarım", 3: "Barkod", 4: "Baskı", 5: "Baskı Tamam",
+    6: "Paketleme", 7: "Paketlendi", 8: "Kargoda", 9: "Teslim",
+}
+
+
+def _order_detail_for_thread(db: Session, t: SupportThread) -> dict | None:
+    """Konuşmanın sipariş numarasına göre sipariş özetini (kalemler/durum/kargo) döndür."""
+    from app.models import LineItem, Order
+    onum = (t.order_number or "").strip()
+    if not onum:
+        return None
+    o = db.scalar(
+        select(Order).where(Order.tenant_id == t.tenant_id, Order.order_number == onum)
+    )
+    if not o and t.shopify_order_id:
+        o = db.scalar(select(Order).where(
+            Order.tenant_id == t.tenant_id, Order.external_id == str(t.shopify_order_id)))
+    if not o:
+        return {"found": False, "order_number": onum}
+    lis = db.scalars(select(LineItem).where(LineItem.order_id == o.id).order_by(LineItem.position)).all()
+    items = [{
+        "title": li.title,
+        "model": (li.device_model_override or li.variant_title or None),
+        "quantity": li.quantity or 1,
+        "is_hazir": bool(getattr(li, "is_hazir", False)),
+    } for li in lis]
+    _ki = o.kargo_info or {}
+    return {
+        "found": True,
+        "order_number": o.order_number,
+        "customer_name": o.customer_name,
+        "stage": o.current_stage,
+        "stage_label": (_STAGE_LABEL.get(o.current_stage) if o.current_stage else None),
+        "fulfillment_status": o.fulfillment_status,
+        "cancelled": o.cancelled_at is not None or bool(o.is_iptal),
+        "takip_no": _ki.get("takip_no"),
+        "kargo_firma": _ki.get("handler_name"),
+        "total_qty": sum(i["quantity"] for i in items),
+        "items": items,
+        "note": o.note,
+        "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+    }
+
+
 @router.get("/threads/{thread_id}", response_model=dict)
 def get_thread_detail(
     thread_id: uuid.UUID,
@@ -96,7 +141,11 @@ def get_thread_detail(
     db: Session = Depends(get_db),
 ):
     t = _get_thread(db, thread_id, user)
-    return {**_thread_summary(db, t), "messages": sup.messages_payload(db, t)}
+    return {
+        **_thread_summary(db, t),
+        "messages": sup.messages_payload(db, t),
+        "order_detail": _order_detail_for_thread(db, t),
+    }
 
 
 class ReplyRequest(BaseModel):

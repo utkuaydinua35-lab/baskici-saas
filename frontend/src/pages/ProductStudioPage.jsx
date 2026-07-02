@@ -205,10 +205,15 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
   const [marka, setMarka] = useState(cfg.brand || '')
   const [aiExpand, setAiExpand] = useState(!!cfg.ai_expand)
   const [aiProvider, setAiProvider] = useState(cfg.ai_provider || 'auto')
+  const [aiUpscale, setAiUpscale] = useState(!!cfg.ai_upscale)
+  const [kOffset, setKOffset] = useState(cfg.cmyk_k_offset ?? 5)
   const anyProvider = cfg.fal_ready || cfg.gemini_ready
   const save = async () => {
     try {
-      await api.patch('/api/studio/config', { store_id: storeId, price, prefix, marka_adi: marka, ai_expand: aiExpand, ai_provider: aiProvider })
+      await api.patch('/api/studio/config', {
+        store_id: storeId, price, prefix, marka_adi: marka,
+        ai_expand: aiExpand, ai_provider: aiProvider, ai_upscale: aiUpscale, cmyk_k_offset: Number(kOffset),
+      })
       toast.success('Kaydedildi'); onSaved()
     } catch (e) { toast.error(e.detail || 'Kaydedilemedi') }
   }
@@ -235,6 +240,17 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${cfg.gemini_ready ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-500'}`}>Gemini {cfg.gemini_ready ? '✓' : 'anahtar yok'}</span>
         </div>
         {!anyProvider && <p className="text-[10px] text-amber-300 mt-1.5">Aktifleştirmek için .env'e FAL_KEY ve/veya GEMINI_API_KEY ekleyip backend'i yeniden başlat.</p>}
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-200 mt-2 pt-2 border-t border-brand-border/40">
+          <input type="checkbox" checked={aiUpscale} onChange={e => setAiUpscale(e.target.checked)} className="accent-accent" disabled={!cfg.fal_ready} />
+          ⬆️ Düşük çözünürlüğü baskı için AI ile büyüt (upscale) <span className="text-[10px] text-gray-500">{cfg.fal_ready ? '(fal.ai)' : '— FAL_KEY gerekli'}</span>
+        </label>
+      </div>
+
+      {/* CMYK / baskı ayarı */}
+      <div className="sm:col-span-3 flex items-center gap-2 flex-wrap text-xs bg-brand-input/30 border border-brand-border/60 rounded-lg p-2.5">
+        <span className="text-gray-300">🖨️ CMYK K ayarı:</span>
+        <input type="number" min="-50" max="50" value={kOffset} onChange={e => setKOffset(e.target.value)} className="input !text-sm !py-1 w-20" />
+        <span className="text-gray-500">→ en beyaz renk <b className="text-gray-300">0,0,0,{kOffset}</b> olur (K'ye eklenen %). Negatif = K azalır.</span>
       </div>
 
       <div className="sm:col-span-3 flex items-center justify-between gap-2 flex-wrap">

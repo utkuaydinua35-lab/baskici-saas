@@ -93,6 +93,36 @@ def _gemini(canvas, key, model) -> bytes | None:
     return None
 
 
+def upscale_image(img_bytes: bytes, scale: int = 2) -> bytes | None:
+    """Baskı çözünürlüğü düşük tasarımı AI ile büyüt (fal.ai upscaler). Başarısızsa None."""
+    s = get_settings()
+    if not s.fal_key:
+        return None
+    try:
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    except Exception:  # noqa: BLE001
+        return None
+    body = {"image_url": _data_uri(img, "RGB"), "scale": scale, "upscale_factor": scale}
+    try:
+        r = requests.post(f"https://fal.run/{s.fal_upscale_model}", json=body,
+                          headers={"Authorization": f"Key {s.fal_key}", "Content-Type": "application/json"}, timeout=180)
+        if r.status_code not in (200, 201):
+            logger.warning(f"[upscale] fal HTTP {r.status_code}: {r.text[:200]}")
+            return None
+        d = r.json() or {}
+        imgs = d.get("images") or d.get("image") or []
+        url = (imgs[0].get("url") if isinstance(imgs, list) and imgs else (imgs.get("url") if isinstance(imgs, dict) else None))
+        if not url:
+            return None
+        if url.startswith("data:"):
+            return base64.b64decode(url.split(",", 1)[1])
+        ir = requests.get(url, timeout=90)
+        return ir.content if ir.ok else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[upscale] hata: {e}")
+        return None
+
+
 def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "auto") -> bytes | None:
     """Tasarımı ~target_ratio (w/h) olacak şekilde ALTA yaslayıp üstünü AI ile genişlet.
     provider: 'auto' | 'fal' | 'gemini'. Başarısızsa None (kenara alınır)."""

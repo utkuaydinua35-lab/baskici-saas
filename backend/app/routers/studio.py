@@ -56,6 +56,8 @@ def _cfg(s: Store) -> dict:
         "mockup_ready": bool(c.get("mockup_psd")),
         "ai_expand": bool(c.get("ai_expand")),
         "ai_provider": c.get("ai_provider") or "auto",
+        "ai_upscale": bool(c.get("ai_upscale")),
+        "cmyk_k_offset": c.get("cmyk_k_offset", 5),
         # hangi outpaint sağlayıcıları anahtarlı (UI'da göster)
         "fal_ready": bool(_s.fal_key),
         "gemini_ready": bool(_s.gemini_api_key),
@@ -74,6 +76,8 @@ class ConfigIn(BaseModel):
     marka_adi: str | None = None
     ai_expand: bool | None = None
     ai_provider: str | None = None
+    ai_upscale: bool | None = None
+    cmyk_k_offset: int | None = None
 
 
 @router.patch("/config", response_model=dict)
@@ -90,6 +94,10 @@ def set_config(req: ConfigIn, user: User = Depends(require_permission("tasarim")
         cfg["ai_expand"] = bool(req.ai_expand)
     if req.ai_provider is not None:
         cfg["ai_provider"] = req.ai_provider if req.ai_provider in ("auto", "fal", "gemini") else "auto"
+    if req.ai_upscale is not None:
+        cfg["ai_upscale"] = bool(req.ai_upscale)
+    if req.cmyk_k_offset is not None:
+        cfg["cmyk_k_offset"] = max(-50, min(50, int(req.cmyk_k_offset)))
     s.config = cfg
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(s, "config")
@@ -186,6 +194,16 @@ async def analyze(
         content = ps.build_content(analysis, brand)
         code = ps.next_design_code(db, store_id, prefix, reserved=reserved)
         reserved.add(code)
+        # Baskı çözünürlüğü düşükse AI upscale (analiz sonrası; mockup+baskı için)
+        if (s.config or {}).get("ai_upscale") and max(img.width, img.height) < 2000:
+            from app.services import outpaint
+            _up = outpaint.upscale_image(raw, scale=2)
+            if _up:
+                try:
+                    img = Image.open(io.BytesIO(_up)).convert("RGB")
+                    raw = _up
+                except Exception:  # noqa: BLE001
+                    pass
         # Mockup render + kaydet
         cdir = _studio_dir(user.tenant_id, store_id) / code
         cdir.mkdir(parents=True, exist_ok=True)
@@ -199,7 +217,8 @@ async def analyze(
         # Üretim için CMYK PDF (mold akışı PDF bekler; JPG üretimde kullanılmaz)
         _has_pdf = False
         try:
-            (cdir / "baski.pdf").write_bytes(ps.make_print_pdf(img))
+            _koff = int((s.config or {}).get("cmyk_k_offset", 5) or 0)
+            (cdir / "baski.pdf").write_bytes(ps.make_print_pdf(img, k_offset_pct=_koff))
             _has_pdf = True
         except Exception:  # noqa: BLE001
             _has_pdf = False

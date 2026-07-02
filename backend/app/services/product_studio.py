@@ -148,9 +148,11 @@ def aspect_ok(w: int, h: int) -> bool:
     return RATIO_MIN <= (w / h) <= RATIO_MAX
 
 
-def make_print_pdf(image, dpi: int = 300) -> bytes:
+def make_print_pdf(image, dpi: int = 300, k_offset_pct: int = 5) -> bytes:
     """Tasarımı baskı için CMYK PDF'e çevir (mold/üretim akışı PDF bekler).
-    Not: RIP/ICC profili olmadan naif RGB->CMYK; matbaa profili istenirse ICC eklenebilir."""
+    k_offset_pct: K kanalına eklenen offset (%). +5 -> en beyaz renk 0,0,0,5 olur
+    (kullanıcı isteği). Negatif verilirse K azalır (koyular açılır).
+    Not: RIP/ICC profili olmadan naif RGB->CMYK; matbaa ICC profili istenirse eklenebilir."""
     import io
     from PIL import Image as _Img
     img = image if hasattr(image, "convert") else _Img.open(io.BytesIO(image))
@@ -159,6 +161,11 @@ def make_print_pdf(image, dpi: int = 300) -> bytes:
         out = rgb.convert("CMYK")
     except Exception:  # noqa: BLE001
         out = rgb
+    if out.mode == "CMYK" and k_offset_pct:
+        off = round(float(k_offset_pct) / 100.0 * 255.0)   # % -> 0..255
+        c, m, y, k = out.split()
+        k = k.point(lambda v: max(0, min(255, v + off)))
+        out = _Img.merge("CMYK", (c, m, y, k))
     buf = io.BytesIO()
     out.save(buf, "PDF", resolution=float(dpi))
     return buf.getvalue()

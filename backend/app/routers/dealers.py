@@ -117,6 +117,55 @@ def list_dealers(user: User = Depends(require_permission("bayii")), db: Session 
     return [_ser(d) for d in rows]
 
 
+class ParseContactIn(BaseModel):
+    text: str = ""
+
+
+@router.post("/parse-contact", response_model=dict)
+def parse_contact_ep(req: ParseContactIn, user: User = Depends(require_permission("bayii"))):
+    """Serbest metinden (Instagram/WhatsApp) alıcı adı/telefon/adres/il/ilçe ayrıştır."""
+    from app.services.contact_parser import parse_contact
+    return parse_contact(req.text or "")
+
+
+@router.get("/{dealer_id}/dashboard", response_model=dict)
+def dealer_dashboard(dealer_id: uuid.UUID, user: User = Depends(require_permission("bayii")), db: Session = Depends(get_db)):
+    """Bayiye özel dashboard: bakiye + aylık/toplam sipariş adedi, açık sipariş vb."""
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    _ensure_store(db, user.tenant_id, d)
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Bayinin sanal store'u YALNIZCA bu bayinin siparislerini icerir
+    orders = db.scalars(
+        select(Order).where(Order.tenant_id == user.tenant_id, Order.store_id == d.store_id)
+    ).all()
+    total = len(orders)
+    ay_orders = [o for o in orders if o.created_at_platform and o.created_at_platform >= month_start]
+    acik = sum(1 for o in orders if (o.fulfillment_status or "") != "fulfilled" and o.cancelled_at is None and not o.is_iptal)
+
+    def _qty(olist):
+        if not olist:
+            return 0
+        ids = [o.id for o in olist]
+        rows = db.execute(
+            select(LineItem.order_id, LineItem.quantity).where(LineItem.order_id.in_(ids))
+        ).all()
+        return sum((q or 1) for _, q in rows)
+
+    base = _ser(d)
+    base.update({
+        "total_orders": total,
+        "month_orders": len(ay_orders),
+        "month_qty": _qty(ay_orders),
+        "total_qty": _qty(orders),
+        "open_orders": acik,
+        "month_label": now.strftime("%m/%Y"),
+    })
+    return base
+
+
 @router.post("", response_model=dict, status_code=201)
 def create_dealer(req: DealerIn, user: User = Depends(require_permission("bayii")), db: Session = Depends(get_db)):
     # Sanal store olustur (platform='bayii')

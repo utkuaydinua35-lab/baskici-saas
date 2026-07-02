@@ -19,7 +19,7 @@ export default function MoldDetailPage() {
   const { moldId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const geriDon = () => navigate(location.state?.from || '/kalip-olustur')
+  const geriDon = () => navigate(location.state?.from || '/kalip-olustur?tab=existing')
   const [showDelete, setShowDelete] = useState(false)
   const [assignTarget, setAssignTarget] = useState(null)  // { kalip_kodu }
   const [renamePrompt, setRenamePrompt] = useState(false)

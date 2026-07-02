@@ -344,10 +344,11 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
   const unitPrice = Number(dealer.unit_price || 0)
   const shippingFee = Number(dealer.shipping_fee || 0)
   const totalQty = items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
-  const shipping = applyShipping ? shippingFee : 0
-  const total = totalQty * unitPrice + shipping
+  const shipping = applyShipping ? shippingFee : 0     // ₺ (her zaman)
+  const urunTotal = totalQty * unitPrice               // bayi para birimi
   const _cur = dealer.currency === 'USD' ? 'USD' : 'TRY'
   const fmt = (n) => new Intl.NumberFormat(_cur === 'USD' ? 'en-US' : 'tr-TR', { style: 'currency', currency: _cur }).format(n || 0)
+  const fmtTRY = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(n || 0)
 
   const setItem = (idx, key, val) => setItems(arr => arr.map((it, i) => i === idx ? { ...it, [key]: val } : it))
   const addItem = () => setItems(arr => [...arr, { model: '', design_id: '', design_label: '', quantity: 1 }])
@@ -381,7 +382,7 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
         customer_name: cust.name || null, phone: cust.phone || null,
         address: cust.address || null, il: cust.il || null, ilce: cust.ilce || null,
       })
-      toast.success(`Sipariş #${r.order_number} oluşturuldu — ${fmt(r.total)}`)
+      toast.success(`Sipariş #${r.order_number} oluşturuldu — ${fmt(r.total)}${r.shipping_try > 0 ? ` + kargo ${fmtTRY(r.shipping_try)}` : ''}`)
       onCreated?.()
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Sipariş oluşturulamadı'); setBusy(false) }
   }
@@ -393,7 +394,7 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
           <h2 className="text-lg font-semibold text-gray-100">{dealer.name} — Yeni Sipariş</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
-        <p className="text-xs text-gray-500 mb-4">Birim fiyat: <span className="text-gray-300 font-medium">{fmt(unitPrice)}</span>{shippingFee > 0 && <> · Kargo: {fmt(shippingFee)}</>}</p>
+        <p className="text-xs text-gray-500 mb-4">Birim fiyat: <span className="text-gray-300 font-medium">{fmt(unitPrice)}</span>{shippingFee > 0 && <> · Kargo: <span className="text-gray-300 font-medium">{fmtTRY(shippingFee)}</span></>}</p>
 
         {loadingLists ? <div className="text-sm text-gray-500 py-6 text-center">Listeler yükleniyor…</div> : (
           <>
@@ -438,13 +439,15 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
             {shippingFee > 0 && (
               <label className="flex items-center gap-2 mb-4 text-sm text-gray-300 cursor-pointer">
                 <input type="checkbox" checked={applyShipping} onChange={e => setApplyShipping(e.target.checked)} />
-                Kargo ücreti uygula ({fmt(shippingFee)})
+                Kargo ücreti uygula ({fmtTRY(shippingFee)})
               </label>
             )}
 
             <div className="flex items-center justify-between border-t border-brand-border pt-3 mb-4">
-              <span className="text-sm text-gray-400">{totalQty} adet{shipping > 0 ? ` + kargo` : ''}</span>
-              <span className="text-lg font-bold text-accent tabular-nums">{fmt(total)}</span>
+              <span className="text-sm text-gray-400">{totalQty} adet{shipping > 0 ? ' + kargo (₺)' : ''}</span>
+              <span className="text-lg font-bold text-accent tabular-nums">
+                {fmt(urunTotal)}{shipping > 0 && <span className="text-sm text-gray-400 font-medium"> + {fmtTRY(shipping)}</span>}
+              </span>
             </div>
 
             <div className="flex justify-end gap-2">

@@ -373,12 +373,11 @@ def create_dealer_order(
     if not d.is_active:
         raise HTTPException(400, "Bayii pasif")
 
-    unit_price = Decimal(str(d.unit_price or 0))
-    shipping = Decimal(str(d.shipping_fee or 0)) if (req.apply_shipping and d.shipping_fee) else Decimal("0")
+    unit_price = Decimal(str(d.unit_price or 0))                # bayi para biriminde (USD/TRY)
+    shipping = Decimal(str(d.shipping_fee or 0)) if (req.apply_shipping and d.shipping_fee) else Decimal("0")  # HER ZAMAN ₺
 
     total_qty = sum(it.quantity for it in req.items)
-    urun_tutar = unit_price * Decimal(total_qty)
-    toplam = urun_tutar + shipping
+    urun_tutar = unit_price * Decimal(total_qty)               # ürün bedeli (bayi para birimi)
 
     # Benzersiz siparis no
     now = _dt.now(_UTC)
@@ -389,7 +388,7 @@ def create_dealer_order(
     # Alıcı (nihai müşteri) — akıllı siparişten; yoksa bayi adı
     _cust = (req.customer_name or "").strip() or d.name
     _raw = {
-        "total_price": str(toplam),
+        "total_price": str(urun_tutar),
         "currency": (getattr(d, "currency", "TRY") or "TRY").upper(),
         "source": "bayii",
         "dealer_id": str(d.id),
@@ -445,34 +444,38 @@ def create_dealer_order(
         )
         db.add(li)
 
-    # Cari borc: siparis tutari kadar bakiye artar (bayi para birimine gore)
+    # Cari borç — ürün bedeli bayi para biriminde, KARGO her zaman ₺ (ayrı hareket).
     _cur = (getattr(d, "currency", "TRY") or "TRY").upper()
-    _sym = "$" if _cur == "USD" else "₺"
+    # 1) Ürün bedeli -> bayi para birimi bakiyesi
     if _cur == "USD":
-        new_balance = Decimal(str(d.balance_usd or 0)) + toplam
-        d.balance_usd = new_balance
+        d.balance_usd = Decimal(str(d.balance_usd or 0)) + urun_tutar
+        urun_bakiye = d.balance_usd
     else:
-        new_balance = Decimal(str(d.balance or 0)) + toplam
-        d.balance = new_balance
-    tx = DealerTransaction(
-        tenant_id=user.tenant_id,
-        dealer_id=d.id,
-        amount=toplam,
-        kind="siparis",
-        currency=_cur,
-        description=f"Sipariş #{order_number} — {total_qty} adet" + (f" (+kargo {_sym}{shipping})" if shipping else ""),
-        ref_order_id=order.id,
-        balance_after=new_balance,
-    )
-    db.add(tx)
+        d.balance = Decimal(str(d.balance or 0)) + urun_tutar
+        urun_bakiye = d.balance
+    db.add(DealerTransaction(
+        tenant_id=user.tenant_id, dealer_id=d.id, amount=urun_tutar, kind="siparis",
+        currency=_cur, description=f"Sipariş #{order_number} — {total_qty} adet",
+        ref_order_id=order.id, balance_after=urun_bakiye,
+    ))
+    # 2) Kargo -> HER ZAMAN ₺ bakiyesi (ayrı hareket)
+    if shipping > 0:
+        d.balance = Decimal(str(d.balance or 0)) + shipping
+        db.add(DealerTransaction(
+            tenant_id=user.tenant_id, dealer_id=d.id, amount=shipping, kind="kargo",
+            currency="TRY", description=f"Kargo — Sipariş #{order_number}",
+            ref_order_id=order.id, balance_after=d.balance,
+        ))
     db.commit()
     db.refresh(order)
 
     return {
         "order_id": str(order.id),
         "order_number": order_number,
-        "total": float(toplam),
+        "total": float(urun_tutar),
+        "currency": _cur,
+        "shipping_try": float(shipping),
         "item_count": len(req.items),
         "total_qty": total_qty,
-        "new_balance": float(new_balance),
+        "new_balance": float(urun_bakiye),
     }

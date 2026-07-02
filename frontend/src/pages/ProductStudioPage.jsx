@@ -1,6 +1,25 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useToast } from '../components/Toast'
+
+// XHR tabanlı yükleme — fetch'te olmayan upload ilerlemesi (%) için.
+function uploadXHR(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url)
+    const tok = getToken()
+    if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => {
+      let data = null
+      try { data = JSON.parse(xhr.responseText) } catch {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else reject({ detail: (data && data.detail) || `HTTP ${xhr.status}` })
+    }
+    xhr.onerror = () => reject({ detail: 'Bağlantı hatası' })
+    xhr.send(formData)
+  })
+}
 
 export default function ProductStudioPage() {
   const toast = useToast()
@@ -10,8 +29,11 @@ export default function ProductStudioPage() {
   const [files, setFiles] = useState([])
   const [analyzing, setAnalyzing] = useState(false)
   const [items, setItems] = useState([])       // önizleme sonuçları
+  const [skipped, setSkipped] = useState([])    // kenara alınan (aspect/hata)
   const [publishing, setPublishing] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [mockupPct, setMockupPct] = useState(null)   // mockup yükleme %
+  const [analyzePct, setAnalyzePct] = useState(null) // analiz yükleme %
 
   useEffect(() => {
     api.get('/api/stores?include_bayii=false').then(s => {
@@ -30,26 +52,30 @@ export default function ProductStudioPage() {
   const uploadMockup = async (f) => {
     if (!f) return
     const fd = new FormData(); fd.append('store_id', storeId); fd.append('file', f)
-    try { const r = await api.postForm('/api/studio/mockup', fd); setCfg(r); toast.success('Mockup yüklendi') }
-    catch (e) { toast.error(e.detail || 'Yüklenemedi') }
+    setMockupPct(0)
+    try {
+      const r = await uploadXHR('/api/studio/mockup', fd, setMockupPct)
+      setCfg(r); toast.success('Mockup yüklendi')
+    } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
+    finally { setMockupPct(null) }
   }
 
   const analyze = async () => {
     if (!files.length) { toast.error('Tasarım görseli seç'); return }
     if (!cfg?.mockup_ready) { toast.error('Önce mockup PSD yükle'); return }
-    setAnalyzing(true); setItems([])
+    setAnalyzing(true); setItems([]); setSkipped([]); setAnalyzePct(0)
     try {
       const fd = new FormData(); fd.append('store_id', storeId)
       files.forEach(f => fd.append('files', f))
-      const r = await api.postForm('/api/studio/analyze', fd)
+      const r = await uploadXHR('/api/studio/analyze', fd, setAnalyzePct)
       const ok = (r.items || []).filter(x => x.ok)
       const bad = (r.items || []).filter(x => !x.ok)
-      setItems(ok)
-      if (bad.length) toast.error(`${bad.length} görsel işlenemedi`)
+      setItems(ok); setSkipped(bad)
       if (ok.length) toast.success(`${ok.length} ürün hazırlandı — kontrol et`)
+      if (bad.length) toast.error(`${bad.length} görsel kenara alındı`)
       setFiles([])
     } catch (e) { toast.error(e.detail || 'Analiz başarısız') }
-    finally { setAnalyzing(false) }
+    finally { setAnalyzing(false); setAnalyzePct(null) }
   }
 
   const setItem = (i, patch) => setItems(arr => arr.map((it, j) => j === i ? { ...it, ...patch } : it))
@@ -101,7 +127,7 @@ export default function ProductStudioPage() {
             <span className="text-gray-500">Fiyat: <b className="text-gray-300">{cfg.price || '—'}</b></span>
           </div>
         )}
-        {showSettings && cfg && <StudioSettings cfg={cfg} storeId={storeId} onSaved={loadCfg} onMockup={uploadMockup} />}
+        {showSettings && cfg && <StudioSettings cfg={cfg} storeId={storeId} onSaved={loadCfg} onMockup={uploadMockup} mockupPct={mockupPct} />}
       </div>
 
       {/* Tasarım yükleme */}
@@ -118,8 +144,25 @@ export default function ProductStudioPage() {
             </div>
           )}
           <button onClick={analyze} disabled={analyzing || !files.length} className="btn-primary w-full !text-sm mt-3 disabled:opacity-50">
-            {analyzing ? '🤖 AI analiz ediyor + mockup üretiliyor…' : '✨ Analiz Et'}
+            {analyzing ? 'İşleniyor…' : '✨ Analiz Et'}
           </button>
+          {analyzing && (
+            <div className="mt-2">
+              {analyzePct !== null && analyzePct < 100
+                ? <Bar pct={analyzePct} label={`Görseller yükleniyor · %${analyzePct}`} />
+                : <Bar indeterminate label="🤖 AI analiz + mockup üretiliyor… (görsel başına birkaç saniye)" />}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kenara alınanlar */}
+      {skipped.length > 0 && (
+        <div className="card mb-4 border-amber-500/30">
+          <div className="text-xs font-medium text-amber-300 mb-1.5">⚠ {skipped.length} görsel kenara alındı</div>
+          <ul className="space-y-1 text-[11px] text-gray-400">
+            {skipped.map((s, i) => <li key={i}>• <b className="text-gray-300">{s.filename || 'görsel'}</b>: {s.error}</li>)}
+          </ul>
         </div>
       )}
 
@@ -143,7 +186,19 @@ export default function ProductStudioPage() {
   )
 }
 
-function StudioSettings({ cfg, storeId, onSaved, onMockup }) {
+function Bar({ pct, indeterminate, label }) {
+  return (
+    <div>
+      <div className="h-2 rounded-full bg-brand-input overflow-hidden">
+        <div className={`h-full bg-accent ${indeterminate ? 'animate-pulse w-full' : ''}`}
+          style={indeterminate ? undefined : { width: `${pct || 0}%`, transition: 'width .2s' }} />
+      </div>
+      {label && <div className="text-[11px] text-gray-500 mt-1">{label}</div>}
+    </div>
+  )
+}
+
+function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
   const toast = useToast()
   const [price, setPrice] = useState(cfg.price || '')
   const [prefix, setPrefix] = useState(cfg.prefix || '')
@@ -158,12 +213,17 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup }) {
       <Field label="Kod öneki"><input className="input w-full !text-sm" value={prefix} onChange={e => setPrefix(e.target.value)} placeholder="B" /></Field>
       <Field label="Varsayılan fiyat"><input className="input w-full !text-sm" value={price} onChange={e => setPrice(e.target.value)} placeholder="örn. 299.90" /></Field>
       <div className="sm:col-span-3 flex items-center justify-between gap-2 flex-wrap">
-        <label className="text-xs text-accent cursor-pointer hover:underline">
+        <label className={`text-xs cursor-pointer hover:underline ${mockupPct != null ? 'text-gray-500 pointer-events-none' : 'text-accent'}`}>
           📎 Mockup PSD yükle {cfg.mockup_ready && '(değiştir)'}
-          <input type="file" accept=".psd,.psb" className="hidden" onChange={e => onMockup(e.target.files?.[0])} />
+          <input type="file" accept=".psd,.psb" className="hidden" disabled={mockupPct != null} onChange={e => onMockup(e.target.files?.[0])} />
         </label>
         <button onClick={save} className="btn-primary !text-xs">Ayarları Kaydet</button>
       </div>
+      {mockupPct != null && (
+        <div className="sm:col-span-3">
+          <Bar pct={mockupPct} indeterminate={mockupPct >= 100} label={mockupPct < 100 ? `Mockup yükleniyor · %${mockupPct}` : 'İşleniyor…'} />
+        </div>
+      )}
     </div>
   )
 }

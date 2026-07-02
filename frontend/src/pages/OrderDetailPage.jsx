@@ -58,6 +58,7 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [rightTab, setRightTab] = useState('musteri')
+  const [emailOpen, setEmailOpen] = useState(false)
   const [lightbox, setLightbox] = useState(null)  // büyütülen görsel url
   const [neighbors, setNeighbors] = useState({ prev: null, next: null })
 
@@ -221,7 +222,7 @@ export default function OrderDetailPage() {
             isIptal={detail.is_iptal}
             onSelect={patchStage}
           />
-          <IslemlerDropdown detail={detail} onFlag={patchFlags} onDuplicate={handleDuplicate} />
+          <IslemlerDropdown detail={detail} onFlag={patchFlags} onDuplicate={handleDuplicate} onEmail={() => setEmailOpen(true)} />
         </div>
       </div>
 
@@ -308,7 +309,7 @@ export default function OrderDetailPage() {
             <RightTab active={rightTab === 'diger'} onClick={() => setRightTab('diger')}>💬 Diğer</RightTab>
           </div>
 
-          {rightTab === 'musteri' && <MusteriTab detail={detail} />}
+          {rightTab === 'musteri' && <MusteriTab detail={detail} onEmail={() => setEmailOpen(true)} />}
           {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
           {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} onCancelKargo={cancelKargo} />}
           {rightTab === 'onay' && <OnayTab orderId={orderId} />}
@@ -317,6 +318,10 @@ export default function OrderDetailPage() {
       </div>
 
       {lightbox && <Lightbox url={lightbox} onClose={() => setLightbox(null)} />}
+      {emailOpen && (
+        <EmailModal orderRef={detail.id || detail.order_number} orderNo={detail.order_number}
+          customer={detail.customer_name} email={detail.customer_email || ''} onClose={() => setEmailOpen(false)} />
+      )}
     </div>
   )
 }
@@ -504,13 +509,13 @@ function IsaretleDropdown({ detail, onFlag, onStage }) {
   )
 }
 
-function IslemlerDropdown({ detail, onFlag, onDuplicate }) {
+function IslemlerDropdown({ detail, onFlag, onDuplicate, onEmail }) {
   return (
     <MenuShell label="⋯ İşlemler">
       <MenuLabel>Sipariş Kopyala</MenuLabel>
       <MenuItem icon="⧉" onClick={onDuplicate}>Yeni sipariş olarak çoğalt</MenuItem>
       <MenuLabel>E-posta</MenuLabel>
-      <MenuItem icon="✉" onClick={() => toast.info('E-posta şablonları yakında gelecek')}>Şablonlu e-posta yolla</MenuItem>
+      <MenuItem icon="✉" onClick={onEmail}>Şablonlu e-posta yolla</MenuItem>
       <MenuLabel>Tedarik</MenuLabel>
       <MenuItem icon="⏸" active={detail.is_tedarik_bekleme}
         onClick={() => onFlag({ is_tedarik_bekleme: !detail.is_tedarik_bekleme })}>
@@ -719,7 +724,7 @@ function CheckPill({ checked, onChange, label }) {
 // Sağ panel tab'ları
 // ═══════════════════════════════════════════════════════════
 
-function MusteriTab({ detail }) {
+function MusteriTab({ detail, onEmail }) {
   const ship = detail.shipping_address || {}
   const bill = detail.billing_address || {}
   return (
@@ -728,8 +733,7 @@ function MusteriTab({ detail }) {
         <div className="text-sm text-gray-200">{detail.customer_name || '?'}</div>
         {detail.customer_email && <div className="text-xs text-gray-400 mt-0.5">{detail.customer_email}</div>}
         {detail.customer_email && (
-          <EmailSender orderRef={detail.id || detail.order_number} orderNo={detail.order_number}
-            customer={detail.customer_name} email={detail.customer_email} />
+          <button onClick={onEmail} className="mt-2 text-xs text-accent hover:underline">📧 Şablonlu e-posta gönder</button>
         )}
       </PanelCard>
 
@@ -1174,9 +1178,8 @@ const ORDER_EMAIL_TEMPLATES = [
   },
 ]
 
-function EmailSender({ orderRef, orderNo, customer, email }) {
+function EmailModal({ orderRef, orderNo, customer, email, onClose }) {
   const toast = useToast()
-  const [open, setOpen] = useState(false)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -1193,7 +1196,7 @@ function EmailSender({ orderRef, orderNo, customer, email }) {
       const html = body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
       await api.post(`/api/orders/${orderRef}/send-email`, { subject: subject.trim(), body_html: html, title: subject.trim() })
       toast.success('E-posta gönderildi')
-      setOpen(false); setSubject(''); setBody('')
+      onClose()
     } catch (e) {
       const d = e?.detail
       toast.error(typeof d === 'string' ? d : (Array.isArray(d) ? 'Geçersiz alan' : 'E-posta gönderilemedi'))
@@ -1201,23 +1204,25 @@ function EmailSender({ orderRef, orderNo, customer, email }) {
     finally { setSending(false) }
   }
 
-  if (!open) return (
-    <button onClick={() => setOpen(true)} className="mt-2 text-xs text-accent hover:underline">📧 E-posta gönder</button>
-  )
   return (
-    <div className="mt-2 pt-2 border-t border-brand-border/50">
-      <div className="flex flex-wrap gap-1 mb-2">
-        {ORDER_EMAIL_TEMPLATES.map((t, i) => (
-          <button key={i} onClick={() => applyTpl(t)} className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-300 hover:text-white">{t.name}</button>
-        ))}
-      </div>
-      <input className="input w-full !text-xs mb-1" placeholder="Konu" value={subject} onChange={e => setSubject(e.target.value)} />
-      <textarea className="input w-full !text-xs" rows={5} placeholder="İçerik (şablon seçip düzenle; ... kısımlarını doldur)" value={body} onChange={e => setBody(e.target.value)} />
-      <div className="flex justify-between items-center mt-1.5">
-        <span className="text-[10px] text-gray-500 truncate">→ {email}</span>
-        <div className="flex gap-2">
-          <button onClick={() => setOpen(false)} className="text-[11px] text-gray-400 hover:text-gray-200">İptal</button>
-          <button onClick={send} disabled={sending} className="btn-primary !text-[11px] !py-1 !px-2.5 disabled:opacity-50">{sending ? '...' : 'Gönder'}</button>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 animate-popin max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-100">📧 Şablonlu e-posta</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">Alıcı: <span className="text-gray-300">{email}</span></p>
+        <div className="text-[11px] text-gray-500 mb-1">Hazır şablonlar:</div>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {ORDER_EMAIL_TEMPLATES.map((t, i) => (
+            <button key={i} onClick={() => applyTpl(t)} className="text-xs px-2 py-1 rounded bg-brand-input text-gray-300 hover:text-white">{t.name}</button>
+          ))}
+        </div>
+        <input className="input w-full !text-sm mb-2" placeholder="Konu" value={subject} onChange={e => setSubject(e.target.value)} />
+        <textarea className="input w-full !text-sm" rows={8} placeholder="İçerik — şablon seçip düzenle; '...' kısımlarını doldur." value={body} onChange={e => setBody(e.target.value)} />
+        <div className="flex justify-end gap-2 mt-3">
+          <button onClick={onClose} className="btn-secondary !text-sm">İptal</button>
+          <button onClick={send} disabled={sending} className="btn-primary !text-sm disabled:opacity-50">{sending ? 'Gönderiliyor…' : 'Gönder'}</button>
         </div>
       </div>
     </div>

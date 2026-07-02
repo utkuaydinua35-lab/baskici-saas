@@ -23,6 +23,7 @@ function lazyWithReload(factory) {
 const DashboardPage = lazyWithReload(() => import('./pages/DashboardPage'))
 const DesignsPage = lazyWithReload(() => import('./pages/DesignsPage'))
 const VaryantliUrunlerPage = lazyWithReload(() => import('./pages/VaryantliUrunlerPage'))
+const ProductStudioPage = lazyWithReload(() => import('./pages/ProductStudioPage'))
 const NotesPage = lazyWithReload(() => import('./pages/NotesPage'))
 const TelafilerPage = lazyWithReload(() => import('./pages/TelafilerPage'))
 const KisiyeOzelPage = lazyWithReload(() => import('./pages/KisiyeOzelPage'))
@@ -88,6 +89,7 @@ export default function App() {
             <Route path="/destek" element={<DestekPage />} />
             <Route path="/designs" element={<DesignsPage />} />
             <Route path="/varyantli-urunler" element={<VaryantliUrunlerPage />} />
+            <Route path="/urun-studyosu" element={<ProductStudioPage />} />
             <Route path="/aksesuarlar" element={<AccessoriesPage />} />
             <Route path="/couple" element={<CoupleProductsPage />} />
             <Route path="/bayiler" element={<DealersPage />} />

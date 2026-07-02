@@ -66,6 +66,19 @@ def _backup_job():
         logger.exception(f"[scheduler] yedek hata: {e}")
 
 
+def _checkout_sweep_job():
+    logger.info("[scheduler] vitrin odeme oturumu temizligi")
+    db = SessionLocal()
+    try:
+        from app.services.checkout import sweep_sessions
+        res = sweep_sessions(db)
+        logger.info(f"[scheduler] vitrin temizlik: {res}")
+    except Exception as e:
+        logger.exception(f"[scheduler] vitrin temizlik hata: {e}")
+    finally:
+        db.close()
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -109,6 +122,9 @@ def start_scheduler():
     # Gunluk veritabani yedegi — her gece 03:30 (Europe/Istanbul)
     _scheduler.add_job(_backup_job, "cron", hour=3, minute=30,
                        id="daily_backup", max_instances=1, coalesce=True)
+    # Vitrin: suresi dolan odeme oturumlari + KVKK PII temizligi — her gece 04:00
+    _scheduler.add_job(_checkout_sweep_job, "cron", hour=4, minute=0,
+                       id="checkout_sweep", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

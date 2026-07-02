@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import Session
 
 from app.models import CatalogProduct, CatalogVariant, CheckoutSession, Store
@@ -213,3 +213,40 @@ def finalize_paid_session(db: Session, session: CheckoutSession) -> None:
     (store_id, external_id) tekilliği koruma sağlar."""
     from app.services.storefront_order import create_order_from_session
     create_order_from_session(db, session)
+
+
+# ─── Bakım: süresi dolan oturumlar + KVKK veri temizliği ─────
+
+PII_RETENTION_DAYS = 90
+
+
+def sweep_sessions(db: Session) -> dict:
+    """1) Süresi geçmiş 'pending' oturumları 'expired' işaretle.
+    2) Siparişe dönüşmemiş (failed/expired/cancelled) ve 90 günden eski
+       oturumlardan müşteri PII'sini sil (KVKK saklama sınırı).
+       'paid' oturumlara dokunulmaz — sözleşme ifası kaydı."""
+    now = datetime.now(timezone.utc)
+
+    expired = db.execute(
+        sa_update(CheckoutSession)
+        .where(
+            CheckoutSession.status == "pending",
+            CheckoutSession.expires_at.isnot(None),
+            CheckoutSession.expires_at < now,
+        )
+        .values(status="expired")
+    ).rowcount
+
+    cutoff = now - timedelta(days=PII_RETENTION_DAYS)
+    purged = db.execute(
+        sa_update(CheckoutSession)
+        .where(
+            CheckoutSession.status.in_(["failed", "expired", "cancelled"]),
+            CheckoutSession.created_at < cutoff,
+            CheckoutSession.customer != {},
+        )
+        .values(customer={}, client_ip=None, callback_raw=None)
+    ).rowcount
+
+    db.commit()
+    return {"expired": expired, "pii_purged": purged}

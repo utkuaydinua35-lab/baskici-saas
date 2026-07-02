@@ -23,6 +23,7 @@ from app.routers.phone_models import router as phone_models_router
 from app.routers.stock import router as stock_router
 from app.routers.packaging import router as packaging_router
 from app.routers.dashboard import router as dashboard_router
+from app.routers.public_shop import router as public_shop_router
 from app.routers.public_tracker import router as public_tracker_router
 from app.routers.public_support import router as public_support_router
 from app.routers.public_approval import router as public_approval_router
@@ -109,6 +110,7 @@ app.include_router(aski.router)
 app.include_router(audit_router)
 app.include_router(search_router)
 app.include_router(catalog_router)
+app.include_router(public_shop_router)
 
 
 # ─── Guvenli statik servis (SVG/HTML XSS korumasi) ────────────

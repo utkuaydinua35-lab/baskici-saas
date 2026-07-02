@@ -11,7 +11,6 @@ arkasında olduğu için gerçek IP CF-Connecting-IP / X-Forwarded-For'dan okunu
 """
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services import tracker as tk
+from app.services.rate_limit import make_rate_limiter
 
 router = APIRouter(tags=["public-tracker"])
 
@@ -31,34 +31,7 @@ try:
 except Exception:
     _TRACK_HTML = "<h1>Takip sayfası yüklenemedi</h1>"
 
-# ── basit in-memory rate limiter ──
-_hits: dict[str, list[float]] = {}
-_WINDOW = 60.0
-_MAX = 10
-
-
-def _client_ip(request: Request) -> str:
-    cf = request.headers.get("cf-connecting-ip")
-    if cf:
-        return cf.strip()
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "?"
-
-
-def rate_limit(request: Request):
-    ip = _client_ip(request)
-    now = time.time()
-    arr = [t for t in _hits.get(ip, []) if now - t < _WINDOW]
-    if len(arr) >= _MAX:
-        raise HTTPException(429, "Çok fazla deneme. Lütfen biraz bekleyip tekrar deneyin.")
-    arr.append(now)
-    _hits[ip] = arr
-    # ara sıra temizlik
-    if len(_hits) > 5000:
-        for k in [k for k, v in _hits.items() if not v or now - v[-1] > _WINDOW]:
-            _hits.pop(k, None)
+rate_limit = make_rate_limiter(max_hits=10, window=60.0)
 
 
 class TrackRequest(BaseModel):

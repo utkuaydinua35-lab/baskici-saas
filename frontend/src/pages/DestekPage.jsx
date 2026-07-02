@@ -15,6 +15,21 @@ function fmt(ts) {
   } catch { return ts }
 }
 
+// Hazır mesaj şablonları. {siparis}/{musteri}/{takip} otomatik dolar; "..." kullanıcıya kalır.
+const DEFAULT_TEMPLATES = [
+  { name: 'Hazırlanıyor', body: 'Merhaba {musteri}, {siparis} numaralı siparişiniz şu anda hazırlanıyor. En kısa sürede kargoya verilecektir. İlginiz için teşekkürler 🙏' },
+  { name: 'Kargoya verildi', body: 'Merhaba {musteri}, {siparis} numaralı siparişiniz kargoya verildi. Takip numaranız: {takip}. Sağlıkla kullanın 😊' },
+  { name: 'Kargo takip', body: 'Merhaba, siparişiniz ... tarihinde kargoya verildi, tahmini teslim ... . Takip no: {takip}.' },
+  { name: 'Adres teyidi', body: 'Merhaba {musteri}, siparişinizi göndermeden önce adresinizi teyit etmek istiyoruz: ... . Doğru mudur?' },
+  { name: 'Görsel isteği', body: 'Merhaba, size daha iyi yardımcı olabilmemiz için ürünün/sorunun fotoğrafını paylaşabilir misiniz?' },
+  { name: 'Gecikme / özür', body: 'Merhaba {musteri}, yaşanan gecikme için özür dileriz. Siparişiniz ... nedeniyle ... . En kısa sürede çözüp size döneceğiz.' },
+  { name: 'Kapanış / teşekkür', body: 'Rica ederiz, başka bir sorunuz olursa buradan yazabilirsiniz. İyi günler dileriz 🌸' },
+]
+const TPL_KEY = 'destek_templates'
+function loadCustomTemplates() {
+  try { const a = JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+
 export default function DestekPage() {
   const [threads, setThreads] = useState([])
   const [filter, setFilter] = useState('')
@@ -28,6 +43,30 @@ export default function DestekPage() {
   const [drafting, setDrafting] = useState(false)
   const [aiNote, setAiNote] = useState('')
   const [okMsg, setOkMsg] = useState('')
+  const [showTpl, setShowTpl] = useState(false)
+  const [customTpl, setCustomTpl] = useState(loadCustomTemplates())
+
+  const fillTokens = (text) => (text || '')
+    .replaceAll('{siparis}', active?.order_number || '...')
+    .replaceAll('{musteri}', ((active?.order_detail?.customer_name || active?.customer_name || '').trim().split(/\s+/)[0]) || '')
+    .replaceAll('{takip}', active?.order_detail?.takip_no || '...')
+  const applyTemplate = (body) => {
+    const filled = fillTokens(body)
+    setReply(r => r.trim() ? r.replace(/\s*$/, '\n') + filled : filled)
+    setShowTpl(false)
+  }
+  const saveCurrentAsTemplate = () => {
+    const b = reply.trim()
+    if (!b) return
+    const name = (prompt('Şablon adı:') || '').trim()
+    if (!name) return
+    const next = [...customTpl, { name, body: b }]
+    setCustomTpl(next); localStorage.setItem(TPL_KEY, JSON.stringify(next))
+  }
+  const deleteCustomTemplate = (i) => {
+    const next = customTpl.filter((_, j) => j !== i)
+    setCustomTpl(next); localStorage.setItem(TPL_KEY, JSON.stringify(next))
+  }
   const msgEndRef = useRef(null)
 
   const loadThreads = async () => {
@@ -231,6 +270,35 @@ export default function DestekPage() {
                 )}
               </div>
 
+              {/* Sipariş detayı */}
+              {active.order_detail?.found && (
+                <div className="mb-3 rounded-lg bg-brand-input/30 border border-brand-border/60 px-3 py-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-semibold text-gray-300">📦 Sipariş detayı · {active.order_detail.total_qty} ürün</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${active.order_detail.cancelled ? 'bg-red-500/15 text-red-300' : (active.order_detail.fulfillment_status === 'fulfilled' || (active.order_detail.stage || 0) >= 8) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-400'}`}>
+                      {active.order_detail.cancelled ? 'İptal' : (active.order_detail.stage_label || '—')}
+                    </span>
+                  </div>
+                  <ul className="space-y-0.5 text-xs text-gray-300">
+                    {(active.order_detail.items || []).map((it, i) => (
+                      <li key={i} className="flex items-center gap-1.5">
+                        <span className="tabular-nums text-gray-500 shrink-0">{it.quantity}×</span>
+                        <span className="truncate">{it.model || it.title || '—'}</span>
+                        {it.is_hazir && <span className="text-emerald-400 shrink-0" title="Hazır">✓</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  {active.order_detail.takip_no && (
+                    <div className="text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-brand-border/40">
+                      🚚 {active.order_detail.kargo_firma || 'Kargo'}: <span className="text-gray-300 font-medium">{active.order_detail.takip_no}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {active.order_detail && !active.order_detail.found && (
+                <div className="mb-3 text-[11px] text-gray-600">Bu sipariş numarası sistemde bulunamadı.</div>
+              )}
+
               <div className="flex-1 overflow-y-auto space-y-2 mb-3 max-h-[420px]">
                 {(active.messages || []).map(m => {
                   const mine = m.sender === 'admin'
@@ -291,6 +359,32 @@ export default function DestekPage() {
                         title="Müşterinin mesajına Claude ile yanıt taslağı üret">
                         {drafting ? '✨ Yazılıyor…' : '✨ AI Taslak'}
                       </button>
+                      <div className="relative">
+                        <button onClick={() => setShowTpl(v => !v)} className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1"
+                          title="Hazır mesaj şablonu ekle">💬 Hazır mesaj</button>
+                        {showTpl && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowTpl(false)} />
+                            <div className="absolute bottom-6 left-0 z-50 w-64 max-h-72 overflow-y-auto bg-brand-card border border-brand-border rounded-lg shadow-2xl p-1">
+                              {DEFAULT_TEMPLATES.map((t, i) => (
+                                <button key={`d${i}`} onClick={() => applyTemplate(t.body)}
+                                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-gray-200">{t.name}</button>
+                              ))}
+                              {customTpl.length > 0 && <div className="border-t border-brand-border/50 my-1" />}
+                              {customTpl.map((t, i) => (
+                                <div key={`c${i}`} className="flex items-center group">
+                                  <button onClick={() => applyTemplate(t.body)}
+                                    className="flex-1 text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-gray-200 truncate">⭐ {t.name}</button>
+                                  <button onClick={() => deleteCustomTemplate(i)} className="text-gray-600 hover:text-red-400 px-1.5 text-xs">×</button>
+                                </div>
+                              ))}
+                              <div className="border-t border-brand-border/50 my-1" />
+                              <button onClick={saveCurrentAsTemplate} disabled={!reply.trim()}
+                                className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-accent disabled:opacity-40">+ Mevcut cevabı şablon yap</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {active?.customer_email && (

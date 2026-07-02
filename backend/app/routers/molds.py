@@ -251,39 +251,44 @@ def _replan_mold_item(db: Session, tenant_id, mi) -> None:
     """Kalip slot'unu plana geri dondur: kaynak line item'in is_kaliba_eklendi=False yap.
     line_item_id varsa onu; YOKSA (cogu MoldItem'da None) order_number + design_code ile esle.
     Aksi halde item kalici olarak planlamadan dislanir (uretilemez)."""
+    # 1) line_item_id ile dogrudan (gecerliyse)
     if mi.line_item_id:
         li = db.scalar(select(LineItem).where(LineItem.id == mi.line_item_id))
         if li:
             li.is_kaliba_eklendi = False
-        return
-    # Fallback: line_item_id yok -> order_number + design_code ile esle
-    if not (mi.order_number and mi.design_code):
+            return
+        # li yok (sync sildi/yeniden olusturdu) -> asagidaki fallback ile yeniden bul
+    # 2) Fallback: order_number ile o siparisin KALIBA EKLENMIS line item'lari
+    # (KRITIK: eskiden design_code YOKSA hic sifirlanmiyor, urun kalici KAYBOLUYORDU.)
+    if not mi.order_number:
         return
     cands = db.scalars(
         select(LineItem)
         .join(Order, LineItem.order_id == Order.id)
-        .join(Design, LineItem.assigned_design_id == Design.id)
         .where(
             Order.tenant_id == tenant_id,
             Order.order_number == str(mi.order_number),
-            Design.code == str(mi.design_code),
             LineItem.is_kaliba_eklendi == True,  # noqa: E712
         )
     ).all()
     if not cands:
         return
-    # KRITIK: Ayni siparis + ayni tasarim (orn. 3 urun de SEFFAF) birden cok line item
-    # dondurebilir. Bir slot = bir line item oldugu icin TUMUNU geri planlamak, ayni
-    # siparisteki (zaten basilmis olabilecek) kardes urunleri yanlislikla plana dondurur
-    # ve tekrar basilmalarina yol acar. Bu yuzden yalnizca bu slot'un modeline uyan TEK
-    # line item'i geri planla.
-    if len(cands) > 1 and mi.model:
-        from app.services.phone_models import normalize_key
-        _target = normalize_key(mi.model)
-        _matched = [c for c in cands if normalize_key(mold_planner.extract_phone_model(c) or "") == _target]
-        if _matched:
-            cands = _matched
-    cands[0].is_kaliba_eklendi = False
+    from app.services.phone_models import normalize_key
+    pick = cands
+    # 3) Modele gore daralt (bir slot = bir line item; yanlis kardesi geri planlama)
+    if mi.model:
+        _t = normalize_key(mi.model)
+        _mm = [c for c in cands if normalize_key(mold_planner.extract_phone_model(c) or "") == _t]
+        if _mm:
+            pick = _mm
+    # 4) Ayni model farkli tasarim varsa design_code ile daha da daralt
+    if len(pick) > 1 and mi.design_code:
+        _dm = [c for c in pick if c.assigned_design and c.assigned_design.code == str(mi.design_code)]
+        if _dm:
+            pick = _dm
+    # En az BIR kalem her zaman geri planlanir (kayip onlenir). Plandaki cift-planlama
+    # korumasi zaten hala kalipta olan kardesi tekrar eklemez.
+    pick[0].is_kaliba_eklendi = False
 
 
 def _serialize_mold_detail(mo, db):
@@ -444,10 +449,16 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
     mis = db.scalars(
         select(MoldItem).join(Mold, Mold.id == MoldItem.mold_id).where(Mold.tenant_id == tid)
     ).all()
+    from app.services.phone_models import normalize_key as _nk
     in_mold_ids = {mi.line_item_id for mi in mis if mi.line_item_id}
     in_mold_pairs = {
         (str(mi.order_number), str(mi.design_code))
         for mi in mis if not mi.line_item_id and mi.order_number and mi.design_code
+    }
+    # Model bazli da eslestir (design_code'suz MoldItem'lari yanlislikla plana dondurmemek icin)
+    in_mold_models = {
+        (str(mi.order_number), _nk(mi.model))
+        for mi in mis if not mi.line_item_id and mi.order_number and mi.model
     }
     # is_kaliba_eklendi=True olan tum line item'lar
     lis = db.scalars(
@@ -463,6 +474,8 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
         code = li.assigned_design.code if li.assigned_design else None
         onum = li.order.order_number if li.order else None
         if code and onum and (str(onum), str(code)) in in_mold_pairs:
+            continue
+        if onum and (str(onum), _nk(mold_planner.extract_phone_model(li) or "")) in in_mold_models:
             continue
         li.is_kaliba_eklendi = False
         fixed += 1

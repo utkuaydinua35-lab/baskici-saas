@@ -94,6 +94,18 @@ export default function MoldGeneratorPage() {
     }
   }
 
+  const [recovering, setRecovering] = useState(false)
+  const handleRecover = async () => {
+    setRecovering(true)
+    try {
+      const r = await api.post('/api/molds/_resync-flags', {})
+      if (r?.fixed > 0) toast.success(`${r.fixed} kayıp ürün plana geri döndürüldü`)
+      else toast.success('Kayıp ürün bulunamadı — hepsi güncel')
+      loadPlan(storeId); loadExisting(storeId)
+    } catch (e) { toast.error(e?.detail || 'Tarama başarısız') }
+    finally { setRecovering(false) }
+  }
+
   const handleCreate = async () => {
     const canGo = plan?.can_create || (skipMissing && plan?.mold_count > 0)
     if (!canGo) return
@@ -146,6 +158,7 @@ export default function MoldGeneratorPage() {
               {stores.filter(s => s.platform === 'bayii').map(s => <option key={s.id} value={s.id}>🤝 {s.name.replace(/^Bayii:\s*/, '')}</option>)}
             </optgroup>
           </select>
+          <button onClick={handleRecover} disabled={recovering} className="btn-secondary !text-sm whitespace-nowrap disabled:opacity-50" title="Kalıptan çıkarılıp plana dönmeyen kayıp siparişleri tara ve geri döndür">{recovering ? '…' : '🔧 Kayıp siparişleri tara'}</button>
           <button onClick={handleCreateEmpty} className="btn-secondary !text-sm whitespace-nowrap" title="Boş kalıp oluştur, + ile doldur">➕ Boş Kalıp</button>
         </div>
       </div>

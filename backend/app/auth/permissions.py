@@ -25,6 +25,7 @@ ALL_PERMISSIONS = [
     "bayii",
     "pazarlama",
     "vitrin",
+    "musteri",
 ]
 
 # Hazir rol sablonlari (yonetici kullanici eklerken baslangic noktasi)

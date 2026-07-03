@@ -56,6 +56,7 @@ const PlatformPage = lazyWithReload(() => import('./pages/PlatformPage'))
 const PazarlamaPage = lazyWithReload(() => import('./pages/PazarlamaPage'))
 const VitrinPage = lazyWithReload(() => import('./pages/VitrinPage'))
 const KuponlarPage = lazyWithReload(() => import('./pages/KuponlarPage'))
+const MusterilerPage = lazyWithReload(() => import('./pages/MusterilerPage'))
 
 function PageLoader() {
   return (
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/pazarlama" element={<PazarlamaPage />} />
             <Route path="/vitrin" element={<VitrinPage />} />
             <Route path="/kuponlar" element={<KuponlarPage />} />
+            <Route path="/musteriler" element={<MusterilerPage />} />
           </Route>
         </Route>
 

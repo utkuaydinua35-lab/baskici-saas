@@ -290,6 +290,13 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             li.is_kisiye_ozel = _preserved_ko[_ext]
         db.add(li)
 
+    # Müşteri CRM kaydını güncelle — hata sync'i asla düşürmesin
+    try:
+        from app.services.customers import upsert_from_order
+        upsert_from_order(db, order)
+    except Exception as _crm_err:  # noqa: BLE001
+        print(f"[crm] musteri upsert hatasi (order {order.order_number}): {_crm_err}")
+
     return order, is_new, was_updated
 
 

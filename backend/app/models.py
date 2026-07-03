@@ -1492,3 +1492,40 @@ class DiscountCode(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Customer(Base):
+    """Müşteri CRM kaydı — siparişlerden türetilen birleşik görünüm.
+
+    E-posta bazlı tekilleştirme (tenant içinde). Agregalar (orders_count,
+    total_spent...) her sipariş upsert'inde YENİDEN hesaplanır (idempotent —
+    tekrarlanan sync'ler şişirmez). KVKK: veri zaten sözleşme ifası kapsamında
+    sipariş kayıtlarında mevcut; bu tablo yalnızca birleşik görünümdür.
+    """
+    __tablename__ = "customers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_customer_tenant_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+
+    email: Mapped[str] = mapped_column(String(200))  # lowercase saklanır
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    orders_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    total_spent: Mapped[float] = mapped_column(
+        Numeric(14, 2), default=0, server_default=text("0")
+    )
+    first_order_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_order_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

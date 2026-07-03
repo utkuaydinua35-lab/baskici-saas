@@ -534,6 +534,7 @@ const NAV = [
   ] },
   { label: 'Pazarlama', icon: '📣', items: [
     { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
+    { to: '/musteriler', label: 'Müşteriler', icon: '👥', perm: 'musteri' },
   ] },
   // Not: "Denetim Kaydı" ve "Atölyeler" üst menüde değil — profil menüsünde (sağ üst).
 ]

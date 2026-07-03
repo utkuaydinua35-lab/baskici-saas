@@ -16,13 +16,15 @@ from decimal import Decimal
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import Session
 
-from app.models import CatalogProduct, CatalogVariant, CheckoutSession, Store
+from app.models import CatalogProduct, CatalogVariant, CheckoutSession, DiscountCode, Store
 from app.payments import get_payment_provider
 from app.payments.base import CheckoutInit, PaymentResult
 
 SESSION_TTL = timedelta(hours=2)
 MAX_ITEM_TYPES = 30
 MAX_QTY_PER_ITEM = 20
+# Sağlayıcılar 0'a yakın tahsilatı reddeder — indirim sonrası ürün toplamı tabanı
+MIN_CHARGE = Decimal("1.00")
 
 
 class CheckoutError(Exception):
@@ -108,6 +110,61 @@ def validate_and_snapshot(
     return snapshot, total
 
 
+def apply_discount(
+    db: Session, store: Store, code: str, items_total: Decimal, email: str | None,
+) -> tuple[DiscountCode, Decimal, bool]:
+    """Kupon kodunu doğrula; (kupon, indirim_tutarı, kargo_bedava) döndür.
+
+    Geçersiz her durumda müşteriye gösterilebilir CheckoutError fırlatır.
+    usage_count burada ARTMAZ — yalnızca ödeme doğrulanınca (storefront_order).
+    """
+    normalized = (code or "").strip().upper()
+    if not normalized:
+        raise CheckoutError("Kupon kodu boş")
+
+    dc = db.scalar(select(DiscountCode).where(
+        DiscountCode.store_id == store.id,
+        DiscountCode.code == normalized,
+        DiscountCode.is_active.is_(True),
+    ))
+    if not dc:
+        raise CheckoutError("Kupon kodu geçersiz")
+
+    now = datetime.now(timezone.utc)
+    if dc.starts_at and now < dc.starts_at:
+        raise CheckoutError("Kupon henüz aktif değil")
+    if dc.ends_at and now > dc.ends_at:
+        raise CheckoutError("Kuponun süresi dolmuş")
+    if dc.usage_limit is not None and dc.usage_count >= dc.usage_limit:
+        raise CheckoutError("Kuponun kullanım limiti doldu")
+    if dc.min_subtotal is not None and items_total < Decimal(str(dc.min_subtotal)):
+        raise CheckoutError(
+            f"Bu kupon en az {Decimal(str(dc.min_subtotal)):.2f} TL sepet tutarında geçerli"
+        )
+    if dc.once_per_customer and email:
+        used = db.scalar(
+            select(CheckoutSession.id).where(
+                CheckoutSession.discount_code_id == dc.id,
+                CheckoutSession.status == "paid",
+                CheckoutSession.customer["email"].astext == email.lower(),
+            ).limit(1)
+        )
+        if used:
+            raise CheckoutError("Bu kuponu daha önce kullandınız")
+
+    free_shipping = dc.kind == "free_shipping"
+    if dc.kind == "percent":
+        discount = (items_total * Decimal(str(dc.value)) / 100).quantize(Decimal("0.01"))
+    elif dc.kind == "amount":
+        discount = min(Decimal(str(dc.value)), items_total)
+    else:
+        discount = Decimal("0")
+
+    if items_total - discount < MIN_CHARGE:
+        raise CheckoutError("Kupon bu sepette kullanılamıyor (tutar çok düşük)")
+    return dc, discount, free_shipping
+
+
 def create_session(
     db: Session,
     store: Store,
@@ -115,12 +172,21 @@ def create_session(
     items: list[dict],
     customer: dict,
     client_ip: str | None,
+    discount_code: str | None = None,
 ) -> tuple[CheckoutSession, CheckoutInit]:
     """Sepeti doğrula, CheckoutSession yarat, sağlayıcıda ödeme başlat."""
     provider = get_payment_provider(store)  # config hatası varsa erkenden patlasın
 
     snapshot, items_total = validate_and_snapshot(db, store, items)
-    shipping = _shipping_fee(store, items_total)
+
+    dc = None
+    discount = Decimal("0")
+    free_shipping = False
+    if discount_code:
+        dc, discount, free_shipping = apply_discount(
+            db, store, discount_code, items_total, (customer or {}).get("email"))
+
+    shipping = Decimal("0") if free_shipping else _shipping_fee(store, items_total)
 
     session = CheckoutSession(
         tenant_id=store.tenant_id,
@@ -129,13 +195,16 @@ def create_session(
         lookup_token=secrets.token_urlsafe(32),
         status="pending",
         provider=provider.PROVIDER_NAME,
-        amount=items_total + shipping,
+        amount=items_total - discount + shipping,
         shipping_amount=shipping,
         currency="TRY",
         cart_snapshot=snapshot,
         customer=customer,
         kvkk_accepted_at=datetime.now(timezone.utc),
         client_ip=client_ip,
+        discount_code=dc.code if dc else None,
+        discount_amount=discount,
+        discount_code_id=dc.id if dc else None,
         expires_at=datetime.now(timezone.utc) + SESSION_TTL,
     )
     db.add(session)

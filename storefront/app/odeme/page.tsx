@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+import CouponInput from "@/components/CouponInput";
 
 interface CheckoutResponse {
   token: string;
@@ -15,7 +16,7 @@ interface CheckoutResponse {
 }
 
 export default function CheckoutPage() {
-  const { items, subtotal } = useCart();
+  const { items, subtotal, coupon, setCoupon } = useCart();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
@@ -76,11 +77,14 @@ export default function CheckoutPage() {
             note: fd.get("note") || null,
           },
           kvkk_accept: fd.get("kvkk_accept") === "on",
+          discount_code: coupon?.code || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         const detail = typeof data?.detail === "string" ? data.detail : "Ödeme başlatılamadı";
+        // Kupon artık geçersizse (limit doldu vb.) otomatik kaldır — müşteri tekrar denesin
+        if (coupon && /kupon/i.test(detail)) setCoupon(null);
         throw new Error(detail);
       }
       const out = data as CheckoutResponse;
@@ -149,10 +153,20 @@ export default function CheckoutPage() {
               </li>
             ))}
           </ul>
+          <CouponInput />
           <div className="border-t border-zinc-200 pt-2 flex justify-between text-sm">
             <span>Ara toplam</span>
             <span className="font-semibold">{formatPrice(subtotal)}</span>
           </div>
+          {coupon && !coupon.freeShipping && (
+            <div className="flex justify-between text-sm text-emerald-600">
+              <span>İndirim ({coupon.code})</span>
+              <span>−{formatPrice(coupon.discountAmount)}</span>
+            </div>
+          )}
+          {coupon?.freeShipping && (
+            <div className="text-sm text-emerald-600">🎟️ Ücretsiz kargo uygulandı</div>
+          )}
           <p className="text-[11px] text-zinc-400">
             Kargo dahil kesin tutar, güvenli ödeme sayfasında gösterilir.
           </p>

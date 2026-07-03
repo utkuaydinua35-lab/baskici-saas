@@ -196,6 +196,46 @@ class CheckoutRequest(BaseModel):
     items: list[CheckoutItemIn] = Field(..., min_length=1, max_length=30)
     customer: CheckoutCustomerIn
     kvkk_accept: bool
+    discount_code: str | None = Field(None, max_length=40)
+
+
+class ValidateCodeRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=40)
+    items: list[CheckoutItemIn] = Field(..., min_length=1, max_length=30)
+    email: str | None = Field(None, max_length=200)
+
+
+@router.post("/{store_slug}/checkout/validate-code")
+def validate_discount_code(
+    store_slug: str,
+    body: ValidateCodeRequest,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Kupon kodunu ödeme öncesi doğrula (hiçbir kayıt yaratmaz — UX için)."""
+    from decimal import Decimal
+
+    store = _resolve_store(db, store_slug)
+    try:
+        _snapshot, items_total = checkout_svc.validate_and_snapshot(
+            db, store,
+            [{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items])
+        dc, discount, free_shipping = checkout_svc.apply_discount(
+            db, store, body.code, items_total, body.email)
+    except checkout_svc.CheckoutError as e:
+        return {"valid": False, "message": str(e)}
+
+    shipping = Decimal("0") if free_shipping else checkout_svc._shipping_fee(store, items_total)
+    return {
+        "valid": True,
+        "code": dc.code,
+        "kind": dc.kind,
+        "discount_amount": str(discount),
+        "free_shipping": free_shipping,
+        "new_total": str(items_total - discount + shipping),
+        "message": "Kupon uygulandı",
+    }
 
 
 @router.post("/{store_slug}/checkout")
@@ -217,6 +257,7 @@ def create_checkout(
             items=[{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items],
             customer=body.customer.model_dump(),
             client_ip=client_ip(request),
+            discount_code=body.discount_code,
         )
     except checkout_svc.CheckoutError as e:
         raise HTTPException(422, str(e))
@@ -231,6 +272,7 @@ def create_checkout(
         "url": init.url,
         "amount": str(session.amount),
         "shipping_amount": str(session.shipping_amount),
+        "discount_amount": str(session.discount_amount or 0),
     }
 
 

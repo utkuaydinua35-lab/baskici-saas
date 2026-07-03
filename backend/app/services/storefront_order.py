@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy import text as sa_text, update
 from sqlalchemy.orm import Session
 
-from app.models import CatalogVariant, CheckoutSession, Order, StockItem, Store
+from app.models import CatalogVariant, CheckoutSession, DiscountCode, Order, StockItem, Store
 from app.services import email_service
 
 
@@ -69,6 +69,12 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
         "line_items": line_items,
         "note": cust.get("note") or None,
         "tags": "storefront",
+        # Dashboard/analitik ciroyu raw.total_price'tan okur — Shopify şemasıyla aynı
+        "total_price": str(session.amount),
+        "subtotal_price": str(
+            Decimal(str(session.amount)) - Decimal(str(session.shipping_amount or 0))
+        ),
+        "total_discounts": str(session.discount_amount or 0),
         # Ek anahtarlar raw JSONB'de zararsız — denetim için ödeme özeti
         "payment": {
             "provider": session.provider,
@@ -77,6 +83,9 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
             "shipping_amount": str(session.shipping_amount),
             "currency": session.currency,
         },
+        **({"discount": {"code": session.discount_code,
+                         "amount": str(session.discount_amount)}}
+           if session.discount_code else {}),
     }
 
 
@@ -141,6 +150,14 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
             f"<tr><td style='padding:6px 0;color:#374151;font-size:14px'>Kargo</td>"
             f"<td align='right' style='padding:6px 0;font-size:14px'>{session.shipping_amount} ₺</td></tr>"
         )
+    discount_row = ""
+    if session.discount_code and Decimal(str(session.discount_amount or 0)) > 0:
+        discount_row = (
+            f"<tr><td style='padding:6px 0;color:#059669;font-size:14px'>"
+            f"İndirim ({session.discount_code})</td>"
+            f"<td align='right' style='padding:6px 0;color:#059669;font-size:14px'>"
+            f"−{session.discount_amount} ₺</td></tr>"
+        )
 
     config = store.config or {}
     site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
@@ -150,7 +167,7 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
         f"<p>Merhaba {cust.get('first_name', '')},</p>"
         f"<p>Siparişiniz alındı ve üretim sırasına eklendi. "
         f"Sipariş numaranız: <b>#{order.order_number}</b></p>"
-        f"<table width='100%' style='border-collapse:collapse;margin:10px 0'>{rows}{shipping_row}"
+        f"<table width='100%' style='border-collapse:collapse;margin:10px 0'>{rows}{discount_row}{shipping_row}"
         f"<tr><td style='padding:10px 0 0;font-weight:700'>Toplam</td>"
         f"<td align='right' style='padding:10px 0 0;font-weight:700'>{session.amount} ₺</td></tr></table>"
         f"<p style='color:#6b7280;font-size:13px'>Siparişiniz kişiye özel üretilir ve "
@@ -193,6 +210,14 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
 
     _decrement_stock(db, session, order)
     session.order_id = order.id
+
+    # Kupon kullanım sayacı YALNIZCA burada (doğrulanmış ödeme) artar — atomik
+    if session.discount_code_id:
+        db.execute(
+            update(DiscountCode)
+            .where(DiscountCode.id == session.discount_code_id)
+            .values(usage_count=DiscountCode.usage_count + 1)
+        )
 
     try:
         _send_confirmation_email(db, session, order, store)

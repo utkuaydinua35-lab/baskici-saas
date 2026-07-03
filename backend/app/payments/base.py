@@ -12,10 +12,40 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.models import CheckoutSession
+
+
+def scaled_basket_lines(session: CheckoutSession) -> list[tuple[dict, Decimal]]:
+    """Kalem toplamlarını indirim SONRASI ürün tutarına ölçekle.
+
+    iyzico sum(basketItems.price) == price ister ve negatif/sıfır kalem kabul
+    etmez; indirim ayrı satır olamaz → oransal dağıtılır. ROUND_DOWN + kuruş
+    kalanının en büyük kaleme eklenmesi toplamın hedefe TAM eşitliğini garanti
+    eder (checkout MIN_CHARGE tabanı sıfır kalemi zaten engeller).
+    Dönüş: [(snapshot_item, ölçeklenmiş_kalem_toplamı)]
+    """
+    items = session.cart_snapshot or []
+    line_totals = [
+        Decimal(str(i.get("unit_price", "0"))) * int(i.get("quantity", 1)) for i in items
+    ]
+    items_total = sum(line_totals, Decimal("0"))
+    discount = Decimal(str(session.discount_amount or 0))
+    target = items_total - discount
+    if discount == 0 or items_total == 0:
+        return list(zip(items, line_totals))
+
+    scaled = [
+        (lt * target / items_total).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        for lt in line_totals
+    ]
+    remainder = target - sum(scaled, Decimal("0"))  # 0 <= kalan < n*0.01
+    idx = scaled.index(max(scaled))
+    scaled[idx] += remainder
+    return list(zip(items, scaled))
 
 
 @dataclass

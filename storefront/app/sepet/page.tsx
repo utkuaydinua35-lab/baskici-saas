@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+import CouponInput from "@/components/CouponInput";
 
 export default function CartPage() {
-  const { items, subtotal, setQuantity, removeItem } = useCart();
+  const { items, subtotal, coupon, setQuantity, removeItem } = useCart();
 
   if (items.length === 0) {
     return (
@@ -82,12 +83,19 @@ export default function CartPage() {
         ))}
       </ul>
 
-      <div className="mt-6 bg-white border border-zinc-200 rounded-2xl p-4">
+      <div className="mt-6 bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
+        <CouponInput />
         <div className="flex justify-between text-sm">
           <span className="text-zinc-500">Ara toplam</span>
           <span className="font-semibold">{formatPrice(subtotal)}</span>
         </div>
-        <p className="mt-1 text-xs text-zinc-400">
+        {coupon && !coupon.freeShipping && (
+          <div className="flex justify-between text-sm text-emerald-600">
+            <span>İndirim ({coupon.code})</span>
+            <span>−{formatPrice(coupon.discountAmount)}</span>
+          </div>
+        )}
+        <p className="text-xs text-zinc-400">
           Kargo ücreti ve toplam, ödeme adımında hesaplanır.
         </p>
         <Link

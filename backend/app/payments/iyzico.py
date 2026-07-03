@@ -22,7 +22,7 @@ from decimal import Decimal
 
 import requests
 
-from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult
+from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult, scaled_basket_lines
 
 SANDBOX_URL = "https://sandbox-api.iyzipay.com"
 _TIMEOUT = 30
@@ -79,17 +79,17 @@ class IyzicoProvider(PaymentProvider):
 
         cust = session.customer or {}
         total = str(session.amount)
-        # iyzico: basketItems fiyat toplamı price alanına eşit olmalı.
+        # iyzico: basketItems fiyat toplamı price alanına eşit olmalı; indirim
+        # ayrı satır olamayacağından kalem toplamları indirimli tutara ölçeklenir.
         basket_items = [
             {
                 "id": str(item.get("variant_id", i)),
                 "name": (f"{item.get('title', 'Ürün')} {item.get('model_display', '')}").strip()[:120],
                 "category1": "Telefon Kılıfı",
                 "itemType": "PHYSICAL",
-                # adet fiyatı değil kalem toplamı (iyzico kalem toplamlarını toplar)
-                "price": str(Decimal(str(item.get("unit_price", "0"))) * int(item.get("quantity", 1))),
+                "price": str(line_total),
             }
-            for i, item in enumerate(session.cart_snapshot or [])
+            for i, (item, line_total) in enumerate(scaled_basket_lines(session))
         ]
         if session.shipping_amount and Decimal(str(session.shipping_amount)) > 0:
             basket_items.append({

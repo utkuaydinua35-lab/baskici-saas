@@ -1439,6 +1439,56 @@ class CheckoutSession(Base):
     callback_raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     client_ip: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
+    # İndirim kuponu (uygulandıysa) — kod metni denetim/gösterim için kopyalanır
+    discount_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    discount_amount: Mapped[float] = mapped_column(
+        Numeric(12, 2), default=0, server_default=text("0")
+    )
+    discount_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DiscountCode(Base):
+    """Vitrin indirim kuponu. kind: percent (%1-100) | amount (TL) | free_shipping.
+
+    usage_count YALNIZCA ödemesi doğrulanmış siparişte artar (terk edilen
+    checkout limit yakmaz). once_per_customer: aynı e-posta paid session'da
+    kodu bir kez kullanabilir.
+    """
+    __tablename__ = "discount_codes"
+    __table_args__ = (
+        UniqueConstraint("store_id", "code", name="uq_discount_store_code"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    code: Mapped[str] = mapped_column(String(40))  # UPPERCASE saklanır
+    kind: Mapped[str] = mapped_column(String(20))  # percent | amount | free_shipping
+    value: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+
+    min_subtotal: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    usage_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    once_per_customer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

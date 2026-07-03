@@ -66,6 +66,48 @@ def _backup_job():
         logger.exception(f"[scheduler] yedek hata: {e}")
 
 
+def _abandoned_reminder_job():
+    """Terk sepet otomatik hatırlatması — yalnızca config'inde
+    abandoned_reminder_enabled=true olan vitrin mağazaları; 2-24 saat önce
+    süresi dolmuş, e-postalı, daha önce hatırlatılmamış oturumlar (1 kez)."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.models import CheckoutSession, Store
+    from app.routers.checkout_admin import _send_reminder_email
+
+    db = SessionLocal()
+    try:
+        stores = db.scalars(select(Store).where(
+            Store.platform == "storefront", Store.is_active.is_(True))).all()
+        enabled_ids = [s.id for s in stores
+                       if (s.config or {}).get("abandoned_reminder_enabled") in (True, "true", "1")]
+        if not enabled_ids:
+            return
+        now = datetime.now(timezone.utc)
+        sessions = db.scalars(select(CheckoutSession).where(
+            CheckoutSession.store_id.in_(enabled_ids),
+            CheckoutSession.status.in_(["expired", "failed"]),
+            CheckoutSession.order_id.is_(None),
+            CheckoutSession.reminder_sent_at.is_(None),
+            CheckoutSession.customer["email"].astext != "",
+            CheckoutSession.created_at >= now - timedelta(hours=24),
+            CheckoutSession.created_at <= now - timedelta(hours=2),
+        ).limit(50)).all()
+        sent = 0
+        store_by_id = {s.id: s for s in stores}
+        for sess in sessions:
+            if _send_reminder_email(db, sess, store_by_id[sess.store_id]):
+                sess.reminder_sent_at = now
+                sent += 1
+        db.commit()
+        if sent:
+            logger.info(f"[scheduler] terk sepet hatirlatmasi: {sent} e-posta")
+    except Exception as e:
+        logger.exception(f"[scheduler] terk sepet hatirlatma hata: {e}")
+    finally:
+        db.close()
+
+
 def _checkout_sweep_job():
     logger.info("[scheduler] vitrin odeme oturumu temizligi")
     db = SessionLocal()
@@ -125,6 +167,9 @@ def start_scheduler():
     # Vitrin: suresi dolan odeme oturumlari + KVKK PII temizligi — her gece 04:00
     _scheduler.add_job(_checkout_sweep_job, "cron", hour=4, minute=0,
                        id="checkout_sweep", max_instances=1, coalesce=True)
+    # Vitrin: terk sepet otomatik hatirlatmasi (magaza config kapili) — saatlik
+    _scheduler.add_job(_abandoned_reminder_job, "interval", hours=1,
+                       id="abandoned_reminder", max_instances=1, coalesce=True)
     _scheduler.start()
     jobs = _scheduler.get_jobs()
     logger.info(f"[scheduler] başlatıldı — {len(jobs)} job:")

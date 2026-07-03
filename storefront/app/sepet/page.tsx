@@ -1,11 +1,58 @@
 "use client";
 
+import { Suspense, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
 
+// Hatırlatma e-postasındaki ?restore= linki — terk edilen sepeti geri yükler.
+function RestoreHandler() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const { addItem } = useCart();
+  const done = useRef(false);
+
+  useEffect(() => {
+    const token = params.get("restore");
+    if (!token || done.current) return;
+    done.current = true;
+    fetch(`/api/restore-cart/${encodeURIComponent(token)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        for (const i of data?.items ?? []) {
+          addItem(
+            {
+              variantId: i.variant_id,
+              productSlug: i.product_slug,
+              title: i.title,
+              modelDisplay: i.model_display,
+              variation: i.variation,
+              price: i.unit_price,
+              image: i.image,
+            },
+            i.quantity,
+          );
+        }
+      })
+      .catch(() => {})
+      .finally(() => router.replace("/sepet")); // token URL'de kalmasın
+  }, [params, addItem, router]);
+
+  return null;
+}
+
 export default function CartPage() {
+  return (
+    <Suspense>
+      <RestoreHandler />
+      <CartPageInner />
+    </Suspense>
+  );
+}
+
+function CartPageInner() {
   const { items, subtotal, coupon, setQuantity, removeItem } = useCart();
 
   if (items.length === 0) {

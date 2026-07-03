@@ -532,6 +532,7 @@ const NAV = [
     { to: '/telefon-modelleri', label: 'Telefon Modelleri', icon: '📱', perm: 'telefon_modelleri' },
     { to: '/vitrin', label: 'Vitrin', icon: '🏬', perm: 'vitrin' },
     { to: '/kuponlar', label: 'Kuponlar', icon: '🎟️', perm: 'vitrin' },
+    { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒', perm: 'vitrin' },
   ] },
   { label: 'Pazarlama', icon: '📣', items: [
     { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },

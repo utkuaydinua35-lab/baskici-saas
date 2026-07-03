@@ -445,3 +445,37 @@ def order_lookup(
         "shipping_amount": str(session.shipping_amount),
         "currency": session.currency,
     }
+
+
+@router.get("/checkout/{lookup_token}/cart")
+def restore_cart(
+    lookup_token: str,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Terk edilmiş sepeti geri yükleme — kalem + ürün gösterim bilgisi döner
+    (müşteri PII'si ASLA dönmez; fiyat yine ödeme anında sunucuda hesaplanır)."""
+    session = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.lookup_token == lookup_token,
+        CheckoutSession.order_id.is_(None),
+    ))
+    if not session:
+        raise HTTPException(404, "Sepet bulunamadı")
+
+    items = []
+    for i in (session.cart_snapshot or []):
+        product = db.get(CatalogProduct, i.get("product_id")) if i.get("product_id") else None
+        if not product or product.status != "active":
+            continue  # artık satışta olmayan kalemler geri yüklenmez
+        items.append({
+            "variant_id": i.get("variant_id"),
+            "quantity": int(i.get("quantity", 1)),
+            "title": i.get("title"),
+            "model_display": i.get("model_display"),
+            "variation": i.get("variation"),
+            "unit_price": i.get("unit_price"),
+            "product_slug": product.slug,
+            "image": f"/storage/{product.images[0].file_path}" if product.images else None,
+        })
+    return {"items": items}

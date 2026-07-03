@@ -43,6 +43,7 @@ from app.routers.catalog import router as catalog_router
 from app.routers.discounts import router as discounts_router
 from app.routers.customers import router as customers_router
 from app.routers.analytics import router as analytics_router
+from app.routers.checkout_admin import router as checkout_admin_router
 from app.routers.audit import router as audit_router
 from app.routers.search import router as search_router
 from app.scheduler import shutdown_scheduler, start_scheduler
@@ -116,6 +117,7 @@ app.include_router(catalog_router)
 app.include_router(discounts_router)
 app.include_router(customers_router)
 app.include_router(analytics_router)
+app.include_router(checkout_admin_router)
 app.include_router(public_shop_router)
 
 

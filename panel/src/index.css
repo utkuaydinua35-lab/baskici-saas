@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-panel-bg text-panel-ink antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Ortak kart/girdi sınıfları — sayfalar kısa yazsın */
+.card { @apply bg-panel-card border border-panel-border rounded-2xl p-4; }
+.input { @apply w-full bg-white border border-panel-border rounded-xl px-3 py-2 text-sm
+         focus:outline-none focus:ring-2 focus:ring-panel-accent/30 focus:border-panel-accent; }
+.btn-primary { @apply px-4 py-2 rounded-xl bg-panel-accent text-white text-sm font-medium
+               hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed; }
+.btn-ghost { @apply px-3 py-2 rounded-xl border border-panel-border text-sm text-panel-muted
+             hover:text-panel-ink hover:border-slate-400 transition; }

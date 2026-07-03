@@ -404,6 +404,11 @@ function ProfileDropdown({ user, onLogout }) {
             <span className="w-5 text-center">⚙</span> Ayarlar
           </button>
           {can('ayarlar') && (
+            <button onClick={() => { _nav('/stores'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+              <span className="w-5 text-center">🏬</span> Atölyeler
+            </button>
+          )}
+          {can('ayarlar') && (
             <button onClick={() => { _nav('/denetim'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
               <span className="w-5 text-center">📜</span> Denetim Kaydı
             </button>

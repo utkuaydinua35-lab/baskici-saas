@@ -54,6 +54,7 @@ def _serialize(c: Customer) -> dict:
 def list_customers(
     q: str | None = Query(None, max_length=200),
     sort: str = Query("last_order_at"),
+    store_id: uuid.UUID | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("musteri")),
@@ -63,6 +64,14 @@ def list_customers(
     if q:
         needle = f"%{q.strip()}%"
         base = base.where(or_(Customer.email.ilike(needle), Customer.name.ilike(needle)))
+    if store_id:
+        # Mağaza kapsamı (Mağaza Paneli): o mağazada siparişi olan müşteriler
+        base = base.where(Customer.email.in_(
+            select(func.lower(Order.customer_email)).where(
+                Order.store_id == store_id,
+                Order.customer_email.isnot(None),
+            )
+        ))
 
     total = db.scalar(select(func.count()).select_from(base.subquery()))
     col = SORTS.get(sort, Customer.last_order_at)

@@ -498,6 +498,7 @@ function ChangePasswordModal({ onClose }) {
 // ─── Üst menü verisi: bölümler + öğeler (perm bazlı) ───
 const NAV = [
   { label: 'Dashboard', to: '/', icon: '📊', perm: 'dashboard', end: true },
+  { label: 'Analitik', to: '/analitik', icon: '📈', perm: 'dashboard' },
   { label: 'Sipariş', icon: '📦', items: [
     { to: '/orders', label: 'Siparişler', icon: '📦', perm: 'siparisler' },
     { to: '/paketleme', label: 'Paketleme', icon: '🏷️', perm: 'paketleme' },

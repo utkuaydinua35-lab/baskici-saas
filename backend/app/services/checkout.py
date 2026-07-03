@@ -179,6 +179,19 @@ def create_session(
 
     snapshot, items_total = validate_and_snapshot(db, store, items)
 
+    # Minimum sepet tutarı (mağaza ayarı) — indirim ÖNCESİ ürün toplamına bakılır
+    min_raw = (store.config or {}).get("min_order_amount")
+    if min_raw:
+        try:
+            min_amount = Decimal(str(min_raw))
+        except ArithmeticError:
+            min_amount = Decimal("0")
+        if min_amount > 0 and items_total < min_amount:
+            raise CheckoutError(
+                f"Minimum sipariş tutarı {min_amount:.2f} TL — "
+                f"sepetinize ürün ekleyerek devam edebilirsiniz"
+            )
+
     dc = None
     discount = Decimal("0")
     free_shipping = False

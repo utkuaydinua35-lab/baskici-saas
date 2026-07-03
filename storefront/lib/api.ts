@@ -40,7 +40,14 @@ export interface ProductDetail {
 }
 
 export interface ProductListResponse {
-  store: { name: string };
+  store: {
+    name: string;
+    settings?: {
+      shipping_fee?: string | null;
+      free_shipping_over?: string | null;
+      min_order_amount?: string | null;
+    };
+  };
   total: number;
   page: number;
   per_page: number;

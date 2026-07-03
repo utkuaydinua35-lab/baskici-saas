@@ -175,8 +175,16 @@ def list_products(
     items = products[start:start + per_page]
 
     response.headers["Cache-Control"] = "public, max-age=60"
+    config = store.config or {}
     return {
-        "store": {"name": store.name},
+        "store": {
+            "name": store.name,
+            "settings": {
+                "shipping_fee": config.get("shipping_fee"),
+                "free_shipping_over": config.get("free_shipping_over"),
+                "min_order_amount": config.get("min_order_amount"),
+            },
+        },
         "total": total,
         "page": page,
         "per_page": per_page,

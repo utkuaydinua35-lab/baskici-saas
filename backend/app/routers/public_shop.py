@@ -98,6 +98,29 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
     }
 
 
+@router.get("/{store_slug}/collections")
+def list_collections(
+    store_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection
+
+    store = _resolve_store(db, store_slug)
+    collections = db.scalars(
+        select(CatalogCollection).where(
+            CatalogCollection.store_id == store.id,
+            CatalogCollection.is_active.is_(True),
+        ).order_by(CatalogCollection.position, CatalogCollection.created_at)
+    ).all()
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return [
+        {"slug": c.slug, "title": c.title, "description": c.description}
+        for c in collections
+    ]
+
+
 @router.get("/{store_slug}/products")
 def list_products(
     store_slug: str,
@@ -105,6 +128,7 @@ def list_products(
     q: str | None = Query(None, max_length=100),
     tag: str | None = Query(None, max_length=50),
     model: str | None = Query(None, max_length=120),
+    collection: str | None = Query(None, max_length=200),
     page: int = Query(1, ge=1, le=1000),
     per_page: int = Query(24, ge=1, le=60),
     _rl: None = Depends(read_rate_limit),
@@ -125,6 +149,18 @@ def list_products(
         query = query.where(CatalogProduct.title.ilike(f"%{q}%"))
     if tag:
         query = query.where(CatalogProduct.tags.ilike(f"%{tag}%"))
+    if collection:
+        from app.models import CatalogCollection, catalog_product_collections
+        query = query.join(
+            catalog_product_collections,
+            catalog_product_collections.c.product_id == CatalogProduct.id,
+        ).join(
+            CatalogCollection,
+            CatalogCollection.id == catalog_product_collections.c.collection_id,
+        ).where(
+            CatalogCollection.slug == collection,
+            CatalogCollection.is_active.is_(True),
+        )
 
     products = db.scalars(query).all()
     if model:

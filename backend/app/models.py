@@ -12,12 +12,14 @@ from sqlalchemy import (
     Float,
     BigInteger,
     Boolean,
+    Column,
     Date,
     DateTime,
     ForeignKey,
     Integer,
     Numeric,
     String,
+    Table,
     Text,
     UniqueConstraint,
     func,
@@ -1324,6 +1326,9 @@ class CatalogProduct(Base):
     images: Mapped[list[CatalogImage]] = relationship(
         back_populates="product", cascade="all, delete-orphan", order_by="CatalogImage.position"
     )
+    collections: Mapped[list[CatalogCollection]] = relationship(
+        secondary="catalog_product_collections", back_populates="products"
+    )
 
 
 class CatalogVariant(Base):
@@ -1562,3 +1567,48 @@ class Refund(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+catalog_product_collections = Table(
+    "catalog_product_collections",
+    Base.metadata,
+    Column("product_id", UUID(as_uuid=True),
+           ForeignKey("catalog_products.id", ondelete="CASCADE"), primary_key=True),
+    Column("collection_id", UUID(as_uuid=True),
+           ForeignKey("catalog_collections.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class CatalogCollection(Base):
+    """Vitrin koleksiyonu — ürün grubu (örn 'Retro', 'Minimal').
+
+    Ürünlerle M2M; vitrinde koleksiyon sayfası + filtre çipleri olarak görünür.
+    """
+    __tablename__ = "catalog_collections"
+    __table_args__ = (
+        UniqueConstraint("store_id", "slug", name="uq_catalog_collection_store_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    slug: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    products: Mapped[list[CatalogProduct]] = relationship(
+        secondary=catalog_product_collections, back_populates="collections"
+    )

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getProducts } from "@/lib/api";
+import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 import Link from "next/link";
 
@@ -11,11 +11,14 @@ export const metadata: Metadata = {
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sayfa?: string }>;
+  searchParams: Promise<{ q?: string; sayfa?: string; koleksiyon?: string }>;
 }) {
-  const { q, sayfa } = await searchParams;
+  const { q, sayfa, koleksiyon } = await searchParams;
   const page = Math.max(1, Number(sayfa) || 1);
-  const data = await getProducts({ q, page });
+  const [data, collections] = await Promise.all([
+    getProducts({ q, page, collection: koleksiyon }),
+    getCollections(),
+  ]);
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const perPage = data?.per_page ?? 24;
@@ -23,7 +26,7 @@ export default async function ProductsPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="flex flex-wrap items-center gap-4 mb-6">
+      <div className="flex flex-wrap items-center gap-4 mb-4">
         <h1 className="text-xl font-semibold">Ürünler</h1>
         <form className="ml-auto" action="/urunler">
           <input
@@ -35,6 +38,30 @@ export default async function ProductsPage({
           />
         </form>
       </div>
+
+      {collections.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-6">
+          <Link
+            href="/urunler"
+            className={`px-3 py-1.5 rounded-full text-xs border transition ${!koleksiyon
+              ? "border-zinc-900 bg-zinc-900 text-white"
+              : "border-zinc-300 bg-white hover:border-zinc-500"}`}
+          >
+            Tümü
+          </Link>
+          {collections.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/urunler?koleksiyon=${encodeURIComponent(c.slug)}`}
+              className={`px-3 py-1.5 rounded-full text-xs border transition ${koleksiyon === c.slug
+                ? "border-zinc-900 bg-zinc-900 text-white"
+                : "border-zinc-300 bg-white hover:border-zinc-500"}`}
+            >
+              {c.title}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-400">

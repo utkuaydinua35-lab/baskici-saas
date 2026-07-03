@@ -184,6 +184,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
             "seo_description": p.seo_description,
             "variants": [_serialize_variant(v) for v in p.variants],
             "images": [_serialize_image(im) for im in p.images],
+            "collection_ids": [str(c.id) for c in p.collections],
         })
     else:
         data["variant_count"] = len(p.variants)
@@ -456,3 +457,144 @@ def delete_image(
     storage_svc.delete_catalog_image(image.file_path)
     db.delete(image)
     db.commit()
+
+
+# ─── Koleksiyonlar ───────────────────────────────────────────
+
+class CollectionCreate(BaseModel):
+    store_id: uuid.UUID
+    title: str = Field(..., min_length=1, max_length=200)
+    slug: str | None = Field(None, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    position: int = 0
+
+
+class CollectionUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    position: int | None = None
+    is_active: bool | None = None
+
+
+class ProductCollectionsUpdate(BaseModel):
+    collection_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+def _serialize_collection(c, product_count: int | None = None) -> dict:
+    data = {
+        "id": str(c.id),
+        "store_id": str(c.store_id),
+        "slug": c.slug,
+        "title": c.title,
+        "description": c.description,
+        "position": c.position,
+        "is_active": c.is_active,
+    }
+    if product_count is not None:
+        data["product_count"] = product_count
+    return data
+
+
+@router.get("/collections", response_model=list[dict])
+def list_collections(
+    store_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection, catalog_product_collections
+    from sqlalchemy import func as sql_func
+
+    q = select(CatalogCollection).where(CatalogCollection.tenant_id == user.tenant_id) \
+        .order_by(CatalogCollection.position, CatalogCollection.created_at)
+    if store_id:
+        q = q.where(CatalogCollection.store_id == store_id)
+    collections = db.scalars(q).all()
+
+    counts = dict(db.execute(
+        select(catalog_product_collections.c.collection_id,
+               sql_func.count(catalog_product_collections.c.product_id))
+        .group_by(catalog_product_collections.c.collection_id)
+    ).all())
+    return [_serialize_collection(c, counts.get(c.id, 0)) for c in collections]
+
+
+@router.post("/collections", response_model=dict, status_code=status.HTTP_201_CREATED)
+def create_collection(
+    body: CollectionCreate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection
+
+    _get_storefront_store(db, user.tenant_id, body.store_id)
+    slug = slugify(body.slug or body.title)
+    exists = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.store_id == body.store_id, CatalogCollection.slug == slug))
+    if exists:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bu slug'a sahip koleksiyon zaten var")
+
+    collection = CatalogCollection(
+        tenant_id=user.tenant_id, store_id=body.store_id, slug=slug,
+        title=body.title, description=body.description, position=body.position,
+    )
+    db.add(collection)
+    db.commit()
+    db.refresh(collection)
+    return _serialize_collection(collection, 0)
+
+
+@router.patch("/collections/{collection_id}", response_model=dict)
+def update_collection(
+    collection_id: uuid.UUID,
+    body: CollectionUpdate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection
+
+    collection = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.id == collection_id, CatalogCollection.tenant_id == user.tenant_id))
+    if not collection:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(collection, k, v)
+    db.commit()
+    db.refresh(collection)
+    return _serialize_collection(collection)
+
+
+@router.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_collection(
+    collection_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection
+
+    collection = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.id == collection_id, CatalogCollection.tenant_id == user.tenant_id))
+    if not collection:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    db.delete(collection)
+    db.commit()
+
+
+@router.put("/products/{product_id}/collections", response_model=dict)
+def set_product_collections(
+    product_id: uuid.UUID,
+    body: ProductCollectionsUpdate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import CatalogCollection
+
+    product = _get_product(db, user.tenant_id, product_id)
+    collections = db.scalars(select(CatalogCollection).where(
+        CatalogCollection.id.in_(body.collection_ids),
+        CatalogCollection.tenant_id == user.tenant_id,
+        CatalogCollection.store_id == product.store_id,
+    )).all() if body.collection_ids else []
+    product.collections = list(collections)
+    db.commit()
+    return {"product_id": str(product.id),
+            "collection_ids": [str(c.id) for c in product.collections]}

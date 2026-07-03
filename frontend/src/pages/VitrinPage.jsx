@@ -7,6 +7,8 @@ export default function VitrinPage() {
   const [stores, setStores] = useState([])
   const [storeId, setStoreId] = useState('')
   const [products, setProducts] = useState([])
+  const [collections, setCollections] = useState([])
+  const [view, setView] = useState('products')     // products | collections
   const [selected, setSelected] = useState(null)   // detay açık ürün (full)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -21,10 +23,15 @@ export default function VitrinPage() {
   }, [])
 
   const load = useCallback(async (sid) => {
-    if (!sid) { setProducts([]); return }
+    if (!sid) { setProducts([]); setCollections([]); return }
     setLoading(true); setError('')
     try {
-      setProducts(await api.get(`/api/catalog/products?store_id=${sid}`))
+      const [p, c] = await Promise.all([
+        api.get(`/api/catalog/products?store_id=${sid}`),
+        api.get(`/api/catalog/collections?store_id=${sid}`),
+      ])
+      setProducts(p)
+      setCollections(c)
     } catch (e) {
       setError(typeof e?.detail === 'string' ? e.detail : 'Ürünler yüklenemedi')
     } finally { setLoading(false) }
@@ -59,39 +66,57 @@ export default function VitrinPage() {
           className="bg-brand-input border border-brand-border rounded-lg px-3 py-1.5 text-sm">
           {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <button onClick={() => setShowCreate(true)}
-          className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-black"
-          style={{ background: 'rgb(var(--accent-rgb))' }}>
-          + Yeni Ürün
-        </button>
+        <div className="flex rounded-lg overflow-hidden border border-brand-border text-xs">
+          <button onClick={() => setView('products')}
+            className={`px-3 py-1.5 ${view === 'products' ? 'bg-white/10 text-white' : 'bg-brand-input text-gray-400'}`}>
+            Ürünler
+          </button>
+          <button onClick={() => setView('collections')}
+            className={`px-3 py-1.5 ${view === 'collections' ? 'bg-white/10 text-white' : 'bg-brand-input text-gray-400'}`}>
+            Koleksiyonlar ({collections.length})
+          </button>
+        </div>
+        {view === 'products' && (
+          <button onClick={() => setShowCreate(true)}
+            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium text-black"
+            style={{ background: 'rgb(var(--accent-rgb))' }}>
+            + Yeni Ürün
+          </button>
+        )}
       </div>
 
       {error && <div className="text-sm text-red-400">{error}</div>}
       {loading && <div className="text-sm text-gray-400">Yükleniyor…</div>}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map(p => (
-          <button key={p.id} onClick={() => openDetail(p.id)}
-            className="text-left bg-brand-card border border-brand-border rounded-xl overflow-hidden hover:border-gray-500 transition">
-            <div className="aspect-square bg-brand-input flex items-center justify-center">
-              {p.cover_image
-                ? <img src={p.cover_image} alt={p.title} className="w-full h-full object-cover" />
-                : <span className="text-3xl opacity-30">🖼️</span>}
-            </div>
-            <div className="p-3">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm truncate">{p.title}</span>
-                <StatusBadge status={p.status} />
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                {fmtPrice(p.base_price)} · {p.variant_count} varyant
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
-      {!loading && products.length === 0 && (
-        <div className="text-sm text-gray-400">Bu mağazada henüz ürün yok.</div>
+      {view === 'collections' ? (
+        <CollectionsView storeId={storeId} collections={collections} onChanged={() => load(storeId)} />
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {products.map(p => (
+              <button key={p.id} onClick={() => openDetail(p.id)}
+                className="text-left bg-brand-card border border-brand-border rounded-xl overflow-hidden hover:border-gray-500 transition">
+                <div className="aspect-square bg-brand-input flex items-center justify-center">
+                  {p.cover_image
+                    ? <img src={p.cover_image} alt={p.title} className="w-full h-full object-cover" />
+                    : <span className="text-3xl opacity-30">🖼️</span>}
+                </div>
+                <div className="p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm truncate">{p.title}</span>
+                    <StatusBadge status={p.status} />
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {fmtPrice(p.base_price)} · {p.variant_count} varyant
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          {!loading && products.length === 0 && (
+            <div className="text-sm text-gray-400">Bu mağazada henüz ürün yok.</div>
+          )}
+        </>
       )}
 
       {showCreate && (
@@ -100,7 +125,7 @@ export default function VitrinPage() {
           onCreated={(p) => { setShowCreate(false); load(storeId); setSelected(p) }} />
       )}
       {selected && (
-        <ProductDetailModal product={selected}
+        <ProductDetailModal product={selected} collections={collections}
           onClose={() => { setSelected(null); load(storeId) }}
           onRefresh={() => openDetail(selected.id)} />
       )}
@@ -183,10 +208,23 @@ function CreateProductModal({ storeId, onClose, onCreated }) {
   )
 }
 
-function ProductDetailModal({ product, onClose, onRefresh }) {
+function ProductDetailModal({ product, collections = [], onClose, onRefresh }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [variations, setVariations] = useState('')
+
+  const toggleCollection = async (cid) => {
+    const current = new Set(product.collection_ids || [])
+    if (current.has(cid)) current.delete(cid)
+    else current.add(cid)
+    setBusy(true); setErr('')
+    try {
+      await api.put(`/api/catalog/products/${product.id}/collections`,
+        { collection_ids: [...current] })
+      await onRefresh()
+    } catch { setErr('Koleksiyon güncellenemedi') }
+    finally { setBusy(false) }
+  }
 
   const patch = async (body) => {
     setBusy(true); setErr('')
@@ -278,6 +316,25 @@ function ProductDetailModal({ product, onClose, onRefresh }) {
           </div>
         </section>
 
+        {collections.length > 0 && (
+          <section>
+            <h3 className="text-sm font-medium mb-2">Koleksiyonlar</h3>
+            <div className="flex gap-2 flex-wrap">
+              {collections.map(c => {
+                const active = (product.collection_ids || []).includes(c.id)
+                return (
+                  <button key={c.id} disabled={busy} onClick={() => toggleCollection(c.id)}
+                    className={`px-3 py-1 rounded-full text-xs border transition ${active
+                      ? 'border-emerald-400 bg-emerald-600/25 text-emerald-300'
+                      : 'border-brand-border bg-brand-input text-gray-400 hover:text-gray-200'}`}>
+                    {c.title}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         <section>
           <h3 className="text-sm font-medium mb-2">Varyantlar ({product.variants.length})</h3>
           <div className="flex gap-2 mb-3">
@@ -334,6 +391,80 @@ function Modal({ title, children, onClose, wide }) {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
         </div>
         {children}
+      </div>
+    </div>
+  )
+}
+
+// Koleksiyon yönetimi — liste + ekle/yeniden adlandır/sil.
+function CollectionsView({ storeId, collections, onChanged }) {
+  const [title, setTitle] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const create = async (e) => {
+    e.preventDefault()
+    if (!title.trim()) return
+    setBusy(true); setErr('')
+    try {
+      await api.post('/api/catalog/collections', { store_id: storeId, title: title.trim() })
+      setTitle('')
+      onChanged()
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Koleksiyon oluşturulamadı')
+    } finally { setBusy(false) }
+  }
+
+  const toggle = async (c) => {
+    try { await api.patch(`/api/catalog/collections/${c.id}`, { is_active: !c.is_active }); onChanged() }
+    catch { setErr('Güncellenemedi') }
+  }
+
+  const rename = async (c) => {
+    const t = window.prompt('Yeni koleksiyon adı:', c.title)
+    if (!t || t === c.title) return
+    try { await api.patch(`/api/catalog/collections/${c.id}`, { title: t }); onChanged() }
+    catch { setErr('Yeniden adlandırılamadı') }
+  }
+
+  const remove = async (c) => {
+    if (!window.confirm(`"${c.title}" koleksiyonu silinecek (ürünler silinmez). Emin misiniz?`)) return
+    try { await api.del(`/api/catalog/collections/${c.id}`); onChanged() }
+    catch { setErr('Silinemedi') }
+  }
+
+  return (
+    <div className="space-y-3 max-w-2xl">
+      <form onSubmit={create} className="flex gap-2">
+        <input className={inputCls + ' mt-0 flex-1'} value={title}
+          onChange={e => setTitle(e.target.value)} maxLength={200}
+          placeholder="Yeni koleksiyon adı (örn: Retro, Minimal)" />
+        <button disabled={busy || !title.trim()}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-black disabled:opacity-50"
+          style={{ background: 'rgb(var(--accent-rgb))' }}>Ekle</button>
+      </form>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+
+      <div className="bg-brand-card border border-brand-border rounded-xl divide-y divide-brand-border/50">
+        {collections.map(c => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            <span className="font-medium">{c.title}</span>
+            <span className="text-xs text-gray-500">/{c.slug} · {c.product_count ?? 0} ürün</span>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => toggle(c)}
+                className={`text-xs px-2 py-0.5 rounded ${c.is_active
+                  ? 'bg-emerald-600/30 text-emerald-300' : 'bg-gray-600/40 text-gray-400'}`}>
+                {c.is_active ? 'Aktif' : 'Pasif'}
+              </button>
+              <button onClick={() => rename(c)} className="text-xs text-gray-400 hover:text-white">Adlandır</button>
+              <button onClick={() => remove(c)} className="text-xs text-red-400/70 hover:text-red-400">Sil</button>
+            </div>
+          </div>
+        ))}
+        {collections.length === 0 && (
+          <div className="p-4 text-sm text-gray-400">Henüz koleksiyon yok — üstten ekleyin.
+            Ürünleri koleksiyona, ürün detayındaki çiplerden atarsınız.</div>
+        )}
       </div>
     </div>
   )

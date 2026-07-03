@@ -59,19 +59,31 @@ async function shopFetch<T>(path: string): Promise<T | null> {
   }
 }
 
+export interface Collection {
+  slug: string;
+  title: string;
+  description: string | null;
+}
+
 export function getProducts(params?: {
   q?: string;
   tag?: string;
   model?: string;
+  collection?: string;
   page?: number;
 }): Promise<ProductListResponse | null> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
   if (params?.tag) qs.set("tag", params.tag);
   if (params?.model) qs.set("model", params.model);
+  if (params?.collection) qs.set("collection", params.collection);
   if (params?.page) qs.set("page", String(params.page));
   const suffix = qs.size > 0 ? `?${qs}` : "";
   return shopFetch<ProductListResponse>(`/products${suffix}`);
+}
+
+export async function getCollections(): Promise<Collection[]> {
+  return (await shopFetch<Collection[]>("/collections")) ?? [];
 }
 
 export function getProduct(slug: string): Promise<ProductDetail | null> {

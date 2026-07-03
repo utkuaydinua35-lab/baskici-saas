@@ -1243,3 +1243,131 @@ def create_manual_order(
         "external_id": order.external_id,
         "message": f"Manuel sipariş oluşturuldu: {order.external_id}",
     }
+
+
+# ─── Para iadesi (vitrin siparişleri — iyzico/PayTR API) ─────
+
+class RefundRequest(BaseModel):
+    amount: float
+    reason: str | None = None
+
+
+def _require_admin(user: User) -> None:
+    """Para hareketi geniş 'siparisler' iznine binmez — yalnızca yönetici."""
+    from app.auth.permissions import is_admin
+    if not is_admin(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Para iadesi için yönetici yetkisi gerekli")
+
+
+def _refund_context(db: Session, user: User, order_id: uuid.UUID):
+    """Sipariş + ödeme oturumu + önceki başarılı iadeler toplamı."""
+    from decimal import Decimal
+    from app.models import CheckoutSession, Refund
+
+    order = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı")
+    session = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.order_id == order.id, CheckoutSession.status == "paid"))
+    if not session:
+        raise HTTPException(404, "Bu sipariş panel üzerinden iade edilemez "
+                                 "(yalnızca vitrin ödemeleri)")
+    refunded = db.scalar(
+        select(sql_func.coalesce(sql_func.sum(Refund.amount), 0)).where(
+            Refund.order_id == order.id, Refund.status == "succeeded")
+    ) or 0
+    return order, session, Decimal(str(refunded))
+
+
+@router.get("/{order_id}/refunds", response_model=dict)
+def list_refunds(
+    order_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_admin(user)
+    from app.models import Refund
+    order, session, refunded = _refund_context(db, user, order_id)
+    rows = db.scalars(select(Refund).where(Refund.order_id == order.id)
+                      .order_by(Refund.created_at.desc())).all()
+    return {
+        "paid_amount": str(session.amount),
+        "refunded_total": str(refunded),
+        "refundable": str(session.amount - refunded),
+        "provider": session.provider,
+        "refunds": [
+            {
+                "id": str(r.id),
+                "amount": str(r.amount),
+                "status": r.status,
+                "reason": r.reason,
+                "error": r.error,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/{order_id}/refund", response_model=dict)
+def create_refund(
+    order_id: uuid.UUID,
+    body: RefundRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _require_admin(user)
+    from decimal import Decimal, InvalidOperation
+    from app.models import Refund, Store as _Store
+    from app.payments import get_payment_provider
+
+    order, session, refunded = _refund_context(db, user, order_id)
+    try:
+        amount = Decimal(str(body.amount)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        raise HTTPException(422, "Geçersiz tutar")
+    remaining = Decimal(str(session.amount)) - refunded
+    if amount <= 0 or amount > remaining:
+        raise HTTPException(422, f"Tutar 0 ile {remaining} TL arasında olmalı")
+
+    store = db.get(_Store, session.store_id)
+    provider = get_payment_provider(store)
+    result = provider.refund(session, amount)
+
+    refund = Refund(
+        tenant_id=user.tenant_id,
+        order_id=order.id,
+        checkout_session_id=session.id,
+        amount=amount,
+        status=result.status,
+        provider=session.provider,
+        provider_ref=result.provider_ref,
+        reason=(body.reason or "")[:500] or None,
+        error=(result.error or "")[:500] or None,
+        raw=result.raw or None,
+        created_by=user.id,
+    )
+    db.add(refund)
+
+    if result.status == "succeeded":
+        new_total = refunded + amount
+        full = new_total >= Decimal(str(session.amount))
+        order.financial_status = "refunded" if full else "partially_refunded"
+        db.add(OrderStatusHistory(
+            tenant_id=order.tenant_id, order_id=order.id,
+            action="iade",
+            note=f"{amount} TL iade ({'tam' if full else 'kısmi'})"
+                 + (f" — {body.reason}" if body.reason else ""),
+            created_by=user.full_name or user.email,
+        ))
+    db.commit()
+
+    if result.status != "succeeded":
+        raise HTTPException(502, f"İade başarısız: {result.error or 'sağlayıcı hatası'}")
+    return {
+        "status": "succeeded",
+        "amount": str(amount),
+        "financial_status": order.financial_status,
+        "refunded_total": str(refunded + amount),
+    }

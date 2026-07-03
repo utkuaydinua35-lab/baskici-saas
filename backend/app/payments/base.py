@@ -66,6 +66,15 @@ class PaymentResult:
     raw: dict = field(default_factory=dict)
 
 
+@dataclass
+class RefundResult:
+    """refund dönüşü — sağlayıcı iade sonucu."""
+    status: str               # "succeeded" | "failed"
+    provider_ref: str | None = None
+    error: str | None = None
+    raw: dict = field(default_factory=dict)
+
+
 class PaymentProvider(ABC):
     """Tüm ödeme sağlayıcı adapter'larının temel sınıfı."""
 
@@ -84,3 +93,7 @@ class PaymentProvider(ABC):
     def handle_callback(self, form: dict, session: CheckoutSession) -> PaymentResult:
         """Sağlayıcı callback'ini DOĞRULA ve sonucu döndür.
         Doğrulanamayan istek → PaymentResult(status='failed', error=...)."""
+
+    def refund(self, session: CheckoutSession, amount) -> RefundResult:
+        """Kısmi/tam para iadesi. Varsayılan: desteklenmiyor."""
+        return RefundResult(status="failed", error="Bu sağlayıcı panelden iadeyi desteklemiyor")

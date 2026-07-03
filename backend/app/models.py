@@ -1529,3 +1529,36 @@ class Customer(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Refund(Base):
+    """Panelden yapılan para iadesi kaydı (vitrin siparişleri).
+
+    Başarılı/başarısız TÜM denemeler kaydedilir (denetim izi). Tutar doğrulaması
+    (ödenen − önceki başarılı iadeler) endpoint'te yapılır.
+    """
+    __tablename__ = "refunds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+    checkout_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("checkout_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+
+    amount: Mapped[float] = mapped_column(Numeric(12, 2))
+    status: Mapped[str] = mapped_column(String(20))  # succeeded | failed
+    provider: Mapped[str] = mapped_column(String(20))
+    provider_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

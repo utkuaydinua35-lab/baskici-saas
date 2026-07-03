@@ -22,10 +22,11 @@ from decimal import Decimal
 
 import requests
 
-from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult
+from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult, RefundResult
 
 GET_TOKEN_URL = "https://www.paytr.com/odeme/api/get-token"
 IFRAME_URL = "https://www.paytr.com/odeme/guvenli/{token}"
+REFUND_URL = "https://www.paytr.com/odeme/iade"
 _TIMEOUT = 30
 
 
@@ -159,3 +160,38 @@ class PayTRProvider(PaymentProvider):
             return PaymentResult(status="failed", error="tutar uyuşmuyor", raw=safe_raw)
 
         return PaymentResult(status="paid", provider_ref=merchant_oid, raw=safe_raw)
+
+    def refund(self, session, amount) -> RefundResult:
+        """Kısmi/tam iade — PayTR /odeme/iade (kısmi ve tekrarlı iadeyi destekler)."""
+        merchant_oid = session.id.hex
+        return_amount = f"{Decimal(str(amount)):.2f}"
+        paytr_token = base64.b64encode(
+            hmac.new(
+                self.merchant_key,
+                (str(self.merchant_id) + merchant_oid + return_amount + self.merchant_salt).encode(),
+                hashlib.sha256,
+            ).digest()
+        ).decode()
+        try:
+            resp = requests.post(REFUND_URL, data={
+                "merchant_id": self.merchant_id,
+                "merchant_oid": merchant_oid,
+                "return_amount": return_amount,
+                "paytr_token": paytr_token,
+            }, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError) as e:
+            return RefundResult(status="failed", error=f"PayTR iade isteği başarısız: {e}")
+
+        if data.get("status") != "success":
+            return RefundResult(
+                status="failed",
+                error=data.get("err_msg") or data.get("reason") or "iade reddedildi",
+                raw={"status": data.get("status"), "err_no": data.get("err_no")},
+            )
+        return RefundResult(
+            status="succeeded",
+            provider_ref=merchant_oid,
+            raw={"return_amount": data.get("return_amount"), "is_test": data.get("is_test")},
+        )

@@ -737,6 +737,8 @@ function MusteriTab({ detail, onEmail }) {
         )}
       </PanelCard>
 
+      {detail.raw?.payment && <RefundPanel detail={detail} />}
+
       {(ship.address1 || ship.city) && (
         <PanelCard title="Kargo Adresi" icon="📍">
           <AddressBlock addr={ship} />
@@ -1226,5 +1228,116 @@ function EmailModal({ orderRef, orderNo, customer, email, onClose }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// İade paneli — yalnızca vitrin (kendi mağaza) ödemeli siparişlerde.
+// Para hareketi: backend yönetici yetkisi arar; iki adımlı onay.
+// ═══════════════════════════════════════════════════════════
+
+function RefundPanel({ detail }) {
+  const toast = useToast()
+  const [info, setInfo] = useState(null)      // {paid_amount, refunded_total, refundable, refunds}
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [denied, setDenied] = useState(false)
+
+  const load = async () => {
+    try {
+      const r = await api.get(`/api/orders/${detail.id}/refunds`)
+      setInfo(r)
+      if (!amount) setAmount(r.refundable)
+    } catch (e) {
+      if (e?.status === 403) setDenied(true)
+      // 404 → vitrin ödemesi değil; panel zaten raw.payment koşuluyla açılır
+    }
+  }
+  useEffect(() => { load() }, [detail.id])  // eslint-disable-line
+
+  if (denied || !info) return null
+  const refundable = Number(info.refundable)
+
+  const doRefund = async () => {
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/orders/${detail.id}/refund`, {
+        amount: Number(amount), reason: reason || null,
+      })
+      toast.success(`${r.amount} TL iade edildi (${r.financial_status === 'refunded' ? 'tam' : 'kısmi'})`)
+      setConfirming(false); setReason(''); setAmount('')
+      await load()
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'İade başarısız')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <PanelCard title="Para İadesi" icon="💸">
+      <div className="text-xs text-gray-400 space-y-0.5 mb-2">
+        <div>Ödenen: <span className="text-gray-200 tabular-nums">{info.paid_amount} ₺</span>
+          <span className="text-gray-600"> · {info.provider}</span></div>
+        {Number(info.refunded_total) > 0 && (
+          <div>İade edilen: <span className="text-amber-400 tabular-nums">{info.refunded_total} ₺</span></div>
+        )}
+      </div>
+
+      {info.refunds.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {info.refunds.map(r => (
+            <div key={r.id} className="text-[11px] bg-brand-input rounded px-2 py-1 flex justify-between">
+              <span className={r.status === 'succeeded' ? 'text-emerald-400' : 'text-red-400'}>
+                {r.status === 'succeeded' ? '✓' : '✗'} {r.amount} ₺
+              </span>
+              <span className="text-gray-500">
+                {r.created_at ? new Date(r.created_at).toLocaleDateString('tr-TR') : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {refundable > 0 ? (
+        !confirming ? (
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input type="number" step="0.01" min="0.01" max={refundable} value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="flex-1 bg-brand-input border border-brand-border rounded-lg px-2 py-1.5 text-xs" />
+              <button
+                onClick={() => {
+                  const n = Number(amount)
+                  if (!n || n <= 0 || n > refundable) { toast.error(`Tutar 0 ile ${refundable} arasında olmalı`); return }
+                  setConfirming(true)
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs bg-red-600/25 text-red-300 border border-red-500/30">
+                İade Et
+              </button>
+            </div>
+            <input value={reason} onChange={e => setReason(e.target.value)} maxLength={500}
+              placeholder="Sebep (opsiyonel)"
+              className="w-full bg-brand-input border border-brand-border rounded-lg px-2 py-1.5 text-xs" />
+          </div>
+        ) : (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2.5 space-y-2">
+            <p className="text-xs text-red-300">
+              <b>{Number(amount).toFixed(2)} ₺</b> müşteriye iade edilecek. Bu işlem geri alınamaz.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={doRefund} disabled={busy}
+                className="px-3 py-1.5 rounded-lg text-xs bg-red-600 text-white disabled:opacity-50">
+                {busy ? 'İade ediliyor…' : 'Onaylıyorum, iade et'}
+              </button>
+              <button onClick={() => setConfirming(false)} disabled={busy}
+                className="px-3 py-1.5 rounded-lg text-xs text-gray-400">Vazgeç</button>
+            </div>
+          </div>
+        )
+      ) : (
+        <p className="text-[11px] text-gray-500 italic">Tutarın tamamı iade edildi.</p>
+      )}
+    </PanelCard>
   )
 }

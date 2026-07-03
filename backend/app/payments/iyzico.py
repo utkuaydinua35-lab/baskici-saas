@@ -22,7 +22,9 @@ from decimal import Decimal
 
 import requests
 
-from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult, scaled_basket_lines
+from app.payments.base import (
+    CheckoutInit, PaymentProvider, PaymentResult, RefundResult, scaled_basket_lines,
+)
 
 SANDBOX_URL = "https://sandbox-api.iyzipay.com"
 _TIMEOUT = 30
@@ -166,6 +168,13 @@ class IyzicoProvider(PaymentProvider):
             "status", "paymentStatus", "paidPrice", "price", "currency",
             "conversationId", "paymentId", "fraudStatus", "errorMessage",
         )}
+        # İade için kalem işlem kimlikleri (session.callback_raw'a akar)
+        safe_raw["itemTransactions"] = [
+            {"paymentTransactionId": t.get("paymentTransactionId"),
+             "paidPrice": t.get("paidPrice")}
+            for t in (data.get("itemTransactions") or [])
+            if t.get("paymentTransactionId")
+        ]
 
         if data.get("status") != "success" or data.get("paymentStatus") != "SUCCESS":
             return PaymentResult(
@@ -183,4 +192,84 @@ class IyzicoProvider(PaymentProvider):
             status="paid",
             provider_ref=str(data.get("paymentId") or token),
             raw=safe_raw,
+        )
+
+    def _get_item_transactions(self, session) -> list[dict]:
+        """İade için kalem işlemleri: önce callback_raw, yoksa /payment/detail."""
+        txs = (session.callback_raw or {}).get("itemTransactions") or []
+        if txs:
+            return txs
+        # Eski oturumlar (itemTransactions kaydedilmeden önce ödenmiş) için fallback
+        data = self._post("/payment/detail", {
+            "locale": "tr",
+            "conversationId": session.token,
+            "paymentId": session.provider_ref,
+        })
+        if data.get("status") != "success":
+            raise ValueError(data.get("errorMessage") or "ödeme detayı alınamadı")
+        return [
+            {"paymentTransactionId": t.get("paymentTransactionId"),
+             "paidPrice": t.get("paidPrice")}
+            for t in (data.get("itemTransactions") or [])
+            if t.get("paymentTransactionId")
+        ]
+
+    def refund(self, session, amount) -> RefundResult:
+        """Kısmi/tam iade — iyzico kalem bazlı çalışır; tutar kalemler
+        üzerinde greedy dağıtılır (kalem başına ödenen tutarı aşmadan)."""
+        remaining = Decimal(str(amount))
+        try:
+            txs = self._get_item_transactions(session)
+        except (requests.RequestException, ValueError) as e:
+            return RefundResult(status="failed", error=f"işlem listesi alınamadı: {e}")
+        if not txs:
+            return RefundResult(status="failed", error="iade edilecek işlem bulunamadı")
+
+        refunded_parts: list[dict] = []
+        for tx in txs:
+            if remaining <= 0:
+                break
+            tx_price = Decimal(str(tx.get("paidPrice", "0")))
+            part = min(remaining, tx_price)
+            if part <= 0:
+                continue
+            try:
+                data = self._post("/payment/refund", {
+                    "locale": "tr",
+                    "conversationId": session.token,
+                    "paymentTransactionId": tx["paymentTransactionId"],
+                    "price": str(part),
+                    "currency": session.currency or "TRY",
+                    "ip": session.client_ip or "127.0.0.1",
+                })
+            except requests.RequestException as e:
+                return RefundResult(
+                    status="failed",
+                    error=f"iade isteği başarısız: {e}",
+                    raw={"refunded_parts": refunded_parts},
+                )
+            if data.get("status") != "success":
+                return RefundResult(
+                    status="failed",
+                    error=data.get("errorMessage") or "iade reddedildi",
+                    raw={"refunded_parts": refunded_parts,
+                         "failed_tx": tx["paymentTransactionId"]},
+                )
+            refunded_parts.append({
+                "paymentTransactionId": tx["paymentTransactionId"],
+                "price": str(part),
+                "paymentId": data.get("paymentId"),
+            })
+            remaining -= part
+
+        if remaining > 0:
+            return RefundResult(
+                status="failed",
+                error=f"tutarın {remaining} TL'si iade edilemedi (işlem kapasitesi yetersiz)",
+                raw={"refunded_parts": refunded_parts},
+            )
+        return RefundResult(
+            status="succeeded",
+            provider_ref=str(refunded_parts[0].get("paymentId") or session.provider_ref),
+            raw={"refunded_parts": refunded_parts},
         )

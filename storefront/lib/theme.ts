@@ -1,8 +1,8 @@
 // Vitrin teması — backend'ten çekilir (60 sn revalidate), defaults fallback.
 import "server-only";
+import { getStoreSlug } from "./api";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const STORE_SLUG = process.env.STORE_SLUG || "vitrin";
 
 export interface Theme {
   version: number;
@@ -55,7 +55,8 @@ const DEFAULT_PAYLOAD: ThemePayload = {
 
 export async function getThemePayload(): Promise<ThemePayload> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/shop/${STORE_SLUG}/theme`, {
+    const slug = await getStoreSlug();
+    const res = await fetch(`${BACKEND_URL}/api/shop/${slug}/theme`, {
       next: { revalidate: 60 },
     });
     if (!res.ok) return DEFAULT_PAYLOAD;

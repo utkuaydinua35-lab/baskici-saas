@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = Field("http://localhost:5173", alias="FRONTEND_URL")
     backend_url: str = Field("http://localhost:8000", alias="BACKEND_URL")
+    # Vitrin ozel domain dogrulamasi: musterinin A kaydinin isaret etmesi gereken IP
+    server_ip: str = Field("", alias="SERVER_IP")
 
     # Public sipariş takip — hangi Shopify mağazasi sorgulanacak (store_url ile eşleşir)
     tracker_shop_domain: str = Field("2eb3e1-48.myshopify.com", alias="TRACKER_SHOP_DOMAIN")

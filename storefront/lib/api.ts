@@ -1,9 +1,35 @@
 // Backend API istemcisi — YALNIZCA sunucu tarafında kullanılır (server
 // components / route handlers). BACKEND_URL tarayıcıya sızmaz, CORS gerekmez.
 import "server-only";
+import { cache } from "react";
+import { headers } from "next/headers";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 const STORE_SLUG = process.env.STORE_SLUG || "vitrin";
+// Varsayılan host'lar (virgülle) — bunlarda env STORE_SLUG kullanılır;
+// başka host = müşterinin bağladığı özel domain → backend'ten çözülür.
+const DEFAULT_HOSTS = new Set(
+  (process.env.DEFAULT_HOSTS || "localhost,127.0.0.1")
+    .split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
+);
+
+// İstek başına bir kez host → slug çözümlemesi (React cache).
+export const getStoreSlug = cache(async (): Promise<string> => {
+  try {
+    const host = ((await headers()).get("host") || "")
+      .toLowerCase().split(":")[0];
+    if (!host || DEFAULT_HOSTS.has(host)) return STORE_SLUG;
+    const res = await fetch(
+      `${BACKEND_URL}/api/shop/_resolve?host=${encodeURIComponent(host)}`,
+      { next: { revalidate: 300 } },
+    );
+    if (!res.ok) return STORE_SLUG;
+    const data = (await res.json()) as { slug?: string };
+    return data.slug || STORE_SLUG;
+  } catch {
+    return STORE_SLUG; // headers() erişilemedi (statik render) veya backend down
+  }
+});
 
 export interface ProductCard {
   slug: string;
@@ -56,7 +82,8 @@ export interface ProductListResponse {
 
 async function shopFetch<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/shop/${STORE_SLUG}${path}`, {
+    const slug = await getStoreSlug();
+    const res = await fetch(`${BACKEND_URL}/api/shop/${slug}${path}`, {
       next: { revalidate: 60 },
     });
     if (!res.ok) return null;

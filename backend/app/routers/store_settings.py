@@ -169,3 +169,61 @@ async def upload_asset(
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"url": url, "kind": kind}
+
+
+# ─── Özel domain doğrulama ───────────────────────────────────
+
+@router.post("/{store_id}/verify-domain", response_model=dict)
+def verify_domain(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """custom_domain'in DNS A kaydını sunucu IP'siyle karşılaştır.
+
+    DNS yayılımı saatler sürebilir — başarısızlık 'yanlış kayıt' anlamına
+    gelmeyebilir; mesaj bunu dürüstçe söyler.
+    """
+    import socket
+    from datetime import datetime, timezone
+
+    from app.config import get_settings
+
+    store = _get_store(db, user, store_id)
+    domain = ((store.config or {}).get("custom_domain") or "").strip().lower()
+    if not domain:
+        raise HTTPException(422, "Önce Ayarlar'dan özel alan adını kaydedin")
+
+    expected_ip = (get_settings().server_ip or "").strip()
+    try:
+        infos = socket.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP)
+        resolved = sorted({i[4][0] for i in infos})
+    except socket.gaierror:
+        return {
+            "verified": False,
+            "domain": domain,
+            "resolved_ips": [],
+            "expected_ip": expected_ip or None,
+            "message": "Alan adı çözümlenemedi — DNS kaydı henüz yayılmamış olabilir "
+                       "(birkaç saat sonra tekrar deneyin) veya kayıt eksik.",
+        }
+
+    verified = bool(expected_ip) and expected_ip in resolved
+    if verified:
+        config = dict(store.config or {})
+        config["custom_domain_verified_at"] = datetime.now(timezone.utc).isoformat()
+        store.config = config
+        flag_modified(store, "config")
+        db.commit()
+
+    return {
+        "verified": verified,
+        "domain": domain,
+        "resolved_ips": resolved,
+        "expected_ip": expected_ip or None,
+        "message": "Alan adı doğrulandı ✓" if verified else (
+            f"Alan adı şu an {', '.join(resolved)} adresine işaret ediyor; "
+            f"beklenen {expected_ip or 'SERVER_IP tanımsız'}. DNS değişikliği "
+            f"yayılıyorsa birkaç saat sonra tekrar deneyin."
+        ),
+    }

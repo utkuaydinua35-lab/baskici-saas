@@ -153,6 +153,22 @@ export default function AyarlarPage() {
         </p>
       </Section>
 
+      <Section title="Domain Bağlama" icon="🌐">
+        <Field label="Vitrin adresi (aktif)">
+          <input className="input mt-1" value={cfg.storefront_url || ''} onChange={set('storefront_url')}
+            placeholder="https://magaza.bernzcompany.com" />
+        </Field>
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Ödeme dönüş linkleri ve e-postalardaki adresler buradan üretilir.
+        </p>
+        <Field label="Kendi alan adınız (opsiyonel)">
+          <input className="input mt-1" value={cfg.custom_domain || ''} onChange={set('custom_domain')}
+            placeholder="markam.com" />
+        </Field>
+        <DomainVerify storeId={storeId} customDomain={cfg.custom_domain}
+          onUseAsDomain={() => setCfg(c => ({ ...c, storefront_url: `https://${(c.custom_domain || '').trim()}` }))} />
+      </Section>
+
       <Section title="Yasal Metinler" icon="📄">
         <p className="text-xs text-panel-muted -mt-1 mb-2">
           Boş bırakılan alanlarda vitrindeki hazır şablon metinler gösterilir.
@@ -188,5 +204,53 @@ function Field({ label, children }) {
       <span className="text-panel-muted text-xs">{label}</span>
       {children}
     </label>
+  )
+}
+
+// Özel domain DNS doğrulaması — kaydedilmiş custom_domain üzerinden çalışır.
+function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
+  const [result, setResult] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const verify = async () => {
+    setBusy(true); setResult(null)
+    try { setResult(await api.post(`/api/store-settings/${storeId}/verify-domain`, {})) }
+    catch (e) {
+      setResult({ verified: false, message: typeof e?.detail === 'string' ? e.detail : 'Doğrulama başarısız' })
+    } finally { setBusy(false) }
+  }
+
+  if (!customDomain?.trim()) {
+    return (
+      <p className="text-[11px] text-panel-muted">
+        Alan adınızı yazın, <b>Kaydet</b>'e basın; ardından DNS yönlendirmesini yapıp doğrulayın.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="bg-panel-input rounded-xl p-3 text-xs space-y-1">
+        <div className="font-medium">DNS ayarları (alan adı sağlayıcınızın panelinden):</div>
+        <div className="font-mono">A kaydı &nbsp; @ → sunucu IP&apos;niz</div>
+        <div className="font-mono">CNAME &nbsp;&nbsp; www → {customDomain.trim()}</div>
+        <div className="text-panel-muted">Değişikliklerin yayılması birkaç saat sürebilir.</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={verify} disabled={busy} className="btn-ghost !py-1.5 text-xs">
+          {busy ? 'Kontrol ediliyor…' : '🔍 DNS Doğrula'}
+        </button>
+        {result && (
+          <span className={`text-xs ${result.verified ? 'text-emerald-700' : 'text-amber-600'}`}>
+            {result.message}
+          </span>
+        )}
+      </div>
+      {result?.verified && (
+        <button onClick={onUseAsDomain} className="text-xs text-panel-accent underline">
+          Vitrin adresini https://{customDomain.trim()} olarak ayarla (sonra Kaydet&apos;e basın)
+        </button>
+      )}
+    </div>
   )
 }

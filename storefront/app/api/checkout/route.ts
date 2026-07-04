@@ -1,9 +1,9 @@
 // Checkout proxy — tarayıcı bu route'a POST'lar, biz backend'e sunucudan
 // sunucuya iletiriz (BACKEND_URL tarayıcıya sızmaz, CORS gerekmez).
 import { NextRequest, NextResponse } from "next/server";
+import { resolveSlugFromHost } from "@/lib/resolve-slug";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-const STORE_SLUG = process.env.STORE_SLUG || "vitrin";
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -19,8 +19,9 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "127.0.0.1";
 
+  const slug = await resolveSlugFromHost(req.headers.get("host"));
   try {
-    const res = await fetch(`${BACKEND_URL}/api/shop/${STORE_SLUG}/checkout`, {
+    const res = await fetch(`${BACKEND_URL}/api/shop/${slug}/checkout`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

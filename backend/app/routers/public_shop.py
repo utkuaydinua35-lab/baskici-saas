@@ -521,3 +521,26 @@ def get_store_theme(
             "iade": config.get("iade_text") or None,
         },
     }
+
+
+@router.get("/_resolve")
+def resolve_host(
+    host: str = Query(..., max_length=253),
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
+    """Host → mağaza slug çözümlemesi (özel domain'ler için; vitrin SSR kullanır)."""
+    normalized = host.strip().lower().split(":")[0]
+    if not normalized:
+        raise HTTPException(404)
+    store = db.scalar(select(Store).where(
+        Store.platform == "storefront",
+        Store.is_active.is_(True),
+        (Store.config["custom_domain"].astext == normalized)
+        | (Store.config["shop_domain"].astext == normalized),
+    ))
+    if not store:
+        raise HTTPException(404, "Bu alan adına bağlı mağaza yok")
+    if response is not None:
+        response.headers["Cache-Control"] = "public, max-age=300"
+    return {"slug": store.slug}

@@ -3,6 +3,7 @@ import { DM_Sans, Inter, Playfair_Display, Poppins } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { getThemePayload } from "@/lib/theme";
+import { getCollections } from "@/lib/api";
 import Header from "@/components/Header";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import CartDrawer from "@/components/CartDrawer";
@@ -40,7 +41,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { store_name, theme, contact, pixels: payloadPixels } = await getThemePayload();
+  const [{ store_name, theme, contact, pixels: payloadPixels }, navCollections] =
+    await Promise.all([getThemePayload(), getCollections()]);
   const fontFamily = FONT_VAR[theme.font] || FONT_VAR.inter;
   const year = new Date().getFullYear();
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
@@ -70,6 +72,7 @@ export default async function RootLayout({
             siteName={store_name}
             logoUrl={theme.logo_url}
             cartDrawer={theme.animations.cart_drawer}
+            collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
           />
           {theme.animations.cart_drawer && <CartDrawer />}
           <main className="flex-1">{children}</main>

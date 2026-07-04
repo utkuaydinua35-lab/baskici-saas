@@ -3,8 +3,10 @@ import { getCollections } from "@/lib/api";
 
 // Öne çıkan koleksiyonlar — tema ayarındaki slug listesi (boşsa hepsi, max 4).
 export default async function FeaturedCollections({
+  title,
   slugs,
 }: {
+  title?: string;
   slugs: string[];
 }) {
   const all = await getCollections();
@@ -16,7 +18,7 @@ export default async function FeaturedCollections({
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-10">
-      <h2 className="text-lg font-semibold mb-4">Koleksiyonlar</h2>
+      <h2 className="text-lg font-semibold mb-4">{title || "Koleksiyonlar"}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {picked.map((c) => (
           <Link

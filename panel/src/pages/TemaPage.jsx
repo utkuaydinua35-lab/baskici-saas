@@ -2,14 +2,30 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
 
-// Tema Ayarları — sol form, sağ canlı önizleme (kaydette iframe reload).
+// Tema Ayarları — sol form (bölüm editörü dahil), sağ canlı önizleme.
+// Tema v2: anasayfa "sections" listesidir; bölüm ekle/sil/sırala + tipe özel ayar.
 const FONTS = [
   { key: 'inter', label: 'Inter (modern, varsayılan)' },
   { key: 'poppins', label: 'Poppins (yuvarlak, samimi)' },
   { key: 'playfair', label: 'Playfair Display (şık, serif)' },
   { key: 'dm-sans', label: 'DM Sans (sade, geometrik)' },
 ]
-const SECTION_LABELS = { hero: 'Hero (karşılama)', featured: 'Koleksiyonlar', products: 'Öne çıkan ürünler' }
+
+const SECTION_TYPES = {
+  hero_slider: { label: 'Hero / Slayt Gösterisi', icon: '🌅' },
+  featured_collections: { label: 'Koleksiyon Kartları', icon: '🗂️' },
+  products_grid: { label: 'Ürün Izgarası', icon: '🛍️' },
+  rich_text: { label: 'Metin Bölümü', icon: '📝' },
+  banner: { label: 'Banner Görseli', icon: '🖼️' },
+}
+
+const SECTION_DEFAULTS = {
+  hero_slider: { slides: [], autoplay_sec: 5 },
+  featured_collections: { title: 'Koleksiyonlar', slugs: [] },
+  products_grid: { title: 'Öne Çıkanlar', collection: null, limit: 8 },
+  rich_text: { title: '', body: '' },
+  banner: { image: null, url: '' },
+}
 
 export default function TemaPage() {
   const { storeId, store } = useStore()
@@ -18,6 +34,7 @@ export default function TemaPage() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
   const [saveCount, setSaveCount] = useState(0)  // iframe reload anahtarı
+  const [openSection, setOpenSection] = useState(null)  // açık bölüm id'si
 
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : 'http://localhost:3001')
@@ -73,14 +90,34 @@ export default function TemaPage() {
     })
   }
 
-  const moveSection = (idx, dir) => {
+  // ── Bölüm işlemleri ──
+  const patchSection = (id, patch) => {
+    setTheme(t => ({
+      ...t,
+      sections: t.sections.map(s => s.id === id
+        ? { ...s, settings: { ...s.settings, ...patch } } : s),
+    }))
+  }
+  const moveSec = (idx, dir) => {
     setTheme(t => {
-      const order = [...t.sections_order]
+      const arr = [...t.sections]
       const j = idx + dir
-      if (j < 0 || j >= order.length) return t
-      ;[order[idx], order[j]] = [order[j], order[idx]]
-      return { ...t, sections_order: order }
+      if (j < 0 || j >= arr.length) return t
+      ;[arr[idx], arr[j]] = [arr[j], arr[idx]]
+      return { ...t, sections: arr }
     })
+  }
+  const removeSec = (id) => {
+    if (!window.confirm('Bu bölüm anasayfadan kaldırılacak. Emin misiniz?')) return
+    setTheme(t => ({ ...t, sections: t.sections.filter(s => s.id !== id) }))
+  }
+  const addSec = (type) => {
+    const id = `${type}-${Date.now().toString(36)}`
+    setTheme(t => ({
+      ...t,
+      sections: [...t.sections, { id, type, settings: structuredClone(SECTION_DEFAULTS[type]) }],
+    }))
+    setOpenSection(id)
   }
 
   if (!theme) return <p className="text-sm text-panel-muted">Yükleniyor…</p>
@@ -88,7 +125,7 @@ export default function TemaPage() {
   return (
     <div className="flex gap-5 h-full">
       {/* Sol: form */}
-      <div className="w-[380px] shrink-0 space-y-4 overflow-y-auto pb-10">
+      <div className="w-[400px] shrink-0 space-y-4 overflow-y-auto pb-10">
         <div className="flex items-center gap-2 sticky top-0 bg-panel-bg py-2 z-10">
           <h1 className="text-xl font-semibold">Tema</h1>
           <button onClick={save} disabled={busy} className="btn-primary ml-auto">
@@ -135,69 +172,53 @@ export default function TemaPage() {
           )}
         </Section>
 
-        <Section title="Hero (Karşılama)" icon="🌅">
-          <Toggle checked={theme.hero.enabled}
-            onChange={v => set('hero.enabled', v)} label="Hero bölümünü göster" />
-          {theme.hero.enabled && (
-            <>
-              <AssetField label="Arka plan görseli" current={theme.hero.image}
-                onUpload={f => uploadAsset('hero', f, url => set('hero.image', url))}
-                onClear={() => set('hero.image', null)} />
-              <input className="input" value={theme.hero.title} maxLength={100}
-                onChange={e => set('hero.title', e.target.value)} placeholder="Başlık" />
-              <input className="input" value={theme.hero.subtitle} maxLength={200}
-                onChange={e => set('hero.subtitle', e.target.value)} placeholder="Alt başlık" />
-              <div className="grid grid-cols-2 gap-2">
-                <input className="input" value={theme.hero.cta_text} maxLength={40}
-                  onChange={e => set('hero.cta_text', e.target.value)} placeholder="Buton yazısı" />
-                <input className="input" value={theme.hero.cta_url}
-                  onChange={e => set('hero.cta_url', e.target.value)} placeholder="/urunler" />
-              </div>
-            </>
-          )}
-        </Section>
-
-        <Section title="Öne Çıkan Koleksiyonlar" icon="🗂️">
-          {collections.length === 0 ? (
-            <p className="text-xs text-panel-muted">Önce Koleksiyonlar sayfasından koleksiyon oluşturun.</p>
-          ) : (
-            <div className="flex gap-2 flex-wrap">
-              {collections.map(c => {
-                const active = theme.featured_collections.includes(c.slug)
-                return (
-                  <button key={c.slug}
-                    onClick={() => set('featured_collections', active
-                      ? theme.featured_collections.filter(s => s !== c.slug)
-                      : [...theme.featured_collections, c.slug])}
-                    className={`px-3 py-1 rounded-full text-xs border transition ${active
-                      ? 'border-panel-accent bg-emerald-50 text-emerald-700'
-                      : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
-                    {c.title}
-                  </button>
-                )
-              })}
+        {/* ── Bölüm Editörü ── */}
+        <Section title={`Anasayfa Bölümleri (${theme.sections.length})`} icon="🧱">
+          <div className="space-y-2">
+            {theme.sections.map((sec, i) => {
+              const meta = SECTION_TYPES[sec.type] || { label: sec.type, icon: '▫️' }
+              const open = openSection === sec.id
+              return (
+                <div key={sec.id} className="border border-panel-border rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-panel-input">
+                    <button onClick={() => setOpenSection(open ? null : sec.id)}
+                      className="flex items-center gap-2 text-sm font-medium flex-1 text-left">
+                      <span>{meta.icon}</span> {meta.label}
+                      <span className="text-panel-muted text-xs">{open ? '▾' : '▸'}</span>
+                    </button>
+                    <button onClick={() => moveSec(i, -1)} disabled={i === 0}
+                      className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
+                    <button onClick={() => moveSec(i, 1)} disabled={i === theme.sections.length - 1}
+                      className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
+                    <button onClick={() => removeSec(sec.id)}
+                      className="w-6 h-6 rounded-lg text-xs text-red-400 hover:text-red-600">×</button>
+                  </div>
+                  {open && (
+                    <div className="p-3 space-y-2 bg-white">
+                      <SectionSettings sec={sec} collections={collections}
+                        patch={p => patchSection(sec.id, p)}
+                        uploadAsset={uploadAsset} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {theme.sections.length < 12 && (
+            <div className="flex gap-1.5 flex-wrap pt-1">
+              {Object.entries(SECTION_TYPES).map(([type, meta]) => (
+                <button key={type} onClick={() => addSec(type)}
+                  className="px-2.5 py-1 rounded-lg text-xs border border-dashed border-panel-border text-panel-muted hover:text-panel-ink hover:border-slate-400">
+                  + {meta.icon} {meta.label}
+                </button>
+              ))}
             </div>
           )}
-          <p className="text-[11px] text-panel-muted">Hiçbiri seçilmezse ilk 4 koleksiyon gösterilir.</p>
-        </Section>
-
-        <Section title="Bölüm Sırası" icon="↕️">
-          {theme.sections_order.map((s, i) => (
-            <div key={s} className="flex items-center gap-2 bg-panel-input rounded-xl px-3 py-2 text-sm">
-              <span>{SECTION_LABELS[s] || s}</span>
-              <div className="ml-auto flex gap-1">
-                <button onClick={() => moveSection(i, -1)} disabled={i === 0}
-                  className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
-                <button onClick={() => moveSection(i, 1)} disabled={i === theme.sections_order.length - 1}
-                  className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
-              </div>
-            </div>
-          ))}
         </Section>
 
         <Section title="Animasyonlar" icon="✨">
           <Toggle checked={theme.animations.reveal}
-            onChange={v => set('animations.reveal', v)} label="Kaydırmada yumuşak belirme" />
+            onChange={v => set('animations.reveal', v)} label="Kaydırmada belirme + sayfa geçişleri" />
           <Toggle checked={theme.animations.hover_zoom}
             onChange={v => set('animations.hover_zoom', v)} label="Ürün görseline yakınlaşma (hover)" />
           <Toggle checked={theme.animations.cart_drawer}
@@ -227,6 +248,136 @@ export default function TemaPage() {
       </div>
     </div>
   )
+}
+
+// Bölüm tipine özel ayar formu.
+function SectionSettings({ sec, collections, patch, uploadAsset }) {
+  const s = sec.settings
+
+  if (sec.type === 'hero_slider') {
+    const slides = s.slides || []
+    const patchSlide = (i, p) => patch({ slides: slides.map((sl, j) => j === i ? { ...sl, ...p } : sl) })
+    return (
+      <>
+        {slides.map((slide, i) => (
+          <div key={i} className="border border-panel-border rounded-xl p-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium">Slayt {i + 1}</span>
+              <button onClick={() => patch({ slides: slides.filter((_, j) => j !== i) })}
+                className="text-xs text-red-400 hover:text-red-600">Sil</button>
+            </div>
+            <AssetField label="Görsel" current={slide.image}
+              onUpload={f => uploadAsset('hero', f, url => patchSlide(i, { image: url }))}
+              onClear={() => patchSlide(i, { image: null })} />
+            <input className="input" value={slide.title || ''} maxLength={100}
+              onChange={e => patchSlide(i, { title: e.target.value })} placeholder="Başlık" />
+            <input className="input" value={slide.subtitle || ''} maxLength={200}
+              onChange={e => patchSlide(i, { subtitle: e.target.value })} placeholder="Alt başlık" />
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" value={slide.cta_text || ''} maxLength={40}
+                onChange={e => patchSlide(i, { cta_text: e.target.value })} placeholder="Buton yazısı" />
+              <input className="input" value={slide.cta_url || ''}
+                onChange={e => patchSlide(i, { cta_url: e.target.value })} placeholder="/urunler" />
+            </div>
+          </div>
+        ))}
+        {slides.length < 6 && (
+          <button onClick={() => patch({ slides: [...slides, { image: null, title: '', subtitle: '', cta_text: '', cta_url: '/urunler' }] })}
+            className="btn-ghost !py-1.5 text-xs w-full">+ Slayt Ekle</button>
+        )}
+        {slides.length > 1 && (
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Otomatik geçiş (saniye; 0 = kapalı)</span>
+            <input className="input mt-1 !w-24" type="number" min="0" max="30"
+              value={s.autoplay_sec ?? 5}
+              onChange={e => patch({ autoplay_sec: Number(e.target.value) })} />
+          </label>
+        )}
+        {slides.length === 0 && (
+          <p className="text-[11px] text-panel-muted">
+            Slayt eklemezseniz sade bir karşılama metni gösterilir.
+          </p>
+        )}
+      </>
+    )
+  }
+
+  if (sec.type === 'featured_collections') {
+    const slugs = s.slugs || []
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={80}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        {collections.length === 0 ? (
+          <p className="text-xs text-panel-muted">Önce Koleksiyonlar sayfasından koleksiyon oluşturun.</p>
+        ) : (
+          <div className="flex gap-2 flex-wrap">
+            {collections.map(c => {
+              const active = slugs.includes(c.slug)
+              return (
+                <button key={c.slug}
+                  onClick={() => patch({ slugs: active ? slugs.filter(x => x !== c.slug) : [...slugs, c.slug] })}
+                  className={`px-3 py-1 rounded-full text-xs border transition ${active
+                    ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                    : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+                  {c.title}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <p className="text-[11px] text-panel-muted">Hiçbiri seçilmezse ilk 4 koleksiyon gösterilir.</p>
+      </>
+    )
+  }
+
+  if (sec.type === 'products_grid') {
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={80}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Koleksiyon (ops.)</span>
+            <select className="input mt-1" value={s.collection || ''}
+              onChange={e => patch({ collection: e.target.value || null })}>
+              <option value="">Tüm ürünler</option>
+              {collections.map(c => <option key={c.slug} value={c.slug}>{c.title}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Ürün sayısı</span>
+            <input className="input mt-1" type="number" min="1" max="24" value={s.limit ?? 8}
+              onChange={e => patch({ limit: Number(e.target.value) })} />
+          </label>
+        </div>
+      </>
+    )
+  }
+
+  if (sec.type === 'rich_text') {
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
+        <textarea className="input" rows={4} maxLength={2000} value={s.body || ''}
+          onChange={e => patch({ body: e.target.value })} placeholder="Metin (satır sonları korunur)" />
+      </>
+    )
+  }
+
+  if (sec.type === 'banner') {
+    return (
+      <>
+        <AssetField label="Banner görseli" current={s.image}
+          onUpload={f => uploadAsset('hero', f, url => patch({ image: url }))}
+          onClear={() => patch({ image: null })} />
+        <input className="input" value={s.url || ''}
+          onChange={e => patch({ url: e.target.value })} placeholder="Tıklanınca gidilecek adres (ops.)" />
+      </>
+    )
+  }
+  return null
 }
 
 function Section({ title, icon, children }) {

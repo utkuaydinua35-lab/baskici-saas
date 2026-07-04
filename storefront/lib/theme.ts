@@ -4,6 +4,30 @@ import { getStoreSlug } from "./api";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
+export interface HeroSlide {
+  image: string | null;
+  title: string;
+  subtitle: string;
+  cta_text: string;
+  cta_url: string;
+}
+
+export interface ThemeSection {
+  id: string;
+  type: "hero_slider" | "featured_collections" | "products_grid" | "rich_text" | "banner";
+  settings: {
+    slides?: HeroSlide[];
+    autoplay_sec?: number;
+    title?: string;
+    slugs?: string[];
+    collection?: string | null;
+    limit?: number;
+    body?: string;
+    image?: string | null;
+    url?: string;
+  };
+}
+
 export interface Theme {
   version: number;
   colors: { primary: string; accent: string; bg: string };
@@ -11,16 +35,7 @@ export interface Theme {
   logo_url: string | null;
   favicon_url: string | null;
   announcement: { enabled: boolean; text: string; url: string };
-  hero: {
-    enabled: boolean;
-    image: string | null;
-    title: string;
-    subtitle: string;
-    cta_text: string;
-    cta_url: string;
-  };
-  featured_collections: string[];
-  sections_order: string[];
+  sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   footer: { about: string; instagram: string };
 }
@@ -37,15 +52,17 @@ export interface ThemePayload {
 const DEFAULT_PAYLOAD: ThemePayload = {
   store_name: process.env.SITE_NAME || "Bernz",
   theme: {
-    version: 1,
+    version: 2,
     colors: { primary: "#18181b", accent: "#f59e0b", bg: "#fafafa" },
     font: "inter",
     logo_url: null,
     favicon_url: null,
     announcement: { enabled: false, text: "", url: "" },
-    hero: { enabled: false, image: null, title: "", subtitle: "", cta_text: "", cta_url: "/urunler" },
-    featured_collections: [],
-    sections_order: ["hero", "featured", "products"],
+    sections: [
+      { id: "d-hero", type: "hero_slider", settings: { slides: [], autoplay_sec: 5 } },
+      { id: "d-kol", type: "featured_collections", settings: { title: "Koleksiyonlar", slugs: [] } },
+      { id: "d-urun", type: "products_grid", settings: { title: "Öne Çıkanlar", collection: null, limit: 8 } },
+    ],
     animations: { reveal: true, hover_zoom: true, cart_drawer: true },
     footer: { about: "", instagram: "" },
   },
@@ -61,7 +78,16 @@ export async function getThemePayload(): Promise<ThemePayload> {
       next: { revalidate: 60 },
     });
     if (!res.ok) return DEFAULT_PAYLOAD;
-    return (await res.json()) as ThemePayload;
+    const payload = (await res.json()) as ThemePayload;
+    // Şema koruması: eski önbellek/eksik alan sayfayı düşürmesin
+    if (!Array.isArray(payload.theme?.sections)) {
+      payload.theme = { ...DEFAULT_PAYLOAD.theme, ...payload.theme, sections: DEFAULT_PAYLOAD.theme.sections };
+    }
+    payload.theme.animations = { ...DEFAULT_PAYLOAD.theme.animations, ...payload.theme.animations };
+    payload.theme.colors = { ...DEFAULT_PAYLOAD.theme.colors, ...payload.theme.colors };
+    payload.theme.announcement = { ...DEFAULT_PAYLOAD.theme.announcement, ...payload.theme.announcement };
+    payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
+    return payload;
   } catch {
     return DEFAULT_PAYLOAD; // backend erişilemezse varsayılan temayla render
   }

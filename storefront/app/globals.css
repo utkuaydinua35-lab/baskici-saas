@@ -44,3 +44,13 @@ html[data-hover-zoom="1"] .hover-zoom:hover img { transform: scale(1.05); }
   .reveal-out { opacity: 1; transform: none; }
   .hover-zoom img { transition: none; }
 }
+
+/* Sayfalar arası geçiş (template.tsx) — reveal toggle'ına saygılı */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .page-transition { animation: none !important; }
+}

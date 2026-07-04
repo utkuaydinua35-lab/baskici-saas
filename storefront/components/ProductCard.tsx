@@ -8,13 +8,13 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
       href={`/urun/${product.slug}`}
       className="group block rounded-2xl border border-zinc-200 overflow-hidden bg-white hover:shadow-md transition-shadow"
     >
-      <div className="aspect-square bg-zinc-100 overflow-hidden">
+      <div className="aspect-square bg-zinc-100 overflow-hidden hover-zoom">
         {product.cover_image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.cover_image}
             alt={product.title}
-            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform"
+            className="w-full h-full object-cover"
             loading="lazy"
           />
         ) : (

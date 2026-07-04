@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getThemePayload } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Gizlilik ve KVKK Aydınlatma Metni",
@@ -8,7 +9,16 @@ const SITE_NAME = process.env.SITE_NAME || "Bernz";
 
 // NOT: Bu metin bir şablondur — yayına almadan önce şirket unvanı, adres ve
 // iletişim bilgileri doldurulmalı, gerekirse hukuk danışmanına onaylatılmalıdır.
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const { legal } = await getThemePayload();
+  if (legal.kvkk) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-bold">Gizlilik Politikası ve KVKK Aydınlatma Metni</h1>
+        <div className="mt-6 text-sm text-zinc-700 leading-relaxed whitespace-pre-line">{legal.kvkk}</div>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 prose-sm">
       <h1 className="text-2xl font-bold">Gizlilik Politikası ve KVKK Aydınlatma Metni</h1>

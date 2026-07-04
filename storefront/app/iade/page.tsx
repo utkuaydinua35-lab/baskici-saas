@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
+import { getThemePayload } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "İade ve Değişim",
 };
 
-export default function ReturnsPage() {
+export default async function ReturnsPage() {
+  const { legal } = await getThemePayload();
+  if (legal.iade) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-bold">İade ve Değişim</h1>
+        <div className="mt-6 text-sm text-zinc-700 leading-relaxed whitespace-pre-line">{legal.iade}</div>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold">İade ve Değişim</h1>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getThemePayload } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "Mesafeli Satış Sözleşmesi",
@@ -8,7 +9,16 @@ const SITE_NAME = process.env.SITE_NAME || "Bernz";
 
 // NOT: Şablondur — yayına almadan önce satıcı unvan/adres/MERSİS bilgileri
 // doldurulmalı ve hukuk danışmanına onaylatılmalıdır.
-export default function DistanceSalesPage() {
+export default async function DistanceSalesPage() {
+  const { legal } = await getThemePayload();
+  if (legal.mesafeli_satis) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-bold">Mesafeli Satış Sözleşmesi</h1>
+        <div className="mt-6 text-sm text-zinc-700 leading-relaxed whitespace-pre-line">{legal.mesafeli_satis}</div>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold">Mesafeli Satış Sözleşmesi</h1>

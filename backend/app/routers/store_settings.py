@@ -114,3 +114,58 @@ def patch_settings(
         "slug": store.slug,
         "config": {k: _mask_config(store.config).get(k) for k in sorted(ALLOWED_KEYS)},
     }
+
+
+# ─── Tema ────────────────────────────────────────────────────
+
+from fastapi import File, Form, UploadFile  # noqa: E402
+
+from app.services.theme import resolve_theme, validate_theme_patch  # noqa: E402
+
+
+@router.get("/{store_id}/theme", response_model=dict)
+def get_theme(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    return resolve_theme(store.config)
+
+
+@router.put("/{store_id}/theme", response_model=dict)
+def put_theme(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    config["theme"] = validate_theme_patch(body or {})
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    db.refresh(store)
+    return resolve_theme(store.config)
+
+
+@router.post("/{store_id}/assets", response_model=dict)
+async def upload_asset(
+    store_id: uuid.UUID,
+    file: UploadFile = File(...),
+    kind: str = Form(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Tema varlığı (logo | favicon | hero) yükle → /storage URL'i döner."""
+    from app.services import storage as storage_svc
+
+    store = _get_store(db, user, store_id)
+    data = await file.read()
+    try:
+        url = storage_svc.save_store_asset(
+            user.tenant_id, store.id, kind, data, file.filename or "asset.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"url": url, "kind": kind}

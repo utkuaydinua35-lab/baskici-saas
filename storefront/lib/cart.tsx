@@ -39,6 +39,8 @@ interface CartContextValue {
   subtotal: number;
   coupon: AppliedCoupon | null;
   setCoupon: (c: AppliedCoupon | null) => void;
+  drawerOpen: boolean;
+  setDrawerOpen: (open: boolean) => void;
   addItem: (item: Omit<CartItem, "quantity">, quantity?: number) => void;
   removeItem: (variantId: string) => void;
   setQuantity: (variantId: string, quantity: number) => void;
@@ -71,6 +73,7 @@ function loadCoupon(): AppliedCoupon | null {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [coupon, setCouponState] = useState<AppliedCoupon | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -128,8 +131,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<CartContextValue>(() => {
     const count = items.reduce((s, i) => s + i.quantity, 0);
     const subtotal = items.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
-    return { items, count, subtotal, coupon, setCoupon, addItem, removeItem, setQuantity, clear };
-  }, [items, coupon, setCoupon, addItem, removeItem, setQuantity, clear]);
+    return {
+      items, count, subtotal, coupon, setCoupon, drawerOpen, setDrawerOpen,
+      addItem, removeItem, setQuantity, clear,
+    };
+  }, [items, coupon, setCoupon, drawerOpen, addItem, removeItem, setQuantity, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

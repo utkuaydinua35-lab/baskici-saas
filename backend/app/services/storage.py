@@ -238,3 +238,32 @@ def delete_catalog_image(relative_path: str) -> bool:
         return True
     except OSError:
         return False
+
+
+# ─── Mağaza tema varlıkları (logo/favicon/hero) ──────────────
+
+STORE_ASSET_KINDS = {"logo", "favicon", "hero"}
+# SVG bilinçli olarak yok: SafeStaticFiles XSS koruması SVG'yi inline göstermez
+STORE_ASSET_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "ico"}
+MAX_STORE_ASSET_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_filename: str) -> str:
+    """Tema varlığını kaydet. Dönüş: /storage/... URL yolu."""
+    if kind not in STORE_ASSET_KINDS:
+        raise ValueError(f"Geçersiz varlık türü: {kind}")
+    ext = get_extension(original_filename)
+    if ext not in STORE_ASSET_EXTENSIONS:
+        raise ValueError(
+            f"İzin verilen formatlar: {', '.join(sorted(STORE_ASSET_EXTENSIONS))}")
+    if len(file_data) > MAX_STORE_ASSET_SIZE:
+        raise ValueError(f"Dosya çok büyük (max {MAX_STORE_ASSET_SIZE // 1024 // 1024} MB)")
+
+    import time
+    rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"{kind}-{int(time.time())}.{ext}"
+    with open(full_dir / fname, "wb") as f:
+        f.write(file_data)
+    return f"/storage/{(rel_dir / fname).as_posix()}"

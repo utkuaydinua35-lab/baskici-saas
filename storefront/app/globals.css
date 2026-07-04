@@ -1,19 +1,46 @@
 @import "tailwindcss";
 
-/* Vitrin her zaman açık tema — müşteri deneyimi tutarlı kalsın. */
+/* Tema değişkenleri layout'ta inline set edilir; buradakiler fallback. */
 :root {
-  --background: #fafafa;
-  --foreground: #18181b;
+  --c-primary: #18181b;
+  --c-accent: #f59e0b;
+  --c-bg: #fafafa;
+  --font-active: var(--font-inter);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  --color-background: var(--c-bg);
+  --color-foreground: #18181b;
+  --font-sans: var(--font-active);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-active), system-ui, -apple-system, sans-serif;
+}
+
+/* ── Tema animasyonları ───────────────────────────────────── */
+
+/* Hero içi kademeli belirme (sayfa yüklenince) */
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim-reveal {
+  opacity: 0;
+  animation: reveal-up 0.6s ease-out forwards;
+}
+
+/* Scroll'da belirme (Reveal bileşeni) */
+.reveal-out { opacity: 0; transform: translateY(16px); }
+.reveal-in { animation: reveal-up 0.55s ease-out forwards; }
+
+/* Ürün kartı görsel yakınlaşması — html[data-hover-zoom] ile tema kapatabilir */
+html[data-hover-zoom="1"] .hover-zoom img { transition: transform 0.4s ease; }
+html[data-hover-zoom="1"] .hover-zoom:hover img { transform: scale(1.05); }
+
+/* Erişilebilirlik: hareket azaltma tercihinde animasyonlar kapanır */
+@media (prefers-reduced-motion: reduce) {
+  .anim-reveal, .reveal-in { animation: none; opacity: 1; transform: none; }
+  .reveal-out { opacity: 1; transform: none; }
+  .hover-zoom img { transition: none; }
 }

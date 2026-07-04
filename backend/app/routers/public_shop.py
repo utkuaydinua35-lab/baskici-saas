@@ -487,3 +487,37 @@ def restore_cart(
             "image": f"/storage/{product.images[0].file_path}" if product.images else None,
         })
     return {"items": items}
+
+
+@router.get("/{store_slug}/theme")
+def get_store_theme(
+    store_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Vitrin teması + mağaza ayarları + yasal metin override'ları (tek istek)."""
+    from app.services.theme import resolve_theme
+
+    store = _resolve_store(db, store_slug)
+    config = store.config or {}
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return {
+        "store_name": store.name,
+        "theme": resolve_theme(config),
+        "settings": {
+            "shipping_fee": config.get("shipping_fee"),
+            "free_shipping_over": config.get("free_shipping_over"),
+            "min_order_amount": config.get("min_order_amount"),
+        },
+        "contact": {
+            "email": config.get("contact_email"),
+            "phone": config.get("contact_phone"),
+            "instagram": config.get("contact_instagram"),
+        },
+        "legal": {
+            "kvkk": config.get("kvkk_text") or None,
+            "mesafeli_satis": config.get("mesafeli_satis_text") or None,
+            "iade": config.get("iade_text") or None,
+        },
+    }

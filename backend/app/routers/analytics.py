@@ -164,3 +164,95 @@ def analytics_summary(
         "by_store": by_store,
         "funnel": funnel,
     }
+
+
+@router.get("/live")
+def analytics_live(
+    store_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("dashboard")),
+    db: Session = Depends(get_db),
+):
+    """Canlı görünüm — panel dashboard'u 30 sn'de bir çeker.
+
+    Bugün + son 15 dk sipariş/ciro, aktif checkout sayısı ve son 10 aktivite
+    (yeni siparişler + checkout oturumları, ad maskeli).
+    """
+    tid = user.tenant_id
+    now = datetime.now(timezone.utc)
+    start_today = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    m15 = now - timedelta(minutes=15)
+    total_price = cast(Order.raw["total_price"].astext, Numeric)
+
+    ciro_conds = [
+        Order.tenant_id == tid, Order.is_telafi.is_(False),
+        Order.cancelled_at.is_(None),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+    ]
+    if store_id:
+        ciro_conds.append(Order.store_id == store_id)
+
+    def _agg(since):
+        row = db.execute(
+            select(sql_func.count(Order.id),
+                   sql_func.coalesce(sql_func.sum(total_price), 0))
+            .where(*ciro_conds, Order.created_at_platform >= since)
+        ).one()
+        return {"orders": int(row[0] or 0), "revenue": float(row[1] or 0)}
+
+    cs_conds = [CheckoutSession.tenant_id == tid]
+    if store_id:
+        cs_conds.append(CheckoutSession.store_id == store_id)
+    active_checkouts = db.scalar(
+        select(sql_func.count(CheckoutSession.id)).where(
+            *cs_conds, CheckoutSession.status == "pending",
+            CheckoutSession.created_at >= now - timedelta(hours=2))
+    ) or 0
+
+    def _mask(name: str | None) -> str:
+        parts = (name or "").strip().split()
+        if not parts:
+            return "Misafir"
+        first = parts[0]
+        rest = " ".join(f"{p[0]}." for p in parts[1:] if p)
+        return f"{first} {rest}".strip()
+
+    activity = []
+    order_conds = [Order.tenant_id == tid, Order.is_telafi.is_(False)]
+    if store_id:
+        order_conds.append(Order.store_id == store_id)
+    for o in db.scalars(
+        select(Order).where(*order_conds)
+        .order_by(Order.created_at_platform.desc().nulls_last()).limit(10)
+    ).all():
+        activity.append({
+            "type": "order",
+            "at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "who": _mask(o.customer_name),
+            "text": f"{o.name or '#' + o.order_number} sipariş verdi",
+            "amount": (o.raw or {}).get("total_price"),
+        })
+    for s in db.scalars(
+        select(CheckoutSession).where(
+            *cs_conds, CheckoutSession.created_at >= now - timedelta(hours=24))
+        .order_by(CheckoutSession.created_at.desc()).limit(10)
+    ).all():
+        cust = s.customer or {}
+        who = _mask(f"{cust.get('first_name', '')} {cust.get('last_name', '')}".strip())
+        label = {"pending": "ödeme sayfasında", "paid": "ödemeyi tamamladı",
+                 "failed": "ödemesi başarısız oldu", "expired": "sepeti terk etti"}
+        activity.append({
+            "type": f"checkout_{s.status}",
+            "at": s.created_at.isoformat() if s.created_at else None,
+            "who": who,
+            "text": label.get(s.status, s.status),
+            "amount": str(s.amount),
+        })
+    activity.sort(key=lambda a: a["at"] or "", reverse=True)
+
+    return {
+        "now": now.isoformat(),
+        "today": _agg(start_today),
+        "last_15m": _agg(m15),
+        "active_checkouts": int(active_checkouts),
+        "activity": activity[:10],
+    }

@@ -333,6 +333,7 @@ def checkout_status(
     out: dict = {"status": session.status}
     if session.status == "paid":
         out["lookup_token"] = session.lookup_token
+        out["amount"] = str(session.amount)
         if session.order_id:
             from app.models import Order
             order = db.get(Order, session.order_id)
@@ -514,6 +515,11 @@ def get_store_theme(
             "email": config.get("contact_email"),
             "phone": config.get("contact_phone"),
             "instagram": config.get("contact_instagram"),
+        },
+        "pixels": {
+            "meta": config.get("meta_pixel_id"),
+            "ga4": config.get("ga4_id"),
+            "tiktok": config.get("tiktok_pixel_id"),
         },
         "legal": {
             "kvkk": config.get("kvkk_text") or None,

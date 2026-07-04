@@ -30,6 +30,7 @@ export interface ThemePayload {
   theme: Theme;
   settings: Record<string, string | null>;
   contact: { email: string | null; phone: string | null; instagram: string | null };
+  pixels?: { meta: string | null; ga4: string | null; tiktok: string | null };
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };
 }
 

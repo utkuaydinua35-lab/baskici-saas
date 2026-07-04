@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getProduct } from "@/lib/api";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
+import TrackProductView from "@/components/TrackProductView";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -31,6 +32,7 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
+      <TrackProductView id={product.slug} name={product.title} price={Number(product.price)} />
       <div className="grid md:grid-cols-2 gap-8">
         <ProductGallery images={product.images} title={product.title} />
         <div>

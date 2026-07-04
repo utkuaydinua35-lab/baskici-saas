@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import type { ProductDetail } from "@/lib/api";
+import { trackAddToCart } from "@/lib/track";
 
 export default function VariantPicker({ product }: { product: ProductDetail }) {
   const { addItem } = useCart();
@@ -51,6 +52,12 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       variation: selected.variation,
       price: selected.price,
       image: product.images[0]?.url ?? null,
+    });
+    trackAddToCart({
+      id: selected.id,
+      name: `${product.title} — ${selected.model_display}`,
+      price: Number(selected.price),
+      quantity: 1,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 1600);

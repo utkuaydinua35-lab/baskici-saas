@@ -6,6 +6,7 @@ import { getThemePayload } from "@/lib/theme";
 import Header from "@/components/Header";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import CartDrawer from "@/components/CartDrawer";
+import Pixels from "@/components/Pixels";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
 const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
@@ -39,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const { store_name, theme, contact } = await getThemePayload();
+  const { store_name, theme, contact, pixels: payloadPixels } = await getThemePayload();
   const fontFamily = FONT_VAR[theme.font] || FONT_VAR.inter;
   const year = new Date().getFullYear();
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
@@ -61,6 +62,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col text-zinc-900" style={{ background: "var(--c-bg)" }}>
         <CartProvider>
+          <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
           {theme.announcement.enabled && (
             <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url} />
           )}

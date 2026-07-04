@@ -7,6 +7,7 @@ import { useStore } from '../lib/store'
 export default function DashboardPage() {
   const { storeId, store } = useStore()
   const [data, setData] = useState(null)
+  const [live, setLive] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -16,6 +17,20 @@ export default function DashboardPage() {
     api.get(`/api/analytics/summary?start=${start}&end=${end}&store_id=${storeId}`)
       .then(setData)
       .catch(e => setError(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'))
+  }, [storeId])
+
+  // Canlı veri — 30 sn'de bir; sekme gizliyken durur
+  useEffect(() => {
+    if (!storeId) return
+    let timer
+    const pull = () => {
+      if (document.visibilityState !== 'visible') return
+      api.get(`/api/analytics/live?store_id=${storeId}`).then(setLive).catch(() => {})
+    }
+    pull()
+    timer = setInterval(pull, 30000)
+    document.addEventListener('visibilitychange', pull)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', pull) }
   }, [storeId])
 
   const today = data?.daily?.[data.daily.length - 1]
@@ -33,6 +48,8 @@ export default function DashboardPage() {
           hint={data?.funnel?.abandoned_count > 0
             ? `${data.funnel.abandoned_count} terk sepet` : 'checkout verisi yok'} />
       </div>
+
+      {live && <LiveCard live={live} />}
 
       {data && <MiniChart daily={data.daily} />}
 
@@ -101,5 +118,50 @@ function QuickCard({ to, icon, title, desc }) {
       <div className="mt-2 font-medium text-sm">{title}</div>
       <div className="text-xs text-panel-muted mt-0.5">{desc}</div>
     </Link>
+  )
+}
+
+// Canlı görünüm — 30 sn'de bir yenilenen aktivite akışı.
+function LiveCard({ live }) {
+  const ago = (iso) => {
+    if (!iso) return ''
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+    if (s < 60) return 'az önce'
+    if (s < 3600) return `${Math.floor(s / 60)} dk önce`
+    if (s < 86400) return `${Math.floor(s / 3600)} sa önce`
+    return `${Math.floor(s / 86400)} gün önce`
+  }
+  const ICON = {
+    order: '🛍️', checkout_paid: '✅', checkout_pending: '🛒',
+    checkout_failed: '✗', checkout_expired: '🕑',
+  }
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+        </span>
+        <span className="text-[11px] font-semibold tracking-wide text-emerald-700">CANLI</span>
+        <span className="text-[11px] text-panel-muted ml-auto">
+          Son 15 dk: {live.last_15m.orders} sipariş · {fmtTl(live.last_15m.revenue)}
+          {live.active_checkouts > 0 && ` · ${live.active_checkouts} kişi ödeme sayfasında`}
+        </span>
+      </div>
+      {live.activity.length === 0 ? (
+        <p className="text-xs text-panel-muted">Henüz aktivite yok — ilk ziyaretçiler yolda.</p>
+      ) : (
+        <ul className="space-y-1.5 max-h-52 overflow-y-auto">
+          {live.activity.map((a, i) => (
+            <li key={i} className="flex items-center gap-2 text-xs">
+              <span>{ICON[a.type] || '•'}</span>
+              <span className="text-panel-ink"><b>{a.who}</b> {a.text}</span>
+              {a.amount && <span className="text-panel-muted tabular-nums">{fmtTl(Number(a.amount))}</span>}
+              <span className="ml-auto text-panel-muted whitespace-nowrap">{ago(a.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

@@ -6,11 +6,13 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { trackPurchaseOnce } from "@/lib/track";
 
 interface StatusResponse {
   status: "pending" | "paid" | "failed" | "expired" | "cancelled";
   order_number?: string;
   lookup_token?: string;
+  amount?: string;
 }
 
 const POLL_MS = 2500;
@@ -39,6 +41,10 @@ function ResultInner() {
           setState(data);
           if (data.status === "paid" && !cleared.current) {
             cleared.current = true;
+            trackPurchaseOnce(token, {
+              value: Number(data.amount || 0),
+              orderId: data.order_number,
+            });
             clear(); // ödeme kesinleşti — sepeti boşalt
           }
           if (data.status !== "pending") return; // nihai durum

@@ -153,6 +153,27 @@ export default function AyarlarPage() {
         </p>
       </Section>
 
+      <Section title="Pazarlama Pikselleri" icon="🎯">
+        <p className="text-[11px] text-panel-muted -mt-1">
+          ID'yi girip kaydedin — vitrin otomatik olarak sayfa görüntüleme, sepete ekleme,
+          ödeme başlatma ve satın alma olaylarını göndermeye başlar.
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Meta Pixel ID">
+            <input className="input mt-1 font-mono text-xs" value={cfg.meta_pixel_id || ''}
+              onChange={set('meta_pixel_id')} placeholder="123456789012345" />
+          </Field>
+          <Field label="GA4 Ölçüm ID">
+            <input className="input mt-1 font-mono text-xs" value={cfg.ga4_id || ''}
+              onChange={set('ga4_id')} placeholder="G-XXXXXXXXXX" />
+          </Field>
+          <Field label="TikTok Pixel ID">
+            <input className="input mt-1 font-mono text-xs" value={cfg.tiktok_pixel_id || ''}
+              onChange={set('tiktok_pixel_id')} placeholder="XXXXXXXXXXXXXXXXXX" />
+          </Field>
+        </div>
+      </Section>
+
       <Section title="Domain Bağlama" icon="🌐">
         <Field label="Vitrin adresi (aktif)">
           <input className="input mt-1" value={cfg.storefront_url || ''} onChange={set('storefront_url')}

@@ -33,6 +33,7 @@ _TEXT_KEYS = {
     "contact_email", "contact_phone", "contact_address", "contact_instagram",
     "kvkk_text", "mesafeli_satis_text", "iade_text", "sla_days",
     "iyzico_base_url", "paytr_test_mode",
+    "meta_pixel_id", "ga4_id", "tiktok_pixel_id",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",

@@ -1,11 +1,12 @@
 "use client";
 
 // Misafir checkout — form + KVKK onayı → backend ödeme oturumu → redirect/iframe.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
+import { trackInitiateCheckout } from "@/lib/track";
 
 interface CheckoutResponse {
   token: string;
@@ -21,6 +22,17 @@ export default function CheckoutPage() {
   const [error, setError] = useState("");
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    trackInitiateCheckout({
+      value: subtotal,
+      items: items.map((i) => ({
+        id: i.variantId, name: i.title, price: Number(i.price), quantity: i.quantity,
+      })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (items.length === 0 && !iframeUrl) {
     return (

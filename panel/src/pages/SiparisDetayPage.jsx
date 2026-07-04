@@ -1,108 +1,330 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
-import { FinancialBadge } from './SiparislerPage'
 
-// Sipariş detayı — özet + kalemler + para iadesi (üretim akışı Baskıcı'da).
+// Sipariş detayı — Shopify düzeni: solda ürünler + ödeme + zaman çizelgesi,
+// sağda müşteri/adres/kargo/üretim durumu. Veri: zengin /detail endpoint'i.
+const STAGES = [
+  [1, 'Yeni'], [2, 'İşleniyor'], [3, 'Barkod Oluştu'], [4, 'Kalıba Alındı'],
+  [5, 'Baskıda'], [6, 'Baskı Tamam'], [7, 'Paketlendi'], [8, 'Kargoda'], [9, 'Teslim'],
+]
+const STAGE_LABELS = Object.fromEntries(STAGES)
+
+const ACTION_LABELS = {
+  stage_change: 'aşama değişti', acil: 'acil işaretlendi', acil_geri: 'acil kaldırıldı',
+  iptal: 'iptal edildi', iptal_geri: 'iptal geri alındı', paketlendi: 'paketlendi',
+  kargoya_verildi: 'kargoya verildi', teslim_edildi: 'teslim edildi',
+  musteri_onay: 'müşteri onayı', iade: 'para iadesi yapıldı', not: 'not eklendi',
+}
+
 export default function SiparisDetayPage() {
   const { orderId } = useParams()
-  const [detail, setDetail] = useState(null)
+  const [d, setD] = useState(null)
   const [error, setError] = useState('')
 
   const load = useCallback(() => {
-    api.get(`/api/orders/${orderId}`)
-      .then(setDetail)
+    api.get(`/api/orders/${orderId}/detail`)
+      .then(setD)
       .catch(e => setError(typeof e?.detail === 'string' ? e.detail : 'Sipariş yüklenemedi'))
   }, [orderId])
   useEffect(() => { load() }, [load])
 
   if (error) return <p className="text-sm text-red-600">{error}</p>
-  if (!detail) return <p className="text-sm text-panel-muted">Yükleniyor…</p>
+  if (!d) return <SkeletonDetail />
 
-  const ship = detail.raw?.shipping_address || {}
-  const payment = detail.raw?.payment
-  const total = detail.raw?.total_price
-  const discount = detail.raw?.discount
+  const fin = d.financial || {}
+  const ship = d.shipping_address || {}
+  const isStorefront = !!d.raw?.payment
+  const stage = d.current_stage || 1
 
   return (
-    <div className="space-y-4 max-w-3xl">
-      <div className="flex items-center gap-3">
-        <Link to="/siparisler" className="text-panel-muted hover:text-panel-ink">←</Link>
-        <h1 className="text-xl font-semibold font-mono">{detail.name || `#${detail.order_number}`}</h1>
-        <FinancialBadge status={detail.financial_status} />
-        {detail.cancelled_at && (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-100 text-red-700">İptal</span>
-        )}
+    <div className="max-w-5xl space-y-4 pb-10">
+      {/* Başlık çubuğu */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Link to="/siparisler" className="w-8 h-8 flex items-center justify-center rounded-xl border border-panel-border text-panel-muted hover:text-panel-ink">←</Link>
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-semibold font-mono">{d.name || `#${d.order_number}`}</h1>
+            <FinancialBadge status={fin.payment_status} />
+            {d.cancelled_at
+              ? <Badge cls="bg-red-100 text-red-700">İptal Edildi</Badge>
+              : <Badge cls="bg-indigo-50 text-indigo-700">{STAGE_LABELS[stage] || '—'}</Badge>}
+            {d.is_acil && <Badge cls="bg-amber-100 text-amber-700">⚡ Acil</Badge>}
+          </div>
+          <div className="text-xs text-panel-muted mt-0.5">
+            {d.created_at_platform && new Date(d.created_at_platform).toLocaleString('tr-TR', {
+              day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+            })}
+            {d.store_name && ` · ${d.store_name}`}
+          </div>
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="card">
-          <h2 className="text-sm font-semibold mb-2">Sipariş İçeriği</h2>
-          <ul className="space-y-1.5 text-sm">
-            {(detail.line_items || []).map(li => (
-              <li key={li.id} className="flex justify-between gap-2">
-                <span className="text-panel-ink">
-                  {li.title}
-                  {li.variant_title && <span className="text-panel-muted"> — {li.variant_title}</span>}
+      <div className="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
+        {/* ── Sol kolon ── */}
+        <div className="space-y-4 min-w-0">
+          {/* Ürünler */}
+          <div className="card !p-0 overflow-hidden">
+            <div className="px-4 py-3 border-b border-panel-border flex items-center">
+              <h2 className="text-sm font-semibold">
+                Ürünler <span className="text-panel-muted font-normal">({d.line_items?.length || 0})</span>
+              </h2>
+            </div>
+            <div className="divide-y divide-panel-border">
+              {(d.line_items || []).map(li => (
+                <div key={li.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-14 h-14 rounded-xl bg-panel-input overflow-hidden shrink-0 border border-panel-border">
+                    {li.image_url ? (
+                      <img src={li.image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xl opacity-30">📱</div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{li.title}</div>
+                    {li.variant_title && (
+                      <div className="text-xs text-panel-muted">{li.variant_title}</div>
+                    )}
+                    {li.sku && <div className="text-[10px] text-panel-muted font-mono">{li.sku}</div>}
+                  </div>
+                  <div className="text-right text-sm whitespace-nowrap">
+                    {li.price ? (
+                      <>
+                        <div className="text-panel-muted text-xs">{fmt(li.price)} × {li.quantity}</div>
+                        <div className="font-medium">{fmt(Number(li.price) * li.quantity)}</div>
+                      </>
+                    ) : (
+                      <div className="text-panel-muted">×{li.quantity}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Ödeme özeti */}
+          <div className="card !p-0 overflow-hidden">
+            <div className="px-4 py-3 border-b border-panel-border flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Ödeme</h2>
+              <FinancialBadge status={fin.payment_status} />
+              {isStorefront && (
+                <span className="text-[11px] text-panel-muted ml-auto">
+                  {d.raw.payment.provider} ile ödendi
                 </span>
-                <span className="text-panel-muted whitespace-nowrap">×{li.quantity}</span>
-              </li>
-            ))}
-          </ul>
-          {discount && (
-            <div className="mt-2 pt-2 border-t border-panel-border text-sm text-emerald-700 flex justify-between">
-              <span>İndirim ({discount.code})</span><span>−{discount.amount} ₺</span>
+              )}
             </div>
-          )}
-          {total && (
-            <div className="mt-2 pt-2 border-t border-panel-border font-semibold text-sm flex justify-between">
-              <span>Toplam</span><span>{fmtTl(total)}</span>
+            <div className="px-4 py-3 space-y-1.5 text-sm">
+              <Row label="Ara toplam" value={fin.subtotal != null ? fmt(fin.subtotal) : '—'} />
+              {Number(fin.total_discount) > 0 && (
+                <Row label={`İndirim${d.raw?.discount?.code ? ` (${d.raw.discount.code})` : ''}`}
+                  value={`−${fmt(fin.total_discount)}`} cls="text-emerald-700" />
+              )}
+              <Row label="Kargo"
+                value={fin.shipping != null ? (Number(fin.shipping) > 0 ? fmt(fin.shipping) : 'Ücretsiz') : '—'} />
+              <div className="border-t border-panel-border pt-1.5 mt-1.5">
+                <Row label={<b>Toplam</b>} value={<b>{fin.total != null ? fmt(fin.total) : '—'}</b>} />
+              </div>
             </div>
-          )}
+            {isStorefront && <RefundBlock orderId={d.id} onDone={load} />}
+          </div>
+
+          {/* Zaman çizelgesi */}
+          <div className="card">
+            <h2 className="text-sm font-semibold mb-3">Zaman Çizelgesi</h2>
+            <Timeline detail={d} />
+          </div>
         </div>
 
+        {/* ── Sağ kolon ── */}
         <div className="space-y-4">
+          {/* Müşteri */}
           <div className="card">
-            <h2 className="text-sm font-semibold mb-2">Müşteri</h2>
-            <div className="text-sm">{detail.customer_name || '—'}</div>
-            {detail.customer_email && (
-              <div className="text-xs text-panel-muted">{detail.customer_email}</div>
-            )}
-            {(ship.address1 || ship.city) && (
-              <div className="mt-2 text-xs text-panel-muted leading-relaxed">
-                {ship.address1}<br />
-                {[ship.city, ship.province, ship.zip].filter(Boolean).join(' / ')}
-                {ship.phone && <><br />{ship.phone}</>}
+            <h2 className="text-sm font-semibold mb-2.5">Müşteri</h2>
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-semibold shrink-0">
+                {(d.customer_name || '?').charAt(0).toUpperCase()}
               </div>
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{d.customer_name || '—'}</div>
+                {d.customer_email && (
+                  <a href={`mailto:${d.customer_email}`}
+                    className="text-xs text-panel-accent hover:underline truncate block">
+                    {d.customer_email}
+                  </a>
+                )}
+              </div>
+            </div>
+            {ship.phone && (
+              <div className="mt-2 text-xs text-panel-muted">📞 {ship.phone}</div>
             )}
-            {detail.note && (
-              <div className="mt-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-2">
-                📝 {detail.note}
+          </div>
+
+          {/* Teslimat adresi */}
+          {(ship.address1 || ship.city) && (
+            <div className="card">
+              <h2 className="text-sm font-semibold mb-2">Teslimat Adresi</h2>
+              <div className="text-xs text-panel-muted leading-relaxed">
+                {ship.name && <div className="text-panel-ink font-medium">{ship.name}</div>}
+                {ship.address1}<br />
+                {[ship.province, ship.city, ship.zip].filter(Boolean).join(' / ')}
+              </div>
+            </div>
+          )}
+
+          {/* Kargo */}
+          <div className="card">
+            <h2 className="text-sm font-semibold mb-2">Kargo</h2>
+            {d.kargo_info?.takip_no ? (
+              <div className="text-sm space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🚚</span>
+                  <div>
+                    {d.kargo_info.handler_name && (
+                      <div className="text-xs text-panel-muted">{d.kargo_info.handler_name}</div>
+                    )}
+                    {d.kargo_info.takip_url ? (
+                      <a href={d.kargo_info.takip_url} target="_blank" rel="noopener noreferrer"
+                        className="font-mono text-panel-accent hover:underline">
+                        {d.kargo_info.takip_no}
+                      </a>
+                    ) : (
+                      <span className="font-mono">{d.kargo_info.takip_no}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-panel-muted">Henüz kargoya verilmedi.</p>
+            )}
+            {d.kargo_deadline && (
+              <div className="mt-2 text-[11px] text-panel-muted">
+                Kargo sözü: {new Date(d.kargo_deadline).toLocaleDateString('tr-TR')}
               </div>
             )}
           </div>
 
-          {payment && <RefundCard orderId={detail.id} />}
+          {/* Üretim durumu */}
+          {!d.cancelled_at && (
+            <div className="card">
+              <h2 className="text-sm font-semibold mb-2.5">Üretim Durumu</h2>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="font-medium">{STAGE_LABELS[stage]}</span>
+                <span className="text-panel-muted">{stage}/9</span>
+              </div>
+              <div className="h-2 rounded-full bg-panel-input overflow-hidden">
+                <div className="h-full rounded-full bg-panel-accent transition-all"
+                  style={{ width: `${(stage / 9) * 100}%` }} />
+              </div>
+              <ol className="mt-3 space-y-1">
+                {STAGES.map(([no, label]) => (
+                  <li key={no} className={`flex items-center gap-2 text-[11px] ${
+                    no <= stage ? 'text-panel-ink' : 'text-panel-muted/60'}`}>
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${
+                      no < stage ? 'bg-emerald-100 text-emerald-700'
+                        : no === stage ? 'bg-panel-accent text-white'
+                        : 'bg-panel-input'}`}>
+                      {no < stage ? '✓' : no}
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2.5 text-[10px] text-panel-muted">
+                Üretim işlemleri Baskıcı Paneli'nde yürütülür.
+              </p>
+            </div>
+          )}
+
+          {/* Sipariş notu */}
+          {d.note && (
+            <div className="card !bg-amber-50 !border-amber-200">
+              <h2 className="text-sm font-semibold mb-1.5">📝 Sipariş Notu</h2>
+              <p className="text-xs text-amber-900 whitespace-pre-line">{d.note}</p>
+            </div>
+          )}
         </div>
       </div>
-
-      <p className="text-xs text-panel-muted">
-        Üretim durumu, kalıp ve kargo işlemleri <b>Baskıcı Paneli</b>nde yönetilir.
-      </p>
     </div>
   )
 }
 
-const fmtTl = (v) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v || 0))
+const fmt = (v) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v || 0))
 
-// Para iadesi — backend yönetici yetkisi arar; iki adımlı onay.
-function RefundCard({ orderId }) {
+function Badge({ cls, children }) {
+  return <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${cls}`}>{children}</span>
+}
+
+export function FinancialBadge({ status }) {
+  const map = {
+    paid: ['● Ödendi', 'bg-emerald-100 text-emerald-700'],
+    refunded: ['İade Edildi', 'bg-red-100 text-red-700'],
+    partially_refunded: ['Kısmi İade', 'bg-amber-100 text-amber-700'],
+    pending: ['Ödeme Bekliyor', 'bg-slate-100 text-slate-600'],
+  }
+  const [label, cls] = map[status] || [status || 'Bilinmiyor', 'bg-slate-100 text-slate-600']
+  return <Badge cls={cls}>{label}</Badge>
+}
+
+function Row({ label, value, cls = '' }) {
+  return (
+    <div className={`flex justify-between ${cls}`}>
+      <span className="text-panel-muted">{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+// Zaman çizelgesi — sipariş oluşturma + durum geçmişi, en yeni üstte.
+function Timeline({ detail }) {
+  const events = [
+    ...(detail.status_history || []).map(h => ({
+      at: h.created_at,
+      who: h.created_by,
+      text: h.action === 'stage_change' && h.to_label
+        ? `Aşama: ${h.from_label ? h.from_label + ' → ' : ''}${h.to_label}`
+        : (ACTION_LABELS[h.action] || h.action),
+      note: h.note,
+    })),
+    detail.created_at_platform && {
+      at: detail.created_at_platform,
+      who: null,
+      text: 'Sipariş oluşturuldu',
+      note: detail.raw?.payment
+        ? `${detail.raw.payment.provider} ile ${fmt(detail.raw.payment.amount)} ödendi`
+        : null,
+    },
+  ].filter(Boolean).sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+
+  if (events.length === 0) {
+    return <p className="text-xs text-panel-muted">Henüz kayıt yok.</p>
+  }
+  return (
+    <ol className="relative border-l border-panel-border ml-1.5 space-y-4">
+      {events.map((e, i) => (
+        <li key={i} className="ml-4">
+          <span className="absolute -left-[5px] mt-1 w-2.5 h-2.5 rounded-full bg-panel-accent/70 border-2 border-white" />
+          <div className="text-sm">{e.text}</div>
+          {e.note && <div className="text-xs text-panel-muted mt-0.5">{e.note}</div>}
+          <div className="text-[11px] text-panel-muted mt-0.5">
+            {e.at && new Date(e.at).toLocaleString('tr-TR', {
+              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+            })}
+            {e.who && ` · ${e.who}`}
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+// Para iadesi — ödeme kartının alt bölümü (yalnızca vitrin siparişleri).
+function RefundBlock({ orderId, onDone }) {
   const [info, setInfo] = useState(null)
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)   // {ok, text}
+  const [msg, setMsg] = useState(null)
   const [denied, setDenied] = useState(false)
 
   const load = useCallback(async () => {
@@ -127,25 +349,21 @@ function RefundCard({ orderId }) {
       })
       setMsg({ ok: true, text: `${r.amount} ₺ iade edildi` })
       setConfirming(false); setReason(''); setAmount('')
-      await load()
+      await load(); onDone?.()
     } catch (e) {
       setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'İade başarısız' })
     } finally { setBusy(false) }
   }
 
   return (
-    <div className="card">
-      <h2 className="text-sm font-semibold mb-2">Para İadesi</h2>
-      <div className="text-xs text-panel-muted space-y-0.5 mb-2">
-        <div>Ödenen: <b className="text-panel-ink">{info.paid_amount} ₺</b> · {info.provider}</div>
-        {Number(info.refunded_total) > 0 && <div>İade edilen: {info.refunded_total} ₺</div>}
-      </div>
+    <div className="px-4 py-3 border-t border-panel-border bg-panel-input/40">
       {info.refunds.length > 0 && (
         <div className="space-y-1 mb-2">
           {info.refunds.map(r => (
-            <div key={r.id} className="text-[11px] bg-panel-input rounded-lg px-2 py-1 flex justify-between">
+            <div key={r.id} className="text-[11px] flex justify-between">
               <span className={r.status === 'succeeded' ? 'text-emerald-700' : 'text-red-600'}>
-                {r.status === 'succeeded' ? '✓' : '✗'} {r.amount} ₺
+                {r.status === 'succeeded' ? '✓ İade' : '✗ Başarısız iade'}: {r.amount} ₺
+                {r.reason && <span className="text-panel-muted"> — {r.reason}</span>}
               </span>
               <span className="text-panel-muted">
                 {r.created_at ? new Date(r.created_at).toLocaleDateString('tr-TR') : ''}
@@ -158,39 +376,58 @@ function RefundCard({ orderId }) {
 
       {refundable > 0 ? (
         !confirming ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input type="number" step="0.01" min="0.01" max={refundable} value={amount}
-                onChange={e => setAmount(e.target.value)} className="input !py-1.5 text-xs" />
-              <button onClick={() => {
-                const n = Number(amount)
-                if (!n || n <= 0 || n > refundable) { setMsg({ ok: false, text: `Tutar 0 ile ${refundable} arasında olmalı` }); return }
-                setConfirming(true)
-              }} className="px-3 py-1.5 rounded-xl text-xs bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
-                İade Et
-              </button>
-            </div>
+          <div className="flex items-center gap-2">
+            <input type="number" step="0.01" min="0.01" max={refundable} value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="input !py-1.5 !w-32 text-xs" />
             <input value={reason} onChange={e => setReason(e.target.value)} maxLength={500}
-              placeholder="Sebep (opsiyonel)" className="input !py-1.5 text-xs" />
+              placeholder="Sebep (ops.)" className="input !py-1.5 text-xs flex-1" />
+            <button onClick={() => {
+              const n = Number(amount)
+              if (!n || n <= 0 || n > refundable) { setMsg({ ok: false, text: `Tutar 0 ile ${refundable} arasında olmalı` }); return }
+              setConfirming(true)
+            }} className="px-3 py-1.5 rounded-xl text-xs bg-white border border-red-200 text-red-700 whitespace-nowrap hover:bg-red-50">
+              İade Et
+            </button>
           </div>
         ) : (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 space-y-2">
-            <p className="text-xs text-red-700">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 flex items-center gap-3">
+            <p className="text-xs text-red-700 flex-1">
               <b>{Number(amount).toFixed(2)} ₺</b> müşteriye iade edilecek. Geri alınamaz.
             </p>
-            <div className="flex gap-2">
-              <button onClick={doRefund} disabled={busy}
-                className="px-3 py-1.5 rounded-xl text-xs bg-red-600 text-white disabled:opacity-50">
-                {busy ? 'İade ediliyor…' : 'Onaylıyorum, iade et'}
-              </button>
-              <button onClick={() => setConfirming(false)} disabled={busy}
-                className="px-3 py-1.5 rounded-xl text-xs text-panel-muted">Vazgeç</button>
-            </div>
+            <button onClick={doRefund} disabled={busy}
+              className="px-3 py-1.5 rounded-xl text-xs bg-red-600 text-white disabled:opacity-50 whitespace-nowrap">
+              {busy ? 'İade ediliyor…' : 'Onaylıyorum'}
+            </button>
+            <button onClick={() => setConfirming(false)} disabled={busy}
+              className="text-xs text-panel-muted">Vazgeç</button>
           </div>
         )
       ) : (
         <p className="text-[11px] text-panel-muted italic">Tutarın tamamı iade edildi.</p>
       )}
+    </div>
+  )
+}
+
+// Yüklenirken iskelet — boş beyaz ekran yerine düzenin silueti.
+function SkeletonDetail() {
+  const sk = 'animate-pulse bg-panel-input rounded-xl'
+  return (
+    <div className="max-w-5xl space-y-4">
+      <div className={`${sk} h-10 w-64`} />
+      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+        <div className="space-y-4">
+          <div className={`${sk} h-44`} />
+          <div className={`${sk} h-36`} />
+          <div className={`${sk} h-40`} />
+        </div>
+        <div className="space-y-4">
+          <div className={`${sk} h-24`} />
+          <div className={`${sk} h-28`} />
+          <div className={`${sk} h-52`} />
+        </div>
+      </div>
     </div>
   )
 }

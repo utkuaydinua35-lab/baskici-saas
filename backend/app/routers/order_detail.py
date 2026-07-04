@@ -230,6 +230,15 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None) 
                 image_url = img
         except Exception:
             pass
+    # Vitrin (kendi mağaza) ürünü: katalog görselinden bul
+    if not image_url and db is not None and li.product_id:
+        try:
+            from app.models import CatalogProduct
+            _cp = db.get(CatalogProduct, uuid.UUID(str(li.product_id)))
+            if _cp and _cp.images:
+                image_url = f"/storage/{_cp.images[0].file_path}"
+        except (ValueError, TypeError):
+            pass
     # Son çare: atanmış tasarımın thumbnail'i
     if not image_url and li.assigned_design_id and li.assigned_design:
         image_url = storage.get_thumbnail_url(li.assigned_design.file_path, li.assigned_design.file_format)
@@ -240,6 +249,7 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None) 
         "variant_title": li.variant_title,
         "device_model_override": li.device_model_override,
         "quantity": li.quantity,
+        "price": (li.raw or {}).get("price"),
         "sku": li.sku,
         "product_id": li.product_id,
         "image_url": image_url,
@@ -270,6 +280,8 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         shipping = _money_from_raw(shipping_lines[0], "price")
     total_tax = _money_from_raw(raw, "total_tax") or _money_from_raw(raw, "current_total_tax")
     total_discount = _money_from_raw(raw, "total_discounts") or _money_from_raw(raw, "current_total_discounts")
+    if shipping is None:  # vitrin siparişi: kargo raw.payment altında
+        shipping = _money_from_raw(raw.get("payment") or {}, "shipping_amount")
     currency = raw.get("currency") or raw.get("presentment_currency") or "TRY"
 
     payment_method = None

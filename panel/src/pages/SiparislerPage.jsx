@@ -53,6 +53,7 @@ export default function SiparislerPage() {
             <tr>
               <th className="text-left px-4 py-2.5">Sipariş</th>
               <th className="text-left px-4 py-2.5">Müşteri</th>
+              <th className="text-right px-4 py-2.5">Tutar</th>
               <th className="text-left px-4 py-2.5">Tarih</th>
               <th className="text-left px-4 py-2.5">Ödeme</th>
               <th className="text-left px-4 py-2.5">Durum</th>
@@ -67,10 +68,17 @@ export default function SiparislerPage() {
                     {o.name || `#${o.order_number}`}
                   </Link>
                 </td>
-                <td className="px-4 py-2.5">{o.customer_name || '—'}</td>
-                <td className="px-4 py-2.5 text-xs text-panel-muted">
+                <td className="px-4 py-2.5">
+                  <div>{o.customer_name || '—'}</div>
+                  <div className="text-[11px] text-panel-muted">{o.item_count} kalem</div>
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums font-medium">
+                  {o.total_price ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(o.total_price)) : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-xs text-panel-muted whitespace-nowrap">
                   {o.created_at_platform
-                    ? new Date(o.created_at_platform).toLocaleDateString('tr-TR') : '—'}
+                    ? new Date(o.created_at_platform).toLocaleString('tr-TR', {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                 </td>
                 <td className="px-4 py-2.5"><FinancialBadge status={o.financial_status} /></td>
                 <td className="px-4 py-2.5 text-xs">

@@ -531,6 +531,7 @@ def list_orders(
         item["store_name"] = store_names.get(o.store_id)
         item["item_count"] = len(o.line_items)
         item["total_li_count"] = len(o.line_items)
+        item["total_price"] = (o.raw or {}).get("total_price")
         item["kalipta_count"] = sum(
             1 for li in o.line_items if getattr(li, "is_kaliba_eklendi", False)
         )

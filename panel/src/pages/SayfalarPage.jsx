@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
+import SaveBar from '../components/SaveBar'
 
 // Sayfalar — yasal metinler (vitrindeki hazır şablonları özelleştirir) +
 // özel sayfalar (/sayfa/adres olarak yayınlanır, footer'a link düşer).
@@ -17,7 +19,8 @@ export default function SayfalarPage() {
   const [openIdx, setOpenIdx] = useState(null)   // açık özel sayfa
   const [openLegal, setOpenLegal] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
+  const toast = useToast()
+  const initialRef = useRef('')
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -32,25 +35,39 @@ export default function SayfalarPage() {
         iade_text: settings.config.iade_text || '',
       })
       setPages(pg.pages || [])
+      initialRef.current = JSON.stringify([{
+        kvkk_text: settings.config.kvkk_text || '',
+        mesafeli_satis_text: settings.config.mesafeli_satis_text || '',
+        iade_text: settings.config.iade_text || '',
+      }, pg.pages || []])
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi')
     }
   }, [storeId])
   useEffect(() => { load() }, [load])
 
   const save = async () => {
-    setBusy(true); setMsg(null)
+    setBusy(true)
     try {
       await Promise.all([
         api.patch(`/api/store-settings/${storeId}`, { config: legal }),
         api.put(`/api/store-settings/${storeId}/pages`, { pages }),
       ])
       await load()
-      setMsg({ ok: true, text: 'Sayfalar kaydedildi ✓' })
+      toast.success('Sayfalar kaydedildi')
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
     } finally { setBusy(false) }
   }
+
+  const discard = () => {
+    try {
+      const [l, p2] = JSON.parse(initialRef.current)
+      setLegal(l); setPages(p2)
+    } catch { /* yok */ }
+  }
+  const dirty = initialRef.current !== '' &&
+    JSON.stringify([legal, pages]) !== initialRef.current
 
   const addPage = () => {
     setPages(p => [...p, { slug: '', title: 'Yeni Sayfa', content: '' }])
@@ -66,13 +83,8 @@ export default function SayfalarPage() {
 
   return (
     <div className="max-w-2xl space-y-4 pb-10">
-      <div className="flex items-center gap-3 sticky top-0 bg-panel-bg py-2 z-10">
-        <h1 className="text-xl font-semibold">Sayfalar</h1>
-        {msg && <span className={`text-sm ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</span>}
-        <button onClick={save} disabled={busy} className="btn-primary ml-auto">
-          {busy ? 'Kaydediliyor…' : 'Kaydet'}
-        </button>
-      </div>
+      <SaveBar dirty={dirty} busy={busy} onSave={save} onDiscard={discard} />
+      <h1 className="text-xl font-semibold">Sayfalar</h1>
 
       <section className="card space-y-2">
         <h2 className="text-sm font-semibold">📄 Yasal Sayfalar</h2>

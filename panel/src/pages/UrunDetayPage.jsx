@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
 import { StatusBadge } from './UrunlerPage'
 
 // Tam sayfa ürün editörü — görsel sıralama (drag), inline varyant editi, SEO.
@@ -13,7 +14,9 @@ export default function UrunDetayPage() {
   const [collections, setCollections] = useState([])
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
+  const toast = useToast()
+  // Alt bölümler setMsg({ok,text}) imzasını kullanıyor — toast köprüsü
+  const setMsg = (m) => m && (m.ok ? toast.success(m.text) : toast.error(m.text))
   const [variations, setVariations] = useState('')
 
   const load = useCallback(async () => {
@@ -86,7 +89,6 @@ export default function UrunDetayPage() {
         <Link to="/urunler" className="text-panel-muted hover:text-panel-ink">←</Link>
         <h1 className="text-xl font-semibold truncate max-w-md">{p.title}</h1>
         <StatusBadge status={p.status} />
-        {msg && <span className={`text-xs ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</span>}
         <div className="ml-auto flex gap-2">
           {p.status !== 'active'
             ? <button disabled={busy} onClick={() => patchStatus('active')}

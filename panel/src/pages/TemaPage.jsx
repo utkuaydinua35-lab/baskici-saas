@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
+import SaveBar from '../components/SaveBar'
 
 // Tema Ayarları — sol form (bölüm editörü dahil), sağ canlı önizleme.
 // Tema v2: anasayfa "sections" listesidir; bölüm ekle/sil/sırala + tipe özel ayar.
@@ -32,8 +34,9 @@ export default function TemaPage() {
   const [theme, setTheme] = useState(null)
   const [collections, setCollections] = useState([])
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)
   const [saveCount, setSaveCount] = useState(0)  // iframe reload anahtarı
+  const toast = useToast()
+  const initialRef = useRef('')
   const [openSection, setOpenSection] = useState(null)  // açık bölüm id'si
   const [customCode, setCustomCode] = useState(null)     // {head_html, css, body_html}
 
@@ -51,26 +54,37 @@ export default function TemaPage() {
       setTheme(t)
       setCollections(c.filter(x => x.is_active))
       setCustomCode(cc)
+      initialRef.current = JSON.stringify([t, cc])
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Tema yüklenemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Tema yüklenemedi')
     }
   }, [storeId])
   useEffect(() => { load() }, [load])
 
   const save = async () => {
-    setBusy(true); setMsg(null)
+    setBusy(true)
     try {
       const [t] = await Promise.all([
         api.put(`/api/store-settings/${storeId}/theme`, theme),
         customCode ? api.put(`/api/store-settings/${storeId}/custom-code`, customCode) : Promise.resolve(),
       ])
       setTheme(t)
+      initialRef.current = JSON.stringify([t, customCode])
       setSaveCount(n => n + 1)
-      setMsg({ ok: true, text: 'Tema kaydedildi ✓ (vitrin ~1 dk içinde güncellenir)' })
+      toast.success('Tema kaydedildi — vitrin ~1 dk içinde güncellenir')
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
     } finally { setBusy(false) }
   }
+
+  const discard = () => {
+    try {
+      const [t, cc] = JSON.parse(initialRef.current)
+      setTheme(t); setCustomCode(cc)
+    } catch { /* ilk yükleme yoksa */ }
+  }
+  const dirty = !!theme && initialRef.current !== '' &&
+    JSON.stringify([theme, customCode]) !== initialRef.current
 
   const uploadAsset = async (kind, file, target) => {
     if (!file) return
@@ -82,7 +96,7 @@ export default function TemaPage() {
       const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
       target(r.url)
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Yükleme başarısız' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Yükleme başarısız')
     } finally { setBusy(false) }
   }
 
@@ -131,15 +145,10 @@ export default function TemaPage() {
 
   return (
     <div className="flex gap-5 h-full">
+      <SaveBar dirty={dirty} busy={busy} onSave={save} onDiscard={discard} />
       {/* Sol: form */}
       <div className="w-[400px] shrink-0 space-y-4 overflow-y-auto pb-10">
-        <div className="flex items-center gap-2 sticky top-0 bg-panel-bg py-2 z-10">
-          <h1 className="text-xl font-semibold">Tema</h1>
-          <button onClick={save} disabled={busy} className="btn-primary ml-auto">
-            {busy ? 'Kaydediliyor…' : 'Kaydet'}
-          </button>
-        </div>
-        {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
+        <h1 className="text-xl font-semibold py-2">Tema</h1>
 
         <Section title="Renkler" icon="🎨">
           <div className="grid grid-cols-3 gap-3">

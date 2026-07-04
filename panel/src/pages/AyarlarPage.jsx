@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
+import SaveBar from '../components/SaveBar'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
@@ -10,7 +12,9 @@ export default function AyarlarPage() {
   const [cfg, setCfg] = useState({})
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState(null)  // {ok, text}
+  const toast = useToast()
+  const initialRef = useRef('')   // dirty takibi için ilk state imzası
+  const snapshot = (name, config) => JSON.stringify([name, config])
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -18,9 +22,10 @@ export default function AyarlarPage() {
       const r = await api.get(`/api/store-settings/${storeId}`)
       setStoreName(r.store_name || '')
       setCfg(r.config || {})
+      initialRef.current = snapshot(r.store_name || '', r.config || {})
       setLoaded(true)
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Ayarlar yüklenemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Ayarlar yüklenemedi')
     }
   }, [storeId])
   useEffect(() => { load() }, [load])
@@ -31,32 +36,33 @@ export default function AyarlarPage() {
   }
 
   const save = async () => {
-    setBusy(true); setMsg(null)
+    setBusy(true)
     try {
       const r = await api.patch(`/api/store-settings/${storeId}`, {
         store_name: storeName || null,
         config: cfg,
       })
       setCfg(r.config || {})
-      setMsg({ ok: true, text: 'Ayarlar kaydedildi ✓' })
+      initialRef.current = snapshot(storeName, r.config || {})
+      toast.success('Ayarlar kaydedildi')
     } catch (e) {
-      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi' })
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
     } finally { setBusy(false) }
   }
+
+  const discard = () => {
+    const [name, config] = JSON.parse(initialRef.current || '["",{}]')
+    setStoreName(name)
+    setCfg(config)
+  }
+  const dirty = loaded && snapshot(storeName, cfg) !== initialRef.current
 
   if (!loaded) return <p className="text-sm text-panel-muted">Yükleniyor…</p>
 
   return (
     <div className="max-w-2xl space-y-4 pb-10">
-      <div className="flex items-center gap-3 sticky top-0 bg-panel-bg py-2 z-10">
-        <h1 className="text-xl font-semibold">Ayarlar</h1>
-        {msg && (
-          <span className={`text-sm ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</span>
-        )}
-        <button onClick={save} disabled={busy} className="btn-primary ml-auto">
-          {busy ? 'Kaydediliyor…' : 'Kaydet'}
-        </button>
-      </div>
+      <SaveBar dirty={dirty} busy={busy} onSave={save} onDiscard={discard} />
+      <h1 className="text-xl font-semibold">Ayarlar</h1>
 
       <Section title="Mağaza Bilgileri" icon="🏬">
         <Field label="Mağaza adı">

@@ -175,18 +175,23 @@ async def analyze(
         ai_expanded = False
         if not ps.aspect_ok(img.width, img.height):
             _exp = None
+            _exp_reason = None
             if (s.config or {}).get("ai_expand"):
                 from app.services import outpaint
-                _exp = outpaint.expand_to_aspect(raw, ps.CASE_RATIO, provider=cfg.get("ai_provider") or "auto")
+                _exp, _exp_reason = outpaint.expand_to_aspect(raw, ps.CASE_RATIO, provider=cfg.get("ai_provider") or "auto")
             if _exp:
                 raw = _exp
                 img = Image.open(io.BytesIO(_exp)).convert("RGB")
                 ai_expanded = True
             else:
+                base = f"En-boy oranı uygun değil ({img.width}×{img.height}) — telefon kılıfı ~1:2 olmalı"
+                if (s.config or {}).get("ai_expand"):
+                    detail = f" · AI genişletme başarısız — {_exp_reason}" if _exp_reason else " · AI genişletme başarısız"
+                else:
+                    detail = " — AI genişletmeyi açabilir ya da düzeltip tekrar yükleyebilirsin"
                 results.append({
                     "ok": False, "skipped": True, "filename": f.filename,
-                    "error": f"En-boy oranı uygun değil ({img.width}×{img.height}) — telefon kılıfı ~1:2 olmalı"
-                             + ((s.config or {}).get("ai_expand") and " (AI genişletme başarısız)" or " — AI genişletmeyi açabilir ya da düzeltip tekrar yükleyebilirsin"),
+                    "error": base + detail,
                 })
                 continue
         media = "image/png" if (f.filename or "").lower().endswith("png") else "image/jpeg"

@@ -97,6 +97,18 @@ def add_customer_message(db: Session, store, order_info: dict, body: str, image_
     except Exception:
         pass
 
+    # Mobil push (yeni destek mesaji) — atolyedeki tum kullanicilar
+    try:
+        from app.services import push
+        push.send_to_tenant(
+            db, thread.tenant_id,
+            f"Yeni destek mesajı — {thread.order_number or thread.shopify_order_id}",
+            (body.strip()[:120] or "📷 Görsel"),
+            url="/destek", tag=f"support-{thread.id}",
+        )
+    except Exception:
+        pass
+
     return thread
 
 

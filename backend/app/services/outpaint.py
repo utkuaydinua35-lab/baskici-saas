@@ -50,25 +50,37 @@ def _prep(img: Image.Image, target_ratio: float):
     return canvas, mask, top
 
 
-def _fal(canvas, mask, key, model) -> bytes | None:
+def _http_reason(provider: str, status: int) -> str:
+    """HTTP hata kodunu kullanıcı-dostu nedene çevir (fal.ai kredi vb.)."""
+    if status in (402, 403):
+        return f"{provider}: kredi/ödeme yetersiz ya da anahtar yetkisiz (HTTP {status})"
+    if status in (401,):
+        return f"{provider}: API anahtarı geçersiz (HTTP {status})"
+    if status in (429,):
+        return f"{provider}: kota/hız limiti aşıldı (HTTP {status})"
+    return f"{provider}: sağlayıcı hatası (HTTP {status})"
+
+
+def _fal(canvas, mask, key, model):
+    """Döner: (bytes | None, reason | None)."""
     body = {"image_url": _data_uri(canvas, "RGB"), "mask_url": _data_uri(mask, "L"), "prompt": _PROMPT}
     r = requests.post(f"https://fal.run/{model}", json=body,
                       headers={"Authorization": f"Key {key}", "Content-Type": "application/json"}, timeout=180)
     if r.status_code not in (200, 201):
         logger.warning(f"[outpaint] fal HTTP {r.status_code}: {r.text[:200]}")
-        return None
+        return None, _http_reason("fal.ai", r.status_code)
     d = r.json() or {}
     imgs = d.get("images") or d.get("image") or []
     url = (imgs[0].get("url") if isinstance(imgs, list) and imgs else (imgs.get("url") if isinstance(imgs, dict) else None))
     if not url:
-        return None
+        return None, "fal.ai: yanıtta görsel yok"
     if url.startswith("data:"):
-        return base64.b64decode(url.split(",", 1)[1])
+        return base64.b64decode(url.split(",", 1)[1]), None
     ir = requests.get(url, timeout=60)
-    return ir.content if ir.ok else None
+    return (ir.content, None) if ir.ok else (None, "fal.ai: üretilen görsel indirilemedi")
 
 
-def _gemini(canvas, key, model) -> bytes | None:
+def _gemini(canvas, key, model):
     buf = io.BytesIO()
     canvas.convert("RGB").save(buf, "PNG")
     b64 = base64.b64encode(buf.getvalue()).decode()
@@ -83,14 +95,14 @@ def _gemini(canvas, key, model) -> bytes | None:
     r = requests.post(url, json=body, timeout=180)
     if r.status_code != 200:
         logger.warning(f"[outpaint] gemini HTTP {r.status_code}: {r.text[:200]}")
-        return None
+        return None, _http_reason("Gemini", r.status_code)
     d = r.json() or {}
     for cand in d.get("candidates", []):
         for part in (cand.get("content", {}) or {}).get("parts", []):
             inl = part.get("inline_data") or part.get("inlineData")
             if inl and inl.get("data"):
-                return base64.b64decode(inl["data"])
-    return None
+                return base64.b64decode(inl["data"]), None
+    return None, "Gemini: yanıtta görsel yok"
 
 
 def upscale_image(img_bytes: bytes, scale: int = 2) -> bytes | None:
@@ -123,17 +135,18 @@ def upscale_image(img_bytes: bytes, scale: int = 2) -> bytes | None:
         return None
 
 
-def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "auto") -> bytes | None:
+def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "auto"):
     """Tasarımı ~target_ratio (w/h) olacak şekilde ALTA yaslayıp üstünü AI ile genişlet.
-    provider: 'auto' | 'fal' | 'gemini'. Başarısızsa None (kenara alınır)."""
+    provider: 'auto' | 'fal' | 'gemini'.
+    Döner: (bytes | None, reason | None) — başarısızsa reason kullanıcıya gösterilir."""
     s = get_settings()
     try:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     except Exception:  # noqa: BLE001
-        return None
+        return None, "Görsel okunamadı"
     prep = _prep(img, target_ratio)
     if prep is None:
-        return None
+        return None, "Görsel zaten yeterince uzun (üstten genişletme gerekmiyor)"
     canvas, mask, top = prep
 
     order = []
@@ -142,13 +155,15 @@ def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "aut
     if provider in ("gemini", "auto") and s.gemini_api_key:
         order.append("gemini")
     if not order:
-        return None
+        return None, "AI genişletme için sağlayıcı anahtarı yok (.env: FAL_KEY / GEMINI_API_KEY)"
 
+    last_reason = None
     for p in order:
         try:
-            out = _fal(canvas, mask, s.fal_key, s.fal_model) if p == "fal" \
+            out, reason = _fal(canvas, mask, s.fal_key, s.fal_model) if p == "fal" \
                 else _gemini(canvas, s.gemini_api_key, s.gemini_image_model)
             if not out:
+                last_reason = reason or last_reason
                 continue
             res = Image.open(io.BytesIO(out)).convert("RGB")
             if res.size != canvas.size:
@@ -157,7 +172,8 @@ def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "aut
             res.paste(img, (0, top))
             buf = io.BytesIO()
             res.save(buf, "JPEG", quality=95)
-            return buf.getvalue()
+            return buf.getvalue(), None
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[outpaint] {p} hata: {e}")
-    return None
+            last_reason = f"{p}: {str(e)[:80]}"
+    return None, (last_reason or "AI genişletme başarısız")

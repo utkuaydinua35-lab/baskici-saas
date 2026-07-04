@@ -197,8 +197,94 @@ function AccountTab() {
           </button>
         </div>
       </div>
+      <NotificationsCard />
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
       {show2fa && <TwoFactorModal enabled={twoFaOn} onClose={() => setShow2fa(false)} onChanged={refresh} />}
+    </div>
+  )
+}
+
+// Mobil bildirim (Web Push) — bu CIHAZ icin ac/kapa. iOS'ta once 'Ana ekrana ekle' gerekir.
+function NotificationsCard() {
+  const toast = useToast()
+  const [state, setState] = useState(null)  // getPushState sonucu
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    try {
+      const { getPushState } = await import('../lib/push')
+      setState(await getPushState())
+    } catch { setState({ supported: false }) }
+  }
+  useEffect(() => { load() }, [])
+
+  const iosStandalone = typeof window !== 'undefined'
+    && window.navigator.standalone === false
+    && /iphone|ipad|ipod/i.test(window.navigator.userAgent)
+
+  const enable = async () => {
+    setBusy(true)
+    try {
+      const { enablePush } = await import('../lib/push')
+      await enablePush()
+      toast.success('Mobil bildirimler açıldı')
+      await load()
+    } catch (e) { toast.error(e?.message || 'Bildirim açılamadı') }
+    finally { setBusy(false) }
+  }
+  const disable = async () => {
+    setBusy(true)
+    try {
+      const { disablePush } = await import('../lib/push')
+      await disablePush()
+      toast.success('Mobil bildirimler kapatıldı')
+      await load()
+    } catch (e) { toast.error(e?.message || 'Kapatılamadı') }
+    finally { setBusy(false) }
+  }
+  const test = async () => {
+    try {
+      const { testPush } = await import('../lib/push')
+      const r = await testPush()
+      if (r.sent > 0) toast.success('Deneme bildirimi gönderildi')
+      else toast.error(r.reason || 'Gönderilemedi — önce bildirimi aç')
+    } catch { toast.error('Gönderilemedi') }
+  }
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">📱 Mobil Bildirimler</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Bu cihaza; yeni destek mesajı, müşteri onayı, sabah özeti ve yeni mağaza başvurusu bildirimleri gönderilir.
+      </p>
+      {!state ? (
+        <p className="text-xs text-gray-500">Yükleniyor…</p>
+      ) : !state.supported ? (
+        <p className="text-xs text-amber-300/80">Bu tarayıcı bildirim desteklemiyor.</p>
+      ) : !state.serverEnabled ? (
+        <p className="text-xs text-amber-300/80">Sunucuda bildirim altyapısı henüz kurulmadı (VAPID anahtarı yok).</p>
+      ) : state.permission === 'denied' ? (
+        <p className="text-xs text-amber-300/80">Bildirim izni tarayıcıda engellenmiş — site ayarlarından izin ver.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {state.subscribed ? (
+            <>
+              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300">Bu cihazda açık</span>
+              <button onClick={test} className="btn-secondary !text-sm">🔔 Deneme gönder</button>
+              <button onClick={disable} disabled={busy} className="btn-secondary !text-sm">Kapat</button>
+            </>
+          ) : (
+            <button onClick={enable} disabled={busy} className="btn-primary !text-sm">
+              {busy ? 'Açılıyor…' : '🔔 Bildirimleri Aç'}
+            </button>
+          )}
+        </div>
+      )}
+      {iosStandalone && (
+        <p className="text-[11px] text-gray-500 mt-2">
+          iPhone/iPad: bildirimler yalnızca uygulama <b>“Ana ekrana ekle”</b> ile kurulduktan sonra çalışır.
+        </p>
+      )}
     </div>
   )
 }

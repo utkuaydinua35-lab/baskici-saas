@@ -121,4 +121,15 @@ def post_decision(
         kind="info", title=notif_title, body=notif_body,
     ))
     db.commit()
+
+    # Mobil push (musteri onay/revizyon karari) — atolyedeki tum kullanicilar
+    try:
+        from app.services import push
+        push.send_to_tenant(
+            db, ap.tenant_id, notif_title, notif_body or "",
+            url="/kisiye-ozel", tag=f"approval-{ap.order_id}",
+        )
+    except Exception:
+        pass
+
     return {"ok": True, "status": ap.status}

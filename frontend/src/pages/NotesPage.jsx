@@ -46,6 +46,9 @@ export default function NotesPage() {
       setDetail(d)
       setLines(Array.isArray(d.lines) ? d.lines : [])
     }).catch(() => toast.error('Not acilamadi'))
+    // Not degistirilirken/unmount'ta bekleyen kayit HEDEF NOTA yazilsin
+    // (aksi halde hizli not degistirmede o notun degisikligi kaybolabilir).
+    return () => { flushSave() }
   }, [selId])
 
   const refresh = async () => {
@@ -60,13 +63,26 @@ export default function NotesPage() {
     } finally { setBusy(false) }
   }
 
-  // Satirlari kaydet (debounce)
+  // Satirlari kaydet (debounce). Bekleyen kayit HANGI NOTA aitse ona yazilir
+  // (selId degisse bile) — hedef not id'si pendingSave'de tutulur.
+  const pendingSave = useRef(null)  // { noteId, lines }
+
+  const flushSave = async () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const p = pendingSave.current
+    pendingSave.current = null
+    if (p) { try { await api.patch(`/api/notes/${p.noteId}/lines`, { lines: p.lines }) } catch (e) { /* sessiz */ } }
+  }
+
   const scheduleSave = (newLines) => {
+    const noteId = selId
+    pendingSave.current = { noteId, lines: newLines }
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
-      try {
-        await api.patch(`/api/notes/${selId}/lines`, { lines: newLines })
-      } catch (e) { /* sessiz */ }
+      const p = pendingSave.current
+      pendingSave.current = null
+      saveTimer.current = null
+      if (p) { try { await api.patch(`/api/notes/${p.noteId}/lines`, { lines: p.lines }) } catch (e) { /* sessiz */ } }
     }, 800)
   }
 

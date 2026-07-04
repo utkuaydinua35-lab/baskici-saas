@@ -337,8 +337,43 @@ def _addr(raw: dict) -> dict:
     }
 
 
-def _design_for_line_item(db, order, li, mi, adapter=None):
-    """Gorsel: MoldItem.design -> assigned_design -> product_id eslesme -> Shopify urun gorseli."""
+def _customer_numune_url(li) -> str | None:
+    """Kişiye özel siparişte müşterinin ilettiği numune görsel — line item
+    properties içindeki ilk http(s) değeri (kisiye_ozel serileştirmesiyle aynı mantık)."""
+    for p in li.properties or []:
+        if not isinstance(p, dict):
+            continue
+        name = p.get("name") or ""
+        val = p.get("value") or ""
+        if name.startswith("_") or not val:
+            continue
+        if isinstance(val, str) and val.startswith("http"):
+            return val
+    return None
+
+
+def _design_for_line_item(db, order, li, mi, adapter=None, kisiye_ids=None):
+    """Paketleme görseli. Öncelik sırası:
+    1) Kişiye özel ürün → müşterinin ilettiği numune görsel.
+    2) Shopify ürün görseli (paketlemede tasarım değil, kutudaki/ürünün gerçek görseli).
+    3) Son çare → tasarım küçük görseli (Shopify görseli hiç yoksa boş kalmasın)."""
+    # 1) Kişiye özel → numune
+    if kisiye_ids and li.product_id and str(li.product_id) in kisiye_ids:
+        num = _customer_numune_url(li)
+        if num:
+            return num
+    # 2) Shopify ürün görseli (lazy-fill: bir kez çekilip DB'ye yazılır)
+    if li.product_image_url:
+        return li.product_image_url
+    if adapter is not None and li.product_id:
+        try:
+            img = adapter.get_product_image(li.product_id)
+            if img:
+                li.product_image_url = img   # DB'ye yaz (commit _order_payload sonunda)
+                return img
+        except Exception:
+            pass
+    # 3) Son çare — tasarım küçük görseli
     d = None
     if mi and mi.design_id:
         d = db.scalar(select(Design).where(Design.id == mi.design_id))
@@ -353,17 +388,6 @@ def _design_for_line_item(db, order, li, mi, adapter=None):
         )
     if d and d.file_path:
         return storage.get_thumbnail_url(d.file_path, d.file_format)
-    # Tasarim yok -> Shopify urun gorseli (lazy-fill: bir kez cekilip DB'ye yazilir)
-    if li.product_image_url:
-        return li.product_image_url
-    if adapter is not None and li.product_id:
-        try:
-            img = adapter.get_product_image(li.product_id)
-            if img:
-                li.product_image_url = img   # DB'ye yaz (commit _order_payload sonunda)
-                return img
-        except Exception:
-            pass
     return None
 
 
@@ -407,12 +431,20 @@ def _order_payload(db, order) -> dict:
             adapter = get_adapter(store)
     except Exception:
         adapter = None
+    # Kişiye özel ürün ID'leri — bu ürünlerde numune görseli gösterilir
+    kisiye_ids: set = set()
+    if order.store_id:
+        try:
+            from app.routers.kisiye_ozel import _get_kop_product_ids
+            kisiye_ids = _get_kop_product_ids(db, order.store_id)
+        except Exception:
+            kisiye_ids = set()
     items = []
     _img_filled = False
     for li in (order.line_items or []):
         kod_label, mi = _kalip_kodu_for(db, li)
         before = li.product_image_url
-        thumb = _design_for_line_item(db, order, li, mi, adapter)
+        thumb = _design_for_line_item(db, order, li, mi, adapter, kisiye_ids)
         if li.product_image_url and li.product_image_url != before:
             _img_filled = True
         items.append({

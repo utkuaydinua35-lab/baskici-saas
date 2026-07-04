@@ -117,6 +117,18 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
             detail="Kayıt sırasında çakışma — büyük ihtimalle email kullanılıyor",
         ) from e
 
+    # Mobil push (yeni magaza/atolye kaydi) — platform yoneticilerine onay hatirlatmasi
+    try:
+        from app.services import push
+        push.send_to_platform_admins(
+            db,
+            "🆕 Yeni mağaza başvurusu",
+            f"{req.tenant_name} kaydoldu — onay bekliyor ({req.email.lower()})",
+            url="/platform", tag=f"tenant-{tenant.id}",
+        )
+    except Exception:
+        pass
+
     # Token DÖNMEZ — hesap onay bekliyor.
     return {
         "ok": True,

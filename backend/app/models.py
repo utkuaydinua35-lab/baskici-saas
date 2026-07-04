@@ -1615,3 +1615,30 @@ class CatalogCollection(Base):
     products: Mapped[list[CatalogProduct]] = relationship(
         secondary=catalog_product_collections, back_populates="collections"
     )
+
+
+class PushSubscription(Base):
+    """Web Push aboneliği (PWA mobil bildirim). Her cihaz/tarayıcı için bir kayıt.
+
+    Panel kullanıcısı bildirimleri açtığında tarayıcı bir PushSubscription üretir
+    (endpoint + p256dh + auth). Backend bunları saklar ve pywebpush ile VAPID
+    imzalı bildirim gönderir. is_platform_admin kullanıcıların abonelikleri
+    cross-tenant olaylarda (yeni mağaza onayı) da kullanılır.
+    """
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text)
+    auth: Mapped[str] = mapped_column(Text)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

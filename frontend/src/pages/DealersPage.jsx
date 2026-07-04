@@ -327,7 +327,7 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
         const sid = dealer.store_id
         const [m, d] = await Promise.all([
           api.get('/api/phone-models?include_baseline=true').catch(() => ({})),
-          sid ? api.get(`/api/designs?store_id=${sid}&per_page=500`).catch(() => ({})) : Promise.resolve({}),
+          sid ? api.get(`/api/designs?store_id=${sid}&per_page=200`).catch(() => ({})) : Promise.resolve({}),
         ])
         const mArr = Array.isArray(m) ? m : (m?.items || m?.models || [])
         const dArr = Array.isArray(d) ? d : (d?.items || d?.designs || [])
@@ -357,7 +357,7 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
   const reloadDesigns = async () => {
     const sid = dealer.store_id
     if (!sid) return
-    try { const d = await api.get(`/api/designs?store_id=${sid}&per_page=500`); setDesigns(Array.isArray(d) ? d : (d?.items || [])) } catch {}
+    try { const d = await api.get(`/api/designs?store_id=${sid}&per_page=200`); setDesigns(Array.isArray(d) ? d : (d?.items || [])) } catch {}
   }
 
   const [uploadIdx, setUploadIdx] = useState(null)  // hangi kalem icin yukleme acik
@@ -418,33 +418,17 @@ export function OrderDialog({ dealer, onClose, onCreated }) {
             </div>
 
             <div className="space-y-2 mb-3">
-              {items.map((it, idx) => {
-                const selD = it.design_id ? designs.find(d => String(d.id) === String(it.design_id)) : null
-                const thumb = selD && (selD.thumbnail_url || selD.file_url)
-                return (
+              {items.map((it, idx) => (
                 <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">
-                  {/* Seçili tasarım önizleme (kod + görsel) — hangi kaleme ne yüklü net */}
-                  {selD ? (
-                    <div className="flex items-center gap-1.5 shrink-0" title={selD.code}>
-                      {thumb ? <img src={thumb} alt="" className="w-9 h-9 rounded object-cover border border-accent/40" />
-                        : <div className="w-9 h-9 rounded bg-accent/15 flex items-center justify-center text-[9px] text-accent">🎨</div>}
-                      <span className="text-[10px] font-mono text-accent hidden sm:block">{selD.code}</span>
-                    </div>
-                  ) : (
-                    <div className="w-9 h-9 rounded border border-dashed border-brand-border/60 flex items-center justify-center text-gray-600 shrink-0" title="Tasarım yok">—</div>
-                  )}
                   <ModelSearch models={models} value={it.model}
                     onSelect={(v) => setItem(idx, 'model', v)} modelVal={modelVal} modelLabel={modelLabel} />
-                  <select className="input flex-1 min-w-[120px]" value={it.design_id} onChange={e => onDesignChange(idx, e.target.value)}>
-                    <option value="">Tasarım (ops.)…</option>
-                    {designs.map((d, i) => <option key={i} value={d.id}>{designLabel(d)}</option>)}
-                  </select>
+                  <DesignSearch designs={designs} value={it.design_id} designLabel={designLabel}
+                    onSelect={(v, d) => onDesignChange(idx, v, d)} />
                   <button type="button" onClick={() => setUploadIdx(idx)} className="btn-secondary !text-xs whitespace-nowrap" title="Yeni tasarım yükle">📎</button>
                   <input className="input w-16" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
                   <button onClick={() => removeItem(idx)} className="text-gray-500 hover:text-red-300 px-1 text-lg" title="Kalemi sil">×</button>
                 </div>
-                )
-              })}
+              ))}
             </div>
             <button onClick={addItem} className="btn-secondary !text-xs mb-4">+ Kalem Ekle</button>
 
@@ -639,6 +623,65 @@ function ModelSearch({ models, value, onSelect, modelVal, modelLabel }) {
       {open && term && filtered.length === 0 && (
         <div className="absolute z-[130] mt-1 w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-xs text-gray-500">
           Eşleşen model yok
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Aranabilir tasarim secici — kod/ad ile arama + kucuk gorsel onizleme.
+function DesignSearch({ designs, value, onSelect, designLabel }) {
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef(null)
+  useEffect(() => {
+    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+  const thumb = (d) => d && (d.thumbnail_url || d.file_url)
+  const sel = value ? designs.find(d => String(d.id) === String(value)) : null
+  const term = q.trim().toLowerCase()
+  const filtered = (!term
+    ? designs
+    : designs.filter(d => (designLabel(d) || '').toLowerCase().includes(term)
+        || (d.code || '').toLowerCase().includes(term))).slice(0, 80)
+
+  return (
+    <div ref={boxRef} className="relative flex-1 min-w-[150px]">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="input w-full flex items-center gap-2 text-left">
+        {sel ? (
+          <>
+            {thumb(sel)
+              ? <img src={thumb(sel)} alt="" className="w-6 h-6 rounded object-cover shrink-0" />
+              : <span className="shrink-0">🎨</span>}
+            <span className="truncate text-gray-200">{designLabel(sel)}</span>
+          </>
+        ) : <span className="text-gray-500">Tasarım seç… (ops.)</span>}
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto bg-brand-card border border-brand-border rounded-lg shadow-2xl">
+          <div className="p-1.5 sticky top-0 bg-brand-card border-b border-brand-border">
+            <input autoFocus className="input w-full !text-sm !py-1" placeholder="🔍 Tasarım ara (kod / ad)"
+              value={q} onChange={e => setQ(e.target.value)} />
+          </div>
+          <button type="button" onClick={() => { onSelect('', null); setOpen(false) }}
+            className="w-full text-left px-2.5 py-1.5 text-xs text-gray-500 hover:bg-brand-input">— Tasarım yok —</button>
+          {filtered.length === 0 ? (
+            <div className="p-3 text-xs text-gray-600">{designs.length ? 'Eşleşen tasarım yok' : 'Bu mağazada tasarım yok'}</div>
+          ) : filtered.map(d => (
+            <button type="button" key={d.id} onClick={() => { onSelect(String(d.id), d); setQ(''); setOpen(false) }}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-brand-input text-left">
+              {thumb(d)
+                ? <img src={thumb(d)} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                : <div className="w-8 h-8 rounded bg-brand-input flex items-center justify-center text-xs shrink-0">🎨</div>}
+              <div className="min-w-0">
+                <div className="text-xs text-gray-200 truncate">{d.name || d.title || '—'}</div>
+                <div className="text-[10px] font-mono text-accent">{d.code}</div>
+              </div>
+            </button>
+          ))}
         </div>
       )}
     </div>

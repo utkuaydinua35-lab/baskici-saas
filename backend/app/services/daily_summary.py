@@ -220,6 +220,15 @@ def send_daily_summary(db) -> int:
             if telegram.send_message(text):
                 sent += 1
             included_ids.append(t.id)
+            # Mobil push (sabah ozeti) — HTML etiketlerini temizleyip gonder
+            try:
+                import re as _re
+                from app.services import push
+                body = _re.sub(r"<[^>]+>", "", text).strip()
+                push.send_to_tenant(db, t.id, "☀️ Sabah özeti", body[:250],
+                                    url="/", tag="daily-summary")
+            except Exception:
+                pass
         except Exception as e:
             logger.warning(f"[daily_summary] tenant={t.id} hata: {e}")
 

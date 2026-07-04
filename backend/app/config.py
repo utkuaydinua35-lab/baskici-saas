@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     # AI model degisikligi icin master password. Bos ise model degisikligi engellenir.
     ai_model_master_password: str = Field("", alias="AI_MODEL_MASTER_PASSWORD")
 
+    # Web Push (PWA mobil bildirim) — VAPID anahtar cifti. Ikisi de bos ise push kapali.
+    # Uretmek icin: `python -m app.services.push --genkeys` (bir kez), ciktiyi .env'e yaz.
+    vapid_public_key: str = Field("", alias="VAPID_PUBLIC_KEY")
+    vapid_private_key: str = Field("", alias="VAPID_PRIVATE_KEY")
+    vapid_subject: str = Field("mailto:imalchera.gfx@gmail.com", alias="VAPID_SUBJECT")
+
     # SMTP (e-posta gonderimi — sifre sifirlama). Bos ise e-posta ozelligi kapali.
     smtp_host: str = Field("", alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")

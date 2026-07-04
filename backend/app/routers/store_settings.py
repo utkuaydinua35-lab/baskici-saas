@@ -228,3 +228,98 @@ def verify_domain(
             f"yayılıyorsa birkaç saat sonra tekrar deneyin."
         ),
     }
+
+
+# ─── Özel sayfalar + özel kod ────────────────────────────────
+
+MAX_PAGES = 20
+MAX_CODE_LEN = 20_000
+_PAGE_SLUG_BLOCKLIST = {
+    "urunler", "urun", "sepet", "odeme", "siparis", "koleksiyon",
+    "gizlilik", "mesafeli-satis", "iade", "api", "sayfa",
+}
+
+
+@router.get("/{store_id}/pages", response_model=dict)
+def get_pages(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    return {"pages": (store.config or {}).get("pages") or []}
+
+
+@router.put("/{store_id}/pages", response_model=dict)
+def put_pages(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Özel sayfalar: [{slug,title,content}] — düz metin (HTML render edilmez)."""
+    from app.routers.catalog import slugify
+
+    store = _get_store(db, user, store_id)
+    cleaned, seen = [], set()
+    for page in (body.get("pages") or [])[:MAX_PAGES]:
+        if not isinstance(page, dict):
+            continue
+        title = str(page.get("title") or "").strip()[:200]
+        if not title:
+            continue
+        slug = slugify(str(page.get("slug") or title))
+        if slug in _PAGE_SLUG_BLOCKLIST or slug in seen:
+            raise HTTPException(422, f"Sayfa adresi kullanılamaz: /{slug}")
+        seen.add(slug)
+        cleaned.append({
+            "slug": slug,
+            "title": title,
+            "content": str(page.get("content") or "")[:20_000],
+        })
+
+    config = dict(store.config or {})
+    config["pages"] = cleaned
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return {"pages": cleaned}
+
+
+@router.get("/{store_id}/custom-code", response_model=dict)
+def get_custom_code(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    code = (store.config or {}).get("custom_code") or {}
+    return {k: code.get(k, "") for k in ("head_html", "css", "body_html")}
+
+
+@router.put("/{store_id}/custom-code", response_model=dict)
+def put_custom_code(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Vitrine kod enjeksiyonu — YALNIZCA mağazanın kendi vitrininde çalışır
+    (panel/backend'e dokunmaz). Panel açık uyarı gösterir."""
+    store = _get_store(db, user, store_id)
+    code = {}
+    for key in ("head_html", "css", "body_html"):
+        value = str(body.get(key) or "")
+        if len(value) > MAX_CODE_LEN:
+            raise HTTPException(422, f"{key} çok uzun (max {MAX_CODE_LEN // 1000}KB)")
+        code[key] = value
+
+    config = dict(store.config or {})
+    if any(code.values()):
+        config["custom_code"] = code
+    else:
+        config.pop("custom_code", None)
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return code

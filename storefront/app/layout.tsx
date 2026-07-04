@@ -8,6 +8,7 @@ import Header from "@/components/Header";
 import AnnouncementBar from "@/components/AnnouncementBar";
 import CartDrawer from "@/components/CartDrawer";
 import Pixels from "@/components/Pixels";
+import CustomCode from "@/components/CustomCode";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
 const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
@@ -41,8 +42,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const [{ store_name, theme, contact, pixels: payloadPixels }, navCollections] =
-    await Promise.all([getThemePayload(), getCollections()]);
+  const [payload, navCollections] = await Promise.all([getThemePayload(), getCollections()]);
+  const { store_name, theme, contact, pixels: payloadPixels, pages = [], custom_code } = payload;
   const fontFamily = FONT_VAR[theme.font] || FONT_VAR.inter;
   const year = new Date().getFullYear();
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
@@ -63,6 +64,8 @@ export default async function RootLayout({
       }
     >
       <body className="min-h-full flex flex-col text-zinc-900" style={{ background: "var(--c-bg)" }}>
+        {custom_code?.css && <style dangerouslySetInnerHTML={{ __html: custom_code.css }} />}
+        {custom_code?.head_html && <CustomCode html={custom_code.head_html} />}
         <CartProvider>
           <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
           {theme.announcement.enabled && (
@@ -86,6 +89,11 @@ export default async function RootLayout({
                 <a href="/gizlilik" className="hover:text-zinc-800">Gizlilik ve KVKK</a>
                 <a href="/mesafeli-satis" className="hover:text-zinc-800">Mesafeli Satış Sözleşmesi</a>
                 <a href="/iade" className="hover:text-zinc-800">İade ve Değişim</a>
+                {pages.map((pg) => (
+                  <a key={pg.slug} href={`/sayfa/${pg.slug}`} className="hover:text-zinc-800">
+                    {pg.title}
+                  </a>
+                ))}
                 {instagram && (
                   <a href={`https://instagram.com/${instagram}`} target="_blank" rel="noopener noreferrer"
                     className="hover:text-zinc-800">
@@ -98,6 +106,7 @@ export default async function RootLayout({
               </div>
             </div>
           </footer>
+          {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
         </CartProvider>
       </body>
     </html>

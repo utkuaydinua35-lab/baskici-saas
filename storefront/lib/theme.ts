@@ -46,6 +46,8 @@ export interface ThemePayload {
   settings: Record<string, string | null>;
   contact: { email: string | null; phone: string | null; instagram: string | null };
   pixels?: { meta: string | null; ga4: string | null; tiktok: string | null };
+  pages?: { slug: string; title: string }[];
+  custom_code?: { head_html?: string; css?: string; body_html?: string } | null;
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };
 }
 

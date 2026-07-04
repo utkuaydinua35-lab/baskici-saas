@@ -522,6 +522,11 @@ def get_store_theme(
             "ga4": config.get("ga4_id"),
             "tiktok": config.get("tiktok_pixel_id"),
         },
+        "pages": [
+            {"slug": p_["slug"], "title": p_["title"]}
+            for p_ in (config.get("pages") or [])
+        ],
+        "custom_code": config.get("custom_code") or None,
         "legal": {
             "kvkk": config.get("kvkk_text") or None,
             "mesafeli_satis": config.get("mesafeli_satis_text") or None,
@@ -551,3 +556,20 @@ def resolve_host(
     if response is not None:
         response.headers["Cache-Control"] = "public, max-age=300"
     return {"slug": store.slug}
+
+
+@router.get("/{store_slug}/pages/{page_slug}")
+def get_page(
+    store_slug: str,
+    page_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Özel sayfa içeriği — düz metin (vitrin whitespace-pre-line render eder)."""
+    store = _resolve_store(db, store_slug)
+    for page in ((store.config or {}).get("pages") or []):
+        if page.get("slug") == page_slug:
+            response.headers["Cache-Control"] = "public, max-age=60"
+            return page
+    raise HTTPException(404, "Sayfa bulunamadı")

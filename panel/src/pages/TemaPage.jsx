@@ -35,6 +35,7 @@ export default function TemaPage() {
   const [msg, setMsg] = useState(null)
   const [saveCount, setSaveCount] = useState(0)  // iframe reload anahtarı
   const [openSection, setOpenSection] = useState(null)  // açık bölüm id'si
+  const [customCode, setCustomCode] = useState(null)     // {head_html, css, body_html}
 
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : 'http://localhost:3001')
@@ -42,12 +43,14 @@ export default function TemaPage() {
   const load = useCallback(async () => {
     if (!storeId) return
     try {
-      const [t, c] = await Promise.all([
+      const [t, c, cc] = await Promise.all([
         api.get(`/api/store-settings/${storeId}/theme`),
         api.get(`/api/catalog/collections?store_id=${storeId}`),
+        api.get(`/api/store-settings/${storeId}/custom-code`),
       ])
       setTheme(t)
       setCollections(c.filter(x => x.is_active))
+      setCustomCode(cc)
     } catch (e) {
       setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Tema yüklenemedi' })
     }
@@ -57,7 +60,11 @@ export default function TemaPage() {
   const save = async () => {
     setBusy(true); setMsg(null)
     try {
-      setTheme(await api.put(`/api/store-settings/${storeId}/theme`, theme))
+      const [t] = await Promise.all([
+        api.put(`/api/store-settings/${storeId}/theme`, theme),
+        customCode ? api.put(`/api/store-settings/${storeId}/custom-code`, customCode) : Promise.resolve(),
+      ])
+      setTheme(t)
       setSaveCount(n => n + 1)
       setMsg({ ok: true, text: 'Tema kaydedildi ✓ (vitrin ~1 dk içinde güncellenir)' })
     } catch (e) {
@@ -223,6 +230,36 @@ export default function TemaPage() {
             onChange={v => set('animations.hover_zoom', v)} label="Ürün görseline yakınlaşma (hover)" />
           <Toggle checked={theme.animations.cart_drawer}
             onChange={v => set('animations.cart_drawer', v)} label="Sepet çekmecesi (yandan kayan)" />
+        </Section>
+
+        <Section title="Özel Kod (Gelişmiş)" icon="⚡">
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            ⚠️ Buraya eklenen kod vitrininizde aynen çalışır — yalnızca güvendiğiniz
+            kodu ekleyin. Panel ve yönetim sistemleri etkilenmez.
+          </p>
+          {customCode && (
+            <>
+              <label className="block text-sm">
+                <span className="text-panel-muted text-xs">Özel CSS</span>
+                <textarea className="input mt-1 font-mono text-xs" rows={4} maxLength={20000}
+                  value={customCode.css}
+                  onChange={e => setCustomCode(c => ({ ...c, css: e.target.value }))}
+                  placeholder=".urun-karti { border-radius: 0; }" />
+              </label>
+              <label className="block text-sm">
+                <span className="text-panel-muted text-xs">Üst kod (sayfa başı — script/HTML)</span>
+                <textarea className="input mt-1 font-mono text-xs" rows={3} maxLength={20000}
+                  value={customCode.head_html}
+                  onChange={e => setCustomCode(c => ({ ...c, head_html: e.target.value }))} />
+              </label>
+              <label className="block text-sm">
+                <span className="text-panel-muted text-xs">Alt kod (sayfa sonu — script/HTML)</span>
+                <textarea className="input mt-1 font-mono text-xs" rows={3} maxLength={20000}
+                  value={customCode.body_html}
+                  onChange={e => setCustomCode(c => ({ ...c, body_html: e.target.value }))} />
+              </label>
+            </>
+          )}
         </Section>
 
         <Section title="Footer" icon="🦶">

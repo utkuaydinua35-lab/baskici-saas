@@ -61,3 +61,17 @@ jobs:
       - name: Build
         working-directory: storefront
         run: npm run build
+
+  panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: panel
+        run: npm ci
+      - name: Build
+        working-directory: panel
+        run: npm run build

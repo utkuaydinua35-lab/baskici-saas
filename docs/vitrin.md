@@ -104,3 +104,44 @@ WantedBy=multi-user.target
 - [ ] Yasal sayfalardaki şirket bilgisi placeholder'ları dolduruldu
 - [ ] SMTP ayarlı (onay e-postaları için)
 - [ ] Düşük tutarlı gerçek kartla test siparişi verildi ve iade edildi
+
+## Mağaza Paneli (panel/)
+
+Mağaza yönetimi Baskıcı'dan AYRI bir uygulamadır: `panel/` (Vite+React, açık tema).
+Hesaplar ortak (`/api/auth/login`, `vitrin` izni şart); veritabanı/backend ortak —
+siparişler üretim hattına aynen akar.
+
+Dev: `cd panel && npm ci && npm run dev` → http://localhost:5175 (backend :8000 açıkken).
+
+### Caddy (panel + özel domain)
+
+```caddyfile
+panel.magaza.bernzcompany.com {
+    handle /api/* { reverse_proxy 127.0.0.1:8000 }
+    handle /storage/* { reverse_proxy 127.0.0.1:8000 }
+    handle {
+        root * /srv/baskici/panel/dist
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+magaza.bernzcompany.com {
+    reverse_proxy 127.0.0.1:3001   # Next.js vitrin
+}
+
+# Müşterinin bağladığı özel domain (panel > Ayarlar > Domain Bağlama sonrası):
+# markadomain.com {
+#     reverse_proxy 127.0.0.1:3001
+# }
+```
+
+Vitrin `Host` başlığından mağazayı çözer (`/api/shop/_resolve`) — tek Next süreci
+birden fazla domain'e hizmet eder. `DEFAULT_HOSTS` env'i (virgülle) varsayılan
+host'ları tanımlar; `SERVER_IP` env'i paneldeki DNS Doğrula butonunun beklediği IP'dir.
+
+### Deploy adımları (ek)
+
+```bash
+cd panel && npm ci && npm run build   # dist/ → /srv/baskici/panel/dist (rsync)
+```

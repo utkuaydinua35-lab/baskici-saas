@@ -54,11 +54,8 @@ const DealerDashboardPage = lazyWithReload(() => import('./pages/DealerDashboard
 const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
 const PlatformPage = lazyWithReload(() => import('./pages/PlatformPage'))
 const PazarlamaPage = lazyWithReload(() => import('./pages/PazarlamaPage'))
-const VitrinPage = lazyWithReload(() => import('./pages/VitrinPage'))
-const KuponlarPage = lazyWithReload(() => import('./pages/KuponlarPage'))
 const MusterilerPage = lazyWithReload(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazyWithReload(() => import('./pages/AnalitikPage'))
-const TerkSepetlerPage = lazyWithReload(() => import('./pages/TerkSepetlerPage'))
 
 function PageLoader() {
   return (
@@ -109,11 +106,8 @@ export default function App() {
             <Route path="/denetim" element={<AuditPage />} />
             <Route path="/platform" element={<PlatformPage />} />
             <Route path="/pazarlama" element={<PazarlamaPage />} />
-            <Route path="/vitrin" element={<VitrinPage />} />
-            <Route path="/kuponlar" element={<KuponlarPage />} />
             <Route path="/musteriler" element={<MusterilerPage />} />
             <Route path="/analitik" element={<AnalitikPage />} />
-            <Route path="/terk-sepetler" element={<TerkSepetlerPage />} />
           </Route>
         </Route>
 

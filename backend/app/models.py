@@ -1353,6 +1353,9 @@ class CatalogVariant(Base):
 
     model_key: Mapped[str] = mapped_column(String(60))
     model_display: Mapped[str] = mapped_column(String(120))
+    # Marka (Apple/Samsung/...) — vitrinde iki kademeli seçim (marka → model).
+    # PhoneModel.brand'den doldurulur; null → "Diğer" grubunda gösterilir.
+    brand: Mapped[str | None] = mapped_column(String(40), nullable=True)
     variation: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     sku: Mapped[str | None] = mapped_column(String(100), nullable=True)

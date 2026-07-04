@@ -348,6 +348,7 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
       <table className="w-full text-xs">
         <thead className="text-panel-muted bg-panel-input sticky top-0">
           <tr>
+            <th className="text-left px-3 py-2">Marka</th>
             <th className="text-left px-3 py-2">Model</th>
             <th className="text-left px-3 py-2">Renk</th>
             <th className="text-right px-3 py-2">Fiyat (₺)</th>
@@ -359,6 +360,7 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
         <tbody>
           {product.variants.map(v => (
             <tr key={v.id} className={`border-t border-panel-border ${!v.is_active ? 'opacity-50' : ''}`}>
+              <td className="px-3 py-1.5 text-panel-muted">{v.brand || '—'}</td>
               <td className="px-3 py-1.5">{v.model_display}</td>
               <td className="px-3 py-1.5">{v.variation || '—'}</td>
               <td className="px-1 py-1 tabular-nums">

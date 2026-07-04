@@ -89,6 +89,7 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
                 "id": str(v.id),
                 "model_key": v.model_key,
                 "model_display": v.model_display,
+                "brand": v.brand,
                 "variation": v.variation,
                 "price": _effective_price(p, v),
                 "in_stock": (not v.track_stock) or v.quantity > 0,

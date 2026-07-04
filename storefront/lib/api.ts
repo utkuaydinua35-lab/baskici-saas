@@ -46,6 +46,7 @@ export interface ProductVariant {
   id: string;
   model_key: string;
   model_display: string;
+  brand: string | null;
   variation: string | null;
   price: string;
   in_stock: boolean;

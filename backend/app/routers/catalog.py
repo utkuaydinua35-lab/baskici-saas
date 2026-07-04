@@ -77,6 +77,7 @@ class ProductUpdate(BaseModel):
 class VariantCreate(BaseModel):
     model_key: str = Field(..., min_length=1, max_length=60)
     model_display: str = Field(..., min_length=1, max_length=120)
+    brand: str | None = Field(None, max_length=40)
     variation: str | None = Field(None, max_length=30)
     sku: str | None = Field(None, max_length=100)
     price_override: Decimal | None = Field(None, ge=0)
@@ -87,6 +88,7 @@ class VariantCreate(BaseModel):
 
 
 class VariantUpdate(BaseModel):
+    brand: str | None = Field(None, max_length=40)
     variation: str | None = Field(None, max_length=30)
     sku: str | None = Field(None, max_length=100)
     price_override: Decimal | None = Field(None, ge=0)
@@ -142,6 +144,7 @@ def _serialize_variant(v: CatalogVariant) -> dict:
         "id": str(v.id),
         "model_key": v.model_key,
         "model_display": v.model_display,
+        "brand": v.brand,
         "variation": v.variation,
         "sku": v.sku,
         "price_override": str(v.price_override) if v.price_override is not None else None,
@@ -314,8 +317,11 @@ def create_variant(
     ))
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, "Bu model+varyasyon zaten mevcut")
-    variant = CatalogVariant(tenant_id=user.tenant_id, product_id=product.id,
-                             **body.model_dump())
+    payload = body.model_dump()
+    if not payload.get("brand"):
+        from app.services.brands import infer_brand
+        payload["brand"] = infer_brand(payload.get("model_display"))
+    variant = CatalogVariant(tenant_id=user.tenant_id, product_id=product.id, **payload)
     db.add(variant)
     db.commit()
     db.refresh(variant)
@@ -358,11 +364,13 @@ def bulk_create_variants(
         for var in variations:
             if (pm.spec_key, var) in existing:
                 continue
+            from app.services.brands import infer_brand
             db.add(CatalogVariant(
                 tenant_id=user.tenant_id,
                 product_id=product.id,
                 model_key=pm.spec_key,
                 model_display=pm.display_name,
+                brand=pm.brand or infer_brand(pm.display_name),
                 variation=var,
                 quantity=body.quantity,
                 position=pos,
@@ -874,10 +882,11 @@ async def import_csv(
                     model_adi = (row.get("model_adi") or "").strip()
                     if not model_adi:
                         raise ValueError("yeni varyant için model_adi zorunlu")
+                    from app.services.brands import infer_brand
                     variant = CatalogVariant(
                         tenant_id=user.tenant_id, product_id=product.id,
                         model_key=model_key[:60], model_display=model_adi[:120],
-                        variation=renk)
+                        brand=infer_brand(model_adi), variation=renk)
                     db.add(variant)
                     product.variants.append(variant)
                     stats["variants_created"] += 1

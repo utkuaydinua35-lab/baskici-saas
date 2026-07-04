@@ -418,37 +418,47 @@ def delete_variant(
 
 @router.post("/products/{product_id}/images", response_model=dict,
              status_code=status.HTTP_201_CREATED)
-async def upload_image(
+async def upload_images(
     product_id: uuid.UUID,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     alt: str | None = Form(None),
     variant_id: uuid.UUID | None = Form(None),
-    position: int = Form(0),
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    product = _get_product(db, user.tenant_id, product_id)
-    data = await file.read()
-    image_id = uuid.uuid4()
-    try:
-        rel_path = storage_svc.save_catalog_image(
-            user.tenant_id, image_id, data, file.filename or "gorsel.png")
-    except ValueError as e:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    """Çoklu görsel yükleme (max 10/istek) — büyük fotoğraflar sunucuda
+    otomatik optimize edilir (25MB'a kadar kabul)."""
+    product = _get_product(db, user.tenant_id, product_id, eager=True)
+    if len(files) > 10:
+        raise HTTPException(422, "Tek seferde en fazla 10 görsel yüklenebilir")
 
-    image = CatalogImage(
-        id=image_id,
-        tenant_id=user.tenant_id,
-        product_id=product.id,
-        variant_id=variant_id,
-        file_path=rel_path,
-        alt=(alt or "")[:200] or None,
-        position=position,
-    )
-    db.add(image)
+    next_pos = max([im.position for im in product.images], default=-1) + 1
+    uploaded, errors = [], []
+    for n, file in enumerate(files):
+        data = await file.read()
+        image_id = uuid.uuid4()
+        try:
+            rel_path = storage_svc.save_catalog_image(
+                user.tenant_id, image_id, data, file.filename or "gorsel.jpg")
+        except ValueError as e:
+            errors.append({"dosya": file.filename, "mesaj": str(e)})
+            continue
+        image = CatalogImage(
+            id=image_id,
+            tenant_id=user.tenant_id,
+            product_id=product.id,
+            variant_id=variant_id,
+            file_path=rel_path,
+            alt=(alt or "")[:200] or None,
+            position=next_pos + n,
+        )
+        db.add(image)
+        db.flush()
+        uploaded.append(_serialize_image(image))
+    if not uploaded and errors:
+        raise HTTPException(422, errors[0]["mesaj"])
     db.commit()
-    db.refresh(image)
-    return _serialize_image(image)
+    return {"images": uploaded, "errors": errors}
 
 
 @router.delete("/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)

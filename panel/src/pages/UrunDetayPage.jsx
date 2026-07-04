@@ -215,6 +215,8 @@ function Field({ label, children }) {
 function ImagesSection({ product, onChanged, setMsg }) {
   const [order, setOrder] = useState(product.images.map(im => im.id))
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState(null)   // "3/5"
+  const [dropActive, setDropActive] = useState(false)
   const dragId = useRef(null)
 
   useEffect(() => { setOrder(product.images.map(im => im.id)) }, [product.images])
@@ -230,18 +232,32 @@ function ImagesSection({ product, onChanged, setMsg }) {
   }
 
   const upload = async (files) => {
-    if (!files?.length) return
+    const list = [...(files || [])].filter(f => f.type.startsWith('image/'))
+    if (!list.length) return
     setBusy(true)
     try {
-      for (const file of files) {
+      // 5'erli gruplar halinde tek istekte yükle (sunucu optimize eder — 25MB'a kadar)
+      const CHUNK = 5
+      let done = 0
+      const allErrors = []
+      for (let i = 0; i < list.length; i += CHUNK) {
+        const chunk = list.slice(i, i + CHUNK)
+        setProgress(`${done + 1}-${done + chunk.length}/${list.length}`)
         const fd = new FormData()
-        fd.append('file', file)
-        await api.postForm(`/api/catalog/products/${product.id}/images`, fd)
+        for (const f of chunk) fd.append('files', f)
+        const r = await api.postForm(`/api/catalog/products/${product.id}/images`, fd)
+        allErrors.push(...(r.errors || []))
+        done += chunk.length
       }
       await onChanged()
+      if (allErrors.length) {
+        setMsg({ ok: false, text: `${allErrors.length} dosya yüklenemedi: ${allErrors[0].mesaj}` })
+      } else {
+        setMsg({ ok: true, text: `${list.length} görsel yüklendi ✓ (otomatik optimize edildi)` })
+      }
     } catch (e) {
       setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Görsel yüklenemedi' })
-    } finally { setBusy(false) }
+    } finally { setBusy(false); setProgress(null) }
   }
 
   const remove = async (id) => {
@@ -250,10 +266,23 @@ function ImagesSection({ product, onChanged, setMsg }) {
   }
 
   return (
-    <section className="card space-y-3">
+    <section
+      className={`card space-y-3 transition ${dropActive ? 'ring-2 ring-panel-accent ring-offset-2 !bg-emerald-50/50' : ''}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDropActive(true) }
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(e) => {
+        if (!e.dataTransfer?.files?.length) return
+        e.preventDefault(); setDropActive(false)
+        upload(e.dataTransfer.files)
+      }}>
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-semibold">Görseller</h2>
-        <span className="text-[11px] text-panel-muted">— sürükleyerek sıralayın; ilk görsel kapaktır</span>
+        <span className="text-[11px] text-panel-muted">
+          — sürükleyip bırakın veya seçin; ilk görsel kapaktır · 25MB'a kadar, otomatik küçültülür
+        </span>
+        {progress && <span className="text-[11px] text-panel-accent ml-auto">Yükleniyor {progress}…</span>}
       </div>
       <div className="flex gap-2.5 flex-wrap">
         {order.map((id, idx) => {

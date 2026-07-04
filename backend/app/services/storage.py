@@ -203,11 +203,13 @@ def save_logo(tenant_id, kind: str, file_data: bytes, ext: str) -> str:
 # ─── Vitrin (katalog) görselleri ─────────────────────────────
 
 CATALOG_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
-MAX_CATALOG_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+# Kabul sınırı — diske OPTIMIZE edilmiş küçük dosya yazılır (services/images.py)
+MAX_CATALOG_IMAGE_SIZE = 25 * 1024 * 1024  # 25 MB
 
 
 def save_catalog_image(tenant_id, image_id, file_data: bytes, original_filename: str) -> str:
-    """Vitrin ürün görselini kaydet. Dönüş: relative_path (tenants/.../catalog/..)."""
+    """Vitrin ürün görselini optimize edip kaydet (Shopify davranışı:
+    büyük fotoğraf reddedilmez, küçültülür). Dönüş: relative_path."""
     ext = get_extension(original_filename)
     if ext not in CATALOG_IMAGE_EXTENSIONS:
         raise ValueError(
@@ -216,6 +218,9 @@ def save_catalog_image(tenant_id, image_id, file_data: bytes, original_filename:
         )
     if len(file_data) > MAX_CATALOG_IMAGE_SIZE:
         raise ValueError(f"Görsel çok büyük (max {MAX_CATALOG_IMAGE_SIZE // 1024 // 1024} MB)")
+
+    from app.services.images import optimize_image
+    file_data, ext = optimize_image(file_data, max_px=2048)
 
     rel_dir = Path("tenants") / str(tenant_id) / "catalog"
     full_dir = STORAGE_ROOT / rel_dir
@@ -245,7 +250,7 @@ def delete_catalog_image(relative_path: str) -> bool:
 STORE_ASSET_KINDS = {"logo", "favicon", "hero"}
 # SVG bilinçli olarak yok: SafeStaticFiles XSS koruması SVG'yi inline göstermez
 STORE_ASSET_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "ico"}
-MAX_STORE_ASSET_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_STORE_ASSET_SIZE = 25 * 1024 * 1024  # 25 MB (kabul; diske optimize yazılır)
 
 
 def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_filename: str) -> str:
@@ -258,6 +263,11 @@ def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_
             f"İzin verilen formatlar: {', '.join(sorted(STORE_ASSET_EXTENSIONS))}")
     if len(file_data) > MAX_STORE_ASSET_SIZE:
         raise ValueError(f"Dosya çok büyük (max {MAX_STORE_ASSET_SIZE // 1024 // 1024} MB)")
+
+    if ext != "ico":  # ico binary formatı Pillow round-trip'ine sokulmaz
+        from app.services.images import optimize_image
+        file_data, ext = optimize_image(
+            file_data, max_px=512 if kind == "favicon" else 2560)
 
     import time
     rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)

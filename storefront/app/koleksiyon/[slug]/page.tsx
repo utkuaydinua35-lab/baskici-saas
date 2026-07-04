@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
+
 interface Props {
   params: Promise<{ slug: string }>;
 }
@@ -15,6 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: collection.title,
     description: collection.description || `${collection.title} koleksiyonu — baskılı telefon kılıfları.`,
+    alternates: { canonical: `${SITE_URL}/koleksiyon/${slug}` },
   };
 }
 

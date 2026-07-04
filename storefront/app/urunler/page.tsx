@@ -6,6 +6,9 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Ürünler",
   description: "Tüm baskılı telefon kılıfı tasarımları — modelini seç, sipariş ver.",
+  alternates: {
+    canonical: `${(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "")}/urunler`,
+  },
 };
 
 export default async function ProductsPage({

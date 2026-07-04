@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 
 // Ürünler — katalog yönetimi (Faz 4'te tam sayfa editöre genişleyecek).
@@ -13,6 +13,21 @@ export default function UrunlerPage() {
   const [loading, setLoading] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+
+  const exportCsv = async () => {
+    try {
+      const res = await fetch(`/api/catalog/export?store_id=${storeId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'urunler.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch { setError('Dışa aktarma başarısız') }
+  }
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -51,7 +66,11 @@ export default function UrunlerPage() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Ürünler</h1>
         <span className="text-sm text-panel-muted">{products.length} ürün</span>
-        <button onClick={() => setShowCreate(true)} className="btn-primary ml-auto">+ Yeni Ürün</button>
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
+          <button onClick={() => setShowImport(true)} className="btn-ghost text-xs">⬆ İçe Aktar</button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary">+ Yeni Ürün</button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -104,6 +123,11 @@ export default function UrunlerPage() {
         </div>
       )}
 
+      {showImport && (
+        <ImportModal storeId={storeId}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); load() }} />
+      )}
       {showCreate && (
         <CreateProductModal storeId={storeId}
           onClose={() => setShowCreate(false)}
@@ -194,3 +218,98 @@ function CreateProductModal({ storeId, onClose, onCreated }) {
   )
 }
 
+
+// CSV içe aktarma — önce dry-run önizleme, onayla → gerçek import.
+function ImportModal({ storeId, onClose, onDone }) {
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(null)   // dry-run sonucu
+  const [result, setResult] = useState(null)     // gerçek import sonucu
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const run = async (dryRun) => {
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await api.postForm(
+        `/api/catalog/import?store_id=${storeId}&dry_run=${dryRun}`, fd)
+      dryRun ? setPreview(r) : setResult(r)
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'İşlem başarısız')
+    } finally { setBusy(false) }
+  }
+
+  const Stat = ({ n, label }) => (
+    <div className="bg-panel-input rounded-xl p-2.5 text-center">
+      <div className="text-lg font-semibold tabular-nums">{n}</div>
+      <div className="text-[10px] text-panel-muted">{label}</div>
+    </div>
+  )
+
+  return (
+    <Modal title="CSV İçe Aktar" onClose={onClose} wide>
+      <div className="space-y-4">
+        <p className="text-xs text-panel-muted">
+          Şablon için önce <b>Dışa Aktar</b>'ı kullanın. Eşleştirme: ürün = <code>urun_slug</code>,
+          varyant = <code>model_key + renk</code>. Var olanlar güncellenir, olmayanlar oluşturulur.
+        </p>
+
+        {!preview && !result && (
+          <>
+            <label className="block border-2 border-dashed border-panel-border rounded-xl p-6 text-center cursor-pointer hover:border-slate-400">
+              <input type="file" accept=".csv,text/csv" className="hidden"
+                onChange={e => setFile(e.target.files?.[0] || null)} />
+              {file ? <span className="text-sm font-medium">{file.name}</span>
+                : <span className="text-sm text-panel-muted">CSV dosyası seçin</span>}
+            </label>
+            <button onClick={() => run(true)} disabled={!file || busy} className="btn-primary w-full">
+              {busy ? 'İnceleniyor…' : 'Önizle (henüz uygulanmaz)'}
+            </button>
+          </>
+        )}
+
+        {preview && !result && (
+          <>
+            <div className="grid grid-cols-4 gap-2">
+              <Stat n={preview.products_created} label="yeni ürün" />
+              <Stat n={preview.products_updated} label="güncellenecek ürün" />
+              <Stat n={preview.variants_created} label="yeni varyant" />
+              <Stat n={preview.variants_updated} label="güncellenecek varyant" />
+            </div>
+            {preview.errors.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 max-h-32 overflow-y-auto">
+                <div className="text-xs font-medium text-amber-800 mb-1">
+                  {preview.errors.length} satır atlanacak:
+                </div>
+                {preview.errors.map((e, i) => (
+                  <div key={i} className="text-[11px] text-amber-700">Satır {e.satir}: {e.mesaj}</div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setPreview(null)} className="btn-ghost flex-1">Geri</button>
+              <button onClick={() => run(false)} disabled={busy} className="btn-primary flex-1">
+                {busy ? 'Uygulanıyor…' : 'Onayla ve Uygula'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {result && (
+          <div className="text-center space-y-3">
+            <div className="text-3xl">✅</div>
+            <p className="text-sm">
+              {result.products_created} yeni + {result.products_updated} güncellenen ürün,{' '}
+              {result.variants_created} yeni + {result.variants_updated} güncellenen varyant.
+            </p>
+            <button onClick={onDone} className="btn-primary">Tamam</button>
+          </div>
+        )}
+
+        {err && <p className="text-sm text-red-600">{err}</p>}
+      </div>
+    </Modal>
+  )
+}

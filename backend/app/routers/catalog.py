@@ -684,3 +684,225 @@ def bulk_status(
     )
     db.commit()
     return {"updated": result.rowcount, "status": body.status}
+
+
+# ─── CSV Export / Import ─────────────────────────────────────
+
+CSV_COLUMNS = [
+    "urun_slug", "urun_adi", "durum", "fiyat", "indirim_oncesi", "aciklama",
+    "etiketler", "koleksiyonlar", "seo_baslik", "seo_aciklama",
+    "model_key", "model_adi", "renk", "sku", "varyant_fiyat", "stok", "varyant_aktif",
+]
+IMPORT_ROW_LIMIT = 5000
+
+
+@router.get("/export")
+def export_csv(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Katalog CSV'si — satır = varyant (varyantsız ürün tek satır).
+    UTF-8 BOM: Excel Türkçe karakterleri doğru açsın."""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    _get_storefront_store(db, user.tenant_id, store_id)
+    products = db.scalars(
+        select(CatalogProduct)
+        .where(CatalogProduct.store_id == store_id)
+        .options(selectinload(CatalogProduct.variants),
+                 selectinload(CatalogProduct.collections))
+        .order_by(CatalogProduct.position, CatalogProduct.created_at)
+    ).all()
+
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM
+    writer = csv.writer(buf)
+    writer.writerow(CSV_COLUMNS)
+    for p in products:
+        base = [
+            p.slug, p.title, p.status, str(p.base_price),
+            str(p.compare_at_price) if p.compare_at_price is not None else "",
+            p.description or "", p.tags or "",
+            ", ".join(c.title for c in p.collections),
+            p.seo_title or "", p.seo_description or "",
+        ]
+        if p.variants:
+            for v in p.variants:
+                writer.writerow(base + [
+                    v.model_key, v.model_display, v.variation or "",
+                    v.sku or "",
+                    str(v.price_override) if v.price_override is not None else "",
+                    str(v.quantity), "1" if v.is_active else "0",
+                ])
+        else:
+            writer.writerow(base + [""] * 7)
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="urunler.csv"'},
+    )
+
+
+@router.post("/import", response_model=dict)
+async def import_csv(
+    store_id: uuid.UUID,
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """CSV içe aktarma — upsert: ürün=urun_slug, varyant=(model_key, renk).
+
+    dry_run=true: hiçbir şey yazılmaz, yalnızca ne olacağı raporlanır.
+    Hatalı satırlar atlanır ve raporlanır; sağlam satırlar işlenir.
+    """
+    import csv
+    import io
+    from decimal import Decimal, InvalidOperation
+
+    from app.models import CatalogCollection
+
+    _get_storefront_store(db, user.tenant_id, store_id)
+
+    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames or "urun_slug" not in reader.fieldnames:
+        raise HTTPException(422, "Geçersiz CSV — başlık satırında 'urun_slug' bulunamadı "
+                                 "(önce Dışa Aktar ile şablon alın)")
+
+    stats = {"products_created": 0, "products_updated": 0,
+             "variants_created": 0, "variants_updated": 0, "errors": []}
+    products_cache: dict[str, CatalogProduct] = {}
+    collections_cache: dict[str, CatalogCollection] = {
+        c.title.strip().lower(): c
+        for c in db.scalars(select(CatalogCollection).where(
+            CatalogCollection.store_id == store_id)).all()
+    }
+
+    def _dec(val, satir, alan):
+        if val in (None, ""):
+            return None
+        try:
+            return Decimal(str(val).replace(",", ".").strip())
+        except InvalidOperation:
+            raise ValueError(f"{alan} geçersiz sayı: {val}")
+
+    for n, row in enumerate(reader, start=2):  # 1 = başlık
+        if n - 1 > IMPORT_ROW_LIMIT:
+            stats["errors"].append({"satir": n, "mesaj": f"Satır limiti ({IMPORT_ROW_LIMIT}) aşıldı — kalanlar atlandı"})
+            break
+        try:
+            raw_slug = (row.get("urun_slug") or "").strip()
+            if not raw_slug:
+                raise ValueError("urun_slug boş")
+            slug = slugify(raw_slug)
+
+            product = products_cache.get(slug) or db.scalar(
+                select(CatalogProduct).where(
+                    CatalogProduct.store_id == store_id, CatalogProduct.slug == slug)
+                .options(selectinload(CatalogProduct.variants)))
+
+            fiyat = _dec(row.get("fiyat"), n, "fiyat")
+            if product is None:
+                if not (row.get("urun_adi") or "").strip():
+                    raise ValueError("yeni ürün için urun_adi zorunlu")
+                if fiyat is None:
+                    raise ValueError("yeni ürün için fiyat zorunlu")
+                product = CatalogProduct(
+                    tenant_id=user.tenant_id, store_id=store_id, slug=slug,
+                    title=row["urun_adi"].strip()[:300], base_price=fiyat,
+                    status="draft",
+                )
+                db.add(product)
+                db.flush()
+                products_cache[slug] = product
+                stats["products_created"] += 1
+            elif slug not in products_cache:
+                products_cache[slug] = product
+                stats["products_updated"] += 1
+
+            # Ürün alanları (doluysa güncelle)
+            if (row.get("urun_adi") or "").strip():
+                product.title = row["urun_adi"].strip()[:300]
+            if fiyat is not None:
+                product.base_price = fiyat
+            durum = (row.get("durum") or "").strip()
+            if durum in ("draft", "active", "archived"):
+                product.status = durum
+            cmp_ = _dec(row.get("indirim_oncesi"), n, "indirim_oncesi")
+            if cmp_ is not None:
+                product.compare_at_price = cmp_
+            for csv_key, attr, maxlen in (
+                ("aciklama", "description", 20000), ("etiketler", "tags", 500),
+                ("seo_baslik", "seo_title", 200), ("seo_aciklama", "seo_description", 400),
+            ):
+                val = (row.get(csv_key) or "").strip()
+                if val:
+                    setattr(product, attr, val[:maxlen])
+
+            # Koleksiyonlar (ad ile; yoksa oluştur)
+            col_names = [c.strip() for c in (row.get("koleksiyonlar") or "").split(",") if c.strip()]
+            if col_names:
+                cols = []
+                for name in col_names:
+                    key = name.lower()
+                    col = collections_cache.get(key)
+                    if not col:
+                        col = CatalogCollection(
+                            tenant_id=user.tenant_id, store_id=store_id,
+                            slug=slugify(name), title=name[:200])
+                        db.add(col)
+                        db.flush()
+                        collections_cache[key] = col
+                    cols.append(col)
+                product.collections = cols
+
+            # Varyant satırı
+            model_key = (row.get("model_key") or "").strip()
+            if model_key:
+                renk = (row.get("renk") or "").strip().upper() or None
+                variant = next(
+                    (v for v in product.variants
+                     if v.model_key == model_key and v.variation == renk), None)
+                if variant is None:
+                    model_adi = (row.get("model_adi") or "").strip()
+                    if not model_adi:
+                        raise ValueError("yeni varyant için model_adi zorunlu")
+                    variant = CatalogVariant(
+                        tenant_id=user.tenant_id, product_id=product.id,
+                        model_key=model_key[:60], model_display=model_adi[:120],
+                        variation=renk)
+                    db.add(variant)
+                    product.variants.append(variant)
+                    stats["variants_created"] += 1
+                else:
+                    stats["variants_updated"] += 1
+                if (row.get("model_adi") or "").strip():
+                    variant.model_display = row["model_adi"].strip()[:120]
+                if (row.get("sku") or "").strip():
+                    variant.sku = row["sku"].strip()[:100]
+                vfiyat = _dec(row.get("varyant_fiyat"), n, "varyant_fiyat")
+                if vfiyat is not None:
+                    variant.price_override = vfiyat
+                stok = (row.get("stok") or "").strip()
+                if stok:
+                    variant.quantity = max(0, int(float(stok)))
+                aktif = (row.get("varyant_aktif") or "").strip()
+                if aktif in ("0", "1"):
+                    variant.is_active = aktif == "1"
+        except (ValueError, KeyError) as e:
+            stats["errors"].append({"satir": n, "mesaj": str(e)[:200]})
+
+    if dry_run:
+        db.rollback()
+        stats["dry_run"] = True
+    else:
+        db.commit()
+        stats["dry_run"] = False
+    return stats

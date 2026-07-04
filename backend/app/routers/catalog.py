@@ -598,3 +598,89 @@ def set_product_collections(
     db.commit()
     return {"product_id": str(product.id),
             "collection_ids": [str(c.id) for c in product.collections]}
+
+
+# ─── Zengin ürün editörü (görsel sırası, çoğaltma, toplu durum) ──
+
+class ImageOrderRequest(BaseModel):
+    image_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=50)
+
+
+class BulkStatusRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    status: str = Field(..., pattern="^(draft|active|archived)$")
+
+
+@router.put("/products/{product_id}/images/order", response_model=dict)
+def reorder_images(
+    product_id: uuid.UUID,
+    body: ImageOrderRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Görsel sırası — verilen id listesi yeni pozisyon sırasıdır (ilk = kapak)."""
+    product = _get_product(db, user.tenant_id, product_id, eager=True)
+    by_id = {im.id: im for im in product.images}
+    if set(body.image_ids) != set(by_id.keys()):
+        raise HTTPException(422, "Görsel listesi ürünün görselleriyle eşleşmiyor")
+    for pos, image_id in enumerate(body.image_ids):
+        by_id[image_id].position = pos
+    db.commit()
+    return {"ok": True, "order": [str(i) for i in body.image_ids]}
+
+
+@router.post("/products/{product_id}/duplicate", response_model=dict,
+             status_code=status.HTTP_201_CREATED)
+def duplicate_product(
+    product_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ürünü varyant + koleksiyon bağlarıyla kopyala (taslak; görseller hariç)."""
+    src = _get_product(db, user.tenant_id, product_id, eager=True)
+
+    slug = f"{src.slug}-kopya"
+    if db.scalar(select(CatalogProduct).where(
+            CatalogProduct.store_id == src.store_id, CatalogProduct.slug == slug)):
+        slug = f"{src.slug}-kopya-{uuid.uuid4().hex[:6]}"
+
+    copy = CatalogProduct(
+        tenant_id=src.tenant_id, store_id=src.store_id,
+        slug=slug, title=f"{src.title} (Kopya)",
+        description=src.description, status="draft",
+        seo_title=src.seo_title, seo_description=src.seo_description,
+        base_price=src.base_price, compare_at_price=src.compare_at_price,
+        tags=src.tags, position=src.position,
+    )
+    db.add(copy)
+    db.flush()
+    for v in src.variants:
+        db.add(CatalogVariant(
+            tenant_id=v.tenant_id, product_id=copy.id,
+            model_key=v.model_key, model_display=v.model_display,
+            variation=v.variation, sku=None,  # SKU tekil kalsın — kopyalanmaz
+            price_override=v.price_override, quantity=v.quantity,
+            track_stock=v.track_stock, stock_item_id=v.stock_item_id,
+            is_active=v.is_active, position=v.position,
+        ))
+    copy.collections = list(src.collections)
+    db.commit()
+    db.refresh(copy)
+    return _serialize_product(copy, full=True)
+
+
+@router.post("/products/bulk-status", response_model=dict)
+def bulk_status(
+    body: BulkStatusRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import update as sa_update
+    result = db.execute(
+        sa_update(CatalogProduct)
+        .where(CatalogProduct.id.in_(body.ids),
+               CatalogProduct.tenant_id == user.tenant_id)
+        .values(status=body.status)
+    )
+    db.commit()
+    return {"updated": result.rowcount, "status": body.status}

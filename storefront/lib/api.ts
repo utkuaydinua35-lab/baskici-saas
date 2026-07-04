@@ -64,6 +64,22 @@ export interface ProductDetail {
   tags: string | null;
   images: { url: string; alt: string | null; variant_id: string | null }[];
   variants: ProductVariant[];
+  rating_avg?: number | null;
+  rating_count?: number;
+  related?: ProductCard[];
+}
+
+export interface Review {
+  author: string;
+  rating: number;
+  comment: string | null;
+  created_at: string | null;
+}
+
+export async function getReviews(productSlug: string): Promise<{ total: number; items: Review[] }> {
+  const data = await shopFetch<{ total: number; items: Review[] }>(
+    `/products/${encodeURIComponent(productSlug)}/reviews`);
+  return data ?? { total: 0, items: [] };
 }
 
 export interface ProductListResponse {

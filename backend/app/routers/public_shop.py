@@ -214,8 +214,38 @@ def get_product(
     if not product:
         raise HTTPException(404, "Ürün bulunamadı")
 
+    detail = _serialize_product_detail(product)
+
+    # Onaylı yorum özeti (yıldız ortalaması + sayı)
+    from sqlalchemy import func as sql_func
+    from app.models import ProductReview
+    row = db.execute(
+        select(sql_func.avg(ProductReview.rating), sql_func.count(ProductReview.id))
+        .where(ProductReview.product_id == product.id, ProductReview.status == "approved")
+    ).one()
+    detail["rating_avg"] = round(float(row[0]), 1) if row[0] is not None else None
+    detail["rating_count"] = int(row[1] or 0)
+
+    # Benzer ürünler: aynı koleksiyondan (kendisi hariç); yoksa son eklenenler
+    related_q = select(CatalogProduct).where(
+        CatalogProduct.store_id == store.id,
+        CatalogProduct.status == "active",
+        CatalogProduct.id != product.id,
+    ).options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+    col_ids = [c.id for c in product.collections]
+    if col_ids:
+        from app.models import catalog_product_collections
+        related_q = related_q.join(
+            catalog_product_collections,
+            catalog_product_collections.c.product_id == CatalogProduct.id,
+        ).where(catalog_product_collections.c.collection_id.in_(col_ids)).distinct()
+    related = db.scalars(
+        related_q.order_by(CatalogProduct.position, CatalogProduct.created_at.desc()).limit(4)
+    ).all()
+    detail["related"] = [_serialize_product_card(r) for r in related]
+
     response.headers["Cache-Control"] = "public, max-age=60"
-    return _serialize_product_detail(product)
+    return detail
 
 
 # ─── Checkout + Ödeme ────────────────────────────────────────
@@ -423,6 +453,18 @@ def order_lookup(
     if not order:
         raise HTTPException(404, "Sipariş bulunamadı")
 
+    # Yorum linki için line item -> katalog slug haritası
+    _pids = [li.product_id for li in order.line_items if li.product_id]
+    _product_slug_map: dict = {}
+    if _pids:
+        try:
+            _uuids = [uuid.UUID(p_) for p_ in _pids]
+            for cp in db.scalars(select(CatalogProduct).where(
+                    CatalogProduct.id.in_(_uuids))).all():
+                _product_slug_map[str(cp.id)] = cp.slug
+        except ValueError:
+            pass  # vitrin dışı id formatı
+
     kargo = order.kargo_info or {}
     stage_no = order.current_stage or 1
     if order.is_iptal:
@@ -448,6 +490,8 @@ def order_lookup(
                 "title": li.title,
                 "variant_title": li.variant_title,
                 "quantity": li.quantity,
+                # Yorum formu için: vitrin ürün slug'ı (varsa)
+                "product_slug": _product_slug_map.get(str(li.product_id)),
             }
             for li in order.line_items
         ],
@@ -573,3 +617,108 @@ def get_page(
             response.headers["Cache-Control"] = "public, max-age=60"
             return page
     raise HTTPException(404, "Sayfa bulunamadı")
+
+
+# ─── Ürün yorumları + benzer ürünler ─────────────────────────
+
+class ReviewIn(BaseModel):
+    lookup_token: str = Field(..., min_length=20, max_length=80)
+    product_slug: str = Field(..., min_length=1, max_length=200)
+    rating: int = Field(..., ge=1, le=5)
+    author_name: str = Field(..., min_length=2, max_length=60)
+    comment: str | None = Field(None, max_length=2000)
+
+
+def _mask_author(name: str) -> str:
+    parts = (name or "").strip().split()
+    if not parts:
+        return "Müşteri"
+    return f"{parts[0]} {' '.join(p[0] + '.' for p in parts[1:] if p)}".strip()
+
+
+@router.get("/{store_slug}/products/{product_slug}/reviews")
+def list_reviews(
+    store_slug: str,
+    product_slug: str,
+    response: Response,
+    page: int = Query(1, ge=1, le=100),
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    from sqlalchemy import func as sql_func
+    from app.models import ProductReview
+
+    store = _resolve_store(db, store_slug)
+    product = db.scalar(select(CatalogProduct).where(
+        CatalogProduct.store_id == store.id, CatalogProduct.slug == product_slug))
+    if not product:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    base = select(ProductReview).where(
+        ProductReview.product_id == product.id, ProductReview.status == "approved")
+    total = db.scalar(select(sql_func.count()).select_from(base.subquery())) or 0
+    rows = db.scalars(base.order_by(ProductReview.created_at.desc())
+                      .offset((page - 1) * 10).limit(10)).all()
+
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return {
+        "total": total,
+        "page": page,
+        "items": [
+            {
+                "author": _mask_author(r.author_name),
+                "rating": r.rating,
+                "comment": r.comment,
+                "created_at": r.created_at.date().isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/{store_slug}/reviews", status_code=201)
+def create_review(
+    store_slug: str,
+    body: ReviewIn,
+    request: Request,
+    _rl: None = Depends(checkout_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Yorum bırak — YALNIZCA o ürünü satın almış müşteri (lookup_token doğrulaması)."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models import ProductReview
+
+    store = _resolve_store(db, store_slug)
+    session = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.lookup_token == body.lookup_token,
+        CheckoutSession.store_id == store.id,
+        CheckoutSession.status == "paid",
+    ))
+    if not session:
+        raise HTTPException(403, "Yorum bırakmak için geçerli bir sipariş bağlantısı gerekli")
+
+    product = db.scalar(select(CatalogProduct).where(
+        CatalogProduct.store_id == store.id, CatalogProduct.slug == body.product_slug))
+    if not product:
+        raise HTTPException(404, "Ürün bulunamadı")
+    # Doğrulanmış alıcı: ürün bu siparişin sepetinde olmalı
+    in_cart = any(str(i.get("product_id")) == str(product.id)
+                  for i in (session.cart_snapshot or []))
+    if not in_cart:
+        raise HTTPException(403, "Bu siparişte bu ürün bulunmuyor")
+
+    review = ProductReview(
+        tenant_id=store.tenant_id,
+        product_id=product.id,
+        checkout_session_id=session.id,
+        author_name=body.author_name.strip(),
+        rating=body.rating,
+        comment=(body.comment or "").strip()[:2000] or None,
+    )
+    db.add(review)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Bu ürün için zaten yorum bıraktınız")
+    return {"status": "pending", "message": "Yorumunuz alındı — onaylandıktan sonra yayınlanır"}

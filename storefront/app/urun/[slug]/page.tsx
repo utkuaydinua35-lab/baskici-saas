@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getProduct } from "@/lib/api";
+import { getProduct, getReviews } from "@/lib/api";
+import ProductCard from "@/components/ProductCard";
+import Reveal from "@/components/Reveal";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
@@ -30,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
-  const product = await getProduct(slug);
+  const [product, reviews] = await Promise.all([getProduct(slug), getReviews(slug)]);
   if (!product) notFound();
 
   // Google zengin sonuçlar (fiyat/stok) için yapısal veri
@@ -55,6 +57,15 @@ export default async function ProductPage({ params }: Props) {
         : "https://schema.org/OutOfStock",
       url: `${SITE_URL}/urun/${product.slug}`,
     },
+    ...(product.rating_count
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: product.rating_avg,
+            reviewCount: product.rating_count,
+          },
+        }
+      : {}),
   };
 
   return (
@@ -66,6 +77,17 @@ export default async function ProductPage({ params }: Props) {
         <ProductGallery images={product.images} title={product.title} />
         <div>
           <h1 className="text-2xl font-bold">{product.title}</h1>
+          {product.rating_count ? (
+            <div className="mt-1.5 flex items-center gap-1.5 text-sm">
+              <span className="text-amber-400">
+                {"★".repeat(Math.round(product.rating_avg || 0))}
+                {"☆".repeat(5 - Math.round(product.rating_avg || 0))}
+              </span>
+              <span className="text-zinc-500 text-xs">
+                {product.rating_avg} · {product.rating_count} değerlendirme
+              </span>
+            </div>
+          ) : null}
           <div className="mt-5">
             <VariantPicker product={product} />
           </div>

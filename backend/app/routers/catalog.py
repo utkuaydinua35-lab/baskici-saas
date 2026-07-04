@@ -915,3 +915,60 @@ async def import_csv(
         db.commit()
         stats["dry_run"] = False
     return stats
+
+
+# ─── Yorum moderasyonu ───────────────────────────────────────
+
+@router.get("/reviews", response_model=dict)
+def list_all_reviews(
+    store_id: uuid.UUID,
+    status_f: str = Query("pending", alias="status"),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import ProductReview
+
+    _get_storefront_store(db, user.tenant_id, store_id)
+    rows = db.execute(
+        select(ProductReview, CatalogProduct.title, CatalogProduct.slug)
+        .join(CatalogProduct, CatalogProduct.id == ProductReview.product_id)
+        .where(CatalogProduct.store_id == store_id,
+               ProductReview.status == status_f)
+        .order_by(ProductReview.created_at.desc()).limit(200)
+    ).all()
+    return {"items": [
+        {
+            "id": str(r.ProductReview.id),
+            "product_title": r.title,
+            "product_slug": r.slug,
+            "author_name": r.ProductReview.author_name,
+            "rating": r.ProductReview.rating,
+            "comment": r.ProductReview.comment,
+            "status": r.ProductReview.status,
+            "verified": r.ProductReview.checkout_session_id is not None,
+            "created_at": r.ProductReview.created_at.isoformat()
+                if r.ProductReview.created_at else None,
+        }
+        for r in rows
+    ]}
+
+
+@router.post("/reviews/{review_id}/moderate", response_model=dict)
+def moderate_review(
+    review_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import ProductReview
+
+    action = (body or {}).get("action")
+    if action not in ("approve", "reject"):
+        raise HTTPException(422, "action approve|reject olmalı")
+    review = db.scalar(select(ProductReview).where(
+        ProductReview.id == review_id, ProductReview.tenant_id == user.tenant_id))
+    if not review:
+        raise HTTPException(404, "Yorum bulunamadı")
+    review.status = "approved" if action == "approve" else "rejected"
+    db.commit()
+    return {"id": str(review.id), "status": review.status}

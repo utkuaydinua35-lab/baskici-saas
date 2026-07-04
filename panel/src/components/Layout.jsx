@@ -10,6 +10,7 @@ const NAV = [
   { to: '/kuponlar', label: 'Kuponlar', icon: '🎟️' },
   { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
   { to: '/musteriler', label: 'Müşteriler', icon: '👥' },
+  { to: '/yorumlar', label: 'Yorumlar', icon: '⭐' },
   { to: '/analitik', label: 'Analitik', icon: '📈' },
   { to: '/tema', label: 'Tema', icon: '🎨' },
   { to: '/sayfalar', label: 'Sayfalar', icon: '📄' },

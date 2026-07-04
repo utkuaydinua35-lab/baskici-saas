@@ -16,6 +16,7 @@ const MusterilerPage = lazy(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazy(() => import('./pages/AnalitikPage'))
 const TemaPage = lazy(() => import('./pages/TemaPage'))
 const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
+const YorumlarPage = lazy(() => import('./pages/YorumlarPage'))
 const AyarlarPage = lazy(() => import('./pages/AyarlarPage'))
 
 function Loader() {
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/analitik" element={<AnalitikPage />} />
             <Route path="/tema" element={<TemaPage />} />
             <Route path="/sayfalar" element={<SayfalarPage />} />
+            <Route path="/yorumlar" element={<YorumlarPage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
           </Route>
         </Route>

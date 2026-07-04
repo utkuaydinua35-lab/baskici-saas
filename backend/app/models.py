@@ -1645,3 +1645,36 @@ class PushSubscription(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProductReview(Base):
+    """Ürün yorumu — YALNIZCA doğrulanmış alıcı (lookup_token'lı paid session).
+
+    status: pending (panelde onay bekler) | approved | rejected.
+    Sipariş başına ürün başına 1 yorum (unique kısıt).
+    """
+    __tablename__ = "product_reviews"
+    __table_args__ = (
+        UniqueConstraint("product_id", "checkout_session_id",
+                         name="uq_review_product_session"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_products.id", ondelete="CASCADE"), index=True
+    )
+    checkout_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("checkout_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+
+    author_name: Mapped[str] = mapped_column(String(60))
+    rating: Mapped[int] = mapped_column(Integer)          # 1-5
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default=text("'pending'"), index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { formatPrice } from "@/lib/format";
+import ReviewForm from "@/components/ReviewForm";
 
 export const metadata: Metadata = {
   title: "Sipariş Takibi",
@@ -12,7 +13,7 @@ interface OrderStatus {
   created_at: string | null;
   durum: { key: string; label: string; progress: number };
   kargo: { takip_no: string; takip_url: string | null; firma: string | null } | null;
-  items: { title: string; variant_title: string | null; quantity: number }[];
+  items: { title: string; variant_title: string | null; quantity: number; product_slug?: string | null }[];
   amount: string;
   shipping_amount: string;
   currency: string;
@@ -86,14 +87,20 @@ export default async function OrderTrackPage({
         <h2 className="text-sm font-semibold mb-3">Sipariş İçeriği</h2>
         <ul className="space-y-2 text-sm">
           {order.items.map((item, i) => (
-            <li key={i} className="flex justify-between gap-3">
-              <span className="text-zinc-700">
-                {item.title}
-                {item.variant_title && (
-                  <span className="text-zinc-400"> — {item.variant_title}</span>
-                )}
-              </span>
-              <span className="text-zinc-500 whitespace-nowrap">×{item.quantity}</span>
+            <li key={i}>
+              <div className="flex justify-between gap-3">
+                <span className="text-zinc-700">
+                  {item.title}
+                  {item.variant_title && (
+                    <span className="text-zinc-400"> — {item.variant_title}</span>
+                  )}
+                </span>
+                <span className="text-zinc-500 whitespace-nowrap">×{item.quantity}</span>
+              </div>
+              {item.product_slug && (
+                <ReviewForm lookupToken={token} productSlug={item.product_slug}
+                  productTitle={item.title} />
+              )}
             </li>
           ))}
         </ul>

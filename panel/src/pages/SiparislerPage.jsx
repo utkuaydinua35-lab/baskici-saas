@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
+import { Modal } from './UrunlerPage'
 
 // Mağaza siparişleri — sade liste (üretim detayları Baskıcı'da kalır).
 const STAGE_LABELS = {
@@ -16,6 +18,7 @@ export default function SiparislerPage() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [draftOpen, setDraftOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -43,7 +46,10 @@ export default function SiparislerPage() {
         <span className="text-sm text-panel-muted">{data.total ?? 0} sipariş</span>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
           placeholder="Sipariş no veya müşteri ara…" className="input !w-64 ml-auto" />
+        <button onClick={() => setDraftOpen(true)} className="btn-primary">＋ Sipariş Oluştur</button>
       </div>
+
+      {draftOpen && <DraftOrderModal storeId={storeId} onClose={() => setDraftOpen(false)} />}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -121,3 +127,172 @@ export function FinancialBadge({ status }) {
   const [label, cls] = map[status] || [status || '—', 'bg-slate-100 text-slate-600']
   return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{label}</span>
 }
+
+// Taslak sipariş (Shopify draft order): sepeti panelden kur, müşteriye ödeme
+// linki gönder — sipariş, müşteri linkten ödeyince normal akışla düşer.
+function DraftOrderModal({ storeId, onClose }) {
+  const toast = useToast()
+  const [products, setProducts] = useState([])
+  const [detail, setDetail] = useState(null)      // seçili ürünün varyantlı hali
+  const [productId, setProductId] = useState('')
+  const [variantId, setVariantId] = useState('')
+  const [qty, setQty] = useState(1)
+  const [lines, setLines] = useState([])          // {variant_id, label, unit_price, quantity}
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [sendEmail, setSendEmail] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)      // {payment_link, emailed, amount}
+
+  useEffect(() => {
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+      .then(setProducts).catch(() => toast.error('Ürünler yüklenemedi'))
+  }, [storeId])
+
+  useEffect(() => {
+    setDetail(null); setVariantId('')
+    if (!productId) return
+    api.get(`/api/catalog/products/${productId}`)
+      .then(d => { setDetail(d); setVariantId(d.variants?.find(v => v.is_active)?.id || '') })
+      .catch(() => toast.error('Varyantlar yüklenemedi'))
+  }, [productId])
+
+  const addLine = () => {
+    if (!detail || !variantId) return
+    const v = detail.variants.find(x => x.id === variantId)
+    const price = Number(v.price_override ?? detail.base_price)
+    const label = `${detail.title} — ${v.model_display}${v.variation ? `, ${v.variation}` : ''}`
+    setLines(ls => {
+      const i = ls.findIndex(l => l.variant_id === variantId)
+      if (i >= 0) return ls.map((l, j) => j === i ? { ...l, quantity: l.quantity + Number(qty) } : l)
+      return [...ls, { variant_id: variantId, label, unit_price: price, quantity: Number(qty) }]
+    })
+    setQty(1)
+  }
+
+  const total = lines.reduce((t, l) => t + l.unit_price * l.quantity, 0)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (lines.length === 0) { toast.error('En az bir ürün ekleyin'); return }
+    setBusy(true)
+    try {
+      const r = await api.post('/api/checkout-sessions/draft', {
+        store_id: storeId,
+        items: lines.map(l => ({ variant_id: l.variant_id, quantity: l.quantity })),
+        customer_name: name.trim(),
+        email: email.trim(),
+        send_email: sendEmail,
+      })
+      setResult(r)
+      toast.success(r.emailed ? 'Taslak oluşturuldu, ödeme linki e-postalandı'
+        : 'Taslak oluşturuldu — linki kopyalayıp iletebilirsiniz')
+    } catch (e2) {
+      toast.error(typeof e2?.detail === 'string' ? e2.detail : 'Taslak oluşturulamadı')
+    } finally { setBusy(false) }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(result.payment_link); toast.success('Link kopyalandı') }
+    catch { toast.error('Kopyalanamadı') }
+  }
+
+  if (result) {
+    return (
+      <Modal title="Taslak sipariş hazır 🧾" onClose={onClose}>
+        <div className="space-y-3 text-sm">
+          <p>Toplam <b>{fmtTL(result.amount)}</b> (kargo dahil).
+            {result.emailed ? ' Ödeme linki müşteriye e-postalandı.' : ' Linki müşteriye iletin:'}</p>
+          <div className="flex gap-2">
+            <input readOnly value={result.payment_link} className="input font-mono text-xs flex-1"
+              onFocus={e => e.target.select()} />
+            <button onClick={copy} className="btn-ghost whitespace-nowrap">Kopyala</button>
+          </div>
+          <p className="text-xs text-panel-muted">
+            Link 30 gün geçerli. Müşteri ödeyince sipariş normal akışla listeye düşer.
+            Taslaklar Terk Sepetler → Taslaklar sekmesinde görünür.
+          </p>
+          <div className="flex justify-end"><button onClick={onClose} className="btn-primary">Tamam</button></div>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal title="Sipariş Oluştur" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <div className="grid grid-cols-[1fr_1fr_64px_auto] gap-2 items-end">
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Ürün</span>
+            <select className="input mt-1" value={productId} onChange={e => setProductId(e.target.value)}>
+              <option value="">Seçin…</option>
+              {products.map(pr => <option key={pr.id} value={pr.id}>{pr.title}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Varyant</span>
+            <select className="input mt-1" value={variantId} onChange={e => setVariantId(e.target.value)}
+              disabled={!detail}>
+              {(detail?.variants || []).filter(v => v.is_active).map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.model_display}{v.variation ? ` · ${v.variation}` : ''} — {fmtTL(v.price_override ?? detail.base_price)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Adet</span>
+            <input className="input mt-1" type="number" min="1" max="100" value={qty}
+              onChange={e => setQty(e.target.value)} />
+          </label>
+          <button type="button" onClick={addLine} disabled={!variantId} className="btn-ghost">Ekle</button>
+        </div>
+
+        {lines.length > 0 && (
+          <div className="border border-panel-border rounded-xl divide-y divide-panel-border">
+            {lines.map((l, i) => (
+              <div key={l.variant_id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <span className="flex-1 min-w-0 truncate">{l.label}</span>
+                <span className="tabular-nums text-panel-muted">×{l.quantity}</span>
+                <span className="tabular-nums font-medium">{fmtTL(l.unit_price * l.quantity)}</span>
+                <button type="button" onClick={() => setLines(ls => ls.filter((_, j) => j !== i))}
+                  className="text-red-400 hover:text-red-600 px-1">×</button>
+              </div>
+            ))}
+            <div className="flex justify-between px-3 py-2 text-sm font-semibold">
+              <span>Ürün toplamı</span><span>{fmtTL(total)}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Müşteri adı</span>
+            <input className="input mt-1" required minLength={2} value={name}
+              onChange={e => setName(e.target.value)} placeholder="Ad Soyad" />
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">E-posta</span>
+            <input className="input mt-1" type="email" required value={email}
+              onChange={e => setEmail(e.target.value)} placeholder="musteri@ornek.com" />
+          </label>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} />
+          Ödeme linkini müşteriye e-postala
+        </label>
+        <p className="text-xs text-panel-muted">
+          Kargo, mağaza ayarlarındaki kurala göre eklenir; müşteri linkten güvenli ödeme sayfasında öder.
+        </p>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
+          <button disabled={busy || lines.length === 0} className="btn-primary">
+            {busy ? 'Oluşturuluyor…' : 'Taslak Oluştur'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+const fmtTL = (v) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v || 0))

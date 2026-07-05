@@ -354,7 +354,7 @@ def sweep_sessions(db: Session) -> dict:
     expired = db.execute(
         sa_update(CheckoutSession)
         .where(
-            CheckoutSession.status == "pending",
+            CheckoutSession.status.in_(["pending", "draft"]),
             CheckoutSession.expires_at.isnot(None),
             CheckoutSession.expires_at < now,
         )

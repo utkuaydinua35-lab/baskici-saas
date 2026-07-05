@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
 
-// Terk edilmiş sepetler — tamamlanmamış checkout'lar + tek seferlik hatırlatma.
+// Terk edilmiş sepetler + panelden oluşturulan taslak siparişler (ödeme linkli).
 export default function TerkSepetlerPage() {
-  const { storeId } = useStore()
+  const { storeId, store } = useStore()
+  const toast = useToast()
+  const [tab, setTab] = useState('abandoned')   // abandoned | draft
   const [data, setData] = useState({ items: [], total: 0, total_amount: '0', page: 1, per_page: 50 })
   const [page, setPage] = useState(1)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
 
+  const storefrontUrl = (store?.config?.storefront_url
+    || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : '')).replace(/\/$/, '')
+
   const load = useCallback(async () => {
     if (!storeId) return
     setError('')
-    try { setData(await api.get(`/api/checkout-sessions?store_id=${storeId}&page=${page}`)) }
+    try { setData(await api.get(`/api/checkout-sessions?store_id=${storeId}&page=${page}&kind=${tab}`)) }
     catch (e) { setError(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi') }
-  }, [storeId, page])
+  }, [storeId, page, tab])
   useEffect(() => { load() }, [load])
+
+  const copyLink = async (s) => {
+    try {
+      await navigator.clipboard.writeText(`${storefrontUrl}/sepet?restore=${s.lookup_token}`)
+      toast.success('Ödeme linki kopyalandı')
+    } catch { toast.error('Kopyalanamadı') }
+  }
 
   const sendReminder = async (s) => {
     setBusyId(s.id); setError('')
@@ -30,6 +43,7 @@ export default function TerkSepetlerPage() {
     pending: ['Beklemede', 'text-amber-600'],
     expired: ['Süresi doldu', 'text-panel-muted'],
     failed: ['Başarısız', 'text-red-600'],
+    draft: ['Taslak', 'text-sky-600'],
   }
 
   return (
@@ -37,8 +51,18 @@ export default function TerkSepetlerPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-semibold">Terk Edilmiş Sepetler</h1>
         <span className="text-sm text-panel-muted">
-          {data.total} sepet · {fmt(data.total_amount)} potansiyel ciro
+          {data.total} {tab === 'draft' ? 'taslak' : 'sepet'} · {fmt(data.total_amount)} potansiyel ciro
         </span>
+      </div>
+
+      <div className="flex gap-1 bg-panel-input rounded-xl p-1 w-fit text-sm">
+        {[['abandoned', 'Terk Edilenler'], ['draft', '🧾 Taslak Siparişler']].map(([k, l]) => (
+          <button key={k} onClick={() => { setTab(k); setPage(1) }}
+            className={`px-3 py-1.5 rounded-lg transition ${tab === k
+              ? 'bg-white shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
+            {l}
+          </button>
+        ))}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -77,7 +101,12 @@ export default function TerkSepetlerPage() {
                     }) : '—'}
                   </td>
                   <td className="px-4 py-2.5">
-                    {s.reminder_sent_at ? (
+                    {s.status === 'draft' ? (
+                      <div className="flex items-center gap-1.5">
+                        {s.reminder_sent_at && <span className="text-xs text-emerald-700" title="Ödeme linki e-postalandı">✉✓</span>}
+                        <button onClick={() => copyLink(s)} className="btn-ghost !py-1 text-xs">🔗 Linki Kopyala</button>
+                      </div>
+                    ) : s.reminder_sent_at ? (
                       <span className="text-xs text-emerald-700"
                         title={new Date(s.reminder_sent_at).toLocaleString('tr-TR')}>✓ Gönderildi</span>
                     ) : (
@@ -93,7 +122,11 @@ export default function TerkSepetlerPage() {
           </tbody>
         </table>
         {data.items.length === 0 && (
-          <div className="p-6 text-sm text-panel-muted text-center">Terk edilmiş sepet yok — harika! 🎉</div>
+          <div className="p-6 text-sm text-panel-muted text-center">
+            {tab === 'draft'
+              ? 'Henüz taslak sipariş yok — Siparişler sayfasından "＋ Sipariş Oluştur" ile başlayın.'
+              : 'Terk edilmiş sepet yok — harika! 🎉'}
+          </div>
         )}
       </div>
 

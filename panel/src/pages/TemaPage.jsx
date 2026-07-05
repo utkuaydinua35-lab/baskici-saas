@@ -88,7 +88,7 @@ export default function TemaPage() {
 
   const uploadAsset = async (kind, file, target) => {
     if (!file) return
-    setBusy(true); setMsg(null)
+    setBusy(true)
     try {
       const fd = new FormData()
       fd.append('file', file)

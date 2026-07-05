@@ -22,6 +22,28 @@ export default function CheckoutPage() {
   const [error, setError] = useState("");
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<Record<string, string>>({});
+
+  // Girişli müşteri: kayıtlı bilgilerle formu doldur
+  useEffect(() => {
+    fetch("/api/account")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => {
+        if (!me) return;
+        const a = me.default_address || {};
+        setPrefill({
+          first_name: a.first_name || (me.name || "").split(" ")[0] || "",
+          last_name: a.last_name || (me.name || "").split(" ").slice(1).join(" ") || "",
+          email: me.email || "",
+          phone: a.phone || me.phone || "",
+          address1: a.address1 || "",
+          city: a.city || "",
+          province: a.province || "",
+          zip: a.zip || "",
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -115,27 +137,27 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-xl font-semibold mb-5">Teslimat ve Ödeme</h1>
-      <form onSubmit={submit} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
+      <form key={prefill.email || "misafir"} onSubmit={submit} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
         <div className="space-y-4 bg-white border border-zinc-200 rounded-2xl p-5">
           <div className="grid grid-cols-2 gap-3">
-            <Input name="first_name" label="Ad" required autoComplete="given-name" />
-            <Input name="last_name" label="Soyad" required autoComplete="family-name" />
+            <Input name="first_name" label="Ad" required autoComplete="given-name" defaultValue={prefill.first_name} />
+            <Input name="last_name" label="Soyad" required autoComplete="family-name" defaultValue={prefill.last_name} />
           </div>
-          <Input name="email" label="E-posta" type="email" required autoComplete="email" />
+          <Input name="email" label="E-posta" type="email" required autoComplete="email" defaultValue={prefill.email} />
           <Input name="phone" label="Telefon" type="tel" required autoComplete="tel"
-            placeholder="05xx xxx xx xx" />
+            placeholder="05xx xxx xx xx" defaultValue={prefill.phone} />
           <div>
             <label className="block text-sm font-medium mb-1" htmlFor="address1">Adres</label>
             <textarea
               id="address1" name="address1" required minLength={5} maxLength={300} rows={2}
-              autoComplete="street-address"
+              autoComplete="street-address" defaultValue={prefill.address1}
               className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm bg-white"
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Input name="city" label="İl" required autoComplete="address-level1" />
-            <Input name="province" label="İlçe" autoComplete="address-level2" />
-            <Input name="zip" label="Posta Kodu" autoComplete="postal-code" />
+            <Input name="city" label="İl" required autoComplete="address-level1" defaultValue={prefill.city} />
+            <Input name="province" label="İlçe" autoComplete="address-level2" defaultValue={prefill.province} />
+            <Input name="zip" label="Posta Kodu" autoComplete="postal-code" defaultValue={prefill.zip} />
           </div>
           <Input name="note" label="Sipariş notu (isteğe bağlı)" />
           <label className="flex items-start gap-2 text-xs text-zinc-600 pt-1">

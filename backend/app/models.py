@@ -1536,6 +1536,12 @@ class Customer(Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Vitrin müşteri hesabı (şifresiz giriş): kayıtlı adres + tek kullanımlık kod
+    default_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    login_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    login_code_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    login_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

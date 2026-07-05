@@ -722,3 +722,167 @@ def create_review(
         db.rollback()
         raise HTTPException(409, "Bu ürün için zaten yorum bıraktınız")
     return {"status": "pending", "message": "Yorumunuz alındı — onaylandıktan sonra yayınlanır"}
+
+
+# ─── Müşteri hesabı (şifresiz giriş) ─────────────────────────
+
+class LoginRequestIn(BaseModel):
+    email: EmailStr
+
+
+class VerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class AddressIn(BaseModel):
+    first_name: str = Field("", max_length=100)
+    last_name: str = Field("", max_length=100)
+    phone: str = Field("", max_length=20)
+    address1: str = Field("", max_length=300)
+    city: str = Field("", max_length=60)
+    province: str = Field("", max_length=60)
+    zip: str = Field("", max_length=20)
+
+
+login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
+
+
+def _get_customer_from_token(request: Request, db: Session):
+    """Authorization: Bearer <customer_token> → (Customer, Store). Yoksa 401."""
+    from app.models import Customer
+    from app.services.customer_auth import decode_customer_token
+
+    auth = request.headers.get("authorization") or ""
+    token = auth[7:] if auth.lower().startswith("bearer ") else None
+    payload = decode_customer_token(token) if token else None
+    if not payload:
+        raise HTTPException(401, "Oturum geçersiz veya süresi dolmuş")
+    store = db.get(Store, uuid.UUID(payload["store_id"]))
+    if not store or not store.is_active:
+        raise HTTPException(401, "Mağaza bulunamadı")
+    customer = db.scalar(select(Customer).where(
+        Customer.tenant_id == store.tenant_id,
+        Customer.email == payload["email"],
+    ))
+    if not customer:
+        raise HTTPException(401, "Hesap bulunamadı")
+    return customer, store
+
+
+@router.post("/{store_slug}/account/login-request")
+def account_login_request(
+    store_slug: str,
+    body: LoginRequestIn,
+    request: Request,
+    _rl: None = Depends(login_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Giriş kodu iste — e-posta kayıtlı olmasa da AYNI yanıt (enumeration yok)."""
+    from app.services import email_service
+    from app.services.customer_auth import generate_login_code
+
+    store = _resolve_store(db, store_slug)
+    customer, code = generate_login_code(db, store, str(body.email))
+
+    html = email_service.render_email(
+        title="Giriş Kodunuz",
+        body_html=(
+            f"<p>Merhaba,</p><p><b>{store.name}</b> hesabınıza giriş kodunuz:</p>"
+            f"<p style='font-size:32px;font-weight:800;letter-spacing:8px;"
+            f"text-align:center;margin:16px 0'>{code}</p>"
+            f"<p style='color:#6b7280;font-size:13px'>Kod 10 dakika geçerlidir. "
+            f"Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>"
+        ),
+        preheader="Tek kullanımlık giriş kodunuz",
+        emoji="🔑",
+    )
+    sent = email_service.send_email(customer.email, f"{store.name} giriş kodunuz: {code}", html)
+    if not sent:
+        # Dev ortamı: SMTP yoksa kod log'a düşer (canlıda SMTP zorunlu)
+        print(f"[hesap] SMTP yok — giriş kodu ({customer.email}): {code}")
+    return {"sent": True, "message": "Kod e-posta adresinize gönderildi"}
+
+
+@router.post("/{store_slug}/account/verify")
+def account_verify(
+    store_slug: str,
+    body: VerifyIn,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    from app.services.customer_auth import create_customer_token, verify_login_code
+
+    store = _resolve_store(db, store_slug)
+    customer = verify_login_code(db, store, str(body.email), body.code)
+    if not customer:
+        raise HTTPException(401, "Kod hatalı veya süresi dolmuş — yeni kod isteyin")
+    return {
+        "token": create_customer_token(customer, store),
+        "email": customer.email,
+        "name": customer.name,
+    }
+
+
+@router.get("/account/me")
+def account_me(request: Request, db: Session = Depends(get_db)):
+    customer, _store = _get_customer_from_token(request, db)
+    return {
+        "email": customer.email,
+        "name": customer.name,
+        "phone": customer.phone,
+        "orders_count": customer.orders_count,
+        "default_address": customer.default_address,
+    }
+
+
+@router.get("/account/orders")
+def account_orders(request: Request, db: Session = Depends(get_db)):
+    """Müşterinin bu mağazadaki siparişleri (son 50) + takip linki token'ı."""
+    from sqlalchemy import func as sql_func
+    from app.models import Order
+
+    customer, store = _get_customer_from_token(request, db)
+    orders = db.scalars(
+        select(Order).where(
+            Order.store_id == store.id,
+            sql_func.lower(Order.customer_email) == customer.email,
+        ).order_by(Order.created_at_platform.desc().nulls_last()).limit(50)
+    ).all()
+
+    # lookup_token eşlemesi (sipariş takip sayfası linki için)
+    sessions = db.execute(
+        select(CheckoutSession.order_id, CheckoutSession.lookup_token).where(
+            CheckoutSession.order_id.in_([o.id for o in orders] or [uuid.uuid4()]))
+    ).all()
+    token_map = {r[0]: r[1] for r in sessions}
+
+    from app.stages import stage_label
+    return {"orders": [
+        {
+            "order_number": o.order_number,
+            "name": o.name,
+            "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "total_price": (o.raw or {}).get("total_price"),
+            "durum": "İptal" if o.is_iptal else stage_label(o.current_stage or 1),
+            "lookup_token": token_map.get(o.id),
+        }
+        for o in orders
+    ]}
+
+
+@router.put("/account/address")
+def account_address(
+    body: AddressIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    customer, _store = _get_customer_from_token(request, db)
+    customer.default_address = body.model_dump()
+    if body.first_name or body.last_name:
+        customer.name = f"{body.first_name} {body.last_name}".strip() or customer.name
+    if body.phone:
+        customer.phone = body.phone
+    db.commit()
+    return {"default_address": customer.default_address}

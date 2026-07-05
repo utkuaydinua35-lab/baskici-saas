@@ -107,19 +107,29 @@ export default function Header({
           )}
         </nav>
 
-        {cartDrawer ? (
-          <button onClick={() => setDrawerOpen(true)}
-            className="ml-auto relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-            aria-label="Sepeti aç">
-            {cartInner}
-          </button>
-        ) : (
-          <Link href="/sepet"
-            className="ml-auto relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-            aria-label="Sepet">
-            {cartInner}
+        <div className="ml-auto flex items-center gap-4">
+          <Link href="/hesap" aria-label="Hesabım"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+            </svg>
+            <span className="hidden sm:inline">Hesap</span>
           </Link>
-        )}
+          {cartDrawer ? (
+            <button onClick={() => setDrawerOpen(true)}
+              className="relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+              aria-label="Sepeti aç">
+              {cartInner}
+            </button>
+          ) : (
+            <Link href="/sepet"
+              className="relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+              aria-label="Sepet">
+              {cartInner}
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Mobil menü — soldan kayar */}
@@ -141,6 +151,7 @@ export default function Header({
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>
+          <Link href="/hesap" className="block px-5 py-2.5 text-sm font-medium">👤 Hesabım</Link>
           {collections.length > 0 && (
             <>
               <div className="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">

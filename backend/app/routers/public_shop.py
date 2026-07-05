@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import CatalogProduct, CatalogVariant, CheckoutSession, Store
+from app.models import CatalogProduct, CatalogVariant, CheckoutSession, DiscountCode, Store
 from app.payments import get_payment_provider
 from app.services import checkout as checkout_svc
 from app.services.rate_limit import client_ip, make_rate_limiter
@@ -535,6 +535,51 @@ def restore_cart(
     return {"items": items}
 
 
+def _active_promotion(db: Session, store: Store) -> dict | None:
+    """Vitrine gösterilecek otomatik indirim etiketi (koşulsuz en cömerti).
+
+    Sepet tutarı bilinmediğinden yalnızca zaman penceresi + limit denetlenir;
+    kesin uygulama checkout'ta best_automatic_discount ile yapılır.
+    """
+    from datetime import datetime, timezone
+    from decimal import Decimal
+
+    now = datetime.now(timezone.utc)
+    candidates = db.scalars(select(DiscountCode).where(
+        DiscountCode.store_id == store.id,
+        DiscountCode.is_automatic.is_(True),
+        DiscountCode.is_active.is_(True),
+    )).all()
+    best = None
+    best_rank = Decimal("-1")
+    for dc in candidates:
+        if dc.starts_at and now < dc.starts_at:
+            continue
+        if dc.ends_at and now > dc.ends_at:
+            continue
+        if dc.usage_limit is not None and dc.usage_count >= dc.usage_limit:
+            continue
+        rank = Decimal(str(dc.value or 0))
+        if rank > best_rank:
+            best, best_rank = dc, rank
+    if not best:
+        return None
+
+    if best.kind == "percent":
+        label = f"%{Decimal(str(best.value)):.0f} indirim"
+    elif best.kind == "amount":
+        label = f"{Decimal(str(best.value)):.0f} TL indirim"
+    else:
+        label = "Ücretsiz kargo"
+    if best.min_subtotal:
+        label = f"{Decimal(str(best.min_subtotal)):.0f} TL üzeri {label}"
+    return {
+        "label": f"{label} — sepette otomatik uygulanır",
+        "kind": best.kind,
+        "min_subtotal": str(best.min_subtotal) if best.min_subtotal is not None else None,
+    }
+
+
 @router.get("/{store_slug}/theme")
 def get_store_theme(
     store_slug: str,
@@ -571,6 +616,7 @@ def get_store_theme(
             for p_ in (config.get("pages") or [])
         ],
         "custom_code": config.get("custom_code") or None,
+        "active_promotion": _active_promotion(db, store),
         "legal": {
             "kvkk": config.get("kvkk_text") or None,
             "mesafeli_satis": config.get("mesafeli_satis_text") or None,

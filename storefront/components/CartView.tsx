@@ -49,16 +49,34 @@ export interface StoreSettings {
   shipping_fee?: string | null;
 }
 
-export default function CartView({ settings }: { settings: StoreSettings }) {
+export interface Promotion {
+  label: string;
+  kind: string;
+  min_subtotal: string | null;
+}
+
+export default function CartView({
+  settings,
+  promotion,
+}: {
+  settings: StoreSettings;
+  promotion?: Promotion | null;
+}) {
   return (
     <Suspense>
       <RestoreHandler />
-      <CartInner settings={settings} />
+      <CartInner settings={settings} promotion={promotion} />
     </Suspense>
   );
 }
 
-function CartInner({ settings }: { settings: StoreSettings }) {
+function CartInner({
+  settings,
+  promotion,
+}: {
+  settings: StoreSettings;
+  promotion?: Promotion | null;
+}) {
   const { items, subtotal, coupon, setQuantity, removeItem } = useCart();
   const minAmount = Number(settings?.min_order_amount || 0);
   const belowMin = minAmount > 0 && subtotal < minAmount;
@@ -140,6 +158,11 @@ function CartInner({ settings }: { settings: StoreSettings }) {
       </ul>
 
       <div className="mt-6 bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
+        {promotion && !coupon && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            ⚡ {promotion.label}
+          </p>
+        )}
         <CouponInput />
         <div className="flex justify-between text-sm">
           <span className="text-zinc-500">Ara toplam</span>

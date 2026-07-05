@@ -37,6 +37,7 @@ class DiscountCreate(BaseModel):
     ends_at: datetime | None = None
     usage_limit: int | None = Field(None, ge=1)
     once_per_customer: bool = False
+    is_automatic: bool = False
     is_active: bool = True
 
     @field_validator("kind")
@@ -62,6 +63,7 @@ class DiscountUpdate(BaseModel):
     ends_at: datetime | None = None
     usage_limit: int | None = Field(None, ge=1)
     once_per_customer: bool | None = None
+    is_automatic: bool | None = None
     is_active: bool | None = None
 
 
@@ -78,6 +80,7 @@ def _serialize(dc: DiscountCode) -> dict:
         "usage_limit": dc.usage_limit,
         "usage_count": dc.usage_count,
         "once_per_customer": dc.once_per_customer,
+        "is_automatic": dc.is_automatic,
         "is_active": dc.is_active,
         "created_at": dc.created_at.isoformat() if dc.created_at else None,
     }

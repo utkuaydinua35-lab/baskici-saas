@@ -51,7 +51,13 @@ export default function KuponlarPage() {
           <tbody>
             {coupons.map(c => (
               <tr key={c.id} className="border-t border-panel-border">
-                <td className="px-4 py-2.5 font-mono font-semibold">{c.code}</td>
+                <td className="px-4 py-2.5 font-mono font-semibold">
+                  {c.code}
+                  {c.is_automatic && (
+                    <span className="ml-1.5 text-[10px] font-sans font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full"
+                      title="Kod gerekmez — koşulu sağlayan sepete otomatik uygulanır">⚡ otomatik</span>
+                  )}
+                </td>
                 <td className="px-4 py-2.5">{kindLabel(c)}</td>
                 <td className="px-4 py-2.5 text-panel-muted text-xs">
                   {c.min_subtotal ? `min ${fmt(c.min_subtotal)}` : '—'}
@@ -109,6 +115,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     ends_at: coupon?.ends_at ? coupon.ends_at.slice(0, 10) : '',
     usage_limit: coupon?.usage_limit || '',
     once_per_customer: coupon?.once_per_customer || false,
+    is_automatic: coupon?.is_automatic || false,
   }))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -128,6 +135,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
       ends_at: form.ends_at ? `${form.ends_at}T23:59:59+03:00` : null,
       usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
       once_per_customer: form.once_per_customer,
+      is_automatic: form.is_automatic,
     }
     try {
       if (isNew) {
@@ -199,6 +207,15 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.once_per_customer} onChange={set('once_per_customer')} />
           Müşteri başına yalnızca 1 kez kullanılabilsin
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={form.is_automatic} onChange={set('is_automatic')} />
+          <span>
+            ⚡ Otomatik uygula (kod gerekmez)
+            <span className="block text-xs text-panel-muted">
+              Koşulu sağlayan sepete kendiliğinden uygulanır; müşteri kod girerse girilen kod geçerli olur.
+            </span>
+          </span>
         </label>
         {err && <p className="text-sm text-red-600">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">

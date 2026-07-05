@@ -1497,6 +1497,11 @@ class DiscountCode(Base):
     once_per_customer: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    # Otomatik: kod girmeden koşulu sağlayan sepete kendiliğinden uygulanır
+    # (kod girilirse kod kazanır; otomatikler birleşmez, en kazançlısı seçilir)
+    is_automatic: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

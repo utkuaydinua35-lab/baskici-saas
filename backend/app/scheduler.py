@@ -62,6 +62,22 @@ def _backup_job():
         from app.services import backup
         r = backup.run_backup()
         logger.info(f"[scheduler] yedek alindi: {r['name']} ({r['size']} bayt)")
+        # Sunucu disina tasi (Telegram) — sunucu tamamen coker/kaybolursa yedek elde kalir.
+        # ~45MB uzeri Telegram bot limitini asar; o durumda sadece uyari gonder.
+        try:
+            from app.services import telegram
+            p = backup.backup_path(r["name"])
+            mb = r["size"] / (1024 * 1024)
+            if p and r["size"] < 45 * 1024 * 1024:
+                if telegram.send_document(str(p), caption=f"🗄️ Günlük yedek: {r['name']} ({mb:.1f} MB)"):
+                    logger.info("[scheduler] yedek Telegram'a gonderildi (sunucu disi kopya)")
+            else:
+                telegram.send_message(
+                    f"⚠️ Günlük yedek {mb:.1f} MB — Telegram limitini aşıyor. "
+                    f"Panelden indirin: Ayarlar → Atölyeler → Yedekler ({r['name']})."
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[scheduler] yedek Telegram'a gonderilemedi: {e}")
     except Exception as e:
         logger.exception(f"[scheduler] yedek hata: {e}")
 

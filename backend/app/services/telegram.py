@@ -42,6 +42,31 @@ def send_message(text: str) -> bool:
         return False
 
 
+def send_document(file_path, caption: str = "") -> bool:
+    """Bir dosyayı Telegram'a gönder (sendDocument). Yedekleri sunucu dışına
+    (telefon/Telegram) taşımak için. Bot dosya limiti ~50MB."""
+    s = get_settings()
+    token = (s.telegram_bot_token or "").strip()
+    chat_id = (s.telegram_chat_id or "").strip()
+    if not token or not chat_id:
+        return False
+    try:
+        with open(file_path, "rb") as fh:
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendDocument",
+                data={"chat_id": chat_id, "caption": caption[:1000]},
+                files={"document": fh},
+                timeout=120,
+            )
+        if r.status_code != 200:
+            logger.warning(f"[telegram] sendDocument HTTP {r.status_code}: {r.text[:160]}")
+            return False
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[telegram] belge gönderilemedi: {e}")
+        return False
+
+
 def notify_support_message(order_number: str | None, shopify_order_id: str,
                            body: str, has_image: bool = False,
                            thread_id: str | None = None) -> bool:

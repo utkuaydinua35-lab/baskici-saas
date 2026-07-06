@@ -116,16 +116,23 @@ def list_models(
 
     # Baseline modelleri de ekle (manuel eklenmemis ama kalip taninan 339 model)
     if include_baseline:
-        _existing_keys = {m.get("spec_key") for m in out}
+        # Kanonik anahtara gore tekille: DB'de '15' ya da 'IPHONE-15' varsa baseline ikizi eklenmez.
+        _existing_canon = {pm.canonical_key(m.get("spec_key") or "") for m in out}
         for bkey in pm.baseline_keys():
-            if bkey in _existing_keys:
+            # Cıplak Apple takma adlarini ('15', 'XR' ...) listede GOSTERME — 'IPHONE-15' kalir.
+            if pm.is_apple_alias_key(bkey):
                 continue
-            if search and search.lower() not in bkey.lower():
+            if pm.canonical_key(bkey) in _existing_canon:
                 continue
+            disp = pm.canonical_model_name(bkey)  # 'IPHONE-15' -> 'iPhone 15'
+            if search:
+                s = search.lower()
+                if s not in bkey.lower() and s not in disp.lower():
+                    continue
             out.append({
                 "id": f"baseline:{bkey}",
                 "spec_key": bkey,
-                "display_name": bkey,
+                "display_name": disp,
                 "brand": None,
                 "is_baseline": True,
             })

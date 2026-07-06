@@ -99,3 +99,68 @@ def baseline_keys() -> list[str]:
 def baseline_count() -> int:
     """Baseline'daki gizli model sayısı (sadece adet, ölçü değil)."""
     return cd.spec_count()
+
+
+# ─── Apple takma-ad birlestirme + kanonik gorunen ad ──────────────────────
+# Baseline'da ayni telefonun iki anahtari var: 'IPHONE-15' ve cıplak '15'
+# (ayni olcu). Cıplak olan bir TAKMA AD'dir; listelerde tek kanonik ('iPhone 15')
+# gosterilir. Kural: bir anahtarin 'IPHONE-<anahtar>' ikizi baseline'da varsa
+# o cıplak anahtar bir Apple takma adidir.
+from functools import lru_cache as _lru_cache
+
+
+@_lru_cache(maxsize=1)
+def _baseline_key_set() -> frozenset:
+    return frozenset(cd.all_model_keys())
+
+
+def is_apple_alias_key(key: str) -> bool:
+    """key cıplak Apple takma adi mi (IPHONE- ikizi var)? Orn '15', 'XR', 'SE-2022'."""
+    if not key:
+        return False
+    k = key.upper()
+    if k.startswith("IPHONE"):
+        return False
+    return ("IPHONE-" + k) in _baseline_key_set()
+
+
+_IPHONE_TOKEN = {
+    "PROMAX": "Pro Max", "PRO": "Pro", "PLUS": "Plus", "MINI": "Mini", "MAX": "Max",
+    "SE": "SE", "XR": "XR", "XS": "XS", "X": "X",
+}
+
+
+def _prettify_iphone(key: str) -> str:
+    """'IPHONE-15-PROMAX' -> 'iPhone 15 Pro Max', 'IPHONE-XS-MAX' -> 'iPhone XS Max'."""
+    rest = key.upper()
+    if rest.startswith("IPHONE-"):
+        rest = rest[len("IPHONE-"):]
+    elif rest == "IPHONE":
+        rest = ""
+    parts = [p for p in rest.split("-") if p]
+    words = [_IPHONE_TOKEN.get(p, p) for p in parts]  # bilinmeyen (rakam/yil) aynen
+    return ("iPhone " + " ".join(words)).strip()
+
+
+def canonical_key(key: str) -> str:
+    """spec_key'i kanonik forma getir: cıplak Apple takma adi -> IPHONE- ikizi."""
+    if not key:
+        return key
+    k = key.upper()
+    if is_apple_alias_key(k):
+        return "IPHONE-" + k
+    return k
+
+
+def canonical_model_name(model: str) -> str:
+    """Model adini tek kanonik gorunume cevir. Cıplak Apple ('15', '15 Pro Max')
+    -> 'iPhone 15' / 'iPhone 15 Pro Max'. Apple olmayan (Samsung, Xiaomi vb.)
+    dokunulmaz (kırpma disinda). Eslesme/kalip mantigini ETKILEMEZ — yalniz gorunum."""
+    if not model:
+        return model
+    key = normalize_key(model)
+    if is_apple_alias_key(key):
+        key = "IPHONE-" + key.upper()
+    if key.upper().startswith("IPHONE"):
+        return _prettify_iphone(key)
+    return model.strip()

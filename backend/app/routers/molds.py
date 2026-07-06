@@ -20,6 +20,7 @@ from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, Mold
 
 from app.services import mold_planner, mold_pdf, storage, kisa_kod
 from app.services import placement_rules as pr
+from app.services import phone_models as pm
 
 router = APIRouter(prefix="/api/molds", tags=["molds"],
     dependencies=[Depends(require_any_permission("kalip", "tasarim"))],
@@ -195,7 +196,7 @@ def list_molds(
                 "items": [
                     {
                         "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
-                        "design_code": it.design_code, "model": it.model,
+                        "design_code": it.design_code, "model": pm.canonical_model_name(it.model),
                         "order_number": it.order_number,
                         "design_id": str(it.design_id) if it.design_id else None,
                         "thumbnail_url": storage.get_thumbnail_url(dmap[it.design_id].file_path, dmap[it.design_id].file_format) if it.design_id in dmap else None,
@@ -311,7 +312,7 @@ def _serialize_mold_detail(mo, db):
         d = dmap.get(it.design_id)
         items.append({
             "id": str(it.id), "slot_index": it.slot_index, "kalip_kodu": it.kalip_kodu, "kilif_rengi": mold_planner.pr.kod_to_renk(it.kalip_kodu),
-            "design_code": it.design_code, "model": it.model, "order_number": it.order_number,
+            "design_code": it.design_code, "model": pm.canonical_model_name(it.model), "order_number": it.order_number,
             "is_hazir": it.is_hazir,
             "is_telafi": it.order_number in telafi_onums,
             "design_id": str(it.design_id) if it.design_id else None,

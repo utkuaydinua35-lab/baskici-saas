@@ -76,9 +76,15 @@ def _addr_parts(raw: dict) -> dict:
             resmi_il = zip_il
     if resmi_il:
         il = resmi_il
-    # ilce gecerli mi? degilse adres metninden cikarmayi dene (cozulen il ile)
+    # ilce gecerli mi? degilse GENIS metinden cikarmayi dene (cozulen il ile).
+    # Ilce alani cok kelimeli ('Ankara Etimesgut'), il/ilce swap edilmis
+    # (province=Etimesgut, city=Ankara) ya da ilce sadece adres metninde olabilir.
+    # Bu yuzden ilce + ham city + ham province + adres birlesik taranir.
     if il and not tr_iller.gecerli_ilce_mi(ilce, il):
-        bulunan = tr_iller.ilce_bul(adres, il)
+        _search = " ".join(x for x in [
+            (ilce or ""), (sa.get("city") or ""), (sa.get("province") or ""), adres,
+        ] if x)
+        bulunan = tr_iller.ilce_bul(_search, il)
         if bulunan:
             ilce = bulunan
     surat_il = tr_iller.surat_il_adi(il)   # ornek: Afyonkarahisar -> Afyon

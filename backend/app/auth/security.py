@@ -32,6 +32,20 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+# Kullanici bulunamadiginda da bir bcrypt dogrulamasi calistirmak icin sabit hash.
+# Amac: "email yok" (hizli) vs "sifre yanlis" (yavas bcrypt) zamanlama farkindan
+# email varligini sizdirmayi engellemek (enumeration timing side-channel).
+_DUMMY_HASH = pwd_context.hash("timing-equalizer-not-a-real-password")
+
+
+def dummy_verify(plain: str) -> None:
+    """Zamanlama esitleme — sonucu onemsiz, sadece bcrypt suresini harcar."""
+    try:
+        pwd_context.verify(plain or "", _DUMMY_HASH)
+    except Exception:
+        pass
+
+
 # ─── JWT ─────────────────────────────────────────────────────
 
 def create_access_token(

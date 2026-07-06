@@ -28,6 +28,7 @@ from app.auth.schemas import (
 )
 from app.auth.security import (
     create_access_token,
+    dummy_verify,
     hash_password,
     verify_password,
 )
@@ -140,6 +141,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 _login_hits: dict[str, list[float]] = {}
 _LOGIN_WINDOW = 300   # 5 dakika
 _LOGIN_MAX = 10       # IP basina 5 dakikada en fazla 10 basarisiz deneme
+_global_fails: list[float] = []   # tum IP'lerdeki basarisiz denemeler (dagitik saldiri tespiti)
+_DISTRIB_THRESHOLD = 40           # 5 dk'da bu kadar basarisiz -> dagitik saldiri suphesi
 
 
 def _login_client_ip(request: Request) -> str:
@@ -159,6 +162,15 @@ def _login_rate_limit(request: Request) -> None:
     now = _t.time()
     arr = [x for x in _login_hits.get(ip, []) if now - x < _LOGIN_WINDOW]
     if len(arr) >= _LOGIN_MAX:
+        # Brute-force tespiti — platform yoneticilerine anlik uyari (throttle'li)
+        try:
+            from app.services import security_alert
+            security_alert.alert(
+                f"bruteforce:{ip}", "Şüpheli giriş denemeleri (brute-force)",
+                f"IP {ip} — son 5 dk içinde {len(arr)} başarısız giriş; erişim geçici engellendi.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
         raise HTTPException(429, "Çok fazla başarısız giriş denemesi. Lütfen birkaç dakika sonra tekrar deneyin.")
     _login_hits[ip] = arr
     if len(_login_hits) > 5000:
@@ -169,7 +181,23 @@ def _login_rate_limit(request: Request) -> None:
 def _login_record_fail(request: Request) -> None:
     import time as _t
     ip = _login_client_ip(request)
-    _login_hits.setdefault(ip, []).append(_t.time())
+    now = _t.time()
+    _login_hits.setdefault(ip, []).append(now)
+    # Dagitik saldiri tespiti: cok sayida IP'den toplam basarisiz deneme
+    _global_fails.append(now)
+    cutoff = now - _LOGIN_WINDOW
+    while _global_fails and _global_fails[0] < cutoff:
+        _global_fails.pop(0)
+    if len(_global_fails) >= _DISTRIB_THRESHOLD:
+        active_ips = sum(1 for v in _login_hits.values() if v and v[-1] >= cutoff)
+        try:
+            from app.services import security_alert
+            security_alert.alert(
+                "distributed", "Dağıtık giriş saldırısı şüphesi",
+                f"Son 5 dk'da {len(_global_fails)} başarısız giriş, ~{active_ips} farklı IP.",
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @router.post("/login", response_model=None)
@@ -178,7 +206,9 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Email + şifre ile giriş. Yanlış bilgi → 401."""
     user = db.scalar(select(User).where(User.email == req.email.lower()))
     if not user or not user.password_hash:
-        # password_hash null = sadece OAuth user, email/şifre giriş yok
+        # password_hash null = sadece OAuth user, email/şifre giriş yok.
+        # Zamanlama esitleme: email yoksa da bcrypt calistir (enumeration onle).
+        dummy_verify(req.password)
         _login_record_fail(request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

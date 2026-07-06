@@ -55,7 +55,7 @@ def _issue_token(user: User) -> TokenResponse:
 
 
 @router.post("/register", response_model=None, status_code=status.HTTP_201_CREATED)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """
     Yeni hesap aç:
     - Yeni Tenant oluştur (plan=trial, is_approved=False — yönetici onayı bekler)
@@ -98,6 +98,10 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.add(tenant)
     db.flush()  # tenant.id elde edilsin
 
+    # Kayıt anı meta (IP + tarayıcı/OS) — onay ekranında gösterilir, sahte kayıt ayıklama.
+    _signup_ip = _login_client_ip(request)
+    _signup_ua = (request.headers.get("user-agent") or "")[:400] or None
+
     # User
     user = User(
         tenant_id=tenant.id,
@@ -106,6 +110,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         full_name=req.full_name,
         role="owner",
         is_active=True,
+        signup_ip=_signup_ip,
+        signup_user_agent=_signup_ua,
     )
     db.add(user)
 
@@ -118,13 +124,16 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
             detail="Kayıt sırasında çakışma — büyük ihtimalle email kullanılıyor",
         ) from e
 
-    # Mobil push (yeni magaza/atolye kaydi) — platform yoneticilerine onay hatirlatmasi
+    # Mobil push + Telegram (yeni magaza/atolye kaydi) — platform yoneticilerine onay hatirlatmasi
     try:
         from app.services import push
+        from app.services.ua import summary as _ua_summary
+        _cihaz = _ua_summary(_signup_ua)
+        _body = (f"{req.tenant_name} kaydoldu — onay bekliyor\n"
+                 f"E-posta: {req.email.lower()}\n"
+                 f"IP: {_signup_ip or '?'} · {_cihaz}")
         push.send_to_platform_admins(
-            db,
-            "🆕 Yeni mağaza başvurusu",
-            f"{req.tenant_name} kaydoldu — onay bekliyor ({req.email.lower()})",
+            db, "🆕 Yeni mağaza başvurusu", _body,
             url="/platform", tag=f"tenant-{tenant.id}",
         )
     except Exception:

@@ -107,6 +107,11 @@ class User(Base):
     )
     totp_backup_codes: Mapped[list] = mapped_column(JSONB, default=list, nullable=True)
 
+    # Kayıt anı meta — self-servis kayıtta sahte/kötü niyetli hesabı ayıklamak için.
+    # (Tarayıcı "bilgisayar adı"nı vermez; en fazla IP + User-Agent alınabilir.)
+    signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signup_user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

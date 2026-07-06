@@ -65,6 +65,13 @@ export default function PlatformPage() {
                           <div className="min-w-0">
                             <div className="text-gray-100">{t.app_name || t.name}</div>
                             <div className="text-[10px] text-gray-500 font-mono">{t.slug}</div>
+                            {!t.is_approved && (t.signup_ip || t.owner_email) && (
+                              <div className="text-[10px] text-amber-300/70 mt-0.5">
+                                {t.owner_email && <span>{t.owner_email}</span>}
+                                {t.signup_ip && <span> · IP {t.signup_ip}</span>}
+                                {t.signup_device && <span> · {t.signup_device}</span>}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -374,6 +381,11 @@ function TenantProfiles({ tenantId }) {
               {!u.is_active && <span className="text-[9px] px-1 rounded bg-red-500/20 text-red-300">engelli</span>}
             </div>
             <div className="text-[10px] text-gray-500 truncate">{u.email}</div>
+            {(u.signup_ip || u.signup_device) && (
+              <div className="text-[10px] text-gray-600 truncate" title={u.signup_user_agent || ''}>
+                Kayıt: {u.signup_ip || '?'}{u.signup_device ? ` · ${u.signup_device}` : ''}
+              </div>
+            )}
           </div>
           {!u.is_platform_admin && (
             <>

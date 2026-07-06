@@ -52,6 +52,18 @@ def _ser_tenant(db: Session, t: Tenant) -> dict:
     order_count = db.scalar(
         select(sql_func.count(Order.id)).where(Order.tenant_id == t.id)
     ) or 0
+    # Onay ekraninda gostermek icin sahibin (owner) kayit meta bilgisi
+    owner = db.scalar(
+        select(User).where(User.tenant_id == t.id, User.role == "owner")
+        .order_by(User.created_at).limit(1)
+    )
+    owner_email = owner.email if owner else None
+    signup_ip = getattr(owner, "signup_ip", None) if owner else None
+    signup_ua = getattr(owner, "signup_user_agent", None) if owner else None
+    signup_device = None
+    if signup_ua:
+        from app.services.ua import summary as _ua_summary
+        signup_device = _ua_summary(signup_ua)
     return {
         "id": str(t.id),
         "name": t.name,
@@ -66,6 +78,9 @@ def _ser_tenant(db: Session, t: Tenant) -> dict:
         "user_count": int(user_count),
         "order_count": int(order_count),
         "created_at": t.created_at.isoformat() if t.created_at else None,
+        "owner_email": owner_email,
+        "signup_ip": signup_ip,
+        "signup_device": signup_device,
     }
 
 
@@ -212,6 +227,8 @@ def delete_tenant(
 
 # ─── Atölye profilleri (kullanıcı) yönetimi ──────────────────
 def _ser_user(u: User) -> dict:
+    from app.services.ua import summary as _ua_summary
+    _ua = getattr(u, "signup_user_agent", None)
     return {
         "id": str(u.id),
         "email": u.email,
@@ -220,6 +237,9 @@ def _ser_user(u: User) -> dict:
         "is_active": u.is_active,
         "is_platform_admin": bool(getattr(u, "is_platform_admin", False)),
         "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+        "signup_ip": getattr(u, "signup_ip", None),
+        "signup_device": _ua_summary(_ua) if _ua else None,
+        "signup_user_agent": _ua,
     }
 
 

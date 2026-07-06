@@ -534,6 +534,49 @@ def plan_molds(
             ],
         })
 
+    # ── Askı kontrolü: plandaki kalemler dükkanda hazır bekleyen (askı) ürünle
+    # eşleşiyor mu? Eşleşiyorsa yeniden basmaya gerek olmayabilir — operatöre uyar.
+    # (design_id + model; model normalize edilir ki '15' ile 'iPhone 15' örtüşsün.)
+    aski_uyarilar = []
+    try:
+        from app.models import AskiItem as _Aski
+        from app.services import phone_models as _pm
+        aski_rows = db.scalars(select(_Aski).where(
+            _Aski.tenant_id == tenant_id, _Aski.quantity > 0)).all()
+        if aski_rows and units:
+            aski_stock: dict = {}
+            for a in aski_rows:
+                key = (str(a.store_id), str(a.design_id), _pm.normalize_key(a.model or ""))
+                aski_stock[key] = aski_stock.get(key, 0) + (a.quantity or 0)
+            demand: dict = {}
+            for u in units:
+                if not u.get("design_id"):
+                    continue
+                key = (str(u.get("store_id")), str(u["design_id"]), _pm.normalize_key(u.get("model") or ""))
+                if key not in aski_stock:
+                    continue
+                d = demand.setdefault(key, {
+                    "design_code": u.get("design_code"),
+                    "model": _pm.canonical_model_name(u.get("model") or ""),
+                    "adet": 0, "siparisler": set(),
+                })
+                d["adet"] += 1
+                if u.get("order_number"):
+                    d["siparisler"].add(str(u["order_number"]))
+            for key, d in demand.items():
+                mevcut = aski_stock.get(key, 0)
+                aski_uyarilar.append({
+                    "design_code": d["design_code"],
+                    "model": d["model"],
+                    "aski_mevcut": mevcut,
+                    "plandaki_adet": d["adet"],
+                    "karsilanabilir": min(mevcut, d["adet"]),
+                    "siparisler": sorted(d["siparisler"]),
+                })
+            aski_uyarilar.sort(key=lambda x: -x["karsilanabilir"])
+    except Exception:  # noqa: BLE001
+        aski_uyarilar = []
+
     return {
         "molds": molds,
         "mold_count": len(molds),
@@ -541,6 +584,8 @@ def plan_molds(
         "eksikler": eksikler,
         "eksik_count": sum(e["count"] for e in eksikler),
         "can_create": len(eksikler) == 0 and len(molds) > 0,
+        "aski_uyarilar": aski_uyarilar,
+        "aski_uyari_count": sum(u["karsilanabilir"] for u in aski_uyarilar),
         "stats": {
             "kalip_sayisi": len(molds),
             "toplam_kilif": len(units),

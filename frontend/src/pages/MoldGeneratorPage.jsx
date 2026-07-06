@@ -226,6 +226,34 @@ export default function MoldGeneratorPage() {
                 </div>
               )}
 
+              {plan.aski_uyarilar?.length > 0 && (
+                <div className="card mb-4 border-sky-500/30 bg-sky-500/5">
+                  <h2 className="text-sm font-medium text-sky-300 mb-1">
+                    🪝 {plan.aski_uyari_count} kılıf askıda hazır bekliyor olabilir — basmadan önce kontrol et
+                  </h2>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Aşağıdaki tasarım/model kombinasyonları dükkanda <a href="/aski" className="text-accent hover:underline">Askı</a> stoğunda mevcut.
+                    Bu siparişleri askıdan gönderip kalıba eklememen gereksiz baskıyı önler.
+                  </p>
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {plan.aski_uyarilar.map((a, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-brand-input/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 shrink-0 font-mono">
+                          {a.design_code || '—'}
+                        </span>
+                        <span className="text-gray-300 shrink-0">{a.model}</span>
+                        <span className="text-gray-500 truncate flex-1">
+                          {a.siparisler?.length ? `Sipariş: ${a.siparisler.slice(0, 6).join(', ')}${a.siparisler.length > 6 ? '…' : ''}` : ''}
+                        </span>
+                        <span className="text-emerald-300 shrink-0" title="Askıdan karşılanabilir">
+                          {a.karsilanabilir}/{a.plandaki_adet} askıda
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {plan.molds.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="text-sm font-medium text-gray-300">Kalıp Önizlemesi ({plan.mold_count})</h2>

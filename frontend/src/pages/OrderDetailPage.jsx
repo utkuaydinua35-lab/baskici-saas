@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
+import { AddOrderItemsDialog } from './DealersPage'
 
 
 /** Line item'tan telefon modelini çıkar.
@@ -59,6 +60,7 @@ export default function OrderDetailPage() {
   const [error, setError] = useState('')
   const [rightTab, setRightTab] = useState('musteri')
   const [emailOpen, setEmailOpen] = useState(false)
+  const [addDealer, setAddDealer] = useState(null)  // AddOrderItemsDialog için bayii objesi
   const [lightbox, setLightbox] = useState(null)  // büyütülen görsel url
   const [neighbors, setNeighbors] = useState({ prev: null, next: null })
 
@@ -112,6 +114,17 @@ export default function OrderDetailPage() {
       setDetail(d)
     } catch (e) {
       toast.error(errMsg(e, 'Güncellenemedi'))
+    }
+  }
+
+  // Bayii siparişine ürün ekle — önce bayi bilgisini (birim fiyat/mağaza) çek, dialog aç
+  const openAddItems = async () => {
+    if (!detail?.dealer_id) return
+    try {
+      const d = await api.get(`/api/dealers/${detail.dealer_id}`)
+      setAddDealer(d)
+    } catch (e) {
+      toast.error(errMsg(e, 'Bayii bilgisi alınamadı'))
     }
   }
 
@@ -227,6 +240,13 @@ export default function OrderDetailPage() {
             isIptal={detail.is_iptal}
             onSelect={patchStage}
           />
+          {detail.is_bayii && detail.dealer_id && !detail.is_iptal && (
+            <button onClick={openAddItems}
+              className="px-3 py-1.5 rounded-lg border border-accent/40 text-accent hover:bg-accent/10 text-sm whitespace-nowrap"
+              title="Bu bayii siparişine ürün ekle (tutar + cari güncellenir)">
+              + Ürün Ekle
+            </button>
+          )}
           <IslemlerDropdown detail={detail} onFlag={patchFlags} onDuplicate={handleDuplicate} onEmail={() => setEmailOpen(true)} />
         </div>
       </div>
@@ -326,6 +346,11 @@ export default function OrderDetailPage() {
       {emailOpen && (
         <EmailModal orderRef={detail.id || detail.order_number} orderNo={detail.order_number}
           customer={detail.customer_name} email={detail.customer_email || ''} onClose={() => setEmailOpen(false)} />
+      )}
+      {addDealer && (
+        <AddOrderItemsDialog dealer={addDealer} order={{ id: detail.id, order_number: detail.order_number }}
+          onClose={() => setAddDealer(null)}
+          onAdded={() => { setAddDealer(null); load() }} />
       )}
     </div>
   )

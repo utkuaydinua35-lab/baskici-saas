@@ -679,8 +679,10 @@ def _adjust_dealer_debt(db, order, *, reverse: bool):
     from decimal import Decimal as _Dec
     from app.models import Dealer as _Dealer, DealerTransaction as _DTx
 
+    # ÜRÜN (siparis) + KARGO borcunu birlikte geri al — kargo iptalde takılı kalmasın.
+    # (kargo TRY, urun bayi para biriminde; tx.currency ile dogru bakiyeye islenir.)
     txs = db.scalars(
-        select(_DTx).where(_DTx.ref_order_id == order.id, _DTx.kind == "siparis")
+        select(_DTx).where(_DTx.ref_order_id == order.id, _DTx.kind.in_(["siparis", "kargo"]))
     ).all()
     for tx in txs:
         dealer = db.scalar(select(_Dealer).where(_Dealer.id == tx.dealer_id))

@@ -74,26 +74,29 @@ export default function DealerDashboardPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl text-sm">
-              <thead><tr><th>Sipariş</th><th>Alıcı</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
+              <thead><tr><th>Sipariş</th><th></th><th>Alıcı</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th></tr></thead>
               <tbody>
                 {orders.map(o => (
-                  <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/orders/${o.id}`)}>
-                    <td className="font-medium text-accent">{o.order_number}</td>
+                  <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/orders/${o.id}`, { state: { from: `/bayiler/${id}` } })}>
+                    <td className="font-medium text-accent whitespace-nowrap">{o.order_number}</td>
+                    <td className="whitespace-nowrap">
+                      {!o.is_iptal && (
+                        <button onClick={e => { e.stopPropagation(); setAddTo(o) }}
+                          className="text-[11px] px-2 py-0.5 rounded-lg border border-accent/40 text-accent hover:bg-accent/10" title="Bu siparişe ürün ekle">+ Ürün</button>
+                      )}
+                    </td>
                     <td className="text-gray-300">{o.customer_name || '—'}</td>
                     <td className="tabular-nums">{o.total_qty}</td>
-                    <td className="tabular-nums text-gray-300">{o.total_price ? fmt(Number(o.total_price), o.currency) : '—'}</td>
+                    <td className="tabular-nums text-gray-300 whitespace-nowrap">
+                      {o.total_price ? fmt(Number(o.total_price), o.currency) : '—'}
+                      {Number(o.shipping_fee) > 0 && <span className="block text-[10px] text-gray-500">+ {fmt(Number(o.shipping_fee), 'TRY')} kargo</span>}
+                    </td>
                     <td>
                       <span className={`text-[11px] px-2 py-0.5 rounded-full ${o.is_iptal ? 'bg-red-500/15 text-red-300' : (o.fulfillment_status === 'fulfilled' || (o.current_stage || 0) >= 8) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-400'}`}>
                         {o.is_iptal ? 'İptal' : STAGE_LABEL[o.current_stage] || 'Yeni'}
                       </span>
                     </td>
                     <td className="text-gray-500 text-xs whitespace-nowrap">{o.created_at ? new Date(o.created_at).toLocaleDateString('tr-TR') : ''}</td>
-                    <td className="text-right whitespace-nowrap">
-                      {!o.is_iptal && (
-                        <button onClick={e => { e.stopPropagation(); setAddTo(o) }}
-                          className="btn-secondary !text-xs" title="Bu siparişe ürün ekle">+ Ürün</button>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -342,6 +342,15 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         "shipping_address": raw.get("shipping_address"),
         "billing_address": raw.get("billing_address"),
 
+        # Bayii siparişi ise: geri-navigasyon + tutar dökümü (ürün + kargo)
+        "dealer_id": raw.get("dealer_id"),
+        "is_bayii": (raw.get("source") == "bayii"),
+        "bayii_tutar": ({
+            "product_total": raw.get("total_price"),
+            "shipping_fee": raw.get("shipping_fee"),
+            "currency": raw.get("currency", "TRY"),
+        } if raw.get("source") == "bayii" else None),
+
         "financial": {
             "subtotal": subtotal,
             "shipping": shipping,

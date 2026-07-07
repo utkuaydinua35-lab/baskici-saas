@@ -165,7 +165,7 @@ export default function OrderDetailPage() {
   if (error) {
     return (
       <div className="mx-auto max-w-2xl">
-        <button onClick={() => navigate('/orders')} className="text-accent text-sm hover:underline mb-3">← Siparişler</button>
+        <button onClick={() => navigate(location.state?.from || '/orders')} className="text-accent text-sm hover:underline mb-3">← Geri</button>
         <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
       </div>
     )
@@ -175,12 +175,17 @@ export default function OrderDetailPage() {
   const f = detail.financial || {}
   const cur = f.currency || 'TRY'
 
+  // Geri hedefi: geldiğin yer (location.state.from) > bayii siparişiyse o bayiye > /orders
+  const backTo = location.state?.from
+    || (detail.is_bayii && detail.dealer_id ? `/bayiler/${detail.dealer_id}` : '/orders')
+  const backLabel = (detail.is_bayii && (location.state?.from?.startsWith('/bayiler') || detail.dealer_id)) ? 'Bayii' : 'Siparişler'
+
   return (
     <div className="max-w-[1400px]">
       {/* Üst bar */}
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-start gap-3">
-          <button onClick={() => navigate('/orders')} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
+          <button onClick={() => navigate(backTo)} title={`← ${backLabel}`} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -310,7 +315,7 @@ export default function OrderDetailPage() {
           </div>
 
           {rightTab === 'musteri' && <MusteriTab detail={detail} onEmail={() => setEmailOpen(true)} />}
-          {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} />}
+          {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} bayii={detail.bayii_tutar} />}
           {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} onCancelKargo={cancelKargo} />}
           {rightTab === 'onay' && <OnayTab orderId={orderId} />}
           {rightTab === 'diger' && <DigerTab detail={detail} />}
@@ -803,7 +808,34 @@ function AddressBlock({ addr }) {
   )
 }
 
-function FinansalTab({ f, cur }) {
+function FinansalTab({ f, cur, bayii }) {
+  // Bayii siparişi: tutar dökümü ürün (bayi para birimi) + kargo (₺) ayrı tutulur.
+  if (bayii) {
+    const bcur = bayii.currency || 'TRY'
+    const urun = Number(bayii.product_total || 0)
+    const kargo = Number(bayii.shipping_fee || 0)
+    const sameCur = bcur === 'TRY'
+    return (
+      <div className="space-y-3">
+        <PanelCard title="Bayii Tutarı" icon="🤝">
+          <Row label="Ürün bedeli" value={fmtMoney(urun, bcur)} />
+          <Row label="Kargo" value={kargo > 0 ? fmtMoney(kargo, 'TRY') : '—'} />
+          <div className="border-t border-brand-border my-2" />
+          {sameCur ? (
+            <Row label="Genel Toplam" value={fmtMoney(urun + kargo, 'TRY')} bold />
+          ) : (
+            <>
+              <Row label="Ürün (toplam)" value={fmtMoney(urun, bcur)} bold />
+              {kargo > 0 && <Row label="Kargo (toplam)" value={fmtMoney(kargo, 'TRY')} bold />}
+            </>
+          )}
+          <p className="text-[10px] text-gray-500 mt-2">
+            Ürün bedeli cariye {bcur} olarak, kargo her zaman ₺ olarak ayrı işlenir. Sipariş iptal edilirse ikisi de geri alınır.
+          </p>
+        </PanelCard>
+      </div>
+    )
+  }
   return (
     <div className="space-y-3">
       <PanelCard title="Ödeme" icon="💳">

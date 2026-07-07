@@ -346,7 +346,8 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             "fulfillment_status": o.fulfillment_status,
             "is_iptal": bool(o.is_iptal),
             "total_qty": int(_qty),
-            "total_price": _raw.get("total_price"),
+            "total_price": _raw.get("total_price"),        # ürün bedeli (bayi para birimi)
+            "shipping_fee": _raw.get("shipping_fee"),      # kargo (₺, ayrı) — 0/None olabilir
             "currency": _raw.get("currency", "TRY"),
             "note": o.note,
         })

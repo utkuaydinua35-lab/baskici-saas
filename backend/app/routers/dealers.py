@@ -479,3 +479,93 @@ def create_dealer_order(
         "total_qty": total_qty,
         "new_balance": float(urun_bakiye),
     }
+
+
+class AddOrderItemsIn(BaseModel):
+    items: list[DealerOrderItem] = Field(..., min_length=1)
+
+
+@router.post("/{dealer_id}/orders/{order_id}/items", response_model=dict)
+def add_dealer_order_items(
+    dealer_id: uuid.UUID,
+    order_id: uuid.UUID,
+    req: AddOrderItemsIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Mevcut bayii siparişine sonradan ürün ekle. Yeni kalemler kalıba akar
+    (is_kaliba_eklendi=False), sipariş tutarı ve cari GÜNCELLENİR (ürün bedeli
+    bayi para biriminde; kargo eklenmez — o ilk siparişte uygulanır)."""
+    import uuid as _uuid
+    from sqlalchemy.orm.attributes import flag_modified
+
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    order = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id, Order.store_id == d.store_id))
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı (bu bayiye ait değil)")
+    if order.is_iptal:
+        raise HTTPException(400, "İptal edilmiş siparişe ürün eklenemez")
+
+    unit_price = Decimal(str(d.unit_price or 0))
+    if unit_price <= 0:
+        raise HTTPException(400, "Bu bayiye birim fiyat tanımlı değil — önce fiyat belirle")
+
+    add_qty = sum(it.quantity for it in req.items)
+    add_tutar = unit_price * Decimal(add_qty)
+    _cur = (getattr(d, "currency", "TRY") or "TRY").upper()
+
+    # Yeni kalemleri mevcut siparişin sonuna ekle (kalıba akması için design + model)
+    max_pos = db.scalar(select(sql_func.coalesce(sql_func.max(LineItem.position), -1))
+                        .where(LineItem.order_id == order.id)) or -1
+    pos = int(max_pos) + 1
+    for it in req.items:
+        design_uuid = None
+        if it.design_id:
+            try:
+                design_uuid = _uuid.UUID(it.design_id)
+            except (ValueError, AttributeError):
+                design_uuid = None
+        title = it.model
+        if it.design_label:
+            title = f"{it.model} — {it.design_label}"
+        db.add(LineItem(
+            tenant_id=user.tenant_id, order_id=order.id, title=title,
+            quantity=it.quantity, position=pos,
+            assigned_design_id=design_uuid, device_model_override=it.model,
+            properties=[], raw={"source": "bayii", "sonradan_eklendi": True},
+        ))
+        pos += 1
+
+    # Sipariş tutarını güncelle (raw.total_price = ürün bedeli, kargo hariç)
+    _raw = dict(order.raw or {})
+    _prev_total = Decimal(str(_raw.get("total_price") or 0))
+    _raw["total_price"] = str(_prev_total + add_tutar)
+    order.raw = _raw
+    flag_modified(order, "raw")
+
+    # Cari borç — eklenen ürün bedeli (bayi para biriminde)
+    if _cur == "USD":
+        d.balance_usd = Decimal(str(d.balance_usd or 0)) + add_tutar
+        new_balance = d.balance_usd
+    else:
+        d.balance = Decimal(str(d.balance or 0)) + add_tutar
+        new_balance = d.balance
+    db.add(DealerTransaction(
+        tenant_id=user.tenant_id, dealer_id=d.id, amount=add_tutar, kind="siparis",
+        currency=_cur, description=f"Sipariş #{order.order_number} — ek ürün ({add_qty} adet)",
+        ref_order_id=order.id, balance_after=new_balance,
+    ))
+    db.commit()
+
+    return {
+        "order_id": str(order.id),
+        "order_number": order.order_number,
+        "added_qty": add_qty,
+        "added_amount": float(add_tutar),
+        "new_total": float(_prev_total + add_tutar),
+        "currency": _cur,
+        "new_balance": float(new_balance),
+    }

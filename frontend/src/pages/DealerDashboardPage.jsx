@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
-import { OrderDialog, CariDialog } from './DealersPage'
+import { OrderDialog, CariDialog, AddOrderItemsDialog } from './DealersPage'
 
 const STAGE_LABEL = {
   1: 'Yeni', 2: 'Tasarım', 3: 'Barkod', 4: 'Baskı', 5: 'Baskı Tamam',
@@ -16,6 +16,7 @@ export default function DealerDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [ordering, setOrdering] = useState(false)
   const [cari, setCari] = useState(false)
+  const [addTo, setAddTo] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -73,7 +74,7 @@ export default function DealerDashboardPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl text-sm">
-              <thead><tr><th>Sipariş</th><th>Alıcı</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th></tr></thead>
+              <thead><tr><th>Sipariş</th><th>Alıcı</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th><th></th></tr></thead>
               <tbody>
                 {orders.map(o => (
                   <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/orders/${o.id}`)}>
@@ -87,6 +88,12 @@ export default function DealerDashboardPage() {
                       </span>
                     </td>
                     <td className="text-gray-500 text-xs whitespace-nowrap">{o.created_at ? new Date(o.created_at).toLocaleDateString('tr-TR') : ''}</td>
+                    <td className="text-right whitespace-nowrap">
+                      {!o.is_iptal && (
+                        <button onClick={e => { e.stopPropagation(); setAddTo(o) }}
+                          className="btn-secondary !text-xs" title="Bu siparişe ürün ekle">+ Ürün</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -97,6 +104,7 @@ export default function DealerDashboardPage() {
 
       {ordering && <OrderDialog dealer={data} onClose={() => setOrdering(false)} onCreated={() => { setOrdering(false); load() }} />}
       {cari && <CariDialog dealer={data} onClose={() => setCari(false)} onChanged={load} />}
+      {addTo && <AddOrderItemsDialog dealer={data} order={addTo} onClose={() => setAddTo(null)} onAdded={() => { setAddTo(null); load() }} />}
     </div>
   )
 }

@@ -570,6 +570,116 @@ function UploadDesignModal({ storeId, onClose, onUploaded }) {
   )
 }
 
+// Mevcut bayii siparişine sonradan ürün ekleme dialog'u — tutar + cari güncellenir.
+export function AddOrderItemsDialog({ dealer, order, onClose, onAdded }) {
+  const toast = useToast()
+  const [models, setModels] = useState([])
+  const [designs, setDesigns] = useState([])
+  const [loadingLists, setLoadingLists] = useState(true)
+  const [items, setItems] = useState([{ model: '', design_id: '', design_label: '', quantity: 1 }])
+  const [busy, setBusy] = useState(false)
+  const [uploadIdx, setUploadIdx] = useState(null)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sid = dealer.store_id
+        const [m, d] = await Promise.all([
+          api.get('/api/phone-models?include_baseline=true').catch(() => ({})),
+          sid ? api.get(`/api/designs?store_id=${sid}&per_page=200`).catch(() => ({})) : Promise.resolve({}),
+        ])
+        setModels(Array.isArray(m) ? m : (m?.items || m?.models || []))
+        setDesigns(Array.isArray(d) ? d : (d?.items || d?.designs || []))
+      } catch { toast.error('Listeler yüklenemedi') }
+      finally { setLoadingLists(false) }
+    })()
+  }, [])
+
+  const modelLabel = (m) => m.display_name || m.spec_key || m.model || m.name || '—'
+  const modelVal = (m) => m.display_name || m.spec_key || m.model || m.name || ''
+  const designLabel = (d) => d.name || d.code || d.title || ('Tasarım ' + String(d.id).slice(0, 6))
+
+  const unitPrice = Number(dealer.unit_price || 0)
+  const _cur = dealer.currency === 'USD' ? 'USD' : 'TRY'
+  const fmt = (n) => new Intl.NumberFormat(_cur === 'USD' ? 'en-US' : 'tr-TR', { style: 'currency', currency: _cur }).format(n || 0)
+  const totalQty = items.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+  const addTotal = totalQty * unitPrice
+
+  const setItem = (idx, key, val) => setItems(arr => arr.map((it, i) => i === idx ? { ...it, [key]: val } : it))
+  const addItem = () => setItems(arr => [...arr, { model: '', design_id: '', design_label: '', quantity: 1 }])
+  const removeItem = (idx) => setItems(arr => arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr)
+  const onDesignChange = (idx, designId, designObj) => {
+    const d = designObj || designs.find(x => String(x.id) === String(designId))
+    setItems(arr => arr.map((it, i) => i === idx ? { ...it, design_id: designId, design_label: d ? designLabel(d) : '' } : it))
+  }
+
+  const save = async () => {
+    const valid = items.filter(it => it.model && (Number(it.quantity) || 0) > 0)
+    if (valid.length === 0) { toast.error('En az bir geçerli kalem gir (model + adet)'); return }
+    if (unitPrice <= 0) { toast.error('Bu bayiye birim fiyat tanımlı değil'); return }
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/dealers/${dealer.id}/orders/${order.id}/items`, {
+        items: valid.map(it => ({ model: it.model, design_id: it.design_id || null, design_label: it.design_label || null, quantity: Number(it.quantity) })),
+      })
+      toast.success(`${r.added_qty} ürün eklendi · yeni tutar ${fmt(r.new_total)}`)
+      onAdded && onAdded(r)
+    } catch (e) { toast.error(e?.detail || 'Ürün eklenemedi') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-100">Ürün Ekle — {order.order_number}</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">Eklenen ürünler kalıba akar; sipariş tutarı ve cari otomatik güncellenir. Birim fiyat: {fmt(unitPrice)}</p>
+
+        {loadingLists ? (
+          <div className="text-gray-500 text-sm py-6 text-center">Listeler yükleniyor…</div>
+        ) : (
+          <>
+            <div className="space-y-2 mb-3">
+              {items.map((it, idx) => (
+                <div key={idx} className="flex gap-2 items-center flex-wrap sm:flex-nowrap bg-brand-input/30 rounded-lg p-2">
+                  <ModelSearch models={models} value={it.model}
+                    onSelect={(v) => setItem(idx, 'model', v)} modelVal={modelVal} modelLabel={modelLabel} />
+                  <DesignSearch designs={designs} value={it.design_id} designLabel={designLabel}
+                    onSelect={(v, d) => onDesignChange(idx, v, d)} />
+                  <button type="button" onClick={() => setUploadIdx(idx)} className="btn-secondary !text-xs whitespace-nowrap" title="Yeni tasarım yükle">📎</button>
+                  <input className="input w-16" type="number" min="1" value={it.quantity} onChange={e => setItem(idx, 'quantity', e.target.value)} />
+                  <button onClick={() => removeItem(idx)} className="text-gray-500 hover:text-red-300 px-1 text-lg" title="Kalemi sil">×</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={addItem} className="btn-secondary !text-xs mb-4">+ Kalem Ekle</button>
+
+            <div className="flex items-center justify-between border-t border-brand-border pt-3 mb-4">
+              <span className="text-sm text-gray-400">{totalQty} adet eklenecek</span>
+              <span className="text-lg font-bold text-accent tabular-nums">+{fmt(addTotal)}</span>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={onClose} className="btn-secondary">Vazgeç</button>
+              <button onClick={save} disabled={busy} className="btn-primary">{busy ? 'Ekleniyor…' : 'Ürünleri Ekle'}</button>
+            </div>
+          </>
+        )}
+      </div>
+      {uploadIdx !== null && (
+        <UploadDesignModal storeId={dealer.store_id} onClose={() => setUploadIdx(null)}
+          onUploaded={(newDesign) => {
+            setDesigns(arr => [newDesign, ...arr.filter(x => String(x.id) !== String(newDesign.id))])
+            onDesignChange(uploadIdx, String(newDesign.id), newDesign)
+            setUploadIdx(null)
+          }} />
+      )}
+    </div>
+  )
+}
+
 function ModelSearch({ models, value, onSelect, modelVal, modelLabel }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)

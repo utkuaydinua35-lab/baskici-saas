@@ -629,8 +629,8 @@ export function AddOrderItemsDialog({ dealer, order, onClose, onAdded }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 my-8">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold text-gray-100">Ürün Ekle — {order.order_number}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl">×</button>

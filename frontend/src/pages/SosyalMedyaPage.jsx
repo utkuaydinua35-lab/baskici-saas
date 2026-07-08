@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -20,7 +20,7 @@ export default function SosyalMedyaPage() {
   const [tab, setTab] = useState('taslak')
   const [busy, setBusy] = useState(false)
   const [handle, setHandle] = useState('')
-  const [view, setView] = useState('uret')   // uret | sohbet
+  const [view, setView] = useState('sohbet')   // sohbet | uret
 
   const store = stores.find(s => String(s.id) === String(storeId))
 
@@ -176,11 +176,28 @@ export default function SosyalMedyaPage() {
   )
 }
 
+// Canlı asistan orb'u — durum: idle | thinking | speaking
+function AssistantOrb({ state }) {
+  return (
+    <div className="relative w-12 h-12 shrink-0">
+      <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-accent via-fuchsia-500 to-purple-600 ${state === 'thinking' ? 'animate-pulse' : ''}`}
+        style={{ animation: state === 'idle' ? 'ig-breathe 3s ease-in-out infinite' : undefined, boxShadow: '0 0 24px rgba(168,85,247,0.5)' }} />
+      <div className="absolute inset-1.5 rounded-full bg-brand-card/70 backdrop-blur flex items-center justify-center text-lg">✨</div>
+      {state === 'thinking' && <div className="absolute -inset-0.5 rounded-full border-2 border-white/50 border-t-transparent animate-spin" />}
+      {state === 'idle' && <div className="absolute inset-0 rounded-full bg-accent/30 animate-ping" style={{ animationDuration: '3s' }} />}
+      <style>{`@keyframes ig-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}`}</style>
+    </div>
+  )
+}
+
 function ChatPanel({ storeId, toast, onCreated }) {
-  const [msgs, setMsgs] = useState([])   // {role, text, images:[{path,url}]}
+  const [msgs, setMsgs] = useState([])   // {role, text, images:[{path,url}], proposal?}
   const [input, setInput] = useState('')
-  const [attach, setAttach] = useState([]) // {path,url} yüklenmiş görseller
+  const [attach, setAttach] = useState([])
   const [busy, setBusy] = useState(false)
+  const scrollRef = useRef(null)
+
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 1e9, behavior: 'smooth' }) }, [msgs, busy])
 
   const upload = async (e) => {
     const files = Array.from(e.target.files || [])
@@ -192,56 +209,81 @@ function ChatPanel({ storeId, toast, onCreated }) {
     }
   }
 
-  const send = async () => {
-    if (!input.trim() && attach.length === 0) return
+  const send = async (quick) => {
+    const txt = (quick ?? input).trim()
+    if (!txt && attach.length === 0) return
     if (!storeId) { toast.error('Önce marka seç'); return }
-    const userMsg = { role: 'user', text: input.trim(), images: attach }
+    const userMsg = { role: 'user', text: txt, images: attach }
     const next = [...msgs, userMsg]
     setMsgs(next); setInput(''); setAttach([]); setBusy(true)
     try {
       const payload = next.map(m => ({ role: m.role, text: m.text, images: (m.images || []).map(i => i.path) }))
       const r = await api.post('/api/instagram/chat', { store_id: storeId, messages: payload })
-      setMsgs(m => [...m, { role: 'assistant', text: r.reply, images: [] }])
+      setMsgs(m => [...m, { role: 'assistant', text: r.reply, images: [], proposal: r.proposal || null }])
     } catch (e) { toast.error(e?.detail || 'AI yanıtı alınamadı'); setMsgs(m => m.slice(0, -1)); setInput(userMsg.text); setAttach(userMsg.images) }
     finally { setBusy(false) }
   }
 
-  const makeDraft = async (text) => {
-    // Sohbetteki son yüklenen görseli (varsa) kullan
-    const lastImg = [...msgs].reverse().flatMap(m => m.images || []).find(Boolean)
-    try {
-      await api.post('/api/instagram/draft', {
-        store_id: storeId, caption: text, image_path: lastImg?.path || null,
-      })
-      toast.success('Taslak oluşturuldu (Hızlı Üret > Taslak sekmesinde)')
-      onCreated && onCreated()
-    } catch (e) { toast.error(e?.detail || 'Taslak oluşturulamadı') }
+  const feedback = async (caption, rating) => {
+    try { await api.post('/api/instagram/feedback', { store_id: storeId, caption, rating }); toast.success(rating === 'iyi' ? 'Beğenildi — bunu öğrendim 👍' : 'Not aldım, bundan kaçınacağım 👎') }
+    catch { toast.error('Kaydedilemedi') }
   }
 
+  const addDraft = async (prop) => {
+    try {
+      await api.post('/api/instagram/draft', {
+        store_id: storeId, caption: prop.caption, hashtags: prop.hashtags || null,
+        design_id: prop.design_id || null,
+      })
+      toast.success('Taslak kuyruğa eklendi ✓')
+      onCreated && onCreated()
+    } catch (e) { toast.error(e?.detail || 'Eklenemedi') }
+  }
+
+  const QUICK = ['Yeni koleksiyon için 1 gönderi üret', 'Bu tasarımı öne çıkaran bir caption yaz', 'Story fikri ver']
+
   return (
-    <div className="card !p-0 overflow-hidden flex flex-col" style={{ minHeight: '55vh' }}>
-      <div className="px-4 py-2 border-b border-brand-border text-xs text-gray-500">
-        AI'a ne paylaşmak istediğini anlat, örnek görsel yükle. İstersen bir metni "Taslak yap" ile kuyruğa ekle.
+    <div className="card !p-0 overflow-hidden flex flex-col" style={{ height: '68vh' }}>
+      {/* Asistan başlık */}
+      <div className="px-4 py-3 border-b border-brand-border flex items-center gap-3 bg-gradient-to-r from-accent/5 to-fuchsia-500/5">
+        <AssistantOrb state={busy ? 'thinking' : 'idle'} />
+        <div>
+          <div className="text-sm font-semibold text-gray-100">Sosyal Medya Asistanı</div>
+          <div className="text-[11px] text-gray-500">{busy ? 'düşünüyor…' : 'çevrimiçi · sana içerik üretebilirim'}</div>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {msgs.length === 0 && <div className="text-center text-gray-600 text-sm py-8">Örn: "Yeni retro koleksiyonu için gençlere hitap eden 3 gönderi fikri ver" — ya da örnek bir kullanıcı fotoğrafı yükle.</div>}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {msgs.length === 0 && (
+          <div className="text-center py-6">
+            <div className="text-gray-400 text-sm mb-3">Ne paylaşalım? Anlat, örnek görsel yükle — senin için üretirim.</div>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {QUICK.map(q => <button key={q} onClick={() => send(q)} className="text-xs px-3 py-1.5 rounded-full border border-brand-border text-gray-300 hover:bg-brand-input">{q}</button>)}
+            </div>
+          </div>
+        )}
         {msgs.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-3 py-2 ${m.role === 'user' ? 'bg-accent/15 text-gray-100' : 'bg-brand-input text-gray-200'}`}>
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadein`}>
+            <div className={`max-w-[88%] rounded-2xl px-3 py-2 ${m.role === 'user' ? 'bg-accent/15 text-gray-100' : 'bg-brand-input text-gray-200'}`}>
               {(m.images || []).length > 0 && (
                 <div className="flex gap-1 flex-wrap mb-1">
                   {m.images.map((im, j) => <img key={j} src={im.url} alt="" className="w-16 h-16 rounded object-cover" />)}
                 </div>
               )}
               {m.text && <p className="text-sm whitespace-pre-wrap">{m.text}</p>}
-              {m.role === 'assistant' && m.text && (
-                <button onClick={() => makeDraft(m.text)} className="mt-1.5 text-[11px] px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">+ Taslak yap</button>
-              )}
+              {m.proposal && <ProposalCard prop={m.proposal} onAdd={addDraft} onFeedback={feedback} />}
             </div>
           </div>
         ))}
-        {busy && <div className="text-gray-500 text-sm">AI yazıyor…</div>}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="bg-brand-input rounded-2xl px-4 py-3 flex gap-1">
+              {[0, 1, 2].map(d => <span key={d} className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />)}
+            </div>
+          </div>
+        )}
       </div>
+
       {attach.length > 0 && (
         <div className="px-3 pt-2 flex gap-1 flex-wrap border-t border-brand-border">
           {attach.map((a, i) => (
@@ -253,11 +295,33 @@ function ChatPanel({ storeId, toast, onCreated }) {
         </div>
       )}
       <div className="p-3 border-t border-brand-border flex items-end gap-2">
-        <label className="btn-secondary !text-sm cursor-pointer whitespace-nowrap">📎<input type="file" accept="image/*" multiple className="hidden" onChange={upload} /></label>
-        <textarea className="input flex-1 !text-sm" rows={1} placeholder="Mesaj yaz…" value={input}
+        <label className="btn-secondary !text-sm cursor-pointer whitespace-nowrap" title="Örnek görsel yükle">📎<input type="file" accept="image/*" multiple className="hidden" onChange={upload} /></label>
+        <textarea className="input flex-1 !text-sm" rows={1} placeholder="Asistana yaz…" value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
-        <button onClick={send} disabled={busy} className="btn-primary !text-sm">Gönder</button>
+        <button onClick={() => send()} disabled={busy} className="btn-primary !text-sm">Gönder</button>
+      </div>
+    </div>
+  )
+}
+
+function ProposalCard({ prop, onAdd, onFeedback }) {
+  const [rated, setRated] = useState(null)
+  const text = `${prop.caption}${prop.hashtags ? '\n\n' + prop.hashtags : ''}`
+  return (
+    <div className="mt-2 rounded-xl border border-accent/30 bg-brand-card/60 overflow-hidden">
+      {prop.image_url
+        ? <img src={prop.image_url} alt="" className="w-full aspect-square object-cover" />
+        : <div className="w-full aspect-square bg-brand-input flex items-center justify-center text-gray-600 text-xs">Görsel yok (tasarım seçilmedi)</div>}
+      <div className="p-2.5">
+        <p className="text-sm text-gray-100 whitespace-pre-wrap">{prop.caption}</p>
+        {prop.hashtags && <p className="text-xs text-accent mt-1">{prop.hashtags}</p>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <button onClick={() => onAdd(prop)} className="text-[11px] px-2 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">+ Taslağa ekle</button>
+          <button onClick={() => { onFeedback(text, 'iyi'); setRated('iyi') }} className={`text-[13px] px-2 py-1 rounded border ${rated === 'iyi' ? 'border-emerald-500 bg-emerald-500/15' : 'border-brand-border'} hover:bg-brand-input`}>👍</button>
+          <button onClick={() => { onFeedback(text, 'kotu'); setRated('kotu') }} className={`text-[13px] px-2 py-1 rounded border ${rated === 'kotu' ? 'border-red-500 bg-red-500/15' : 'border-brand-border'} hover:bg-brand-input`}>👎</button>
+          <button onClick={() => navigator.clipboard?.writeText(text)} className="text-[11px] px-2 py-1 rounded border border-brand-border text-gray-300 hover:bg-brand-input">📋 Kopyala</button>
+        </div>
       </div>
     </div>
   )

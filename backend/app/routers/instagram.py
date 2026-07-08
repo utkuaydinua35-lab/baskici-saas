@@ -312,10 +312,36 @@ class ChatIn(BaseModel):
     messages: list[ChatMsg]
 
 
+def _learning(store: Store) -> dict:
+    cfg = store.config if isinstance(store.config, dict) else {}
+    ig = cfg.get("instagram") if isinstance(cfg.get("instagram"), dict) else {}
+    lr = ig.get("learning") if isinstance(ig.get("learning"), dict) else {}
+    return {"good": lr.get("good") or [], "bad": lr.get("bad") or []}
+
+
+def _save_learning(db, store: Store, rating: str, caption: str):
+    cfg = dict(store.config or {})
+    ig = dict(cfg.get("instagram") or {})
+    lr = dict(ig.get("learning") or {})
+    key = "good" if rating == "iyi" else "bad"
+    arr = list(lr.get(key) or [])
+    cap = (caption or "").strip()[:400]
+    if cap and cap not in arr:
+        arr.insert(0, cap)
+    lr[key] = arr[:12]
+    ig["learning"] = lr
+    cfg["instagram"] = ig
+    store.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(store, "config")
+    db.commit()
+
+
 @router.post("/chat", response_model=dict)
 def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """AI ile sohbet (vision destekli) — kullanıcı ne istediğini anlatır, görsel
-    yükler; AI marka editörü gibi fikir/başlık/caption önerir. {reply} döner."""
+    """Agentik AI editör: kullanıcıyla sohbet eder, gerektiğinde GERÇEK bir gönderi
+    önerisi (caption + tasarım mockup görseli) ÜRETİR (tool-use). Tasarım kataloğunu
+    ve öğrenilen iyi/kötü örnekleri bilir. Döner: {reply, proposal?}."""
     s = get_settings()
     if not s.anthropic_api_key:
         raise HTTPException(400, "AI kapalı — .env ANTHROPIC_API_KEY tanımlı değil")
@@ -324,18 +350,33 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         raise HTTPException(404, "Mağaza bulunamadı")
 
     import base64
+    # Tasarım kataloğu (AI görsel için kod seçsin)
+    designs = db.scalars(select(Design).where(
+        Design.store_id == store.id, Design.tenant_id == user.tenant_id).order_by(Design.code).limit(80)).all()
+    by_code = {(d.code or "").upper(): d for d in designs if d.code}
+    katalog = "\n".join(f"- {d.code}: {d.name or ''}".strip() for d in designs[:80]) or "(katalog boş)"
+    lr = _learning(store)
+
     try:
         import anthropic
         from app.services.ai_reply import MODEL_MAP
         client = anthropic.Anthropic(api_key=s.anthropic_api_key)
 
         system = (
-            f"Sen {store.name} markasının Instagram sosyal medya editörüsün. Telefon kılıfı "
-            "satıyoruz. Kullanıcı (marka sahibi) ne paylaşmak istediğini anlatır, örnek "
-            "görseller yükleyebilir. Ona samimi, insan-yazmış gibi Türkçe Instagram metinleri, "
-            "içerik fikirleri ve görsel önerileri ver. Kısa ve pratik konuş. Bir caption "
-            "istenirse sonunda 8-15 alakalı hashtag ekle."
+            f"Sen {store.name} markasının CANLI Instagram sosyal medya asistanısın — telefon "
+            "kılıfı satıyoruz. Marka sahibiyle sohbet edersin, örnek görselleri incelersin ve "
+            "PROAKTİF davranırsın: uygun olduğunda konuşmayı beklemeden somut gönderi önerisi "
+            "üret. Ton: enerjik, samimi, kısa, insan gibi. Caption sonunda 8-15 alakalı hashtag.\n\n"
+            "Görsel için TASARIM KATALOĞUMUZDAN bir kod seç (kılıf mockup'ı o tasarımdan "
+            "üretilir). Katalog:\n" + katalog + "\n\n"
+            "Somut bir gönderi önermek istediğinde `onerilecek_gonderi` aracını çağır "
+            "(caption + hashtags + design_code). Sadece fikir/soru varsa normal yaz.\n"
         )
+        if lr["good"]:
+            system += "\nBEĞENİLEN örnekler (bu tonu yakala):\n" + "\n".join(f"- {c}" for c in lr["good"][:6])
+        if lr["bad"]:
+            system += "\nBEĞENİLMEYEN örnekler (bunlardan KAÇIN):\n" + "\n".join(f"- {c}" for c in lr["bad"][:6])
+
         cmsgs = []
         for m in body.messages[-20:]:
             content = []
@@ -353,17 +394,69 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         if not cmsgs:
             raise HTTPException(400, "Boş mesaj")
 
+        tools = [{
+            "name": "onerilecek_gonderi",
+            "description": "Somut bir Instagram gönderi önerisi üret (caption + tasarım).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "caption": {"type": "string", "description": "Gönderi metni (TR)"},
+                    "hashtags": {"type": "string", "description": "8-15 hashtag, boşlukla ayrık"},
+                    "design_code": {"type": "string", "description": "Katalogdan tasarım kodu (görsel için)"},
+                },
+                "required": ["caption"],
+            },
+        }]
+
         resp = client.messages.create(
             model=MODEL_MAP.get("opus", "claude-opus-4-8"),
-            max_tokens=1024, temperature=0.8, system=system, messages=cmsgs,
+            max_tokens=1200, temperature=0.85, system=system, messages=cmsgs, tools=tools,
         )
         reply = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text")
-        return {"reply": reply.strip() or "…"}
+        proposal = None
+        for b in resp.content:
+            if getattr(b, "type", None) == "tool_use" and getattr(b, "name", "") == "onerilecek_gonderi":
+                inp = b.input or {}
+                d = by_code.get(str(inp.get("design_code") or "").upper())
+                img = None
+                if d:
+                    rel = _render_post_image(user.tenant_id, store, d)
+                    img = f"/storage/{rel}" if rel else None
+                proposal = {
+                    "caption": inp.get("caption") or "",
+                    "hashtags": inp.get("hashtags") or "",
+                    "design_id": str(d.id) if d else None,
+                    "design_code": d.code if d else None,
+                    "image_url": img,
+                }
+                break
+        if not reply and proposal:
+            reply = "İşte bir öneri hazırladım 👇"
+        return {"reply": reply.strip() or "…", "proposal": proposal}
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[instagram] chat hata: {e}")
         raise HTTPException(502, "AI yanıtı alınamadı")
+
+
+class FeedbackIn(BaseModel):
+    store_id: uuid.UUID
+    rating: str                 # iyi | kotu
+    caption: str
+
+
+@router.post("/feedback", response_model=dict)
+def chat_feedback(body: FeedbackIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Öneriye 👍/👎 — beğenilen/beğenilmeyen örnek olarak saklanır, sonraki
+    üretimlerde AI'a few-shot beslenir (zamanla markanın tonunu öğrenir)."""
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    if body.rating not in ("iyi", "kotu"):
+        raise HTTPException(400, "Geçersiz")
+    _save_learning(db, store, body.rating, body.caption)
+    return {"ok": True}
 
 
 class DraftIn(BaseModel):

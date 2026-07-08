@@ -24,9 +24,12 @@ ACIL_THRESHOLD_DAYS = 5
 
 
 def open_conds():
-    """'Gerçek açık' SQL koşulları (iptal/fulfilled/iade değil)."""
+    """'Gerçek açık' SQL koşulları: Shopify iptali (cancelled_at) DEĞİL + panel
+    iptali (is_iptal) DEĞİL + kargolanmamış (fulfilled değil) + iade (refunded)
+    değil. Paketleme kuyruğu ve 'gönderilmeyen' tab'ıyla AYNI tanım."""
     return (
         Order.cancelled_at.is_(None),
+        Order.is_iptal.is_(False),
         (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
     )
@@ -56,14 +59,16 @@ def kargo(db, tid, *, store_id=None) -> int:
     return _count(db, tid, *open_conds(), Order.current_stage == 7, store_id=store_id)
 
 
+def acil_threshold_dt():
+    return datetime.now(timezone.utc) - timedelta(days=ACIL_THRESHOLD_DAYS)
+
+
 def acil(db, tid, *, store_id=None) -> int:
-    """Acil: iptal değil + fulfilled değil + ACIL_THRESHOLD_DAYS günden eski.
-    (Sipariş listesi 'acil' tab filtresiyle birebir aynı.)"""
-    threshold = datetime.now(timezone.utc) - timedelta(days=ACIL_THRESHOLD_DAYS)
+    """Acil: GERÇEK açık (open_conds) + ACIL_THRESHOLD_DAYS günden eski.
+    Yani gerçekten geciken açık sipariş; panelde iptal/iade edilmiş eski
+    siparişler sayılmaz. Sipariş listesi 'acil' tab'ıyla birebir aynı."""
     return _count(
-        db, tid,
-        Order.cancelled_at.is_(None),
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        Order.created_at_platform < threshold,
+        db, tid, *open_conds(),
+        Order.created_at_platform < acil_threshold_dt(),
         store_id=store_id,
     )

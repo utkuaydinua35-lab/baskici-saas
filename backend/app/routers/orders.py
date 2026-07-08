@@ -305,12 +305,9 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
 def _build_tab_filter(q, tab: str):
     """Order üzerinde base query'ye tab filtresini ekle."""
     if tab == "acil":
-        threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
-        q = q.where(
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            Order.created_at_platform < threshold,
-        )
+        # GERÇEK açık (order_counts.open_conds: iptal/is_iptal/fulfilled/iade değil) + 5 gün eski
+        from app.services import order_counts as _oc
+        q = q.where(*_oc.open_conds(), Order.created_at_platform < _oc.acil_threshold_dt())
     elif tab == "barkod":
         # En az bir line item hazır değil (barkod basılması bekleyen)
         q = q.where(
@@ -430,7 +427,11 @@ def tab_counts(
     db: Session = Depends(get_db),
 ):
     """Her sekme için sipariş sayısı."""
-    base = select(Order.id).where(Order.tenant_id == user.tenant_id)
+    # Telafiler ayrı panelde — liste sorgusu da hariç tutuyor; badge sayıları tutsun.
+    base = select(Order.id).where(
+        Order.tenant_id == user.tenant_id,
+        Order.is_telafi == False,  # noqa: E712
+    )
     if store_id:
         base = base.where(Order.store_id == store_id)
 
@@ -545,7 +546,9 @@ def list_orders(
         item["kargo_firma"] = _ki.get("handler_name")
         item["is_acil"] = bool(
             o.cancelled_at is None
+            and not getattr(o, "is_iptal", False)
             and (o.fulfillment_status != "fulfilled")
+            and (o.financial_status != "refunded")
             and o.created_at_platform is not None
             and o.created_at_platform < acil_threshold
         )
@@ -965,7 +968,9 @@ def get_order(
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
     data["is_acil"] = bool(
         order.cancelled_at is None
+        and not getattr(order, "is_iptal", False)
         and order.fulfillment_status != "fulfilled"
+        and order.financial_status != "refunded"
         and order.created_at_platform is not None
         and order.created_at_platform < acil_threshold
     )

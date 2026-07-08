@@ -253,6 +253,19 @@ export default function OrdersPage() {
     }
   }
 
+  const refreshStale = async () => {
+    if (!confirm('Açık görünen tüm siparişlerin durumu Shopify\'dan tek tek tazelenecek.\nKargolanmış ama "açık" kalmış eski siparişler kapanır. Devam?')) return
+    setFetching('_stale')
+    setFetchMessage(null)
+    try {
+      const r = await api.post('/api/orders/_refresh-stale', {})
+      setFetchMessage({ success: true, message: `${r.checked} sipariş kontrol edildi · ${r.closed} kapandı${r.errors ? ` · ${r.errors} hata` : ''}` })
+      loadOrders(); loadTabCounts()
+    } catch (e) {
+      setFetchMessage({ success: false, message: e.detail || 'Tazeleme başarısız' })
+    } finally { setFetching(null) }
+  }
+
   const handleDelete = async (orderId, orderName) => {
     if (!confirm(`${orderName} silinecek. Emin misin?`)) return
     try {
@@ -317,6 +330,14 @@ export default function OrdersPage() {
                 {fetching === s.id ? `${s.name} çekiliyor...` : `↓ ${s.name}`}
               </button>
             ))}
+            <button
+              onClick={refreshStale}
+              disabled={fetching !== null}
+              className="btn-secondary !text-xs disabled:opacity-50"
+              title="Açık görünen siparişlerin durumunu Shopify'dan tek tek tazele (hayalet açık/acil düzelir)"
+            >
+              {fetching === '_stale' ? 'Tazeleniyor…' : '🔄 Bayat açıkları tazele'}
+            </button>
           </div>
         )}
       </div>

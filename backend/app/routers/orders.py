@@ -795,6 +795,60 @@ def bulk_action(
     return {"ok": True, "affected": affected, "requested": len(payload.ids)}
 
 
+@router.post("/_refresh-stale", response_model=dict)
+def refresh_stale_open(
+    days: int = Query(0, ge=0),   # 0 = tüm açık siparişler; >0 = sadece N günden eski açıklar
+    user: User = Depends(require_permission("siparisler")),
+    db: Session = Depends(get_db),
+):
+    """Açık görünen (fulfilled değil) siparişlerin GÜNCEL durumunu Shopify'dan
+    tek tek çekip tazeler. Amaç: eski sync penceresinin dışında kaldığı için
+    'unfulfilled' olarak DONMUŞ (ama gerçekte kargolanmış) siparişleri kapatmak —
+    böylece hayalet 'açık'/'acil' sayıları düzelir. Yalnızca Shopify mağazaları;
+    bayii/manuel siparişler atlanır (onlar panelden yönetilir)."""
+    from app.services import order_counts as _oc
+
+    conds = [Order.tenant_id == user.tenant_id, Order.is_telafi == False, *_oc.open_conds()]  # noqa: E712
+    if days > 0:
+        conds.append(Order.created_at_platform < datetime.now(UTC) - timedelta(days=days))
+    orders = db.scalars(
+        select(Order).where(*conds).order_by(Order.created_at_platform.asc()).limit(500)
+    ).all()
+
+    # Mağaza + adapter cache
+    store_cache: dict = {}
+    checked = closed = errors = skipped = 0
+    for o in orders:
+        store = store_cache.get(o.store_id)
+        if store is None:
+            store = db.get(Store, o.store_id)
+            store_cache[o.store_id] = store
+        if not store or store.platform != "shopify":
+            skipped += 1
+            continue
+        oid = o.external_id or str((o.raw or {}).get("id") or "")
+        if not oid:
+            skipped += 1
+            continue
+        try:
+            adapter = get_adapter(store)
+            raw = adapter.get_order_by_id(oid)
+            checked += 1
+            if raw is None:
+                continue  # Shopify'da yok (silinmiş) — dokunma
+            _upsert_order(db, tenant_id=user.tenant_id, store_id=store.id, raw=raw)
+            # Güncelleme sonrası artık açık değilse "kapandı" say
+            if (raw.get("fulfillment_status") == "fulfilled") or raw.get("cancelled_at"):
+                closed += 1
+        except Exception:  # noqa: BLE001
+            errors += 1
+    db.commit()
+    return {
+        "ok": True, "checked": checked, "closed": closed,
+        "errors": errors, "skipped": skipped, "candidates": len(orders),
+    }
+
+
 @router.post("/_recompute-deadlines", response_model=dict)
 def recompute_deadlines(
     overwrite: bool = Query(False),

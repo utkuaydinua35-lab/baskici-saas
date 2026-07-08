@@ -19,7 +19,7 @@ from sqlalchemy import func as sql_func, select
 
 from sqlalchemy import or_
 
-from app.models import Order, Store
+from app.models import Order
 
 # Bir açık sipariş kaç günden sonra "acil" sayılır (sipariş listesi tab'ı ile ortak).
 ACIL_THRESHOLD_DAYS = 5
@@ -66,17 +66,14 @@ def acil_threshold_dt():
     return datetime.now(timezone.utc) - timedelta(days=ACIL_THRESHOLD_DAYS)
 
 
-def acil_extra_conds(tid):
-    """'Acil' için open_conds ÜZERİNE ek elemeler — gerçekten 'baskı/kargo bekleyen
-    geciken' sipariş kalsın:
-    - Bayii siparişleri HARİÇ: Shopify kargo takibi hiç eklenmez, kendi panelinde
-      izlenir; ana 'acil' listesini şişirmesin.
-    - Kargoya verilmiş/teslim (stage >= 8) HARİÇ: yolda olan acil sayılmaz.
+def acil_extra_conds(tid=None):
+    """'Acil' için open_conds ÜZERİNE ek elemeler — bayii dahil TÜM siparişler için
+    aynı: gecikmiş AMA henüz kargoya verilmemiş/teslim edilmemiş olanlar kalsın.
+    - Kargoya verilmiş/teslim (stage >= 8: 8 Kargoda, 9 Teslim) HARİÇ.
     - Takip no'su olan (kargo_info.takip_no) HARİÇ: Shopify'da kargolanıp takibi
-      panele çekilmiş siparişler (fulfillment_status geç güncellense de) elenir."""
-    bayii_stores = select(Store.id).where(Store.tenant_id == tid, Store.platform == "bayii")
+      panele çekilmiş siparişler (fulfillment_status geç güncellense de) elenir.
+    Böylece teslim/kargoda bayii siparişi acil olmaz; geciken açık bayii siparişi olur."""
     return (
-        Order.store_id.notin_(bayii_stores),
         or_(Order.current_stage.is_(None), Order.current_stage < 8),
         or_(
             Order.kargo_info.is_(None),

@@ -21,6 +21,9 @@ export default function SosyalMedyaPage() {
   const [busy, setBusy] = useState(false)
   const [handle, setHandle] = useState('')
   const [view, setView] = useState('sohbet')   // sohbet | uret
+  const [persona, setPersona] = useState('')
+  const [personaOpen, setPersonaOpen] = useState(false)
+  const [hasPersona, setHasPersona] = useState(false)
 
   const store = stores.find(s => String(s.id) === String(storeId))
 
@@ -46,8 +49,14 @@ export default function SosyalMedyaPage() {
     } catch { setPosts([]) }
   }
 
+  const loadPersona = async (sid) => {
+    if (!sid) return
+    try { const r = await api.get(`/api/instagram/persona?store_id=${sid}`); setPersona(r.persona || ''); setHasPersona(!!r.persona) }
+    catch { setPersona(''); setHasPersona(false) }
+  }
+
   useEffect(() => { loadStores() }, [])
-  useEffect(() => { if (storeId) { loadDesigns(storeId); loadPosts(); setHandle(store?.instagram_handle || '') } }, [storeId])
+  useEffect(() => { if (storeId) { loadDesigns(storeId); loadPosts(); loadPersona(storeId); setHandle(store?.instagram_handle || '') } }, [storeId])
   useEffect(() => { loadPosts() }, [tab, storeId])
 
   const saveHandle = async () => {
@@ -55,6 +64,14 @@ export default function SosyalMedyaPage() {
       await api.patch('/api/instagram/stores/handle', { store_id: storeId, handle })
       toast.success('Instagram hesabı kaydedildi')
       loadStores()
+    } catch (e) { toast.error(e?.detail || 'Kaydedilemedi') }
+  }
+
+  const savePersona = async () => {
+    try {
+      const r = await api.patch('/api/instagram/persona', { store_id: storeId, persona })
+      setHasPersona(r.has_persona)
+      toast.success('Karakter kaydedildi — asistan artık bu persona')
     } catch (e) { toast.error(e?.detail || 'Kaydedilemedi') }
   }
 
@@ -112,6 +129,28 @@ export default function SosyalMedyaPage() {
             {store?.instagram_handle && <> · <a href={`https://instagram.com/${store.instagram_handle}`} target="_blank" rel="noreferrer" className="text-accent hover:underline">@{store.instagram_handle} aç ↗</a></>}
           </p>
         </div>
+      </div>
+
+      {/* Karakter / Persona — bir kez tanımla, asistan hep o karakter olsun */}
+      <div className="card mb-4">
+        <button onClick={() => setPersonaOpen(o => !o)} className="w-full flex items-center justify-between text-left">
+          <span className="text-sm font-semibold text-gray-200">🎭 Karakter (Persona) {hasPersona ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 ml-1">tanımlı</span> : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 ml-1">yok</span>}</span>
+          <span className="text-gray-500">{personaOpen ? '▲' : '▼'}</span>
+        </button>
+        {personaOpen && (
+          <div className="mt-3">
+            <p className="text-xs text-gray-500 mb-2">
+              Asistanın kalıcı kimliği. Bir kez yaz (örn. "Lara" karakteri) — asistan hep bu persona olarak konuşur ve
+              <b> tutarlı görünüşlü</b> görseller üretir (fiziksel özellikler her görsel promptuna otomatik girer).
+            </p>
+            <textarea className="input w-full !text-sm font-mono" rows={10} placeholder="Karakter tanımını buraya yapıştır…"
+              value={persona} onChange={e => setPersona(e.target.value)} />
+            <div className="flex items-center gap-2 mt-2">
+              <button onClick={savePersona} className="btn-primary !text-sm">Karakteri Kaydet</button>
+              {persona && <button onClick={() => { setPersona(''); }} className="btn-secondary !text-sm">Temizle</button>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Mod: hızlı üret vs AI sohbet */}
@@ -233,7 +272,8 @@ function ChatPanel({ storeId, toast, onCreated }) {
     try {
       await api.post('/api/instagram/draft', {
         store_id: storeId, caption: prop.caption, hashtags: prop.hashtags || null,
-        design_id: prop.design_id || null,
+        image_path: prop.image_path || null,     // üretilen sahne görseli
+        design_id: prop.image_path ? null : (prop.design_id || null),
       })
       toast.success('Taslak kuyruğa eklendi ✓')
       onCreated && onCreated()
@@ -312,7 +352,10 @@ function ProposalCard({ prop, onAdd, onFeedback }) {
     <div className="mt-2 rounded-xl border border-accent/30 bg-brand-card/60 overflow-hidden">
       {prop.image_url
         ? <img src={prop.image_url} alt="" className="w-full aspect-square object-cover" />
-        : <div className="w-full aspect-square bg-brand-input flex items-center justify-center text-gray-600 text-xs">Görsel yok (tasarım seçilmedi)</div>}
+        : <div className="w-full aspect-square bg-brand-input flex flex-col items-center justify-center text-gray-600 text-xs p-3 text-center">
+            <span>Görsel üretilemedi</span>
+            {prop.image_reason && <span className="text-[10px] text-amber-400/70 mt-1">{prop.image_reason}</span>}
+          </div>}
       <div className="p-2.5">
         <p className="text-sm text-gray-100 whitespace-pre-wrap">{prop.caption}</p>
         {prop.hashtags && <p className="text-xs text-accent mt-1">{prop.hashtags}</p>}

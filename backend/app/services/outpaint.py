@@ -177,3 +177,43 @@ def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "aut
             logger.warning(f"[outpaint] {p} hata: {e}")
             last_reason = f"{p}: {str(e)[:80]}"
     return None, (last_reason or "AI genişletme başarısız")
+
+
+def text_to_image(prompt: str, *, image_size: str = "square_hd") -> tuple[bytes | None, str | None]:
+    """Metinden görsel üret (FLUX text-to-image, fal.ai). Sosyal medya persona
+    sahnesi için. Döner: (jpeg_bytes | None, reason | None)."""
+    s = get_settings()
+    if not s.fal_key:
+        return None, "fal.ai anahtarı yok (.env FAL_KEY)"
+    if not (prompt or "").strip():
+        return None, "boş prompt"
+    try:
+        body = {"prompt": prompt.strip()[:1800], "image_size": image_size, "num_images": 1}
+        r = requests.post(
+            f"https://fal.run/{s.fal_text2img_model}", json=body,
+            headers={"Authorization": f"Key {s.fal_key}", "Content-Type": "application/json"},
+            timeout=180,
+        )
+        if r.status_code not in (200, 201):
+            logger.warning(f"[text2img] fal HTTP {r.status_code}: {r.text[:200]}")
+            return None, _http_reason("fal.ai", r.status_code)
+        d = r.json() or {}
+        imgs = d.get("images") or d.get("image") or []
+        url = (imgs[0].get("url") if isinstance(imgs, list) and imgs
+               else (imgs.get("url") if isinstance(imgs, dict) else None))
+        if not url:
+            return None, "fal.ai: yanıtta görsel yok"
+        if url.startswith("data:"):
+            raw = base64.b64decode(url.split(",", 1)[1])
+        else:
+            ir = requests.get(url, timeout=90)
+            if not ir.ok:
+                return None, "fal.ai: görsel indirilemedi"
+            raw = ir.content
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=92)
+        return buf.getvalue(), None
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[text2img] hata: {e}")
+        return None, f"fal.ai: {str(e)[:80]}"

@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     fal_key: str = Field("", alias="FAL_KEY")                       # fal.ai (FLUX Fill)
     fal_model: str = Field("fal-ai/flux-pro/v1/fill", alias="FAL_MODEL")
     fal_upscale_model: str = Field("fal-ai/clarity-upscaler", alias="FAL_UPSCALE_MODEL")
+    # Metinden görsel (sosyal medya persona sahnesi) — FLUX text-to-image.
+    fal_text2img_model: str = Field("fal-ai/flux/dev", alias="FAL_TEXT2IMG_MODEL")
     gemini_api_key: str = Field("", alias="GEMINI_API_KEY")         # Google AI Studio (ABONELİK DEĞİL)
     gemini_image_model: str = Field("gemini-2.5-flash-image", alias="GEMINI_IMAGE_MODEL")
     # AI model degisikligi icin master password. Bos ise model degisikligi engellenir.

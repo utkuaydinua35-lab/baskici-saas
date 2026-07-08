@@ -319,6 +319,41 @@ def _learning(store: Store) -> dict:
     return {"good": lr.get("good") or [], "bad": lr.get("bad") or []}
 
 
+def _persona(store: Store) -> str:
+    cfg = store.config if isinstance(store.config, dict) else {}
+    ig = cfg.get("instagram") if isinstance(cfg.get("instagram"), dict) else {}
+    return (ig.get("persona") or "").strip()
+
+
+class PersonaIn(BaseModel):
+    store_id: uuid.UUID
+    persona: str
+
+
+@router.get("/persona", response_model=dict)
+def get_persona(store_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    store = db.scalar(select(Store).where(Store.id == store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    return {"persona": _persona(store)}
+
+
+@router.patch("/persona", response_model=dict)
+def set_persona(body: PersonaIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = dict(store.config or {})
+    ig = dict(cfg.get("instagram") or {})
+    ig["persona"] = (body.persona or "").strip()[:8000]
+    cfg["instagram"] = ig
+    store.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True, "has_persona": bool(ig["persona"])}
+
+
 def _save_learning(db, store: Store, rating: str, caption: str):
     cfg = dict(store.config or {})
     ig = dict(cfg.get("instagram") or {})
@@ -362,16 +397,34 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         from app.services.ai_reply import MODEL_MAP
         client = anthropic.Anthropic(api_key=s.anthropic_api_key)
 
-        system = (
-            f"Sen {store.name} markasının CANLI Instagram sosyal medya asistanısın — telefon "
-            "kılıfı satıyoruz. Marka sahibiyle sohbet edersin, örnek görselleri incelersin ve "
-            "PROAKTİF davranırsın: uygun olduğunda konuşmayı beklemeden somut gönderi önerisi "
-            "üret. Ton: enerjik, samimi, kısa, insan gibi. Caption sonunda 8-15 alakalı hashtag.\n\n"
-            "Görsel için TASARIM KATALOĞUMUZDAN bir kod seç (kılıf mockup'ı o tasarımdan "
-            "üretilir). Katalog:\n" + katalog + "\n\n"
-            "Somut bir gönderi önermek istediğinde `onerilecek_gonderi` aracını çağır "
-            "(caption + hashtags + design_code). Sadece fikir/soru varsa normal yaz.\n"
-        )
+        persona = _persona(store)
+        if persona:
+            # Marka sahibinin tanımladığı KALICI karakter (örn. "Lara") = asistanın kimliği
+            system = (
+                persona
+                + "\n\n[SİSTEM — bu senin kalıcı kimliğin; her yanıtta bu karakter olarak davran]\n"
+                "Bu markanın Instagram'ını yönetiyorsun. Marka sahibiyle sohbet et; uygun olduğunda "
+                "PROAKTİF olarak somut gönderi öner. Somut bir gönderi hazırlarken `onerilecek_gonderi` "
+                "aracını çağır:\n"
+                "- caption: SENİN sesinle (post ise açıklama, story ise tek kısa cümle)\n"
+                "- hashtags: 8-15 alakalı hashtag\n"
+                "- image_prompt: sahneyi üreten İNGİLİZCE Flux/SD promptu. Karakterinin fiziksel "
+                "özelliklerini HER promptta AYNI şekilde ekle (tutarlı yüz/stil). Foto stili: "
+                "'shot on 35mm film, analog photography style, aesthetic, highly detailed'. Marka/ürün "
+                "kurallarına (ör. yalnızca iPhone) İSTİSNASIZ uy.\n"
+                "- design_code (ops.): bir ürün/kılıf gösterilecekse katalogdan kod\n"
+                "Ürün kataloğu:\n" + katalog + "\n"
+            )
+        else:
+            system = (
+                f"Sen {store.name} markasının CANLI Instagram sosyal medya asistanısın — telefon "
+                "kılıfı satıyoruz. PROAKTİF davran: uygun olduğunda somut gönderi önerisi üret. "
+                "Ton: enerjik, samimi, kısa. Caption sonunda 8-15 hashtag.\n"
+                "Somut öneri için `onerilecek_gonderi` aracını çağır (caption + hashtags + "
+                "design_code ya da image_prompt). Görsel: design_code verirsen kılıf mockup'ı; "
+                "image_prompt (İngilizce sahne) verirsen AI görsel üretilir.\n"
+                "Ürün kataloğu:\n" + katalog + "\n"
+            )
         if lr["good"]:
             system += "\nBEĞENİLEN örnekler (bu tonu yakala):\n" + "\n".join(f"- {c}" for c in lr["good"][:6])
         if lr["bad"]:
@@ -396,13 +449,14 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
 
         tools = [{
             "name": "onerilecek_gonderi",
-            "description": "Somut bir Instagram gönderi önerisi üret (caption + tasarım).",
+            "description": "Somut bir Instagram gönderi önerisi üret (caption + görsel).",
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "caption": {"type": "string", "description": "Gönderi metni (TR)"},
+                    "caption": {"type": "string", "description": "Gönderi metni (senin sesinle)"},
                     "hashtags": {"type": "string", "description": "8-15 hashtag, boşlukla ayrık"},
-                    "design_code": {"type": "string", "description": "Katalogdan tasarım kodu (görsel için)"},
+                    "image_prompt": {"type": "string", "description": "İNGİLİZCE sahne promptu (AI görsel üretimi için; karakterin sabit fiziksel özellikleri + film stili)"},
+                    "design_code": {"type": "string", "description": "Ürün gösterilecekse katalogdan tasarım kodu (kılıf mockup'ı)"},
                 },
                 "required": ["caption"],
             },
@@ -417,17 +471,30 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         for b in resp.content:
             if getattr(b, "type", None) == "tool_use" and getattr(b, "name", "") == "onerilecek_gonderi":
                 inp = b.input or {}
+                image_prompt = (inp.get("image_prompt") or "").strip()
                 d = by_code.get(str(inp.get("design_code") or "").upper())
-                img = None
-                if d:
+                rel = None
+                img_reason = None
+                # 1) Persona sahnesi: image_prompt varsa fal.ai ile ÜRET (tutarlı karakter)
+                if image_prompt:
+                    from app.services import outpaint
+                    raw, img_reason = outpaint.text_to_image(image_prompt)
+                    if raw:
+                        rel = f"tenants/{user.tenant_id}/instagram/{uuid.uuid4().hex}.jpg"
+                        (STORAGE_ROOT / rel).parent.mkdir(parents=True, exist_ok=True)
+                        (STORAGE_ROOT / rel).write_bytes(raw)
+                # 2) Yoksa ürün mockup'ı
+                if not rel and d:
                     rel = _render_post_image(user.tenant_id, store, d)
-                    img = f"/storage/{rel}" if rel else None
                 proposal = {
                     "caption": inp.get("caption") or "",
                     "hashtags": inp.get("hashtags") or "",
+                    "image_prompt": image_prompt or None,
+                    "image_reason": img_reason if (image_prompt and not rel) else None,
                     "design_id": str(d.id) if d else None,
                     "design_code": d.code if d else None,
-                    "image_url": img,
+                    "image_path": rel,
+                    "image_url": f"/storage/{rel}" if rel else None,
                 }
                 break
         if not reply and proposal:

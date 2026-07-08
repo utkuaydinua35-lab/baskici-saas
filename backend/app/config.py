@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # Vitrin ozel domain dogrulamasi: musterinin A kaydinin isaret etmesi gereken IP
     server_ip: str = Field("", alias="SERVER_IP")
 
+    # Senkronizasyon penceresi (gün): yalnızca son N günde OLUŞAN ya da DURUMU
+    # DEĞİŞEN (updated_at) siparişler çekilir. Daha eski/durağan siparişler zaten
+    # DB'de olduğundan tekrar çekilmez -> senk çok daha hızlı. 0 = pencere kapalı
+    # (eski davranış: son ~3750 sipariş).
+    sync_window_days: int = Field(45, alias="SYNC_WINDOW_DAYS")
+
     # Public sipariş takip — hangi Shopify mağazasi sorgulanacak (store_url ile eşleşir)
     tracker_shop_domain: str = Field("2eb3e1-48.myshopify.com", alias="TRACKER_SHOP_DOMAIN")
 

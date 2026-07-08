@@ -78,8 +78,11 @@ def _counts(db, tid) -> dict:
     acik = oc(*acik_kosul, Order.current_stage < 9)
     acil = oc(Order.cancelled_at.is_(None), Order.is_acil.is_(True), Order.current_stage < 9)
     bugun = oc(Order.created_at_platform >= start_today)
-    paketleme = oc(Order.cancelled_at.is_(None), Order.current_stage == 6)
-    kargo = oc(Order.cancelled_at.is_(None), Order.current_stage == 7)
+    # ÖNEMLİ: paketleme/kargo GERÇEK açık siparişler olmalı (fulfilled/iade hariç);
+    # aksi halde Shopify'da kargolanmış ama stage'i 6/7'de kalmış siparişler sayılır
+    # ve "paketleme bekleyen > açık sipariş" gibi tutarsız sonuç çıkar.
+    paketleme = oc(*acik_kosul, Order.current_stage == 6)
+    kargo = oc(*acik_kosul, Order.current_stage == 7)
 
     # Kargo sözü (SLA): GERÇEK açık sipariş — iptal/iade/fulfilled değil + stage<8.
     # (Sadece stage<8 yetersiz: Shopify'da kargolanmış eski siparisleri saymasin.)

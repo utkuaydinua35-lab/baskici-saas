@@ -86,15 +86,28 @@ class ShopifyAdapter(StorePlatform):
         return r.json().get("order")
 
     def get_all_active_orders(self, limit: int = 250) -> list[dict]:
-        """Aktif ve son 60 günün tüm siparişleri (status=any: read_all_orders gerektirmez)."""
+        """Son sync_window_days gününde OLUŞAN ya da DURUMU DEĞİŞEN siparişler
+        (status=any). updated_at_min sayesinde eski/durağan siparişler tekrar
+        çekilmez -> senk hızlanır; eski bir sipariş fulfilled/takip alırsa
+        updated_at değiştiği için yine gelir. Pencere=0 ise eski davranış (son ~3750)."""
+        from datetime import datetime, timedelta, timezone
+        from app.config import get_settings
+
         url = f"{self._base_url()}/orders.json"
         params = {
             "status": "any",
             "limit": min(limit, 250),
+            "order": "updated_at desc",
         }
+        window_days = int(getattr(get_settings(), "sync_window_days", 0) or 0)
+        if window_days > 0:
+            params["updated_at_min"] = (
+                datetime.now(timezone.utc) - timedelta(days=window_days)
+            ).isoformat()
         all_orders: list[dict] = []
         next_url: str | None = url
-        max_pages = 15  # 15 × 250 = 3750 siparis: eski siparislerin fulfillment/takip durumu da tazelensin
+        # Pencere aktifse birkaç sayfa yeter; kapalıysa eski 3750 davranışı.
+        max_pages = 8 if window_days > 0 else 15
         page = 0
         while next_url and page < max_pages:
             page += 1

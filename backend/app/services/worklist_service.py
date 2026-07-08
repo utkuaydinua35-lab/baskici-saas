@@ -75,14 +75,21 @@ def build_worklist(db: Session, user) -> dict:
 
     # ── paketleme izni ───────────────────────────────────────────────
     if "paketleme" in perms:
-        paket = oc(Order.cancelled_at.is_(None), Order.current_stage == 6)
+        # GERÇEK açık: fulfilled/iade/iptal değil — Shopify'da kargolanmış ama stage'i
+        # 6/7'de kalmış siparişleri sayma (aksi halde "paketleme > açık" tutarsızlığı).
+        _acik = (
+            Order.cancelled_at.is_(None),
+            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
+            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+        )
+        paket = oc(*_acik, Order.current_stage == 6)
         if paket:
             items.append({
                 "key": "paket_bekleyen", "icon": "🏷️", "severity": "normal",
                 "label": "Paketlenecek sipariş", "count": paket, "link": "/paketleme",
             })
 
-        kargo = oc(Order.cancelled_at.is_(None), Order.current_stage == 7)
+        kargo = oc(*_acik, Order.current_stage == 7)
         if kargo:
             items.append({
                 "key": "kargo_bekleyen", "icon": "🚚", "severity": "normal",

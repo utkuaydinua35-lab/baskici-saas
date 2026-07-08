@@ -278,6 +278,128 @@ def patch_post(post_id: uuid.UUID, body: PostPatch,
     return _ser(p)
 
 
+from fastapi import UploadFile, File, Form
+
+
+@router.post("/upload", response_model=dict)
+async def upload_image(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Sohbete / gönderiye görsel yükle (UGC örnek görseli, referans vb.).
+    Döner: {path, url}."""
+    data = await file.read()
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(413, "Dosya çok büyük (max 15 MB)")
+    ext = (file.filename or "img.jpg").rsplit(".", 1)[-1].lower()
+    if ext not in ("jpg", "jpeg", "png", "webp"):
+        ext = "jpg"
+    rel = f"tenants/{user.tenant_id}/instagram/uploads/{uuid.uuid4().hex}.{ext}"
+    full = STORAGE_ROOT / rel
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_bytes(data)
+    return {"path": rel, "url": f"/storage/{rel}"}
+
+
+class ChatMsg(BaseModel):
+    role: str                      # user | assistant
+    text: str = ""
+    images: list[str] = []         # storage relative path'leri
+
+
+class ChatIn(BaseModel):
+    store_id: uuid.UUID
+    messages: list[ChatMsg]
+
+
+@router.post("/chat", response_model=dict)
+def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """AI ile sohbet (vision destekli) — kullanıcı ne istediğini anlatır, görsel
+    yükler; AI marka editörü gibi fikir/başlık/caption önerir. {reply} döner."""
+    s = get_settings()
+    if not s.anthropic_api_key:
+        raise HTTPException(400, "AI kapalı — .env ANTHROPIC_API_KEY tanımlı değil")
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+
+    import base64
+    try:
+        import anthropic
+        from app.services.ai_reply import MODEL_MAP
+        client = anthropic.Anthropic(api_key=s.anthropic_api_key)
+
+        system = (
+            f"Sen {store.name} markasının Instagram sosyal medya editörüsün. Telefon kılıfı "
+            "satıyoruz. Kullanıcı (marka sahibi) ne paylaşmak istediğini anlatır, örnek "
+            "görseller yükleyebilir. Ona samimi, insan-yazmış gibi Türkçe Instagram metinleri, "
+            "içerik fikirleri ve görsel önerileri ver. Kısa ve pratik konuş. Bir caption "
+            "istenirse sonunda 8-15 alakalı hashtag ekle."
+        )
+        cmsgs = []
+        for m in body.messages[-20:]:
+            content = []
+            for rel in (m.images or [])[:4]:
+                full = STORAGE_ROOT / rel
+                if not full.exists():
+                    continue
+                mt = "image/png" if str(rel).lower().endswith("png") else "image/jpeg"
+                b64 = base64.standard_b64encode(full.read_bytes()).decode()
+                content.append({"type": "image", "source": {"type": "base64", "media_type": mt, "data": b64}})
+            if m.text:
+                content.append({"type": "text", "text": m.text})
+            if content:
+                cmsgs.append({"role": "assistant" if m.role == "assistant" else "user", "content": content})
+        if not cmsgs:
+            raise HTTPException(400, "Boş mesaj")
+
+        resp = client.messages.create(
+            model=MODEL_MAP.get("opus", "claude-opus-4-8"),
+            max_tokens=1024, temperature=0.8, system=system, messages=cmsgs,
+        )
+        reply = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text")
+        return {"reply": reply.strip() or "…"}
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[instagram] chat hata: {e}")
+        raise HTTPException(502, "AI yanıtı alınamadı")
+
+
+class DraftIn(BaseModel):
+    store_id: uuid.UUID
+    caption: str
+    hashtags: str | None = None
+    image_path: str | None = None    # yüklenen görsel path'i
+    design_id: uuid.UUID | None = None
+    kind: str = "post"
+
+
+@router.post("/draft", response_model=dict)
+def create_draft(body: DraftIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sohbetten/elle bir taslak oluştur: verilen caption + görsel (yüklenen ya da
+    tasarım mockup'ı) ile kuyruğa 'taslak' ekle."""
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    image_path = body.image_path
+    design = None
+    if body.design_id:
+        design = db.scalar(select(Design).where(Design.id == body.design_id, Design.tenant_id == user.tenant_id))
+        if design and not image_path:
+            image_path = _render_post_image(user.tenant_id, store, design)
+    post = InstagramPost(
+        tenant_id=user.tenant_id, store_id=store.id, kind=body.kind,
+        style="ugc" if body.image_path else "mockup", status="taslak",
+        caption=body.caption.strip(), hashtags=(body.hashtags or "").strip() or None,
+        image_path=image_path, design_id=design.id if design else None,
+    )
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+    return _ser(post, design)
+
+
 @router.delete("/posts/{post_id}", response_model=dict)
 def delete_post(post_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     p = db.scalar(select(InstagramPost).where(

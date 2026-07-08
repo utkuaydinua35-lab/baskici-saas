@@ -75,14 +75,13 @@ def _counts(db, tid) -> dict:
     bugun_tr = datetime.now(_TR).date()
     start_today = datetime.combine(bugun_tr, time.min, tzinfo=_TR).astimezone(timezone.utc)
 
-    acik = oc(*acik_kosul, Order.current_stage < 9)
-    acil = oc(Order.cancelled_at.is_(None), Order.is_acil.is_(True), Order.current_stage < 9)
+    # TEK KAYNAK (order_counts) — dashboard/worklist/liste ile birebir aynı tanım.
+    from app.services import order_counts as _oc
+    acik = _oc.acik(db, tid)
+    acil = _oc.acil(db, tid)          # yaş bazlı (liste 'acil' tab'ı ile aynı)
     bugun = oc(Order.created_at_platform >= start_today)
-    # ÖNEMLİ: paketleme/kargo GERÇEK açık siparişler olmalı (fulfilled/iade hariç);
-    # aksi halde Shopify'da kargolanmış ama stage'i 6/7'de kalmış siparişler sayılır
-    # ve "paketleme bekleyen > açık sipariş" gibi tutarsız sonuç çıkar.
-    paketleme = oc(*acik_kosul, Order.current_stage == 6)
-    kargo = oc(*acik_kosul, Order.current_stage == 7)
+    paketleme = _oc.paketleme(db, tid)
+    kargo = _oc.kargo(db, tid)
 
     # Kargo sözü (SLA): GERÇEK açık sipariş — iptal/iade/fulfilled değil + stage<8.
     # (Sadece stage<8 yetersiz: Shopify'da kargolanmış eski siparisleri saymasin.)

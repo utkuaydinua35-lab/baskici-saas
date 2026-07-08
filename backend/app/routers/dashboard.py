@@ -63,15 +63,17 @@ def summary(
             q = q.where(Order.store_id == store_id)
         return db.scalar(q) or 0
 
-    # ─── KPI'lar ───
-    acik = ocount(*_acik_kosul, Order.current_stage < 9)
-    acil = ocount(not_cancelled, Order.is_acil.is_(True), Order.current_stage < 9)
+    # ─── KPI'lar ─── (TEK KAYNAK: order_counts — dashboard/özet/worklist/liste tutarlı)
+    from app.services import order_counts as _oc
+    _sid = store_id
+    acik = _oc.acik(db, tid, store_id=_sid)
+    acil = _oc.acil(db, tid, store_id=_sid)          # yaş bazlı (liste 'acil' tab'ı ile aynı)
 
     start_today = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
     bugun = ocount(Order.created_at_platform >= start_today)
 
-    paketleme_bekleyen = ocount(not_cancelled, Order.current_stage == 6)
-    kargo_bekleyen = ocount(not_cancelled, Order.current_stage == 7)
+    paketleme_bekleyen = _oc.paketleme(db, tid, store_id=_sid)
+    kargo_bekleyen = _oc.kargo(db, tid, store_id=_sid)
 
     # ─── Üretim hattı (stage dağılımı) ───
     fq = (

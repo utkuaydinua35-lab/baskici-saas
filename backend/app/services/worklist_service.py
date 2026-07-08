@@ -53,13 +53,12 @@ def build_worklist(db: Session, user) -> dict:
             )
         ) or 0
 
+    # TEK KAYNAK: order_counts (dashboard/özet/liste ile tutarlı sayımlar)
+    from app.services import order_counts as _oc
+
     # ── siparisler izni ──────────────────────────────────────────────
     if "siparisler" in perms:
-        acil = oc(
-            Order.cancelled_at.is_(None),
-            Order.is_acil.is_(True),
-            Order.current_stage < 9,
-        )
+        acil = _oc.acil(db, tid)      # yaş bazlı (liste 'acil' tab'ı ile aynı)
         if acil:
             items.append({
                 "key": "acil_siparis", "icon": "🚨", "severity": "urgent",
@@ -75,21 +74,14 @@ def build_worklist(db: Session, user) -> dict:
 
     # ── paketleme izni ───────────────────────────────────────────────
     if "paketleme" in perms:
-        # GERÇEK açık: fulfilled/iade/iptal değil — Shopify'da kargolanmış ama stage'i
-        # 6/7'de kalmış siparişleri sayma (aksi halde "paketleme > açık" tutarsızlığı).
-        _acik = (
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-        )
-        paket = oc(*_acik, Order.current_stage == 6)
+        paket = _oc.paketleme(db, tid)
         if paket:
             items.append({
                 "key": "paket_bekleyen", "icon": "🏷️", "severity": "normal",
                 "label": "Paketlenecek sipariş", "count": paket, "link": "/paketleme",
             })
 
-        kargo = oc(*_acik, Order.current_stage == 7)
+        kargo = _oc.kargo(db, tid)
         if kargo:
             items.append({
                 "key": "kargo_bekleyen", "icon": "🚚", "severity": "normal",

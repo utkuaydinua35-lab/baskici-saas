@@ -31,8 +31,9 @@ router = APIRouter(prefix="/api/orders", tags=["orders"],
     dependencies=[Depends(require_any_permission("siparisler", "bayii", "stok"))],
 )
 
-# Acil eşik: kaç gün geçince "Acil" sayılır
-ACIL_THRESHOLD_DAYS = 5
+# Acil eşik: kaç gün geçince "Acil" sayılır — TEK KAYNAK order_counts'ta
+# (dashboard/özet/worklist ile birebir aynı olsun diye buraya import edilir).
+from app.services.order_counts import ACIL_THRESHOLD_DAYS  # noqa: E402
 
 TAB_KEYS = ["tumu", "acil", "barkod", "tedarik", "kaliplanmis", "kalip_bekliyor", "gonderilmeyen", "tamamlandi"]
 

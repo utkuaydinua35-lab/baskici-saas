@@ -356,6 +356,9 @@ class Order(Base):
     fulfillment_status: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     financial_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Shopify "Arşivle" (closed_at): sipariş tamamlanmış/kapatılmış sayılır — fulfill
+    # edilmese bile açık/acil listelerine girmemeli.
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     customer_email: Mapped[str | None] = mapped_column(String(200), nullable=True)

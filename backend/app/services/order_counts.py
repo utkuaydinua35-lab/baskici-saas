@@ -29,6 +29,7 @@ def open_conds():
     değil. Paketleme kuyruğu ve 'gönderilmeyen' tab'ıyla AYNI tanım."""
     return (
         Order.cancelled_at.is_(None),
+        Order.closed_at.is_(None),          # Shopify'da arşivlenmiş (kapatılmış) değil
         Order.is_iptal.is_(False),
         (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),

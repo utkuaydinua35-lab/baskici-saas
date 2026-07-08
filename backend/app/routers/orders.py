@@ -172,6 +172,7 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         "fulfillment_status": raw.get("fulfillment_status"),
         "financial_status": raw.get("financial_status"),
         "cancelled_at": _parse_iso(raw.get("cancelled_at")),
+        "closed_at": _parse_iso(raw.get("closed_at")),   # Shopify "Arşivle" -> kapandı
         "customer_name": _extract_customer_name(raw),
         "customer_email": customer.get("email") or raw.get("email"),
         "created_at_platform": _parse_iso(raw.get("created_at")),
@@ -345,13 +346,16 @@ def _build_tab_filter(q, tab: str):
         # (cancelled_at / is_iptal) + iade (refunded) değil.
         q = q.where(
             Order.cancelled_at.is_(None),
+            Order.closed_at.is_(None),   # arşivlenmiş = gönderilmiş sayılır
             Order.is_iptal == False,  # noqa: E712
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
             (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         )
     elif tab == "tamamlandi":
         q = q.where(
-            (Order.fulfillment_status == "fulfilled") | (Order.cancelled_at.is_not(None))
+            (Order.fulfillment_status == "fulfilled")
+            | (Order.cancelled_at.is_not(None))
+            | (Order.closed_at.is_not(None))   # Shopify'da arşivlenmiş de tamamlandı
         )
     # "tumu" → filtre yok
     return q
@@ -838,7 +842,8 @@ def refresh_stale_open(
                 continue  # Shopify'da yok (silinmiş) — dokunma
             _upsert_order(db, tenant_id=user.tenant_id, store_id=store.id, raw=raw)
             # Güncelleme sonrası artık açık değilse "kapandı" say
-            if (raw.get("fulfillment_status") == "fulfilled") or raw.get("cancelled_at"):
+            # (fulfilled / iptal / Shopify'da arşivlenmiş=closed_at)
+            if (raw.get("fulfillment_status") == "fulfilled") or raw.get("cancelled_at") or raw.get("closed_at"):
                 closed += 1
         except Exception:  # noqa: BLE001
             errors += 1

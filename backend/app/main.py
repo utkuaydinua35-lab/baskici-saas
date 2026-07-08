@@ -48,6 +48,7 @@ from app.routers.store_settings import router as store_settings_router
 from app.routers.audit import router as audit_router
 from app.routers.search import router as search_router
 from app.routers.push import router as push_router
+from app.routers.instagram import router as instagram_router
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.services import storage as storage_service
 
@@ -116,6 +117,7 @@ app.include_router(aski.router)
 app.include_router(audit_router)
 app.include_router(search_router)
 app.include_router(push_router)
+app.include_router(instagram_router)
 app.include_router(catalog_router)
 app.include_router(discounts_router)
 app.include_router(customers_router)

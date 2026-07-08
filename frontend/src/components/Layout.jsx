@@ -506,6 +506,7 @@ const NAV = [
   { label: 'Analitik', icon: '📈', items: [
     { to: '/analitik', label: 'Analitik', icon: '📈', perm: 'dashboard' },
     { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
+    { to: '/sosyal-medya', label: 'Sosyal Medya', icon: '📸', perm: 'pazarlama' },
     { to: '/musteriler', label: 'Müşteriler', icon: '👥', perm: 'musteri' },
   ] },
   { label: 'Sipariş', icon: '📦', items: [

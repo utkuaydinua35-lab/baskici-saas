@@ -56,6 +56,7 @@ const PlatformPage = lazyWithReload(() => import('./pages/PlatformPage'))
 const PazarlamaPage = lazyWithReload(() => import('./pages/PazarlamaPage'))
 const MusterilerPage = lazyWithReload(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazyWithReload(() => import('./pages/AnalitikPage'))
+const SosyalMedyaPage = lazyWithReload(() => import('./pages/SosyalMedyaPage'))
 
 function PageLoader() {
   return (
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/pazarlama" element={<PazarlamaPage />} />
             <Route path="/musteriler" element={<MusterilerPage />} />
             <Route path="/analitik" element={<AnalitikPage />} />
+            <Route path="/sosyal-medya" element={<SosyalMedyaPage />} />
           </Route>
         </Route>
 

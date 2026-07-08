@@ -17,7 +17,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func as sql_func, select
 
-from app.models import Order
+from sqlalchemy import or_
+
+from app.models import Order, Store
 
 # Bir açık sipariş kaç günden sonra "acil" sayılır (sipariş listesi tab'ı ile ortak).
 ACIL_THRESHOLD_DAYS = 5
@@ -64,12 +66,31 @@ def acil_threshold_dt():
     return datetime.now(timezone.utc) - timedelta(days=ACIL_THRESHOLD_DAYS)
 
 
+def acil_extra_conds(tid):
+    """'Acil' için open_conds ÜZERİNE ek elemeler — gerçekten 'baskı/kargo bekleyen
+    geciken' sipariş kalsın:
+    - Bayii siparişleri HARİÇ: Shopify kargo takibi hiç eklenmez, kendi panelinde
+      izlenir; ana 'acil' listesini şişirmesin.
+    - Kargoya verilmiş/teslim (stage >= 8) HARİÇ: yolda olan acil sayılmaz.
+    - Takip no'su olan (kargo_info.takip_no) HARİÇ: Shopify'da kargolanıp takibi
+      panele çekilmiş siparişler (fulfillment_status geç güncellense de) elenir."""
+    bayii_stores = select(Store.id).where(Store.tenant_id == tid, Store.platform == "bayii")
+    return (
+        Order.store_id.notin_(bayii_stores),
+        or_(Order.current_stage.is_(None), Order.current_stage < 8),
+        or_(
+            Order.kargo_info.is_(None),
+            Order.kargo_info["takip_no"].astext.is_(None),
+            Order.kargo_info["takip_no"].astext == "",
+        ),
+    )
+
+
 def acil(db, tid, *, store_id=None) -> int:
-    """Acil: GERÇEK açık (open_conds) + ACIL_THRESHOLD_DAYS günden eski.
-    Yani gerçekten geciken açık sipariş; panelde iptal/iade edilmiş eski
-    siparişler sayılmaz. Sipariş listesi 'acil' tab'ıyla birebir aynı."""
+    """Acil: GERÇEK açık (open_conds) + 5 günden eski + acil_extra_conds
+    (bayii/kargoda/takipli hariç). Sipariş listesi 'acil' tab'ıyla birebir aynı."""
     return _count(
-        db, tid, *open_conds(),
+        db, tid, *open_conds(), *acil_extra_conds(tid),
         Order.created_at_platform < acil_threshold_dt(),
         store_id=store_id,
     )

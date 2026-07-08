@@ -303,12 +303,15 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
 
 
 # ─── Tab filtreleri (Paket 18) ───────────────────────────────
-def _build_tab_filter(q, tab: str):
+def _build_tab_filter(q, tab: str, tenant_id=None):
     """Order üzerinde base query'ye tab filtresini ekle."""
     if tab == "acil":
-        # GERÇEK açık (order_counts.open_conds: iptal/is_iptal/fulfilled/iade değil) + 5 gün eski
+        # order_counts ile birebir: gerçek açık + 5 gün eski + (bayii/kargoda/takipli hariç)
         from app.services import order_counts as _oc
-        q = q.where(*_oc.open_conds(), Order.created_at_platform < _oc.acil_threshold_dt())
+        q = q.where(
+            *_oc.open_conds(), *_oc.acil_extra_conds(tenant_id),
+            Order.created_at_platform < _oc.acil_threshold_dt(),
+        )
     elif tab == "barkod":
         # En az bir line item hazır değil (barkod basılması bekleyen)
         q = q.where(
@@ -441,7 +444,7 @@ def tab_counts(
 
     counts = {}
     for tab in TAB_KEYS:
-        q = _build_tab_filter(base, tab)
+        q = _build_tab_filter(base, tab, user.tenant_id)
         c = db.scalar(select(sql_func.count()).select_from(q.subquery())) or 0
         counts[tab] = c
     return counts
@@ -469,7 +472,7 @@ def list_orders(
     if status_filter:
         q = q.where(Order.fulfillment_status == status_filter)
     if tab and tab in TAB_KEYS and tab != "tumu":
-        q = _build_tab_filter(q, tab)
+        q = _build_tab_filter(q, tab, user.tenant_id)
     if deadline:
         # Kargo sözü filtresi — yalnızca GERÇEK açık sipariş: iptal/iade değil,
         # Shopify'da fulfilled (kargolanmış) değil, pipeline'da da stage < 8.
@@ -524,12 +527,10 @@ def list_orders(
 
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
 
-    # Mağaza adı haritası (bayii dahil — "?" sorununu önler)
-    store_names = {
-        s.id: s.name for s in db.scalars(
-            select(Store).where(Store.tenant_id == user.tenant_id)
-        )
-    }
+    # Mağaza adı + platform haritası (bayii "acil" sayılmaz)
+    _stores = db.scalars(select(Store).where(Store.tenant_id == user.tenant_id)).all()
+    store_names = {s.id: s.name for s in _stores}
+    bayii_store_ids = {s.id for s in _stores if getattr(s, "platform", None) == "bayii"}
 
     items = []
     for o in rows:
@@ -548,11 +549,16 @@ def list_orders(
         item["kargo_status"] = _ki.get("status")
         item["kargo_takip"] = _ki.get("takip_no")
         item["kargo_firma"] = _ki.get("handler_name")
+        _ki = o.kargo_info or {}
         item["is_acil"] = bool(
             o.cancelled_at is None
+            and o.closed_at is None
             and not getattr(o, "is_iptal", False)
             and (o.fulfillment_status != "fulfilled")
             and (o.financial_status != "refunded")
+            and o.store_id not in bayii_store_ids           # bayii acil sayılmaz
+            and (o.current_stage or 0) < 8                  # kargoda/teslim değil
+            and not (_ki.get("takip_no"))                   # takip no yoksa
             and o.created_at_platform is not None
             and o.created_at_platform < acil_threshold
         )
@@ -1025,11 +1031,18 @@ def get_order(
 
     # is_acil
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
+    _store = db.get(Store, order.store_id)
+    _is_bayii = getattr(_store, "platform", None) == "bayii" if _store else False
+    _ki = order.kargo_info or {}
     data["is_acil"] = bool(
         order.cancelled_at is None
+        and order.closed_at is None
         and not getattr(order, "is_iptal", False)
         and order.fulfillment_status != "fulfilled"
         and order.financial_status != "refunded"
+        and not _is_bayii
+        and (order.current_stage or 0) < 8
+        and not _ki.get("takip_no")
         and order.created_at_platform is not None
         and order.created_at_platform < acil_threshold
     )

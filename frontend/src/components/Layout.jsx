@@ -503,7 +503,11 @@ function ChangePasswordModal({ onClose }) {
 // ─── Üst menü verisi: bölümler + öğeler (perm bazlı) ───
 const NAV = [
   { label: 'Dashboard', to: '/', icon: '📊', perm: 'dashboard', end: true },
-  { label: 'Analitik', to: '/analitik', icon: '📈', perm: 'dashboard' },
+  { label: 'Analitik', icon: '📈', items: [
+    { to: '/analitik', label: 'Analitik', icon: '📈', perm: 'dashboard' },
+    { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
+    { to: '/musteriler', label: 'Müşteriler', icon: '👥', perm: 'musteri' },
+  ] },
   { label: 'Sipariş', icon: '📦', items: [
     { to: '/orders', label: 'Siparişler', icon: '📦', perm: 'siparisler' },
     { to: '/paketleme', label: 'Paketleme', icon: '🏷️', perm: 'paketleme' },
@@ -528,17 +532,10 @@ const NAV = [
     { to: '/kalip-olustur?tab=existing', label: 'Oluşturulan Kalıplar', icon: '📦', perm: 'kalip' },
     { to: '/kalip-olustur?tab=old', label: 'Eski Kalıplar', icon: '🗄️', perm: 'kalip' },
     { to: '/baskici-paneli', label: 'Baskıcı Paneli', icon: '🖨️', perm: 'kalip' },
-  ] },
-  { label: 'Stok', icon: '🗃️', items: [
+    // Stok + Telefon Modelleri — kalıp iş akışının alt kalemleri
     { to: '/stok', label: 'Stok', icon: '🗃️', perm: 'stok' },
     { to: '/aski', label: 'Askıda Bekleyenler', icon: '🎁', perm: 'stok' },
-  ] },
-  { label: 'Katalog', icon: '📱', items: [
     { to: '/telefon-modelleri', label: 'Telefon Modelleri', icon: '📱', perm: 'telefon_modelleri' },
-  ] },
-  { label: 'Pazarlama', icon: '📣', items: [
-    { to: '/pazarlama', label: 'Pazarlama', icon: '📣', perm: 'pazarlama' },
-    { to: '/musteriler', label: 'Müşteriler', icon: '👥', perm: 'musteri' },
   ] },
   // Not: "Denetim Kaydı" ve "Atölyeler" üst menüde değil — profil menüsünde (sağ üst).
 ]

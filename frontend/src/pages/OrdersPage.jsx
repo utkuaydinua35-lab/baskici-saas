@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import ManualOrderDialog from '../components/ManualOrderDialog'
@@ -149,6 +149,8 @@ export default function OrdersPage() {
   const [selected, setSelected] = useState(new Set())   // toplu işlem seçimi
   const [bulkBusy, setBulkBusy] = useState(false)
   const navigate = useNavigate()  // 3 nokta menüsü açık olan sipariş
+  const _loc = useLocation()
+  const _fromHere = () => ({ state: { from: _loc.pathname + _loc.search } })
 
   const loadStores = async () => {
     try {
@@ -480,7 +482,7 @@ export default function OrdersPage() {
                       <>
                         <tr
                           key={o.id}
-                          onClick={() => navigate(`/orders/${o.id}`)}
+                          onClick={() => navigate(`/orders/${o.id}`, _fromHere())}
                           className={`hover:bg-brand-input/50 cursor-pointer ${
                             selected.has(o.id) ? 'bg-accent/5' : ''
                           } ${
@@ -570,7 +572,7 @@ export default function OrdersPage() {
                               <RowMenu
                                 open={menuOrderId === o.id}
                                 onToggle={() => setMenuOrderId(menuOrderId === o.id ? null : o.id)}
-                                onOpenDetail={() => { navigate(`/orders/${o.id}`); setMenuOrderId(null) }}
+                                onOpenDetail={() => { navigate(`/orders/${o.id}`, _fromHere()); setMenuOrderId(null) }}
                                 onOpenShopify={shopUrl ? () => { window.open(shopUrl, '_blank'); setMenuOrderId(null) } : null}
                                 onDelete={() => { setMenuOrderId(null); handleDelete(o.id, o.name || `#${o.order_number}`) }}
                               />

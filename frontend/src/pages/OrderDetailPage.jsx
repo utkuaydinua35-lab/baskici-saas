@@ -188,25 +188,23 @@ export default function OrderDetailPage() {
   const f = detail.financial || {}
   const cur = f.currency || 'TRY'
 
-  // Geri hedefi: geldiğin yer (location.state.from) > bayii siparişiyse o bayiye > /orders
-  const backTo = location.state?.from
-    || (detail.is_bayii && detail.dealer_id ? `/bayiler/${detail.dealer_id}` : '/orders')
-  const backLabel = (detail.is_bayii && (location.state?.from?.startsWith('/bayiler') || detail.dealer_id)) ? 'Bayii' : 'Siparişler'
+  // Geri hedefi: NEREDEN geldiysen oraya (location.state.from). Yoksa /orders.
+  const backTo = location.state?.from || '/orders'
 
   return (
     <div className="max-w-[1400px]">
       {/* Üst bar */}
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-start gap-3">
-          <button onClick={() => navigate(backTo)} title={`← ${backLabel}`} className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
+          <button onClick={() => navigate(backTo)} title="← Geri" className="text-gray-400 hover:text-gray-200 text-xl mt-0.5">←</button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
                 <div className="flex flex-col gap-0.5">
-                  <button onClick={() => neighbors.next && navigate(`/orders/${neighbors.next}`)} disabled={!neighbors.next}
+                  <button onClick={() => neighbors.next && navigate(`/orders/${neighbors.next}`, { state: location.state })} disabled={!neighbors.next}
                     title="Sonraki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
-                  <button onClick={() => neighbors.prev && navigate(`/orders/${neighbors.prev}`)} disabled={!neighbors.prev}
+                  <button onClick={() => neighbors.prev && navigate(`/orders/${neighbors.prev}`, { state: location.state })} disabled={!neighbors.prev}
                     title="Önceki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
                 </div>
               </div>

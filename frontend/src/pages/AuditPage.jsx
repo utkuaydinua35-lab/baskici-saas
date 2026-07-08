@@ -179,7 +179,7 @@ export default function AuditPage() {
                       <td className="text-gray-400 whitespace-nowrap text-xs">{fmtTime(h.created_at)}</td>
                       <td>
                         <button
-                          onClick={() => navigate(`/orders/${h.order_id}`)}
+                          onClick={() => navigate(`/orders/${h.order_id}`, { state: { from: '/denetim' } })}
                           className="text-accent hover:underline font-medium"
                         >
                           {h.order_number || '—'}

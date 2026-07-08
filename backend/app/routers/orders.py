@@ -345,15 +345,11 @@ def _build_tab_filter(q, tab: str, tenant_id=None):
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
         )
     elif tab == "gonderilmeyen":
-        # Henüz kargolanmamış GERÇEK açık siparişler: fulfilled değil + iptal değil
-        # (cancelled_at / is_iptal) + iade (refunded) değil.
-        q = q.where(
-            Order.cancelled_at.is_(None),
-            Order.closed_at.is_(None),   # arşivlenmiş = gönderilmiş sayılır
-            Order.is_iptal == False,  # noqa: E712
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-        )
+        # Henüz SEVK EDİLMEMİŞ siparişler: gerçek açık + kargoda/teslim (stage>=8)
+        # değil + takip no'su yok. Bayii 'teslim' siparişleri stage 8/9 olduğundan
+        # artık burada görünmez.
+        from app.services import order_counts as _oc
+        q = q.where(*_oc.open_conds(), *_oc.acil_extra_conds())
     elif tab == "tamamlandi":
         q = q.where(
             (Order.fulfillment_status == "fulfilled")
@@ -515,10 +511,12 @@ def list_orders(
     if rows:
         onums = [str(o.order_number) for o in rows if o.order_number is not None]
         if onums:
-            for onum, mid, kod in db.execute(
-                select(MoldItem.order_number, Mold.id, Mold.kod)
+            # En YENİ kalıp önce (son eklendiği kalıp ilk gösterilsin)
+            for onum, mid, kod, _cr in db.execute(
+                select(MoldItem.order_number, Mold.id, Mold.kod, Mold.created_at)
                 .join(Mold, Mold.id == MoldItem.mold_id)
                 .where(Mold.tenant_id == user.tenant_id, MoldItem.order_number.in_(onums))
+                .order_by(Mold.created_at.desc())
                 .distinct()
             ).all():
                 lst = mold_links_by_onum.setdefault(str(onum), [])
@@ -544,7 +542,8 @@ def list_orders(
         item["kalipta_count"] = sum(
             1 for li in o.line_items if getattr(li, "is_kaliba_eklendi", False)
         )
-        _links = sorted(mold_links_by_onum.get(str(o.order_number), []), key=lambda m: m["kod"] or "")
+        # En yeni kalıp ilk (query created_at desc sıralı) — 'son eklendiği kalıp' önde
+        _links = mold_links_by_onum.get(str(o.order_number), [])
         item["molds"] = _links
         item["mold_kodlari"] = [m["kod"] for m in _links]
         _ki = o.kargo_info or {}
@@ -911,10 +910,13 @@ def _molds_by_line_item(db: Session, tenant_id, order) -> dict:
     onum = str(order.order_number) if order.order_number is not None else None
     if not onum:
         return {}
+    # En YENİ kalıp önce: bir kalem birden fazla kez kalıba eklendiyse (eskiden
+    # çıkarılıp yeniden eklendi) SON eklendiği kalıp gösterilsin.
     rows = db.execute(
         select(MoldItem, Mold.id, Mold.kod)
         .join(Mold, Mold.id == MoldItem.mold_id)
         .where(Mold.tenant_id == tenant_id, MoldItem.order_number == onum)
+        .order_by(Mold.created_at.desc(), MoldItem.id.desc())
     ).all()
     if not rows:
         return {}
@@ -939,9 +941,9 @@ def _molds_by_line_item(db: Session, tenant_id, order) -> dict:
             target = li_by_model[_nk_model(mi.model)][0]
         if not target:
             continue
-        lst = out.setdefault(target.id, [])
-        if not any(x["id"] == str(mid) for x in lst):
-            lst.append({"id": str(mid), "kod": kod})
+        # rows en yeniden eskiye sıralı: kaleme yalnızca EN SON kalıbı ata
+        if target.id not in out:
+            out[target.id] = [{"id": str(mid), "kod": kod}]
     return out
 
 

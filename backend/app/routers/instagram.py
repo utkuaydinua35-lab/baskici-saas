@@ -24,27 +24,52 @@ from app.services.storage import STORAGE_ROOT
 logger = __import__("logging").getLogger("instagram")
 
 
+def _load_design_art(design: Design):
+    """Tasarımdan PIL görüntü yükle (png/jpg/jpeg doğrudan, _thumb.png varsa, PDF ->
+    ilk sayfa fitz ile). Bulunamazsa None."""
+    from PIL import Image
+    fp = design.file_path
+    if not fp:
+        return None
+    fmt = (design.file_format or "").lower()
+
+    # 1) Doğrudan png/jpg + varsa hazır thumbnail
+    candidates = []
+    if fmt in ("png", "jpg", "jpeg"):
+        candidates.append(fp)
+    if len(fp) > 4:
+        candidates.append(fp[:-4] + "_thumb.png")
+    for rel in candidates:
+        full = STORAGE_ROOT / rel
+        if full.exists():
+            try:
+                return Image.open(full).convert("RGBA")
+            except Exception:  # noqa: BLE001
+                pass
+
+    # 2) PDF -> ilk sayfayı render et (PyMuPDF)
+    if fmt == "pdf":
+        full = STORAGE_ROOT / fp
+        if full.exists():
+            try:
+                import fitz
+                doc = fitz.open(str(full))
+                pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=True)
+                mode = "RGBA" if pix.alpha else "RGB"
+                return Image.frombytes(mode, [pix.width, pix.height], pix.samples).convert("RGBA")
+            except Exception:  # noqa: BLE001
+                pass
+    return None
+
+
 def _render_post_image(tenant_id, store: Store, design: Design) -> str | None:
     """Tasarımdan Instagram için kılıf mockup'ı üret, JPG kaydet, relative path döndür.
     Mağazanın mockup PSD'si varsa onunla (Ürün Stüdyosu ile aynı), yoksa basit render.
     Başarısızsa None (o zaman _ser thumbnail'e düşer)."""
     try:
-        from PIL import Image
-        # Tasarımın görüntülenebilir hâlini bul (thumbnail ya da png/jpg dosyası)
-        fmt = (design.file_format or "").lower()
-        rel = None
-        if fmt in ("png", "jpg", "jpeg"):
-            rel = design.file_path
-        else:
-            turl = storage.get_thumbnail_url(design.file_path, design.file_format)
-            if turl:
-                rel = turl.replace("/storage/", "", 1)
-        if not rel:
+        art = _load_design_art(design)
+        if art is None:
             return None
-        src = STORAGE_ROOT / rel
-        if not src.exists():
-            return None
-        art = Image.open(src).convert("RGBA")
 
         # Mockup: mağaza PSD'si varsa onunla, yoksa basit siyah kılıf
         mockup_psd = (store.config or {}).get("mockup_psd") if isinstance(store.config, dict) else None

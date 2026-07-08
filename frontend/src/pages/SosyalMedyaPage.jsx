@@ -59,10 +59,12 @@ export default function SosyalMedyaPage() {
 
   const generate = async () => {
     if (!storeId) return
+    if (!designId) { toast.error('Önce bir tasarım seç (görsel bundan üretilir)'); return }
     setBusy(true)
     try {
-      await api.post('/api/instagram/generate', { store_id: storeId, design_id: designId || null, kind, style: 'mockup' })
-      toast.success('Taslak üretildi')
+      const r = await api.post('/api/instagram/generate', { store_id: storeId, design_id: designId, kind, style: 'mockup' })
+      if (r && !r.image_url) toast.error('Metin üretildi ama görsel çıkmadı — bu tasarımın görseli açılamıyor olabilir, başka tasarım dene.')
+      else toast.success('Taslak üretildi')
       setTab('taslak'); loadPosts()
     } catch (e) { toast.error(e?.detail || 'Üretilemedi') }
     finally { setBusy(false) }

@@ -18,6 +18,53 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Design, InstagramPost, Store, User
 from app.services import storage, instagram_content
+from app.services import mockup as mockup_svc
+from app.services.storage import STORAGE_ROOT
+
+logger = __import__("logging").getLogger("instagram")
+
+
+def _render_post_image(tenant_id, store: Store, design: Design) -> str | None:
+    """Tasarımdan Instagram için kılıf mockup'ı üret, JPG kaydet, relative path döndür.
+    Mağazanın mockup PSD'si varsa onunla (Ürün Stüdyosu ile aynı), yoksa basit render.
+    Başarısızsa None (o zaman _ser thumbnail'e düşer)."""
+    try:
+        from PIL import Image
+        # Tasarımın görüntülenebilir hâlini bul (thumbnail ya da png/jpg dosyası)
+        fmt = (design.file_format or "").lower()
+        rel = None
+        if fmt in ("png", "jpg", "jpeg"):
+            rel = design.file_path
+        else:
+            turl = storage.get_thumbnail_url(design.file_path, design.file_format)
+            if turl:
+                rel = turl.replace("/storage/", "", 1)
+        if not rel:
+            return None
+        src = STORAGE_ROOT / rel
+        if not src.exists():
+            return None
+        art = Image.open(src).convert("RGBA")
+
+        # Mockup: mağaza PSD'si varsa onunla, yoksa basit siyah kılıf
+        mockup_psd = (store.config or {}).get("mockup_psd") if isinstance(store.config, dict) else None
+        mock = None
+        if mockup_psd and (STORAGE_ROOT / mockup_psd).exists():
+            try:
+                mock = mockup_svc.render_psd_mockup(str(STORAGE_ROOT / mockup_psd), art)
+            except Exception:  # noqa: BLE001
+                mock = None
+        if mock is None:
+            mock = mockup_svc.render_mockup(art, "siyah")
+
+        out_rel = f"tenants/{tenant_id}/instagram/{uuid.uuid4().hex}.jpg"
+        out_full = STORAGE_ROOT / out_rel
+        out_full.parent.mkdir(parents=True, exist_ok=True)
+        mock.convert("RGB").save(out_full, "JPEG", quality=90)
+        return out_rel
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[instagram] mockup gorsel hata: {e}")
+        return None
 
 router = APIRouter(prefix="/api/instagram", tags=["instagram"],
     dependencies=[Depends(require_permission("pazarlama"))])
@@ -149,8 +196,8 @@ def generate_draft(body: GenerateIn, user: User = Depends(get_current_user), db:
     if not gen:
         raise HTTPException(400, "AI metni üretilemedi — ANTHROPIC_API_KEY tanımlı mı?")
 
-    # Görsel: ilk sürümde tasarımın görseli (mockup/thumbnail). UGC = Faz 2.
-    image_path = design.file_path if design else None
+    # Görsel: tasarımdan kılıf mockup'ı üret (JPG). UGC lifestyle = Faz 2.
+    image_path = _render_post_image(user.tenant_id, store, design) if design else None
 
     post = InstagramPost(
         tenant_id=user.tenant_id, store_id=store.id,

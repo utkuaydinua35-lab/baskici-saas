@@ -100,10 +100,14 @@ export default function SosyalMedyaPage() {
         <div className="flex-1 min-w-[180px]">
           <label className="block text-xs text-gray-500 mb-1">Instagram hesabı (@)</label>
           <div className="flex gap-2">
-            <input className="input flex-1" placeholder="orn: bernzcompany" value={handle}
-              onChange={e => setHandle(e.target.value)} />
+            <input className="input flex-1" placeholder="orn: bernzcases" value={handle}
+              onChange={e => setHandle(e.target.value.trim().replace(/^@/, ''))} />
             <button onClick={saveHandle} className="btn-secondary !text-sm">Kaydet</button>
           </div>
+          <p className="text-[10px] text-gray-600 mt-1">
+            Bu markanın hangi hesaptan paylaşılacağını belirler.
+            {store?.instagram_handle && <> · <a href={`https://instagram.com/${store.instagram_handle}`} target="_blank" rel="noreferrer" className="text-accent hover:underline">@{store.instagram_handle} aç ↗</a></>}
+          </p>
         </div>
       </div>
 

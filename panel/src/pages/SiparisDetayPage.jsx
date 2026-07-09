@@ -128,6 +128,9 @@ export default function SiparisDetayPage() {
             {isStorefront && <RefundBlock orderId={d.id} onDone={load} />}
           </div>
 
+          {/* Müşteri talepleri (iade/değişim/sorun) */}
+          <RequestsCard orderId={d.id} />
+
           {/* Zaman çizelgesi */}
           <div className="card">
             <h2 className="text-sm font-semibold mb-3">Zaman Çizelgesi</h2>
@@ -427,6 +430,67 @@ function SkeletonDetail() {
           <div className={`${sk} h-28`} />
           <div className={`${sk} h-52`} />
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Müşteri talepleri — vitrindeki takip sayfasından gelen iade/değişim/sorun
+// kayıtları; çözülünce işaretlenir.
+const REQ_LABELS = { iade: ['İade', 'bg-red-50 text-red-700'],
+  degisim: ['Değişim', 'bg-amber-50 text-amber-700'],
+  sorun: ['Sorun', 'bg-sky-50 text-sky-700'] }
+
+function RequestsCard({ orderId }) {
+  const [reqs, setReqs] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  const load = useCallback(() => {
+    api.get(`/api/orders/${orderId}/requests`)
+      .then(d => setReqs(d.requests || []))
+      .catch(() => setReqs([]))
+  }, [orderId])
+  useEffect(() => { load() }, [load])
+
+  const resolve = async (id) => {
+    setBusyId(id)
+    try { await api.post(`/api/orders/requests/${id}/resolve`, {}); load() }
+    finally { setBusyId(null) }
+  }
+
+  if (!reqs || reqs.length === 0) return null
+  const open = reqs.filter(r => r.status === 'acik').length
+
+  return (
+    <div className="card border-amber-200">
+      <h2 className="text-sm font-semibold mb-3">
+        📨 Müşteri Talepleri {open > 0 && <span className="text-amber-600">({open} açık)</span>}
+      </h2>
+      <div className="space-y-2.5">
+        {reqs.map(r => {
+          const [label, cls] = REQ_LABELS[r.request_type] || [r.request_type, 'bg-slate-100 text-slate-600']
+          return (
+            <div key={r.id} className={`rounded-xl border p-3 text-sm ${
+              r.status === 'acik' ? 'border-amber-200 bg-amber-50/40' : 'border-panel-border opacity-70'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{label}</span>
+                <span className="text-xs text-panel-muted">
+                  {r.created_at && new Date(r.created_at).toLocaleString('tr-TR', {
+                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+                {r.status === 'acik' ? (
+                  <button onClick={() => resolve(r.id)} disabled={busyId === r.id}
+                    className="ml-auto btn-ghost !py-0.5 text-xs">
+                    {busyId === r.id ? '…' : '✓ Çözüldü işaretle'}
+                  </button>
+                ) : (
+                  <span className="ml-auto text-xs text-emerald-700">✓ Çözüldü</span>
+                )}
+              </div>
+              <p className="mt-1.5 text-panel-ink whitespace-pre-line">{r.message}</p>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

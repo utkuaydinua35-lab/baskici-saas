@@ -1361,6 +1361,52 @@ def _refund_context(db: Session, user: User, order_id: uuid.UUID):
     return order, session, Decimal(str(refunded))
 
 
+@router.get("/{order_id}/requests", response_model=dict)
+def list_order_requests(
+    order_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparişin müşteri talepleri (iade/değişim/sorun) — sipariş detayı kartı."""
+    from app.models import CustomerRequest
+    order = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not order:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
+    rows = db.scalars(
+        select(CustomerRequest).where(CustomerRequest.order_id == order.id)
+        .order_by(CustomerRequest.created_at.desc())
+    ).all()
+    return {"requests": [
+        {
+            "id": str(r.id),
+            "request_type": r.request_type,
+            "message": r.message,
+            "status": r.status,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+        } for r in rows
+    ]}
+
+
+@router.post("/requests/{request_id}/resolve", response_model=dict)
+def resolve_order_request(
+    request_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime, timezone
+    from app.models import CustomerRequest
+    req = db.scalar(select(CustomerRequest).where(
+        CustomerRequest.id == request_id, CustomerRequest.tenant_id == user.tenant_id))
+    if not req:
+        raise HTTPException(status_code=404, detail="Talep bulunamadı")
+    req.status = "cozuldu"
+    req.resolved_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/{order_id}/refunds", response_model=dict)
 def list_refunds(
     order_id: uuid.UUID,

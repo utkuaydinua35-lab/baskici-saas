@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { formatPrice } from "@/lib/format";
 import ReviewForm from "@/components/ReviewForm";
+import OrderRequestForm from "@/components/OrderRequestForm";
 
 export const metadata: Metadata = {
   title: "Sipariş Takibi",
@@ -134,6 +135,8 @@ export default async function OrderTrackPage({
           <span>{formatPrice(order.amount, order.currency)}</span>
         </div>
       </div>
+
+      <OrderRequestForm token={token} />
 
       <p className="mt-6 text-xs text-zinc-400 text-center">
         Sorunuz mu var? Sipariş onay e-postanızı yanıtlayarak bize ulaşabilirsiniz.

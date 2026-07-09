@@ -18,7 +18,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -540,6 +540,52 @@ def order_lookup(
         "shipping_amount": str(session.shipping_amount),
         "currency": session.currency,
     }
+
+
+class OrderRequestBody(BaseModel):
+    request_type: str = Field(..., pattern="^(iade|degisim|sorun)$")
+    message: str = Field(..., min_length=10, max_length=2000)
+
+
+@router.post("/orders/{lookup_token}/request")
+def create_order_request(
+    lookup_token: str,
+    body: OrderRequestBody,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Müşteri self-servis talebi (iade/değişim/sorun) — token'lı sipariş
+    sayfasından. Panelde 'Müşteri Talepleri' olarak görünür."""
+    from app.models import CustomerRequest, Order
+
+    session = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.lookup_token == lookup_token,
+        CheckoutSession.order_id.isnot(None),
+    ))
+    if not session:
+        raise HTTPException(404, "Sipariş bulunamadı")
+    order = db.get(Order, session.order_id)
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı")
+
+    open_count = db.scalar(
+        select(func.count(CustomerRequest.id)).where(
+            CustomerRequest.order_id == order.id,
+            CustomerRequest.status == "acik",
+        )
+    )
+    if open_count >= 3:
+        raise HTTPException(429, "Bu sipariş için açık talepleriniz zaten iletildi — "
+                                 "en kısa sürede dönüş yapacağız")
+
+    db.add(CustomerRequest(
+        tenant_id=order.tenant_id,
+        order_id=order.id,
+        request_type=body.request_type,
+        message=body.message.strip(),
+    ))
+    db.commit()
+    return {"ok": True, "message": "Talebiniz alındı — e-posta ile dönüş yapacağız"}
 
 
 @router.get("/checkout/{lookup_token}/cart")

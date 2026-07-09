@@ -282,6 +282,16 @@ function ChatPanel({ storeId, toast, onCreated }) {
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef(null)
 
+  const key = storeId ? `ig_chat_${storeId}` : null
+  // Sohbet geçmişini marka bazında KALICI tut (yenileme/gezinmede silinmez)
+  useEffect(() => {
+    if (!key) { setMsgs([]); return }
+    try { const raw = localStorage.getItem(key); setMsgs(raw ? JSON.parse(raw) : []) }
+    catch { setMsgs([]) }
+  }, [key])
+  const persist = (arr) => { try { if (key) localStorage.setItem(key, JSON.stringify(arr.slice(-120))) } catch { /* kota */ } }
+  const clearChat = () => { if (confirm('Bu markanın sohbet geçmişi silinsin mi?')) { setMsgs([]); persist([]) } }
+
   useEffect(() => { scrollRef.current?.scrollTo({ top: 1e9, behavior: 'smooth' }) }, [msgs, busy])
 
   const upload = async (e) => {
@@ -300,12 +310,12 @@ function ChatPanel({ storeId, toast, onCreated }) {
     if (!storeId) { toast.error('Önce marka seç'); return }
     const userMsg = { role: 'user', text: txt, images: attach }
     const next = [...msgs, userMsg]
-    setMsgs(next); setInput(''); setAttach([]); setBusy(true)
+    setMsgs(next); persist(next); setInput(''); setAttach([]); setBusy(true)
     try {
       const payload = next.map(m => ({ role: m.role, text: m.text, images: (m.images || []).map(i => i.path) }))
       const r = await api.post('/api/instagram/chat', { store_id: storeId, messages: payload })
-      setMsgs(m => [...m, { role: 'assistant', text: r.reply, images: [], proposal: r.proposal || null }])
-    } catch (e) { toast.error(e?.detail || 'AI yanıtı alınamadı'); setMsgs(m => m.slice(0, -1)); setInput(userMsg.text); setAttach(userMsg.images) }
+      setMsgs(m => { const nn = [...m, { role: 'assistant', text: r.reply, images: [], proposal: r.proposal || null }]; persist(nn); return nn })
+    } catch (e) { toast.error(e?.detail || 'AI yanıtı alınamadı'); setMsgs(m => { const nn = m.slice(0, -1); persist(nn); return nn }); setInput(userMsg.text); setAttach(userMsg.images) }
     finally { setBusy(false) }
   }
 
@@ -333,10 +343,13 @@ function ChatPanel({ storeId, toast, onCreated }) {
       {/* Asistan başlık */}
       <div className="px-4 py-3 border-b border-brand-border flex items-center gap-3 bg-gradient-to-r from-accent/5 to-fuchsia-500/5">
         <AssistantOrb state={busy ? 'thinking' : 'idle'} />
-        <div>
+        <div className="flex-1">
           <div className="text-sm font-semibold text-gray-100">Sosyal Medya Asistanı</div>
           <div className="text-[11px] text-gray-500">{busy ? 'düşünüyor…' : 'çevrimiçi · sana içerik üretebilirim'}</div>
         </div>
+        {msgs.length > 0 && (
+          <button onClick={clearChat} title="Sohbet geçmişini temizle" className="text-[11px] text-gray-500 hover:text-red-300 px-2 py-1 rounded border border-brand-border">Temizle</button>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">

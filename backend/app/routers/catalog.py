@@ -714,6 +714,97 @@ CSV_COLUMNS = [
 IMPORT_ROW_LIMIT = 5000
 
 
+# ─── Envanter (Shopify Inventory ekranı) ─────────────────────
+
+@router.get("/inventory", response_model=dict)
+def list_inventory(
+    store_id: uuid.UUID = Query(...),
+    filter_: str = Query("all", alias="filter", pattern="^(all|low|out|untracked)$"),
+    q: str | None = Query(None, max_length=100),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Mağazadaki tüm varyantlar tek listede — hızlı stok düzenleme için."""
+    _get_storefront_store(db, user.tenant_id, store_id)
+    rows = db.execute(
+        select(CatalogVariant, CatalogProduct.title, CatalogProduct.status)
+        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+        .where(CatalogProduct.store_id == store_id)
+        .order_by(CatalogProduct.title, CatalogVariant.position)
+    ).all()
+
+    items = []
+    for v, title, p_status in rows:
+        if q and q.lower() not in f"{title} {v.model_display} {v.variation or ''} {v.sku or ''}".lower():
+            continue
+        if filter_ == "low" and not (v.track_stock and 0 < v.quantity < 5):
+            continue
+        if filter_ == "out" and not (v.track_stock and v.quantity <= 0):
+            continue
+        if filter_ == "untracked" and v.track_stock:
+            continue
+        items.append({
+            "variant_id": str(v.id),
+            "product_id": str(v.product_id),
+            "product_title": title,
+            "product_status": p_status,
+            "model_display": v.model_display,
+            "variation": v.variation,
+            "sku": v.sku,
+            "quantity": v.quantity,
+            "track_stock": v.track_stock,
+            "is_active": v.is_active,
+        })
+    tracked = [i for i in items if i["track_stock"]]
+    return {
+        "total": len(items),
+        "out_of_stock": sum(1 for i in tracked if i["quantity"] <= 0),
+        "low_stock": sum(1 for i in tracked if 0 < i["quantity"] < 5),
+        "items": items,
+    }
+
+
+class InventoryUpdate(BaseModel):
+    variant_id: uuid.UUID
+    quantity: int | None = Field(None, ge=0, le=1_000_000)
+    track_stock: bool | None = None
+
+
+class InventoryBulkRequest(BaseModel):
+    updates: list[InventoryUpdate] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/inventory/bulk", response_model=dict)
+def bulk_inventory(
+    body: InventoryBulkRequest,
+    store_id: uuid.UUID = Query(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Toplu stok güncelleme — envanter ekranındaki kaydet çubuğu."""
+    _get_storefront_store(db, user.tenant_id, store_id)
+    ids = [u.variant_id for u in body.updates]
+    variants = {
+        v.id: v for v in db.scalars(
+            select(CatalogVariant)
+            .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+            .where(CatalogVariant.id.in_(ids), CatalogProduct.store_id == store_id)
+        ).all()
+    }
+    updated = 0
+    for u in body.updates:
+        v = variants.get(u.variant_id)
+        if not v:
+            continue  # başka mağazanın varyantı sessizce atlanır
+        if u.quantity is not None:
+            v.quantity = u.quantity
+        if u.track_stock is not None:
+            v.track_stock = u.track_stock
+        updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
 @router.get("/export")
 def export_csv(
     store_id: uuid.UUID,

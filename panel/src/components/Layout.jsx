@@ -7,6 +7,7 @@ const NAV = [
   { to: '/siparisler', label: 'Siparişler', icon: '📦' },
   { to: '/urunler', label: 'Ürünler', icon: '🛍️' },
   { to: '/koleksiyonlar', label: 'Koleksiyonlar', icon: '🗂️' },
+  { to: '/envanter', label: 'Envanter', icon: '📋' },
   { to: '/kuponlar', label: 'Kuponlar', icon: '🎟️' },
   { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
   { to: '/musteriler', label: 'Müşteriler', icon: '👥' },

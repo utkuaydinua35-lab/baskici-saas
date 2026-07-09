@@ -24,6 +24,7 @@ export default function SosyalMedyaPage() {
   const [persona, setPersona] = useState('')
   const [personaOpen, setPersonaOpen] = useState(false)
   const [hasPersona, setHasPersona] = useState(false)
+  const [refUrl, setRefUrl] = useState(null)   // referans yüz fotoğrafı
 
   const store = stores.find(s => String(s.id) === String(storeId))
 
@@ -51,8 +52,24 @@ export default function SosyalMedyaPage() {
 
   const loadPersona = async (sid) => {
     if (!sid) return
-    try { const r = await api.get(`/api/instagram/persona?store_id=${sid}`); setPersona(r.persona || ''); setHasPersona(!!r.persona) }
-    catch { setPersona(''); setHasPersona(false) }
+    try { const r = await api.get(`/api/instagram/persona?store_id=${sid}`); setPersona(r.persona || ''); setHasPersona(!!r.persona); setRefUrl(r.reference_image_url || null) }
+    catch { setPersona(''); setHasPersona(false); setRefUrl(null) }
+  }
+
+  const uploadRef = async (e) => {
+    const f = (e.target.files || [])[0]; e.target.value = ''
+    if (!f) return
+    try {
+      const fd = new FormData(); fd.append('file', f)
+      const up = await api.postForm('/api/instagram/upload', fd)
+      const r = await api.patch('/api/instagram/reference', { store_id: storeId, image_path: up.path })
+      setRefUrl(r.reference_image_url)
+      toast.success('Referans yüz kaydedildi — görseller bu yüzle üretilecek')
+    } catch (e) { toast.error(e?.detail || 'Yüklenemedi') }
+  }
+  const clearRef = async () => {
+    try { await api.patch('/api/instagram/reference', { store_id: storeId, image_path: null }); setRefUrl(null) }
+    catch { toast.error('Kaldırılamadı') }
   }
 
   useEffect(() => { loadStores() }, [])
@@ -148,6 +165,19 @@ export default function SosyalMedyaPage() {
             <div className="flex items-center gap-2 mt-2">
               <button onClick={savePersona} className="btn-primary !text-sm">Karakteri Kaydet</button>
               {persona && <button onClick={() => { setPersona(''); }} className="btn-secondary !text-sm">Temizle</button>}
+            </div>
+
+            {/* Referans yüz — birebir aynı karakter */}
+            <div className="mt-4 pt-3 border-t border-brand-border">
+              <div className="text-xs font-semibold text-gray-300 mb-1">📸 Referans yüz (birebir aynı yüz)</div>
+              <p className="text-[11px] text-gray-500 mb-2">Karakterin tek bir net yüz fotoğrafını yükle — tüm görseller bu yüzle üretilir (PuLID). Yoksa yüz her seferinde benzer ama birebir aynı olmaz.</p>
+              <div className="flex items-center gap-3">
+                {refUrl
+                  ? <img src={refUrl} alt="" className="w-16 h-16 rounded-lg object-cover border border-accent/40" />
+                  : <div className="w-16 h-16 rounded-lg bg-brand-input flex items-center justify-center text-gray-600 text-xs">yok</div>}
+                <label className="btn-secondary !text-sm cursor-pointer">{refUrl ? 'Değiştir' : 'Yükle'}<input type="file" accept="image/*" className="hidden" onChange={uploadRef} /></label>
+                {refUrl && <button onClick={clearRef} className="btn-secondary !text-sm">Kaldır</button>}
+              </div>
             </div>
           </div>
         )}

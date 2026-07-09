@@ -330,12 +330,42 @@ class PersonaIn(BaseModel):
     persona: str
 
 
+def _ref_image_path(store: Store) -> str | None:
+    cfg = store.config if isinstance(store.config, dict) else {}
+    ig = cfg.get("instagram") if isinstance(cfg.get("instagram"), dict) else {}
+    return (ig.get("reference_image") or "").strip() or None
+
+
 @router.get("/persona", response_model=dict)
 def get_persona(store_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     store = db.scalar(select(Store).where(Store.id == store_id, Store.tenant_id == user.tenant_id))
     if not store:
         raise HTTPException(404, "Mağaza bulunamadı")
-    return {"persona": _persona(store)}
+    ref = _ref_image_path(store)
+    return {"persona": _persona(store), "reference_image_url": f"/storage/{ref}" if ref else None}
+
+
+class RefIn(BaseModel):
+    store_id: uuid.UUID
+    image_path: str | None = None   # /upload'dan gelen relative path; None -> temizle
+
+
+@router.patch("/reference", response_model=dict)
+def set_reference(body: RefIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Karakterin BİREBİR yüzü için referans fotoğraf ayarla (PuLID). None -> kaldır."""
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = dict(store.config or {})
+    ig = dict(cfg.get("instagram") or {})
+    ig["reference_image"] = (body.image_path or "").strip() or None
+    cfg["instagram"] = ig
+    store.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(store, "config")
+    db.commit()
+    ref = ig["reference_image"]
+    return {"ok": True, "reference_image_url": f"/storage/{ref}" if ref else None}
 
 
 @router.patch("/persona", response_model=dict)
@@ -385,14 +415,14 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
         raise HTTPException(404, "Mağaza bulunamadı")
 
     import base64
-    # Tasarım kataloğu (AI görsel için kod seçsin)
-    designs = db.scalars(select(Design).where(
-        Design.store_id == store.id, Design.tenant_id == user.tenant_id).order_by(Design.code).limit(80)).all()
-    by_code = {(d.code or "").upper(): d for d in designs if d.code}
-    katalog = "\n".join(f"- {d.code}: {d.name or ''}".strip() for d in designs[:80]) or "(katalog boş)"
-    lr = _learning(store)
-
     try:
+        # Tasarım kataloğu (AI görsel için kod seçsin)
+        designs = db.scalars(select(Design).where(
+            Design.store_id == store.id, Design.tenant_id == user.tenant_id).order_by(Design.code).limit(80)).all()
+        by_code = {(d.code or "").upper(): d for d in designs if d.code}
+        katalog = "\n".join(f"- {d.code}: {d.name or ''}".strip() for d in designs[:80]) or "(katalog boş)"
+        lr = _learning(store)
+
         import anthropic
         from app.services.ai_reply import MODEL_MAP
         client = anthropic.Anthropic(api_key=s.anthropic_api_key)
@@ -475,10 +505,18 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
                 d = by_code.get(str(inp.get("design_code") or "").upper())
                 rel = None
                 img_reason = None
-                # 1) Persona sahnesi: image_prompt varsa fal.ai ile ÜRET (tutarlı karakter)
+                # 1) Persona sahnesi: image_prompt varsa fal.ai ile ÜRET (tutarlı karakter).
+                #    Referans yüz fotoğrafı varsa BİREBİR aynı yüz (PuLID).
                 if image_prompt:
                     from app.services import outpaint
-                    raw, img_reason = outpaint.text_to_image(image_prompt)
+                    ref_bytes = None
+                    _refp = _ref_image_path(store)
+                    if _refp and (STORAGE_ROOT / _refp).exists():
+                        try:
+                            ref_bytes = (STORAGE_ROOT / _refp).read_bytes()
+                        except Exception:  # noqa: BLE001
+                            ref_bytes = None
+                    raw, img_reason = outpaint.text_to_image(image_prompt, ref_image=ref_bytes)
                     if raw:
                         rel = f"tenants/{user.tenant_id}/instagram/{uuid.uuid4().hex}.jpg"
                         (STORAGE_ROOT / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -503,8 +541,9 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"[instagram] chat hata: {e}")
-        raise HTTPException(502, "AI yanıtı alınamadı")
+        import traceback
+        logger.warning(f"[instagram] chat hata: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(502, f"AI yanıtı alınamadı: {type(e).__name__}: {str(e)[:200]}")
 
 
 class FeedbackIn(BaseModel):

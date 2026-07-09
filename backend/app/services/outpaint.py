@@ -179,18 +179,30 @@ def expand_to_aspect(img_bytes: bytes, target_ratio: float, provider: str = "aut
     return None, (last_reason or "AI genişletme başarısız")
 
 
-def text_to_image(prompt: str, *, image_size: str = "square_hd") -> tuple[bytes | None, str | None]:
-    """Metinden görsel üret (FLUX text-to-image, fal.ai). Sosyal medya persona
-    sahnesi için. Döner: (jpeg_bytes | None, reason | None)."""
+def text_to_image(prompt: str, *, image_size: str = "square_hd",
+                  ref_image: bytes | None = None) -> tuple[bytes | None, str | None]:
+    """Metinden görsel üret (FLUX text-to-image, fal.ai). ref_image verilirse
+    yüz kimliğini SABİTLEYEN model (PuLID) kullanılır -> birebir aynı karakter yüzü.
+    Döner: (jpeg_bytes | None, reason | None)."""
     s = get_settings()
     if not s.fal_key:
         return None, "fal.ai anahtarı yok (.env FAL_KEY)"
     if not (prompt or "").strip():
         return None, "boş prompt"
     try:
-        body = {"prompt": prompt.strip()[:1800], "image_size": image_size, "num_images": 1}
+        if ref_image and s.fal_face_model:
+            # Yüz referanslı üretim (aynı karakter yüzü)
+            model = s.fal_face_model
+            body = {
+                "prompt": prompt.strip()[:1800],
+                "reference_image_url": _data_uri(Image.open(io.BytesIO(ref_image)).convert("RGB"), "RGB"),
+                "image_size": image_size, "num_images": 1,
+            }
+        else:
+            model = s.fal_text2img_model
+            body = {"prompt": prompt.strip()[:1800], "image_size": image_size, "num_images": 1}
         r = requests.post(
-            f"https://fal.run/{s.fal_text2img_model}", json=body,
+            f"https://fal.run/{model}", json=body,
             headers={"Authorization": f"Key {s.fal_key}", "Content-Type": "application/json"},
             timeout=180,
         )

@@ -7,11 +7,11 @@ onaylananları telefondan paylaş (görseli indir, metni kopyala). Her mağaza
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as _date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func as sql_func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
@@ -354,7 +354,8 @@ def get_persona(store_id: uuid.UUID, user: User = Depends(get_current_user), db:
     if not store:
         raise HTTPException(404, "Mağaza bulunamadı")
     ref = _ref_image_path(store)
-    return {"persona": _persona(store), "reference_image_url": f"/storage/{ref}" if ref else None}
+    return {"persona": _persona(store), "reference_image_url": f"/storage/{ref}" if ref else None,
+            "auto_enabled": _auto_enabled(store)}
 
 
 class RefIn(BaseModel):
@@ -590,17 +591,18 @@ def chat_feedback(body: FeedbackIn, user: User = Depends(get_current_user), db: 
 
 class DraftIn(BaseModel):
     store_id: uuid.UUID
-    caption: str
+    caption: str = ""
     hashtags: str | None = None
     image_path: str | None = None    # yüklenen görsel path'i
     design_id: uuid.UUID | None = None
     kind: str = "post"
+    scheduled_for: datetime | None = None    # takvimde hangi güne
 
 
 @router.post("/draft", response_model=dict)
 def create_draft(body: DraftIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sohbetten/elle bir taslak oluştur: verilen caption + görsel (yüklenen ya da
-    tasarım mockup'ı) ile kuyruğa 'taslak' ekle."""
+    """Elle bir taslak oluştur: görsel (yüklenen ya da tasarım mockup'ı) + açıklama
+    + (ops.) takvim tarihi ile kuyruğa 'taslak' ekle."""
     store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
     if not store:
         raise HTTPException(404, "Mağaza bulunamadı")
@@ -615,11 +617,181 @@ def create_draft(body: DraftIn, user: User = Depends(get_current_user), db: Sess
         style="ugc" if body.image_path else "mockup", status="taslak",
         caption=_clean_caption(body.caption), hashtags=(body.hashtags or "").strip() or None,
         image_path=image_path, design_id=design.id if design else None,
+        scheduled_for=body.scheduled_for,
     )
     db.add(post)
     db.commit()
     db.refresh(post)
     return _ser(post, design)
+
+
+# ─── Otomatik üretim (persona sahnesi / kampanya) + günlük plan ───────────
+def _ask_persona_json(store: Store, kind: str) -> dict | None:
+    """Persona ile tek seferde {caption, hashtags, image_prompt} üret (tool'suz)."""
+    s = get_settings()
+    if not s.anthropic_api_key:
+        return None
+    persona = _persona(store)
+    try:
+        import anthropic
+        from app.services.ai_reply import MODEL_MAP
+        client = anthropic.Anthropic(api_key=s.anthropic_api_key)
+        base = persona or f"Sen {store.name} markasının Instagram sosyal medya editörüsün, telefon kılıfı satıyoruz."
+        tk = "story (görsel üstüne tek kısa cümle)" if kind == "story" else "feed gönderisi"
+        prompt = (base + f"\n\n[GÖREV] Bugün için bir Instagram {tk} üret. YALNIZCA şu JSON'u döndür "
+                  '(başka metin yok): {"caption":"...","hashtags":"#... (post ise 8-15, story ise boş olabilir)",'
+                  '"image_prompt":"...İngilizce sahne promptu; karakterin fiziksel özellikleri HER seferinde AYNI + '
+                  "'shot on 35mm film, analog photography style, aesthetic, highly detailed'\"}")
+        resp = client.messages.create(
+            model=MODEL_MAP.get("sonnet", "claude-sonnet-4-6"),
+            max_tokens=800, temperature=0.9, messages=[{"role": "user", "content": prompt}])
+        text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text")
+        import json
+        st, en = text.find("{"), text.rfind("}")
+        if st >= 0 and en > st:
+            d = json.loads(text[st:en + 1])
+            return {"caption": _clean_caption(d.get("caption")),
+                    "hashtags": (d.get("hashtags") or "").strip(),
+                    "image_prompt": (d.get("image_prompt") or "").strip()}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[instagram] persona json hata: {e}")
+    return None
+
+
+def gen_one(db, tenant_id, store: Store, kind: str, style: str, scheduled_for=None):
+    """Tek InstagramPost taslağı üret. style: 'persona' (Lara sahnesi) | 'campaign' (ürün)."""
+    caption = hashtags = image_path = None
+    used = style
+    if style == "persona":
+        j = _ask_persona_json(store, kind)
+        if j:
+            caption, hashtags = j["caption"], j["hashtags"]
+            if j.get("image_prompt"):
+                from app.services import outpaint
+                refp = _ref_image_path(store)
+                ref = None
+                if refp and (STORAGE_ROOT / refp).exists():
+                    try:
+                        ref = (STORAGE_ROOT / refp).read_bytes()
+                    except Exception:  # noqa: BLE001
+                        ref = None
+                raw, _r = outpaint.text_to_image(j["image_prompt"], ref_image=ref)
+                if raw:
+                    image_path = f"tenants/{tenant_id}/instagram/{uuid.uuid4().hex}.jpg"
+                    (STORAGE_ROOT / image_path).parent.mkdir(parents=True, exist_ok=True)
+                    (STORAGE_ROOT / image_path).write_bytes(raw)
+    if not caption:  # campaign ya da persona başarısız -> ürün mockup'ı
+        used = "campaign"
+        design = db.scalar(select(Design).where(
+            Design.store_id == store.id, Design.tenant_id == tenant_id).order_by(sql_func.random()).limit(1))
+        subj = (getattr(design, "name", None) or "") or "yeni telefon kılıfı tasarımı"
+        gen = instagram_content.generate_caption(brand=store.name, subject=subj, kind=kind)
+        if gen:
+            caption, hashtags = gen["caption"], gen.get("hashtags")
+        if design and not image_path:
+            image_path = _render_post_image(tenant_id, store, design)
+    if not caption:
+        return None
+    post = InstagramPost(
+        tenant_id=tenant_id, store_id=store.id, kind=kind,
+        style="ugc" if used == "persona" else "mockup", status="taslak",
+        caption=_clean_caption(caption), hashtags=(hashtags or "").strip() or None,
+        image_path=image_path, scheduled_for=scheduled_for,
+    )
+    db.add(post)
+    db.flush()
+    return post
+
+
+def generate_day(db, tenant_id, store: Store, day: datetime) -> list:
+    """Bir gün için 1 post + 3 story (karışık stil: bazen persona bazen kampanya)."""
+    import random
+    plan = [("post", random.choice(["persona", "campaign"]))]
+    for _ in range(3):
+        plan.append(("story", random.choice(["persona", "campaign"])))
+    made = []
+    for kind, style in plan:
+        try:
+            p = gen_one(db, tenant_id, store, kind, style, scheduled_for=day)
+            if p:
+                made.append(p)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[instagram] gün üretim hata: {e}")
+    db.commit()
+    return made
+
+
+def _auto_enabled(store: Store) -> bool:
+    cfg = store.config if isinstance(store.config, dict) else {}
+    ig = cfg.get("instagram") if isinstance(cfg.get("instagram"), dict) else {}
+    return bool(ig.get("auto_enabled"))
+
+
+class AutoIn(BaseModel):
+    store_id: uuid.UUID
+    enabled: bool
+
+
+@router.patch("/auto", response_model=dict)
+def set_auto(body: AutoIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Günlük otomatik üretimi aç/kapat (her sabah 1 post + 3 story taslağı + bildirim)."""
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = dict(store.config or {})
+    ig = dict(cfg.get("instagram") or {})
+    ig["auto_enabled"] = bool(body.enabled)
+    cfg["instagram"] = ig
+    store.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True, "auto_enabled": ig["auto_enabled"]}
+
+
+class GenDayIn(BaseModel):
+    store_id: uuid.UUID
+    date: _date
+
+
+@router.post("/generate-day", response_model=dict)
+def generate_day_ep(body: GenDayIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Belirli bir gün için 1 post + 3 story taslağı üret (karışık stil)."""
+    store = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not store:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    day = datetime.combine(body.date, datetime.min.time(), tzinfo=timezone.utc)
+    made = generate_day(db, user.tenant_id, store, day)
+    return {"created": len(made)}
+
+
+@router.get("/calendar", response_model=dict)
+def calendar(
+    store_id: uuid.UUID,
+    year: int,
+    month: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bir ayın planlanmış gönderileri (scheduled_for'a göre)."""
+    from calendar import monthrange
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    last = monthrange(year, month)[1]
+    end = datetime(year, month, last, 23, 59, 59, tzinfo=timezone.utc)
+    posts = db.scalars(select(InstagramPost).where(
+        InstagramPost.tenant_id == user.tenant_id,
+        InstagramPost.store_id == store_id,
+        InstagramPost.scheduled_for.isnot(None),
+        InstagramPost.scheduled_for >= start,
+        InstagramPost.scheduled_for <= end,
+    ).order_by(InstagramPost.scheduled_for)).all()
+    did = {p.design_id for p in posts if p.design_id}
+    dmap = {d.id: d for d in db.scalars(select(Design).where(Design.id.in_(did)))} if did else {}
+    by_day: dict = {}
+    for p in posts:
+        k = p.scheduled_for.date().isoformat()
+        by_day.setdefault(k, []).append(_ser(p, dmap.get(p.design_id)))
+    return {"days": by_day}
 
 
 @router.delete("/posts/{post_id}", response_model=dict)

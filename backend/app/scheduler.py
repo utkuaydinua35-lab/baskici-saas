@@ -137,6 +137,41 @@ def _checkout_sweep_job():
         db.close()
 
 
+def _instagram_daily_job():
+    """Her sabah: otomatik üretim açık markalar için 1 post + 3 story taslağı üret,
+    sonra tenant'a 'içerikler hazır, onayla' push'u gönder."""
+    logger.info("[scheduler] instagram gunluk uretim")
+    from datetime import datetime as _dt, timezone as _tz
+    from sqlalchemy import select
+    from app.models import Store
+    from app.routers.instagram import generate_day, _auto_enabled
+    db = SessionLocal()
+    try:
+        stores = db.scalars(select(Store).where(Store.platform != "bayii")).all()
+        day = _dt.now(_tz.utc)
+        for s in stores:
+            if not _auto_enabled(s):
+                continue
+            try:
+                made = generate_day(db, s.tenant_id, s, day)
+                if made:
+                    try:
+                        from app.services import push
+                        push.send_to_tenant(
+                            db, s.tenant_id, f"📸 {s.name} — bugünün içerikleri hazır",
+                            f"{len(made)} taslak (1 post + 3 story) onayını bekliyor.",
+                            url="/sosyal-medya", tag=f"ig-daily-{s.id}")
+                    except Exception:  # noqa: BLE001
+                        pass
+                    logger.info(f"[scheduler] instagram: {s.name} icin {len(made)} taslak")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[scheduler] instagram {s.name} hata: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.exception(f"[scheduler] instagram gunluk hata: {e}")
+    finally:
+        db.close()
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -172,6 +207,7 @@ def start_scheduler():
     _scheduler.add_job(_daily_summary_job, "cron", hour=8, minute=0,
                        id="daily_summary", max_instances=1, coalesce=True,
                        misfire_grace_time=3600)
+    # (Instagram otomatik AI uretim KALDIRILDI — manuel planlama kullaniliyor)
     # Acilis catch-up: 08:00'dan sonra restart olduysa bugunku ozet atlanmistir;
     # ~45 sn sonra kontrol et, gerekiyorsa bir kez gonder.
     _scheduler.add_job(_daily_summary_catchup_job, "date",

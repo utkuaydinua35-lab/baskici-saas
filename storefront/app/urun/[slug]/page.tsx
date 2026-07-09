@@ -6,6 +6,7 @@ import Reveal from "@/components/Reveal";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
+import RecentlyViewed from "@/components/RecentlyViewed";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
 
@@ -102,6 +103,15 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </div>
       </div>
+      <RecentlyViewed
+        current={{
+          slug: product.slug,
+          title: product.title,
+          price: product.price,
+          currency: product.currency,
+          image: product.images[0]?.url ?? null,
+        }}
+      />
     </div>
   );
 }

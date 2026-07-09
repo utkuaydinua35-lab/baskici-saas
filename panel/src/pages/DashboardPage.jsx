@@ -8,6 +8,7 @@ export default function DashboardPage() {
   const { storeId, store } = useStore()
   const [data, setData] = useState(null)
   const [live, setLive] = useState(null)
+  const [stok, setStok] = useState(null)   // {low_stock, out_of_stock}
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -17,6 +18,9 @@ export default function DashboardPage() {
     api.get(`/api/analytics/summary?start=${start}&end=${end}&store_id=${storeId}`)
       .then(setData)
       .catch(e => setError(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'))
+    api.get(`/api/catalog/inventory?store_id=${storeId}`)
+      .then(d => setStok({ low_stock: d.low_stock, out_of_stock: d.out_of_stock }))
+      .catch(() => {})
   }, [storeId])
 
   // Canlı veri — 30 sn'de bir; sekme gizliyken durur
@@ -48,6 +52,21 @@ export default function DashboardPage() {
           hint={data?.funnel?.abandoned_count > 0
             ? `${data.funnel.abandoned_count} terk sepet` : 'checkout verisi yok'} />
       </div>
+
+      {stok && (stok.low_stock > 0 || stok.out_of_stock > 0) && (
+        <Link to="/envanter"
+          className="block card !py-3 border-amber-200 bg-amber-50/60 hover:bg-amber-50 transition">
+          <div className="flex items-center gap-2 text-sm">
+            <span>⚠️</span>
+            <span className="font-medium text-amber-800">
+              {stok.out_of_stock > 0 && `${stok.out_of_stock} varyant stoksuz`}
+              {stok.out_of_stock > 0 && stok.low_stock > 0 && ' · '}
+              {stok.low_stock > 0 && `${stok.low_stock} varyantta az stok`}
+            </span>
+            <span className="ml-auto text-xs text-amber-700">Envantere git →</span>
+          </div>
+        </Link>
+      )}
 
       {live && <LiveCard live={live} />}
 

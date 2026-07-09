@@ -7,8 +7,10 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 
-export default function CartDrawer() {
+export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: string | null }) {
   const { items, subtotal, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
+  const freeOver = Number(freeShippingOver || 0);
+  const remaining = freeOver > 0 ? Math.max(0, freeOver - subtotal) : 0;
 
   // Açıkken body scroll kilidi + ESC ile kapatma
   useEffect(() => {
@@ -82,6 +84,25 @@ export default function CartDrawer() {
 
         {items.length > 0 && (
           <div className="border-t border-zinc-200 p-4 space-y-2">
+            {freeOver > 0 && (
+              <div className="pb-1">
+                {remaining > 0 ? (
+                  <p className="text-[11px] text-zinc-600 mb-1">
+                    🚚 Ücretsiz kargoya <b>{formatPrice(remaining)}</b> kaldı
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-emerald-600 mb-1 font-medium">
+                    🎉 Kargonuz ücretsiz!
+                  </p>
+                )}
+                <div className="h-1.5 rounded-full bg-zinc-100 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, (subtotal / freeOver) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-zinc-500">Ara toplam</span>
               <span className="font-semibold">{formatPrice(subtotal)}</span>

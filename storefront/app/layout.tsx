@@ -78,7 +78,9 @@ export default async function RootLayout({
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
           />
-          {theme.animations.cart_drawer && <CartDrawer />}
+          {theme.animations.cart_drawer && (
+            <CartDrawer freeShippingOver={payload.settings?.free_shipping_over} />
+          )}
           <main className="flex-1">{children}</main>
           <footer className="border-t border-zinc-200 bg-white mt-12">
             <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-zinc-500 space-y-4">

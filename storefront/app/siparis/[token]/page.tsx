@@ -68,6 +68,31 @@ export default async function OrderTrackPage({
             style={{ width: `${order.durum.progress}%` }}
           />
         </div>
+        {/* Adım göstergesi — Shopify sipariş durumu sayfası hissi */}
+        <div className="mt-4 grid grid-cols-4 gap-1 text-center">
+          {[
+            ["Onaylandı", 5],
+            ["Hazırlanıyor", 30],
+            ["Kargoda", 80],
+            ["Teslim", 100],
+          ].map(([label, threshold]) => {
+            const reached = order.durum.progress >= Number(threshold);
+            return (
+              <div key={label as string} className="flex flex-col items-center gap-1">
+                <span
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
+                    reached ? "bg-emerald-500 text-white" : "bg-zinc-100 text-zinc-400"
+                  }`}
+                >
+                  {reached ? "✓" : ""}
+                </span>
+                <span className={`text-[10px] ${reached ? "text-zinc-700 font-medium" : "text-zinc-400"}`}>
+                  {label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
         {order.kargo && (
           <div className="mt-4 text-sm">
             <span className="text-zinc-500">Kargo:</span>{" "}

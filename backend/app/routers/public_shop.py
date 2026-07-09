@@ -621,6 +621,74 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
     }
 
 
+@router.get("/{store_slug}/feed/google.xml")
+def google_shopping_feed(
+    store_slug: str,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Google Merchant Center ürün feed'i (RSS 2.0 + g: namespace).
+
+    Varyant bazlı: her model ayrı item (item_group_id = ürün). Merchant
+    Center'a bu URL doğrudan 'scheduled fetch' olarak verilir.
+    """
+    from xml.sax.saxutils import escape
+
+    store = _resolve_store(db, store_slug)
+    config = store.config or {}
+    site = (config.get("storefront_url")
+            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+
+    products = db.scalars(
+        select(CatalogProduct)
+        .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active")
+        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+        .order_by(CatalogProduct.position)
+    ).all()
+
+    items_xml = []
+    for p in products:
+        link = f"{site}/urun/{p.slug}"
+        image = f"{site}/storage/{p.images[0].file_path}" if p.images else ""
+        desc = (p.seo_description or p.description or p.title or "")[:5000]
+        for v in p.variants:
+            if not v.is_active:
+                continue
+            price = v.price_override if v.price_override is not None else p.base_price
+            in_stock = (not v.track_stock) or v.quantity > 0
+            title = f"{p.title} — {v.model_display}" + (f" ({v.variation})" if v.variation else "")
+            items_xml.append(
+                "<item>"
+                f"<g:id>{escape(str(v.id))}</g:id>"
+                f"<g:item_group_id>{escape(str(p.id))}</g:item_group_id>"
+                f"<title>{escape(title[:150])}</title>"
+                f"<description>{escape(desc)}</description>"
+                f"<link>{escape(link)}</link>"
+                + (f"<g:image_link>{escape(image)}</g:image_link>" if image else "")
+                + f"<g:price>{price} TRY</g:price>"
+                f"<g:availability>{'in_stock' if in_stock else 'out_of_stock'}</g:availability>"
+                f"<g:condition>new</g:condition>"
+                f"<g:brand>{escape(store.name)}</g:brand>"
+                + (f"<g:mpn>{escape(v.sku)}</g:mpn>" if v.sku else "")
+                + "</item>"
+            )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">'
+        f"<channel><title>{escape(store.name)}</title>"
+        f"<link>{escape(site)}</link>"
+        f"<description>{escape(store.name)} ürün feed'i</description>"
+        + "".join(items_xml)
+        + "</channel></rss>"
+    )
+    return Response(
+        content=xml,
+        media_type="application/xml; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=1800"},
+    )
+
+
 @router.get("/{store_slug}/theme")
 def get_store_theme(
     store_slug: str,
@@ -834,6 +902,52 @@ class AddressIn(BaseModel):
 
 login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
 newsletter_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
+stock_alert_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
+
+
+class StockAlertRequest(BaseModel):
+    variant_id: uuid.UUID
+    email: EmailStr
+
+
+@router.post("/{store_slug}/stock-alert")
+def create_stock_alert(
+    store_slug: str,
+    body: StockAlertRequest,
+    _rl: None = Depends(stock_alert_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """'Gelince haber ver' — stoksuz varyanta e-posta bırak; stok girilince
+    tek seferlik bildirim gider. Aynı e-posta+varyant tekrar kaydolamaz."""
+    from app.models import StockAlert
+
+    store = _resolve_store(db, store_slug)
+    variant = db.scalar(
+        select(CatalogVariant)
+        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+        .where(
+            CatalogVariant.id == body.variant_id,
+            CatalogProduct.store_id == store.id,
+            CatalogProduct.status == "active",
+            CatalogVariant.is_active.is_(True),
+        )
+    )
+    if not variant:
+        raise HTTPException(404, "Ürün bulunamadı")
+    if not variant.track_stock or variant.quantity > 0:
+        raise HTTPException(409, "Bu ürün zaten stokta")
+
+    email = str(body.email).lower().strip()
+    exists = db.scalar(select(StockAlert).where(
+        StockAlert.variant_id == variant.id, StockAlert.email == email))
+    if not exists:
+        db.add(StockAlert(
+            tenant_id=store.tenant_id, store_id=store.id,
+            variant_id=variant.id, email=email,
+        ))
+        db.commit()
+    return {"ok": True, "message": "Stok gelince e-posta göndereceğiz 🔔"}
+
 
 
 class NewsletterRequest(BaseModel):

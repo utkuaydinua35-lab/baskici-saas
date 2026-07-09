@@ -392,8 +392,13 @@ def update_variant(
     ))
     if not variant:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Varyant bulunamadı")
+    was_out = variant.track_stock and variant.quantity <= 0
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(variant, k, v)
+    # Stok 0'dan yukarı çıktıysa 'gelince haber ver' bildirimleri
+    if was_out and (not variant.track_stock or variant.quantity > 0):
+        from app.services.stock_alerts import notify_variant
+        notify_variant(db, variant)
     db.commit()
     db.refresh(variant)
     return _serialize_variant(variant)
@@ -791,15 +796,19 @@ def bulk_inventory(
             .where(CatalogVariant.id.in_(ids), CatalogProduct.store_id == store_id)
         ).all()
     }
+    from app.services.stock_alerts import notify_variant
     updated = 0
     for u in body.updates:
         v = variants.get(u.variant_id)
         if not v:
             continue  # başka mağazanın varyantı sessizce atlanır
+        was_out = v.track_stock and v.quantity <= 0
         if u.quantity is not None:
             v.quantity = u.quantity
         if u.track_stock is not None:
             v.track_stock = u.track_stock
+        if was_out and (not v.track_stock or v.quantity > 0):
+            notify_variant(db, v)
         updated += 1
     db.commit()
     return {"updated": updated}

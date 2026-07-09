@@ -165,7 +165,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       )}
 
       {selected && !selected.in_stock && (
-        <p className="text-sm text-red-600">Bu seçenek şu an stokta yok.</p>
+        <StockAlertForm variantId={selected.id} />
       )}
 
       <button
@@ -181,6 +181,57 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       )}
       {activeBrand && !modelKey && (
         <p className="text-xs text-zinc-500">Sepete eklemek için telefon modelinizi seçin.</p>
+      )}
+    </div>
+  );
+}
+
+// Stoksuz varyantta "gelince haber ver" — e-posta bırak, stok girilince
+// backend tek seferlik bildirim yollar.
+function StockAlertForm({ variantId }: { variantId: string }) {
+  const [email, setEmail] = useState("");
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setState("busy");
+    try {
+      const res = await fetch("/api/stock-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variant_id: variantId, email: email.trim() }),
+      });
+      setState(res.ok ? "done" : "error");
+    } catch {
+      setState("error");
+    }
+  };
+
+  if (state === "done") {
+    return (
+      <p className="text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+        🔔 Kaydınız alındı — stok gelince e-posta göndereceğiz.
+      </p>
+    );
+  }
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-3 space-y-2">
+      <p className="text-sm text-amber-800">Bu seçenek şu an stokta yok.</p>
+      <form onSubmit={submit} className="flex gap-2">
+        <input
+          type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="E-posta adresiniz"
+          className="flex-1 min-w-0 rounded-lg border border-amber-300 px-2.5 py-2 text-sm bg-white"
+        />
+        <button
+          disabled={state === "busy"}
+          className="rounded-lg bg-amber-600 text-white text-sm font-medium px-3 py-2 disabled:opacity-50 hover:bg-amber-700 transition whitespace-nowrap"
+        >
+          {state === "busy" ? "…" : "Gelince Haber Ver"}
+        </button>
+      </form>
+      {state === "error" && (
+        <p className="text-xs text-red-600">Kayıt alınamadı — lütfen tekrar deneyin.</p>
       )}
     </div>
   );

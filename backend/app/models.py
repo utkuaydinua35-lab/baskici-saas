@@ -1569,6 +1569,30 @@ class Customer(Base):
     )
 
 
+class StockAlert(Base):
+    """'Gelince haber ver' kaydı — stoksuz varyanta e-posta bırakılır,
+    stok girilince bir kez bildirim gider (notified_at kilidi)."""
+    __tablename__ = "stock_alerts"
+    __table_args__ = (
+        UniqueConstraint("variant_id", "email", name="uq_stock_alert_variant_email"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_variants.id", ondelete="CASCADE"), index=True
+    )
+
+    email: Mapped[str] = mapped_column(String(200))  # lowercase saklanır
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Refund(Base):
     """Panelden yapılan para iadesi kaydı (vitrin siparişleri).
 

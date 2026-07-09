@@ -43,15 +43,23 @@ def _studio_dir(tenant_id, store_id) -> Path:
 
 
 def _mockups(s: Store) -> list[dict]:
-    """Yüklenen mockup dosyaları: [{id, name, path}]. Eski tek 'mockup_psd'yi de kapsar."""
+    """Yüklenen mockup dosyaları: [{id, name, path, type}]. type: standart | seffaf."""
     c = s.config or {}
     lst = c.get("mockups")
     if isinstance(lst, list) and lst:
-        return [m for m in lst if isinstance(m, dict) and m.get("path")]
+        return [{**m, "type": m.get("type") or "standart"}
+                for m in lst if isinstance(m, dict) and m.get("path")]
     # geriye uyum: eski tekli mockup
     if c.get("mockup_psd"):
-        return [{"id": "legacy", "name": "Mockup", "path": c["mockup_psd"]}]
+        return [{"id": "legacy", "name": "Mockup", "path": c["mockup_psd"], "type": "standart"}]
     return []
+
+
+def _mockup_transparent(s: Store, path: str | None) -> bool:
+    for m in _mockups(s):
+        if m["path"] == path:
+            return m.get("type") == "seffaf"
+    return False
 
 
 def _cfg(s: Store) -> dict:
@@ -67,7 +75,7 @@ def _cfg(s: Store) -> dict:
         "prefix": (c.get("kod_prefix") or ps.default_prefix(brand)).upper(),
         "price": c.get("studio_price"),
         "mockup_ready": bool(c.get("mockup_psd")),
-        "mockups": [{"id": m["id"], "name": m.get("name") or "Mockup"} for m in _mks],
+        "mockups": [{"id": m["id"], "name": m.get("name") or "Mockup", "type": m.get("type") or "standart"} for m in _mks],
         "active_mockup_id": next((m["id"] for m in _mks if m["path"] == c.get("mockup_psd")), (_mks[0]["id"] if _mks else None)),
         "ai_expand": bool(c.get("ai_expand")),
         "ai_provider": c.get("ai_provider") or "auto",
@@ -181,6 +189,34 @@ def select_mockup(body: MockupSelectIn, user: User = Depends(require_permission(
     return {"ok": True, **_cfg(s)}
 
 
+class MockupTypeIn(BaseModel):
+    store_id: uuid.UUID
+    mockup_id: str
+    type: str   # standart | seffaf
+
+
+@router.post("/mockups/type", response_model=dict)
+def set_mockup_type(body: MockupTypeIn, user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    s = _get_store(db, body.store_id, user.tenant_id)
+    if body.type not in ("standart", "seffaf"):
+        raise HTTPException(400, "Geçersiz tür")
+    lst = list(_mockups(s))
+    found = False
+    for m in lst:
+        if m["id"] == body.mockup_id:
+            m["type"] = body.type
+            found = True
+    if not found:
+        raise HTTPException(404, "Mockup bulunamadı")
+    cfg = dict(s.config or {})
+    cfg["mockups"] = lst
+    s.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(s, "config")
+    db.commit()
+    return {"ok": True, **_cfg(s)}
+
+
 @router.delete("/mockups/{mockup_id}", response_model=dict)
 def delete_mockup(mockup_id: str, store_id: uuid.UUID, user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
     s = _get_store(db, store_id, user.tenant_id)
@@ -257,7 +293,7 @@ async def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = F
         info["psd_error"] = str(e)[:200]
 
     try:
-        mock = mockup_svc.render_psd_mockup(str(psd_path), test)
+        mock = mockup_svc.render_psd_mockup(str(psd_path), test, transparent=(m.get("type") == "seffaf"))
         cdir = _studio_dir(user.tenant_id, store_id) / "_test"
         cdir.mkdir(parents=True, exist_ok=True)
         out = cdir / f"{m['id']}.jpg"
@@ -291,6 +327,7 @@ async def analyze(
     psd_path = STORAGE_ROOT / mockup_rel
     if not psd_path.exists():
         raise HTTPException(400, "Mockup dosyası bulunamadı, yeniden yükleyin")
+    _mock_transparent = _mockup_transparent(s, mockup_rel)
     brand = cfg["brand"]
     prefix = cfg["prefix"]
 
@@ -347,7 +384,7 @@ async def analyze(
         cdir = _studio_dir(user.tenant_id, store_id) / code
         cdir.mkdir(parents=True, exist_ok=True)
         try:
-            mock = mockup_svc.render_psd_mockup(str(psd_path), img)
+            mock = mockup_svc.render_psd_mockup(str(psd_path), img, transparent=_mock_transparent)
             mock.convert("RGB").save(str(cdir / "mockup.jpg"), "JPEG", quality=92)
         except Exception as e:  # noqa: BLE001
             results.append({"ok": False, "filename": f.filename, "error": f"Mockup üretilemedi: {str(e)[:120]}"})

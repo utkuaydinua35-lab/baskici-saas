@@ -321,17 +321,29 @@ def _is_placeholder_so(layer, layer_name):
     return ("your work here" in fn) or (layer.name.lower() in ("design", "w1", "bc"))
 
 
-def _numpy_override(color_arr, orig):
+def _numpy_override(color_arr, orig, *, transparent=False, design_alpha=None):
     """psd-tools compositor 'color'/'shape'/'mask' kanallarını AYRI ayrı ister.
-    Yalnız 'color'ı yeni tasarımla değiştir; 'shape'/'mask'/diğerleri ORİJİNAL
-    placeholder'dan gelsin — böylece kılıf maskesi korunur (arka plan görünür) ve
-    color/shape boyutları orijinalle birebir aynı kalır (broadcast hatası olmaz)."""
-    import numpy as _np  # noqa: F401
+    - STANDART: yalnız 'color' değişir; 'shape'/'mask' ORİJİNAL placeholder'dan
+      gelir (kılıf maskesi korunur, arka plan görünür, boyut birebir aynı).
+    - ŞEFFAF: 'shape'/'mask' TASARIMIN kendi alfasından gelir (boş smart object'te
+      bile çalışır; şeffaf PNG'nin şeffaf yerleri kılıfın altını gösterir)."""
+    import numpy as _np
 
     def f(channel="color", *args, **kwargs):
         if channel == "color":
             return color_arr
-        # shape / mask / alpha / None -> orijinal katman (maske + doğru boyut)
+        if channel in ("shape", "alpha", "mask"):
+            if transparent:
+                if design_alpha is not None:
+                    return design_alpha
+                return _np.ones((color_arr.shape[0], color_arr.shape[1], 1), dtype="float32")
+            # standart: orijinal maske (doğru boyut + kılıf şekli)
+            try:
+                return orig(channel, *args, **kwargs)
+            except Exception:  # noqa: BLE001
+                if design_alpha is not None:
+                    return design_alpha
+                return _np.ones((color_arr.shape[0], color_arr.shape[1], 1), dtype="float32")
         try:
             return orig(channel, *args, **kwargs)
         except TypeError:
@@ -339,7 +351,8 @@ def _numpy_override(color_arr, orig):
     return f
 
 
-def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None = None) -> Image.Image:
+def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None = None,
+                      transparent: bool = False) -> Image.Image:
     """PSD mockup'ı sunucuda Photoshop KALİTESİNDE derle. 'Your Work Here' smart object'lerin
     piksel kaynağını (layer.numpy) yeni tasarımla değiştirip PSD'yi TAM derler — böylece
     tüm dönüşüm/warp/maske/blend (kamera oyuğu, yansıma, 3B açı) Photoshop gibi uygulanır."""
@@ -367,14 +380,24 @@ def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None
     patched = 0
     for l in placeholders:
         try:
-            orig = l.numpy  # orijinal bound method (maske/şekil buradan gelir)
-            ocolor = orig("color")
-            if ocolor is None or ocolor.ndim != 3:
-                continue
-            h, w = ocolor.shape[0], ocolor.shape[1]
-            rz = design_rgba.convert("RGB").resize((w, h), Image.LANCZOS)
-            color = (np.asarray(rz).astype("float32") / 255.0)  # (h, w, 3) — orijinal color ile AYNI boyut
-            l.numpy = _numpy_override(color, orig)
+            orig = l.numpy  # orijinal bound method (standartta maske buradan)
+            # Boyut: orijinal color'dan; boş smart object'te (şeffaf) katman bbox'ından
+            ocolor = None
+            try:
+                ocolor = orig("color")
+            except Exception:  # noqa: BLE001
+                ocolor = None
+            if ocolor is not None and getattr(ocolor, "ndim", 0) == 3:
+                h, w = ocolor.shape[0], ocolor.shape[1]
+            else:
+                w, h = int(getattr(l, "width", 0) or 0), int(getattr(l, "height", 0) or 0)
+                if not (w and h):
+                    continue
+            rz = design_rgba.resize((w, h), Image.LANCZOS)
+            arr = (np.asarray(rz).astype("float32") / 255.0)   # (h, w, 4)
+            color = arr[:, :, :3]
+            dalpha = arr[:, :, 3:4] if arr.shape[2] >= 4 else np.ones((h, w, 1), dtype="float32")
+            l.numpy = _numpy_override(color, orig, transparent=transparent, design_alpha=dalpha)
             patched += 1
         except Exception:  # noqa: BLE001
             continue

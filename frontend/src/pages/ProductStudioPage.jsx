@@ -260,6 +260,10 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
     try { await api.del(`/api/studio/mockups/${id}?store_id=${storeId}`); onSaved() }
     catch (e) { toast.error(e.detail || 'Silinemedi') }
   }
+  const setMockupType = async (id, type) => {
+    try { await api.post('/api/studio/mockups/type', { store_id: storeId, mockup_id: id, type }); onSaved() }
+    catch (e) { toast.error(e.detail || 'Değiştirilemedi') }
+  }
   return (
     <div className="mt-3 pt-3 border-t border-brand-border/60 grid sm:grid-cols-3 gap-2">
       <Field label="Marka adı (başlıkta)"><input className="input w-full !text-sm" value={marka} onChange={e => setMarka(e.target.value)} /></Field>
@@ -306,6 +310,11 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
               <input type="radio" name="active_mockup" checked={cfg.active_mockup_id === m.id} onChange={() => selectMockup(m.id)} className="accent-accent" />
               <span className="flex-1 truncate text-gray-200">{m.name}</span>
               {cfg.active_mockup_id === m.id && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">aktif</span>}
+              <select value={m.type || 'standart'} onClick={e => e.preventDefault()} onChange={e => setMockupType(m.id, e.target.value)}
+                className="input !text-[11px] !py-0.5 !px-1" title="Kılıf türü">
+                <option value="standart">Standart</option>
+                <option value="seffaf">Şeffaf</option>
+              </select>
               <button onClick={(e) => { e.preventDefault(); deleteMockup(m.id) }} className="text-gray-500 hover:text-red-300 text-xs" title="Sil">✕</button>
             </label>
           ))}

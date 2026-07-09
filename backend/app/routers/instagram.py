@@ -313,6 +313,17 @@ class ChatIn(BaseModel):
     messages: list[ChatMsg]
 
 
+def _clean_caption(t: str | None) -> str:
+    """Instagram markdown göstermez; emphasis işaretlerini (**, *, _) kaldır."""
+    if not t:
+        return t or ""
+    import re
+    t = re.sub(r"\*\*(.+?)\*\*", r"\1", t)
+    t = re.sub(r"(?<!\w)\*(.+?)\*(?!\w)", r"\1", t)
+    t = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", t)
+    return t.strip()
+
+
 def _learning(store: Store) -> dict:
     cfg = store.config if isinstance(store.config, dict) else {}
     ig = cfg.get("instagram") if isinstance(cfg.get("instagram"), dict) else {}
@@ -537,7 +548,7 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
                 if not rel and d:
                     rel = _render_post_image(user.tenant_id, store, d)
                 proposal = {
-                    "caption": inp.get("caption") or "",
+                    "caption": _clean_caption(inp.get("caption")),
                     "hashtags": inp.get("hashtags") or "",
                     "image_prompt": image_prompt or None,
                     "image_reason": img_reason if (image_prompt and not rel) else None,
@@ -602,7 +613,7 @@ def create_draft(body: DraftIn, user: User = Depends(get_current_user), db: Sess
     post = InstagramPost(
         tenant_id=user.tenant_id, store_id=store.id, kind=body.kind,
         style="ugc" if body.image_path else "mockup", status="taslak",
-        caption=body.caption.strip(), hashtags=(body.hashtags or "").strip() or None,
+        caption=_clean_caption(body.caption), hashtags=(body.hashtags or "").strip() or None,
         image_path=image_path, design_id=design.id if design else None,
     )
     db.add(post)

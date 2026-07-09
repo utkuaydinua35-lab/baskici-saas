@@ -9,6 +9,7 @@ import AnnouncementBar from "@/components/AnnouncementBar";
 import CartDrawer from "@/components/CartDrawer";
 import Pixels from "@/components/Pixels";
 import CustomCode from "@/components/CustomCode";
+import NewsletterForm from "@/components/NewsletterForm";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
 const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
@@ -80,7 +81,13 @@ export default async function RootLayout({
           {theme.animations.cart_drawer && <CartDrawer />}
           <main className="flex-1">{children}</main>
           <footer className="border-t border-zinc-200 bg-white mt-12">
-            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-zinc-500 space-y-3">
+            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-zinc-500 space-y-4">
+              <div className="max-w-sm">
+                <div className="text-xs font-semibold text-zinc-700 mb-1.5">
+                  📮 Kampanyalardan haberdar olun
+                </div>
+                <NewsletterForm />
+              </div>
               {theme.footer.about && (
                 <p className="max-w-lg text-xs leading-relaxed">{theme.footer.about}</p>
               )}

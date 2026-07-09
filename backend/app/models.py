@@ -1549,6 +1549,14 @@ class Customer(Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Bülten aboneliği (KVKK: açık rıza — opt-in zamanı saklanır)
+    accepts_marketing: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    marketing_opted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Vitrin müşteri hesabı (şifresiz giriş): kayıtlı adres + tek kullanımlık kod
     default_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     login_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)

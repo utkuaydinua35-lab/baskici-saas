@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 import { Modal } from './UrunlerPage'
 
@@ -9,6 +9,7 @@ export default function MusterilerPage() {
   const [data, setData] = useState({ items: [], total: 0, page: 1, per_page: 50 })
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('last_order_at')
+  const [subscribed, setSubscribed] = useState(false)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState(null)
   const [error, setError] = useState('')
@@ -19,16 +20,31 @@ export default function MusterilerPage() {
     try {
       const params = new URLSearchParams({ sort, page: String(page), store_id: storeId })
       if (q.trim()) params.set('q', q.trim())
+      if (subscribed) params.set('subscribed', 'true')
       setData(await api.get(`/api/customers?${params}`))
     } catch (e) {
       setError(typeof e?.detail === 'string' ? e.detail : 'Müşteriler yüklenemedi')
     }
-  }, [storeId, q, sort, page])
+  }, [storeId, q, sort, page, subscribed])
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0)
     return () => clearTimeout(t)
   }, [load, q])
+
+  const exportSubscribers = async () => {
+    try {
+      const res = await fetch('/api/customers/export/subscribers.csv', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'bulten-aboneleri.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch { setError('Dışa aktarma başarısız') }
+  }
 
   const openDetail = async (id) => {
     try { setSelected(await api.get(`/api/customers/${id}`)) }
@@ -50,6 +66,15 @@ export default function MusterilerPage() {
           <option value="total_spent">Toplam harcama</option>
           <option value="orders_count">Sipariş sayısı</option>
         </select>
+        <button onClick={() => { setSubscribed(v => !v); setPage(1) }}
+          className={`text-xs px-3 py-1.5 rounded-full border transition ${subscribed
+            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
+            : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+          📮 Bülten aboneleri
+        </button>
+        {subscribed && (
+          <button onClick={exportSubscribers} className="btn-ghost text-xs">⬇ CSV indir</button>
+        )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
 
@@ -69,7 +94,13 @@ export default function MusterilerPage() {
               <tr key={c.id} onClick={() => openDetail(c.id)}
                 className="border-t border-panel-border cursor-pointer hover:bg-panel-input/50">
                 <td className="px-4 py-2.5">
-                  <div className="font-medium">{c.name || '—'}</div>
+                  <div className="font-medium">
+                    {c.name || '—'}
+                    {c.accepts_marketing && (
+                      <span className="ml-1.5 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full"
+                        title="Bülten abonesi">📮</span>
+                    )}
+                  </div>
                   <div className="text-xs text-panel-muted">{c.email}</div>
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">

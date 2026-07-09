@@ -47,6 +47,7 @@ def _serialize(c: Customer) -> dict:
         "first_order_at": c.first_order_at.isoformat() if c.first_order_at else None,
         "last_order_at": c.last_order_at.isoformat() if c.last_order_at else None,
         "notes": c.notes,
+        "accepts_marketing": c.accepts_marketing,
     }
 
 
@@ -55,6 +56,7 @@ def list_customers(
     q: str | None = Query(None, max_length=200),
     sort: str = Query("last_order_at"),
     store_id: uuid.UUID | None = Query(None),
+    subscribed: bool = Query(False),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("musteri")),
@@ -64,7 +66,11 @@ def list_customers(
     if q:
         needle = f"%{q.strip()}%"
         base = base.where(or_(Customer.email.ilike(needle), Customer.name.ilike(needle)))
-    if store_id:
+    if subscribed:
+        # Bülten aboneleri: siparişsiz kayıt da olabilir (footer formu) —
+        # mağaza sipariş kapsamı uygulanmaz, tenant tekil vitrine sahiptir
+        base = base.where(Customer.accepts_marketing.is_(True))
+    elif store_id:
         # Mağaza kapsamı (Mağaza Paneli): o mağazada siparişi olan müşteriler
         base = base.where(Customer.email.in_(
             select(func.lower(Order.customer_email)).where(
@@ -82,6 +88,40 @@ def list_customers(
 
     return {"total": total, "page": page, "per_page": per_page,
             "items": [_serialize(c) for c in rows]}
+
+
+@router.get("/export/subscribers.csv")
+def export_subscribers(
+    user: User = Depends(require_permission("musteri")),
+    db: Session = Depends(get_db),
+):
+    """Bülten abonelerini CSV indir (e-posta pazarlama aracına aktarım için)."""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    rows = db.scalars(
+        select(Customer).where(
+            Customer.tenant_id == user.tenant_id,
+            Customer.accepts_marketing.is_(True),
+        ).order_by(Customer.created_at)
+    ).all()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["email", "name", "opted_at", "orders_count"])
+    for c in rows:
+        w.writerow([
+            c.email, c.name or "",
+            c.marketing_opted_at.isoformat() if c.marketing_opted_at else "",
+            c.orders_count,
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=bulten-aboneleri.csv"},
+    )
 
 
 @router.get("/{customer_id}", response_model=dict)

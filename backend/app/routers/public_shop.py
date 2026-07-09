@@ -833,6 +833,43 @@ class AddressIn(BaseModel):
 
 
 login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
+newsletter_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
+
+
+class NewsletterRequest(BaseModel):
+    email: EmailStr
+    kvkk_accept: bool = Field(...)
+
+
+@router.post("/{store_slug}/newsletter")
+def newsletter_subscribe(
+    store_slug: str,
+    body: NewsletterRequest,
+    _rl: None = Depends(newsletter_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Bülten aboneliği — KVKK açık rızasıyla e-posta kaydı.
+
+    Enumeration koruması: e-posta zaten kayıtlı olsa da aynı yanıt döner.
+    """
+    if not body.kvkk_accept:
+        raise HTTPException(422, "Bülten kaydı için onay gerekli")
+    store = _resolve_store(db, store_slug)
+
+    from datetime import datetime, timezone
+    from app.models import Customer
+    email = str(body.email).lower().strip()
+    customer = db.scalar(select(Customer).where(
+        Customer.tenant_id == store.tenant_id, Customer.email == email))
+    if not customer:
+        customer = Customer(tenant_id=store.tenant_id, email=email)
+        db.add(customer)
+    if not customer.accepts_marketing:
+        customer.accepts_marketing = True
+        customer.marketing_opted_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "message": "Aboneliğiniz alındı 🎉"}
+
 
 
 def _get_customer_from_token(request: Request, db: Session):

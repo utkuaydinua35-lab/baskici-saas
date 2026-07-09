@@ -39,7 +39,7 @@ _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
 }
-_BOOL_KEYS = {"abandoned_reminder_enabled"}
+_BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled"}
 ALLOWED_KEYS = _MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
 
 

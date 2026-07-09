@@ -207,6 +207,11 @@ def kargo_gonder(
         note=f"{handler_label} · takip {takip_no}" + ("" if shopify_ok else f" · Shopify yazılamadı: {shopify_err}"),
         created_by=user.full_name or user.email,
     ))
+
+    # Vitrin siparişiyse müşteriye otomatik kargo bildirimi (bir kez, bloklamaz)
+    from app.services.shipping_email import maybe_send_tracking_email
+    maybe_send_tracking_email(db, order)
+
     db.commit()
 
     return {

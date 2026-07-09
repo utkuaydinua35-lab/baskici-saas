@@ -105,6 +105,11 @@ export default function AyarlarPage() {
             onChange={set('abandoned_reminder_enabled')} />
           Terk edilmiş sepetlere otomatik hatırlatma e-postası gönder (sepet başına 1 kez)
         </label>
+        <label className="flex items-center gap-2 text-sm mt-1">
+          <input type="checkbox" checked={cfg.shipping_email_enabled !== false}
+            onChange={set('shipping_email_enabled')} />
+          Kargoya verilince müşteriye otomatik bildirim e-postası gönder (takip no ile, 1 kez)
+        </label>
       </Section>
 
       <Section title="Ödeme Sağlayıcı" icon="💳">

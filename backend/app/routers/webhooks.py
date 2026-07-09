@@ -83,10 +83,15 @@ def basit_kargo_webhook(
     handler_name_in = ((payload.get("handler") or {}).get("name")
                        or ((payload.get("shipmentInfo") or {}).get("handler") or {}).get("name"))
     if hsc and hsc != (ki.get("takip_no") or ""):
+        first_tracking = not (ki.get("takip_no") or "").strip()
         ki["takip_no"] = hsc
         if handler_name_in:
             ki["handler_name"] = handler_name_in
         order.kargo_info = ki
+        # Takip no İLK kez doluyorsa vitrin müşterisine kargo bildirimi
+        if first_tracking:
+            from app.services.shipping_email import maybe_send_tracking_email
+            maybe_send_tracking_email(db, order)
         try:
             store = db.get(Store, order.store_id) if order.store_id else None
             if store and store.platform == "shopify":

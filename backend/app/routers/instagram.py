@@ -15,6 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
+from app.config import get_settings
 from app.database import get_db
 from app.models import Design, InstagramPost, Store, User
 from app.services import storage, instagram_content

@@ -492,10 +492,21 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
             },
         }]
 
-        resp = client.messages.create(
-            model=MODEL_MAP.get("opus", "claude-opus-4-8"),
-            max_tokens=1200, temperature=0.85, system=system, messages=cmsgs, tools=tools,
-        )
+        # Model: tenant AI modeli varsa onu kullan, yoksa sonnet (opus bazı hesaplarda kapalı olabilir)
+        _mk = getattr(store, "ai_reply_model", None) or "sonnet"
+        _model = MODEL_MAP.get(_mk) or MODEL_MAP.get("sonnet", "claude-sonnet-4-6")
+        try:
+            resp = client.messages.create(
+                model=_model, max_tokens=1200, temperature=0.85,
+                system=system, messages=cmsgs, tools=tools,
+            )
+        except Exception as _te:  # noqa: BLE001
+            # tool-use ya da model sorunuysa tool'suz yeniden dene (en azından sohbet çalışsın)
+            logger.warning(f"[instagram] tool'lu çağrı başarısız, tool'suz deneniyor: {type(_te).__name__}: {_te}")
+            resp = client.messages.create(
+                model=_model, max_tokens=1200, temperature=0.85,
+                system=system, messages=cmsgs,
+            )
         reply = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", None) == "text")
         proposal = None
         for b in resp.content:

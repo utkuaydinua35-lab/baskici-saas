@@ -56,6 +56,12 @@ def _serialize_product_card(p: CatalogProduct) -> dict:
     """Liste kartı — minimum alan (PII yok, iç ID'ler yalnızca gerekli olanlar)."""
     active_variants = [v for v in p.variants if v.is_active]
     models = sorted({v.model_display for v in active_variants})
+    # "Son N adet" rozeti: yalnızca TÜM varyantlar stok takipliyse anlamlı
+    tracked = [v for v in active_variants if v.track_stock]
+    total_stock = (
+        sum(max(v.quantity, 0) for v in tracked)
+        if active_variants and len(tracked) == len(active_variants) else None
+    )
     return {
         "slug": p.slug,
         "title": p.title,
@@ -65,6 +71,7 @@ def _serialize_product_card(p: CatalogProduct) -> dict:
         "cover_image": f"/storage/{p.images[0].file_path}" if p.images else None,
         "tags": p.tags,
         "model_count": len(models),
+        "total_stock": total_stock,
     }
 
 

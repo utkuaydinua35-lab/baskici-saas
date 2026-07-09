@@ -2,10 +2,11 @@
 
 // Üst menü — koleksiyon dropdown'u (desktop, hover'da kayar), mobil hamburger
 // (soldan kayan menü), tema logosu + sepet (drawer/sayfa).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
+import { formatPrice } from "@/lib/format";
 
 interface NavCollection {
   slug: string;
@@ -108,6 +109,7 @@ export default function Header({
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
+          <SearchBox />
           <Link href="/hesap" aria-label="Hesabım"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -173,5 +175,123 @@ export default function Header({
         </nav>
       </aside>
     </header>
+  );
+}
+
+interface Suggestion {
+  slug: string;
+  title: string;
+  price: string;
+  currency: string;
+  cover_image: string | null;
+}
+
+// Canlı arama — ikona tıklayınca header altında tam genişlik kutu açılır,
+// 250ms debounce ile öneri listesi; Enter tüm sonuçlara gider.
+function SearchBox() {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<Suggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => { setOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+    else { setQ(""); setResults([]); }
+  }, [open]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); return; }
+    setLoading(true);
+    const t = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(term)}`)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => setResults(d.items || []))
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (!term) return;
+    setOpen(false);
+    router.push(`/urunler?q=${encodeURIComponent(term)}`);
+  };
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} aria-label="Ara"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.5" y2="16.5" />
+        </svg>
+        <span className="hidden md:inline">Ara</span>
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />
+          <div className="absolute inset-x-0 top-full z-50 bg-white border-b border-zinc-200 shadow-lg">
+            <form onSubmit={submit} className="mx-auto max-w-2xl px-4 py-3">
+              <div className="flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="1.8" className="text-zinc-400 shrink-0">
+                  <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" />
+                </svg>
+                <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
+                  placeholder="Ürün ara…" aria-label="Ürün ara"
+                  className="flex-1 py-2 text-sm outline-none bg-transparent" />
+                <button type="button" onClick={() => setOpen(false)} aria-label="Kapat"
+                  className="text-zinc-400 hover:text-zinc-900 text-xl leading-none px-1">×</button>
+              </div>
+
+              {q.trim().length >= 2 && (
+                <div className="border-t border-zinc-100 mt-1 pt-1 pb-1 max-h-80 overflow-y-auto">
+                  {results.map((r) => (
+                    <Link key={r.slug} href={`/urun/${r.slug}`}
+                      className="flex items-center gap-3 px-1 py-2 rounded-lg hover:bg-zinc-50">
+                      <div className="w-10 h-10 rounded-lg bg-zinc-100 overflow-hidden shrink-0">
+                        {r.cover_image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={r.cover_image} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-zinc-300">📱</div>
+                        )}
+                      </div>
+                      <span className="flex-1 text-sm line-clamp-1">{r.title}</span>
+                      <span className="text-sm font-medium whitespace-nowrap">
+                        {formatPrice(r.price, r.currency)}
+                      </span>
+                    </Link>
+                  ))}
+                  {!loading && results.length === 0 && (
+                    <p className="px-1 py-3 text-sm text-zinc-400">Sonuç bulunamadı.</p>
+                  )}
+                  {results.length > 0 && (
+                    <button type="submit"
+                      className="w-full text-left px-1 py-2 text-xs text-zinc-500 hover:text-zinc-900">
+                      “{q.trim()}” için tüm sonuçları gör →
+                    </button>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+        </>
+      )}
+    </>
   );
 }

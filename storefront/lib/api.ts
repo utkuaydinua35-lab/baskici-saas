@@ -40,6 +40,7 @@ export interface ProductCard {
   cover_image: string | null;
   tags: string | null;
   model_count: number;
+  total_stock: number | null;
 }
 
 export interface ProductVariant {

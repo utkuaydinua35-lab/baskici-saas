@@ -245,6 +245,22 @@ export default function SosyalMedyaPage() {
   )
 }
 
+// Hafif markdown: **kalın**, *italik*, _italik_ -> React öğeleri (satır sonları korunur)
+function fmt(text) {
+  if (!text) return null
+  const out = []
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_/g
+  let last = 0, m, key = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index))
+    if (m[1]) out.push(<strong key={key++}>{m[1]}</strong>)
+    else out.push(<em key={key++}>{m[2] || m[3]}</em>)
+    last = re.lastIndex
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
 // Canlı asistan orb'u — durum: idle | thinking | speaking
 function AssistantOrb({ state }) {
   return (
@@ -340,7 +356,7 @@ function ChatPanel({ storeId, toast, onCreated }) {
                   {m.images.map((im, j) => <img key={j} src={im.url} alt="" className="w-16 h-16 rounded object-cover" />)}
                 </div>
               )}
-              {m.text && <p className="text-sm whitespace-pre-wrap">{m.text}</p>}
+              {m.text && <p className="text-sm whitespace-pre-wrap">{fmt(m.text)}</p>}
               {m.proposal && <ProposalCard prop={m.proposal} onAdd={addDraft} onFeedback={feedback} />}
             </div>
           </div>

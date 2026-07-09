@@ -128,9 +128,11 @@ function Composer({ storeId, initial, toast, onClose, onCreated }) {
     try { const fd = new FormData(); fd.append('file', f); const r = await api.postForm('/api/instagram/upload', fd); setImg({ path: r.path, url: r.url }) }
     catch { toast.error('Görsel yüklenemedi') }
   }
+  const isStory = kind === 'story'
   const save = async () => {
     if (!storeId) { toast.error('Önce marka seç'); return }
-    if (!img && !caption.trim()) { toast.error('En az bir görsel ya da açıklama gir'); return }
+    if (isStory) { if (!img) { toast.error('Story için görsel gerekli'); return } }
+    else if (!img && !caption.trim()) { toast.error('En az bir görsel ya da açıklama gir'); return }
     setBusy(true)
     try {
       await api.post('/api/instagram/draft', {
@@ -171,10 +173,16 @@ function Composer({ storeId, initial, toast, onClose, onCreated }) {
           </div>
         </div>
 
-        <label className="block text-xs text-gray-500 mb-1">Açıklama</label>
-        <textarea className="input w-full mb-2 !text-sm" rows={4} placeholder="Gönderi açıklaması…" value={caption} onChange={e => setCaption(e.target.value)} />
-        <label className="block text-xs text-gray-500 mb-1">Hashtag</label>
-        <input className="input w-full mb-4 !text-sm" placeholder="#kilif #tasarim" value={hashtags} onChange={e => setHashtags(e.target.value)} />
+        {isStory ? (
+          <p className="text-[11px] text-gray-500 mb-4">Story için yalnızca görsel yeterli — açıklama/hashtag istenmez.</p>
+        ) : (
+          <>
+            <label className="block text-xs text-gray-500 mb-1">Açıklama</label>
+            <textarea className="input w-full mb-2 !text-sm" rows={4} placeholder="Gönderi açıklaması…" value={caption} onChange={e => setCaption(e.target.value)} />
+            <label className="block text-xs text-gray-500 mb-1">Hashtag</label>
+            <input className="input w-full mb-4 !text-sm" placeholder="#kilif #tasarim" value={hashtags} onChange={e => setHashtags(e.target.value)} />
+          </>
+        )}
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary !text-sm">Vazgeç</button>

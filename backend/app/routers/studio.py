@@ -42,11 +42,24 @@ def _studio_dir(tenant_id, store_id) -> Path:
     return STORAGE_ROOT / "tenants" / str(tenant_id) / "studio" / str(store_id)
 
 
+def _mockups(s: Store) -> list[dict]:
+    """Yüklenen mockup dosyaları: [{id, name, path}]. Eski tek 'mockup_psd'yi de kapsar."""
+    c = s.config or {}
+    lst = c.get("mockups")
+    if isinstance(lst, list) and lst:
+        return [m for m in lst if isinstance(m, dict) and m.get("path")]
+    # geriye uyum: eski tekli mockup
+    if c.get("mockup_psd"):
+        return [{"id": "legacy", "name": "Mockup", "path": c["mockup_psd"]}]
+    return []
+
+
 def _cfg(s: Store) -> dict:
     c = s.config or {}
     brand = _brand(s)
     from app.config import get_settings
     _s = get_settings()
+    _mks = _mockups(s)
     return {
         "store_id": str(s.id),
         "store_name": s.name,
@@ -54,6 +67,8 @@ def _cfg(s: Store) -> dict:
         "prefix": (c.get("kod_prefix") or ps.default_prefix(brand)).upper(),
         "price": c.get("studio_price"),
         "mockup_ready": bool(c.get("mockup_psd")),
+        "mockups": [{"id": m["id"], "name": m.get("name") or "Mockup"} for m in _mks],
+        "active_mockup_id": next((m["id"] for m in _mks if m["path"] == c.get("mockup_psd")), (_mks[0]["id"] if _mks else None)),
         "ai_expand": bool(c.get("ai_expand")),
         "ai_provider": c.get("ai_provider") or "auto",
         "ai_upscale": bool(c.get("ai_upscale")),
@@ -112,7 +127,8 @@ async def upload_mockup(
     user: User = Depends(require_permission("tasarim")),
     db: Session = Depends(get_db),
 ):
-    """Mağazaya marka mockup PSD'si yükle."""
+    """Mağazaya marka mockup PSD'si yükle (birden fazla olabilir; yüklenen aktif olur)."""
+    import uuid as _uuid
     s = _get_store(db, store_id, user.tenant_id)
     name = (file.filename or "").lower()
     if not name.endswith((".psd", ".psb")):
@@ -123,15 +139,122 @@ async def upload_mockup(
     d = _studio_dir(user.tenant_id, store_id)
     d.mkdir(parents=True, exist_ok=True)
     ext = ".psb" if name.endswith(".psb") else ".psd"
-    rel = f"tenants/{user.tenant_id}/studio/{store_id}/mockup{ext}"
+    mid = _uuid.uuid4().hex[:8]
+    rel = f"tenants/{user.tenant_id}/studio/{store_id}/mockup-{mid}{ext}"
     (STORAGE_ROOT / rel).write_bytes(data)
     cfg = dict(s.config or {})
-    cfg["mockup_psd"] = rel
+    lst = list(_mockups(s))
+    lst.append({"id": mid, "name": (file.filename or f"Mockup {len(lst)+1}")[:60], "path": rel})
+    cfg["mockups"] = lst
+    cfg["mockup_psd"] = rel  # yeni yüklenen aktif
     s.config = cfg
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(s, "config")
     db.commit()
     return {"ok": True, **_cfg(s)}
+
+
+class MockupSelectIn(BaseModel):
+    store_id: uuid.UUID
+    mockup_id: str
+
+
+@router.get("/mockups", response_model=dict)
+def list_mockups(store_id: uuid.UUID, user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    s = _get_store(db, store_id, user.tenant_id)
+    return {"mockups": [{"id": m["id"], "name": m.get("name") or "Mockup"} for m in _mockups(s)],
+            "active_mockup_id": _cfg(s)["active_mockup_id"]}
+
+
+@router.post("/mockups/select", response_model=dict)
+def select_mockup(body: MockupSelectIn, user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    s = _get_store(db, body.store_id, user.tenant_id)
+    m = next((x for x in _mockups(s) if x["id"] == body.mockup_id), None)
+    if not m:
+        raise HTTPException(404, "Mockup bulunamadı")
+    cfg = dict(s.config or {})
+    cfg["mockup_psd"] = m["path"]
+    s.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(s, "config")
+    db.commit()
+    return {"ok": True, **_cfg(s)}
+
+
+@router.delete("/mockups/{mockup_id}", response_model=dict)
+def delete_mockup(mockup_id: str, store_id: uuid.UUID, user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    s = _get_store(db, store_id, user.tenant_id)
+    lst = list(_mockups(s))
+    m = next((x for x in lst if x["id"] == mockup_id), None)
+    if not m:
+        raise HTTPException(404, "Mockup bulunamadı")
+    try:
+        (STORAGE_ROOT / m["path"]).unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    lst = [x for x in lst if x["id"] != mockup_id]
+    cfg = dict(s.config or {})
+    cfg["mockups"] = lst
+    # aktif silindiyse ilk kalanı aktif yap
+    if cfg.get("mockup_psd") == m["path"]:
+        cfg["mockup_psd"] = lst[0]["path"] if lst else None
+    s.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(s, "config")
+    db.commit()
+    return {"ok": True, **_cfg(s)}
+
+
+@router.post("/mockup-test", response_model=dict)
+def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(None),
+                user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    """Seçili (ya da verilen) mockup'ı bir DENEME tasarımıyla derler — AI harcamadan
+    çalışıp çalışmadığını gösterir. Döner: {ok, image_url, info}."""
+    from PIL import Image, ImageDraw
+    s = _get_store(db, store_id, user.tenant_id)
+    mks = _mockups(s)
+    m = next((x for x in mks if x["id"] == mockup_id), None) if mockup_id else \
+        next((x for x in mks if x["path"] == (s.config or {}).get("mockup_psd")), (mks[0] if mks else None))
+    if not m:
+        raise HTTPException(400, "Önce bir mockup yükleyin")
+    psd_path = STORAGE_ROOT / m["path"]
+    if not psd_path.exists():
+        raise HTTPException(404, "Mockup dosyası bulunamadı")
+
+    # Deneme deseni: renkli dama tahtası + "TEST" yazısı
+    tw, th = 1100, 2162
+    test = Image.new("RGB", (tw, th), (240, 240, 245))
+    dr = ImageDraw.Draw(test)
+    cols = [(255, 90, 120), (90, 160, 255), (255, 205, 90), (120, 220, 160)]
+    sq = 180
+    for yy in range(0, th, sq):
+        for xx in range(0, tw, sq):
+            dr.rectangle([xx, yy, xx + sq, yy + sq], fill=cols[((xx // sq) + (yy // sq)) % len(cols)])
+    dr.rectangle([60, th // 2 - 120, tw - 60, th // 2 + 120], fill=(0, 0, 0))
+    dr.text((tw // 2 - 120, th // 2 - 40), "MOCKUP TEST", fill=(255, 255, 255))
+
+    # PSD tanı: smart object'leri incele
+    info = {"mockup_name": m.get("name"), "smart_objects": [], "patched": None}
+    try:
+        from psd_tools import PSDImage
+        psd = PSDImage.open(str(psd_path))
+        for l in psd.descendants():
+            if getattr(l, "kind", None) == "smartobject":
+                so = getattr(l, "smart_object", None)
+                info["smart_objects"].append({"name": getattr(l, "name", ""), "file": getattr(so, "filename", "")})
+    except Exception as e:  # noqa: BLE001
+        info["psd_error"] = str(e)[:200]
+
+    try:
+        mock = mockup_svc.render_psd_mockup(str(psd_path), test)
+        cdir = _studio_dir(user.tenant_id, store_id) / "_test"
+        cdir.mkdir(parents=True, exist_ok=True)
+        out = cdir / f"{m['id']}.jpg"
+        mock.convert("RGB").save(str(out), "JPEG", quality=88)
+        rel = f"tenants/{user.tenant_id}/studio/{store_id}/_test/{m['id']}.jpg"
+        return {"ok": True, "image_url": f"/storage/{rel}?t={int(__import__('time').time())}", "info": info}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Mockup derlenemedi: {str(e)[:200]}")
 
 
 def _existing_studio_codes(tenant_id, store_id) -> set:

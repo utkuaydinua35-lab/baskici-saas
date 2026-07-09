@@ -34,6 +34,20 @@ export default function ProductStudioPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [mockupPct, setMockupPct] = useState(null)   // mockup yükleme %
   const [analyzePct, setAnalyzePct] = useState(null) // analiz yükleme %
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)  // {image_url, info}
+
+  const runMockupTest = async () => {
+    if (!cfg?.mockup_ready) { toast.error('Önce mockup yükle'); return }
+    setTesting(true); setTestResult(null)
+    try {
+      const fd = new FormData(); fd.append('store_id', storeId)
+      const r = await api.postForm('/api/studio/mockup-test', fd)
+      setTestResult(r)
+      toast.success('Mockup test edildi')
+    } catch (e) { toast.error(e.detail || 'Mockup test başarısız'); setTestResult({ error: e.detail || 'hata' }) }
+    finally { setTesting(false) }
+  }
 
   useEffect(() => {
     api.get('/api/stores?include_bayii=false').then(s => {
@@ -143,14 +157,33 @@ export default function ProductStudioPage() {
               {files.map((f, i) => <img key={i} src={URL.createObjectURL(f)} alt="" className="w-12 h-12 rounded object-cover shrink-0" />)}
             </div>
           )}
-          <button onClick={analyze} disabled={analyzing || !files.length} className="btn-primary w-full !text-sm mt-3 disabled:opacity-50">
-            {analyzing ? 'İşleniyor…' : '✨ Analiz Et'}
-          </button>
+          <div className="flex gap-2 mt-3">
+            <button onClick={runMockupTest} disabled={testing} className="btn-secondary !text-sm disabled:opacity-50" title="Mockup'ı deneme tasarımıyla dene (AI harcamaz)">
+              {testing ? 'Test ediliyor…' : '🧪 Mockup Test'}
+            </button>
+            <button onClick={analyze} disabled={analyzing || !files.length} className="btn-primary flex-1 !text-sm disabled:opacity-50">
+              {analyzing ? 'İşleniyor…' : '✨ Analiz Et'}
+            </button>
+          </div>
           {analyzing && (
             <div className="mt-2">
               {analyzePct !== null && analyzePct < 100
                 ? <Bar pct={analyzePct} label={`Görseller yükleniyor · %${analyzePct}`} />
                 : <Bar indeterminate label="🤖 AI analiz + mockup üretiliyor… (görsel başına birkaç saniye)" />}
+            </div>
+          )}
+          {testResult && (
+            <div className="mt-3 rounded-lg border border-brand-border p-3">
+              {testResult.image_url && <img src={testResult.image_url} alt="" className="w-full max-w-xs mx-auto rounded-lg" />}
+              {testResult.error && <p className="text-sm text-red-400">Hata: {testResult.error}</p>}
+              {testResult.info && (
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Smart object: {testResult.info.smart_objects?.length || 0}
+                  {testResult.info.smart_objects?.length ? ` (${testResult.info.smart_objects.map(o => o.name || o.file || '?').join(', ')})` : ''}
+                  {testResult.info.psd_error && ` · PSD hata: ${testResult.info.psd_error}`}
+                </p>
+              )}
+              <p className="text-[11px] text-gray-600 mt-1">Deneme deseni kılıfa oturduysa mockup çalışıyor demektir.</p>
             </div>
           )}
         </div>
@@ -217,6 +250,15 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
       toast.success('Kaydedildi'); onSaved()
     } catch (e) { toast.error(e.detail || 'Kaydedilemedi') }
   }
+  const selectMockup = async (id) => {
+    try { await api.post('/api/studio/mockups/select', { store_id: storeId, mockup_id: id }); onSaved() }
+    catch (e) { toast.error(e.detail || 'Seçilemedi') }
+  }
+  const deleteMockup = async (id) => {
+    if (!confirm('Bu mockup silinsin mi?')) return
+    try { await api.del(`/api/studio/mockups/${id}?store_id=${storeId}`); onSaved() }
+    catch (e) { toast.error(e.detail || 'Silinemedi') }
+  }
   return (
     <div className="mt-3 pt-3 border-t border-brand-border/60 grid sm:grid-cols-3 gap-2">
       <Field label="Marka adı (başlıkta)"><input className="input w-full !text-sm" value={marka} onChange={e => setMarka(e.target.value)} /></Field>
@@ -253,18 +295,30 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
         <span className="text-gray-500">→ en beyaz renk <b className="text-gray-300">0,0,0,{kOffset}</b> olur (K'ye eklenen %). Negatif = K azalır.</span>
       </div>
 
-      <div className="sm:col-span-3 flex items-center justify-between gap-2 flex-wrap">
-        <label className={`text-xs cursor-pointer hover:underline ${mockupPct != null ? 'text-gray-500 pointer-events-none' : 'text-accent'}`}>
-          📎 Mockup PSD yükle {cfg.mockup_ready && '(değiştir)'}
+      {/* Mockup dosyaları — birden fazla; seç / sil / yeni ekle */}
+      <div className="sm:col-span-3 rounded-lg bg-brand-input/30 border border-brand-border/60 p-2.5">
+        <div className="text-xs font-medium text-gray-300 mb-1.5">🎨 Mockup dosyaları</div>
+        {(cfg.mockups || []).length === 0 && <p className="text-[11px] text-gray-500 mb-1.5">Henüz mockup yok — PSD/PSB yükle.</p>}
+        <div className="space-y-1">
+          {(cfg.mockups || []).map(m => (
+            <label key={m.id} className="flex items-center gap-2 text-sm bg-brand-card/40 rounded px-2 py-1.5 cursor-pointer">
+              <input type="radio" name="active_mockup" checked={cfg.active_mockup_id === m.id} onChange={() => selectMockup(m.id)} className="accent-accent" />
+              <span className="flex-1 truncate text-gray-200">{m.name}</span>
+              {cfg.active_mockup_id === m.id && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">aktif</span>}
+              <button onClick={(e) => { e.preventDefault(); deleteMockup(m.id) }} className="text-gray-500 hover:text-red-300 text-xs" title="Sil">✕</button>
+            </label>
+          ))}
+        </div>
+        <label className={`inline-block mt-2 text-xs cursor-pointer hover:underline ${mockupPct != null ? 'text-gray-500 pointer-events-none' : 'text-accent'}`}>
+          + Yeni mockup yükle (.psd/.psb)
           <input type="file" accept=".psd,.psb" className="hidden" disabled={mockupPct != null} onChange={e => onMockup(e.target.files?.[0])} />
         </label>
+        {mockupPct != null && <div className="mt-1.5"><Bar pct={mockupPct} indeterminate={mockupPct >= 100} label={mockupPct < 100 ? `Yükleniyor · %${mockupPct}` : 'İşleniyor…'} /></div>}
+      </div>
+
+      <div className="sm:col-span-3 flex justify-end">
         <button onClick={save} className="btn-primary !text-xs">Ayarları Kaydet</button>
       </div>
-      {mockupPct != null && (
-        <div className="sm:col-span-3">
-          <Bar pct={mockupPct} indeterminate={mockupPct >= 100} label={mockupPct < 100 ? `Mockup yükleniyor · %${mockupPct}` : 'İşleniyor…'} />
-        </div>
-      )}
     </div>
   )
 }

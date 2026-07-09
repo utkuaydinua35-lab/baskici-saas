@@ -42,6 +42,7 @@ export default function ProductStudioPage() {
     setTesting(true); setTestResult(null)
     try {
       const fd = new FormData(); fd.append('store_id', storeId)
+      if (files[0]) fd.append('design', files[0])   // seçili tasarım varsa onu kılıfa oturt
       const r = await api.postForm('/api/studio/mockup-test', fd)
       setTestResult(r)
       toast.success('Mockup test edildi')

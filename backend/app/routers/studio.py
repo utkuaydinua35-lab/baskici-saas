@@ -206,10 +206,12 @@ def delete_mockup(mockup_id: str, store_id: uuid.UUID, user: User = Depends(requ
 
 
 @router.post("/mockup-test", response_model=dict)
-def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(None),
-                user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
-    """Seçili (ya da verilen) mockup'ı bir DENEME tasarımıyla derler — AI harcamadan
-    çalışıp çalışmadığını gösterir. Döner: {ok, image_url, info}."""
+async def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(None),
+                      design: UploadFile | None = File(None),
+                      user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
+    """Seçili (ya da verilen) mockup'ı bir tasarımla derler — AI harcamadan çalışıp
+    çalışmadığını gösterir. design yüklenirse onu, yoksa deneme desenini kılıfa oturtur.
+    Döner: {ok, image_url, info}."""
     from PIL import Image, ImageDraw
     s = _get_store(db, store_id, user.tenant_id)
     mks = _mockups(s)
@@ -221,17 +223,26 @@ def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(No
     if not psd_path.exists():
         raise HTTPException(404, "Mockup dosyası bulunamadı")
 
-    # Deneme deseni: renkli dama tahtası + "TEST" yazısı
-    tw, th = 1100, 2162
-    test = Image.new("RGB", (tw, th), (240, 240, 245))
-    dr = ImageDraw.Draw(test)
-    cols = [(255, 90, 120), (90, 160, 255), (255, 205, 90), (120, 220, 160)]
-    sq = 180
-    for yy in range(0, th, sq):
-        for xx in range(0, tw, sq):
-            dr.rectangle([xx, yy, xx + sq, yy + sq], fill=cols[((xx // sq) + (yy // sq)) % len(cols)])
-    dr.rectangle([60, th // 2 - 120, tw - 60, th // 2 + 120], fill=(0, 0, 0))
-    dr.text((tw // 2 - 120, th // 2 - 40), "MOCKUP TEST", fill=(255, 255, 255))
+    # Tasarım: yüklendiyse onu kullan, yoksa deneme deseni
+    test = None
+    if design is not None:
+        try:
+            _raw = await design.read()
+            if _raw:
+                test = Image.open(io.BytesIO(_raw)).convert("RGB")
+        except Exception:  # noqa: BLE001
+            test = None
+    if test is None:
+        tw, th = 1100, 2162
+        test = Image.new("RGB", (tw, th), (240, 240, 245))
+        dr = ImageDraw.Draw(test)
+        cols = [(255, 90, 120), (90, 160, 255), (255, 205, 90), (120, 220, 160)]
+        sq = 180
+        for yy in range(0, th, sq):
+            for xx in range(0, tw, sq):
+                dr.rectangle([xx, yy, xx + sq, yy + sq], fill=cols[((xx // sq) + (yy // sq)) % len(cols)])
+        dr.rectangle([60, th // 2 - 120, tw - 60, th // 2 + 120], fill=(0, 0, 0))
+        dr.text((tw // 2 - 120, th // 2 - 40), "MOCKUP TEST", fill=(255, 255, 255))
 
     # PSD tanı: smart object'leri incele
     info = {"mockup_name": m.get("name"), "smart_objects": [], "patched": None}

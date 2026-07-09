@@ -321,18 +321,21 @@ def _is_placeholder_so(layer, layer_name):
     return ("your work here" in fn) or (layer.name.lower() in ("design", "w1", "bc"))
 
 
-def _numpy_override(rgba_arr):
-    """psd-tools compositor'ün layer.numpy(channel=...) çağrısına yeni tasarımı döndür."""
-    import numpy as _np
+def _numpy_override(color_arr, orig):
+    """psd-tools compositor 'color'/'shape'/'mask' kanallarını AYRI ayrı ister.
+    Yalnız 'color'ı yeni tasarımla değiştir; 'shape'/'mask'/diğerleri ORİJİNAL
+    placeholder'dan gelsin — böylece kılıf maskesi korunur (arka plan görünür) ve
+    color/shape boyutları orijinalle birebir aynı kalır (broadcast hatası olmaz)."""
+    import numpy as _np  # noqa: F401
 
-    def f(channel=None, **_k):
+    def f(channel="color", *args, **kwargs):
         if channel == "color":
-            return rgba_arr[:, :, :3]
-        if channel in ("shape", "alpha", "mask"):
-            if rgba_arr.shape[2] >= 4:
-                return rgba_arr[:, :, 3:4]
-            return _np.ones((rgba_arr.shape[0], rgba_arr.shape[1], 1), dtype="float32")
-        return rgba_arr
+            return color_arr
+        # shape / mask / alpha / None -> orijinal katman (maske + doğru boyut)
+        try:
+            return orig(channel, *args, **kwargs)
+        except TypeError:
+            return orig()
     return f
 
 
@@ -364,13 +367,14 @@ def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None
     patched = 0
     for l in placeholders:
         try:
-            arr = l.numpy()
-            if arr is None or arr.ndim != 3:
+            orig = l.numpy  # orijinal bound method (maske/şekil buradan gelir)
+            ocolor = orig("color")
+            if ocolor is None or ocolor.ndim != 3:
                 continue
-            h, w = arr.shape[0], arr.shape[1]
-            rz = design_rgba.resize((w, h), Image.LANCZOS)
-            rgba = (np.asarray(rz).astype("float32") / 255.0)
-            l.numpy = _numpy_override(rgba)
+            h, w = ocolor.shape[0], ocolor.shape[1]
+            rz = design_rgba.convert("RGB").resize((w, h), Image.LANCZOS)
+            color = (np.asarray(rz).astype("float32") / 255.0)  # (h, w, 3) — orijinal color ile AYNI boyut
+            l.numpy = _numpy_override(color, orig)
             patched += 1
         except Exception:  # noqa: BLE001
             continue

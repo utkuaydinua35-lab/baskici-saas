@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
 
 export const metadata: Metadata = {
@@ -14,12 +16,18 @@ export const metadata: Metadata = {
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; sayfa?: string; koleksiyon?: string }>;
+  searchParams: Promise<{
+    q?: string; sayfa?: string; koleksiyon?: string;
+    sirala?: string; marka?: string; min?: string; max?: string;
+  }>;
 }) {
-  const { q, sayfa, koleksiyon } = await searchParams;
+  const { q, sayfa, koleksiyon, sirala, marka, min, max } = await searchParams;
   const page = Math.max(1, Number(sayfa) || 1);
   const [data, collections] = await Promise.all([
-    getProducts({ q, page, collection: koleksiyon }),
+    getProducts({
+      q, page, collection: koleksiyon,
+      sort: sirala, brand: marka, minPrice: min, maxPrice: max,
+    }),
     getCollections(),
   ]);
   const items = data?.items ?? [];
@@ -66,6 +74,10 @@ export default async function ProductsPage({
         </div>
       )}
 
+      <Suspense>
+        <FilterBar brands={data?.facets?.brands ?? []} />
+      </Suspense>
+
       {items.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-400">
           {q ? `“${q}” için sonuç bulunamadı.` : "Henüz ürün eklenmemiş."}
@@ -80,25 +92,36 @@ export default async function ProductsPage({
 
       {lastPage > 1 && (
         <nav className="mt-8 flex justify-center gap-2 text-sm">
-          {page > 1 && (
-            <Link
-              href={`/urunler?${new URLSearchParams({ ...(q ? { q } : {}), sayfa: String(page - 1) })}`}
-              className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
-            >
-              ← Önceki
-            </Link>
-          )}
-          <span className="px-3 py-1.5 text-zinc-500">
-            Sayfa {page} / {lastPage}
-          </span>
-          {page < lastPage && (
-            <Link
-              href={`/urunler?${new URLSearchParams({ ...(q ? { q } : {}), sayfa: String(page + 1) })}`}
-              className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
-            >
-              Sonraki →
-            </Link>
-          )}
+          {(() => {
+            const base: Record<string, string> = {
+              ...(q ? { q } : {}), ...(koleksiyon ? { koleksiyon } : {}),
+              ...(sirala ? { sirala } : {}), ...(marka ? { marka } : {}),
+              ...(min ? { min } : {}), ...(max ? { max } : {}),
+            };
+            return (
+              <>
+                {page > 1 && (
+                  <Link
+                    href={`/urunler?${new URLSearchParams({ ...base, sayfa: String(page - 1) })}`}
+                    className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
+                  >
+                    ← Önceki
+                  </Link>
+                )}
+                <span className="px-3 py-1.5 text-zinc-500">
+                  Sayfa {page} / {lastPage}
+                </span>
+                {page < lastPage && (
+                  <Link
+                    href={`/urunler?${new URLSearchParams({ ...base, sayfa: String(page + 1) })}`}
+                    className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
+                  >
+                    Sonraki →
+                  </Link>
+                )}
+              </>
+            );
+          })()}
         </nav>
       )}
     </div>

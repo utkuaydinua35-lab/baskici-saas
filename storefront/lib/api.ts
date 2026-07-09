@@ -96,6 +96,7 @@ export interface ProductListResponse {
   page: number;
   per_page: number;
   items: ProductCard[];
+  facets?: { brands: string[] };
 }
 
 async function shopFetch<T>(path: string): Promise<T | null> {
@@ -121,14 +122,22 @@ export function getProducts(params?: {
   q?: string;
   tag?: string;
   model?: string;
+  brand?: string;
   collection?: string;
+  sort?: string;
+  minPrice?: string;
+  maxPrice?: string;
   page?: number;
 }): Promise<ProductListResponse | null> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
   if (params?.tag) qs.set("tag", params.tag);
   if (params?.model) qs.set("model", params.model);
+  if (params?.brand) qs.set("brand", params.brand);
   if (params?.collection) qs.set("collection", params.collection);
+  if (params?.sort) qs.set("sort", params.sort);
+  if (params?.minPrice) qs.set("min_price", params.minPrice);
+  if (params?.maxPrice) qs.set("max_price", params.maxPrice);
   if (params?.page) qs.set("page", String(params.page));
   const suffix = qs.size > 0 ? `?${qs}` : "";
   return shopFetch<ProductListResponse>(`/products${suffix}`);

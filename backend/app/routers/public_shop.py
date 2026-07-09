@@ -136,7 +136,11 @@ def list_products(
     q: str | None = Query(None, max_length=100),
     tag: str | None = Query(None, max_length=50),
     model: str | None = Query(None, max_length=120),
+    brand: str | None = Query(None, max_length=60),
     collection: str | None = Query(None, max_length=200),
+    sort: str = Query("yeni", pattern="^(yeni|fiyat-artan|fiyat-azalan)$"),
+    min_price: float | None = Query(None, ge=0),
+    max_price: float | None = Query(None, ge=0),
     page: int = Query(1, ge=1, le=1000),
     per_page: int = Query(24, ge=1, le=60),
     _rl: None = Depends(read_rate_limit),
@@ -151,10 +155,27 @@ def list_products(
             CatalogProduct.status == "active",
         )
         .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
-        .order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
     )
+    if sort == "fiyat-artan":
+        query = query.order_by(CatalogProduct.base_price.asc(), CatalogProduct.position)
+    elif sort == "fiyat-azalan":
+        query = query.order_by(CatalogProduct.base_price.desc(), CatalogProduct.position)
+    else:
+        query = query.order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
     if q:
         query = query.where(CatalogProduct.title.ilike(f"%{q}%"))
+    if min_price is not None:
+        query = query.where(CatalogProduct.base_price >= min_price)
+    if max_price is not None:
+        query = query.where(CatalogProduct.base_price <= max_price)
+    if brand:
+        query = query.where(
+            select(CatalogVariant.id).where(
+                CatalogVariant.product_id == CatalogProduct.id,
+                CatalogVariant.is_active.is_(True),
+                CatalogVariant.brand.ilike(brand),
+            ).exists()
+        )
     if tag:
         query = query.where(CatalogProduct.tags.ilike(f"%{tag}%"))
     if collection:
@@ -182,6 +203,18 @@ def list_products(
     start = (page - 1) * per_page
     items = products[start:start + per_page]
 
+    # Filtre yüzeyleri: mağazadaki aktif markalar (mevcut filtrelerden bağımsız)
+    brands = sorted(b for (b,) in db.execute(
+        select(CatalogVariant.brand).distinct()
+        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+        .where(
+            CatalogProduct.store_id == store.id,
+            CatalogProduct.status == "active",
+            CatalogVariant.is_active.is_(True),
+            CatalogVariant.brand.isnot(None),
+        )
+    ).all() if b)
+
     response.headers["Cache-Control"] = "public, max-age=60"
     config = store.config or {}
     return {
@@ -197,6 +230,7 @@ def list_products(
         "page": page,
         "per_page": per_page,
         "items": [_serialize_product_card(p) for p in items],
+        "facets": {"brands": brands},
     }
 
 

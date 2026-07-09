@@ -2,7 +2,7 @@
 
 // Marka → model → renk seçici ve "Sepete Ekle" — ürün sayfasının istemci parçası.
 // Tek marka varsa marka adımı atlanır; markası olmayan varyantlar "Diğer"de.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import type { ProductDetail } from "@/lib/api";
@@ -58,6 +58,14 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   const price = selected ? selected.price : product.price;
   const needsVariation = variations.length > 1 && variation === null;
   const canAdd = !!selected && !needsVariation && selected.in_stock;
+
+  // Galeriye haber ver: seçilen varyanta bağlı görsel varsa öne gelsin
+  useEffect(() => {
+    if (!selected) return;
+    window.dispatchEvent(
+      new CustomEvent("variant-selected", { detail: { variantId: selected.id } }),
+    );
+  }, [selected]);
 
   const pickBrand = (b: string) => {
     setBrand(b);

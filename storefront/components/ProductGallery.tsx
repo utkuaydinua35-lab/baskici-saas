@@ -1,15 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Image {
   url: string;
   alt: string | null;
+  variant_id?: string | null;
 }
 
+// Varyant seçici galeriye "variant-selected" olayı yollar (bileşenler kardeş
+// olduğundan ortak state yerine hafif DOM olayı) — o varyanta bağlı görsel öne gelir.
 export default function ProductGallery({ images, title }: { images: Image[]; title: string }) {
   const [active, setActive] = useState(0);
   const current = images[active];
+
+  useEffect(() => {
+    const onVariant = (e: Event) => {
+      const variantId = (e as CustomEvent<{ variantId: string }>).detail?.variantId;
+      if (!variantId) return;
+      const idx = images.findIndex((im) => im.variant_id === variantId);
+      if (idx >= 0) setActive(idx);
+    };
+    window.addEventListener("variant-selected", onVariant);
+    return () => window.removeEventListener("variant-selected", onVariant);
+  }, [images]);
 
   return (
     <div>

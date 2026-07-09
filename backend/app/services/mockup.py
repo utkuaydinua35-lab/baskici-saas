@@ -347,6 +347,20 @@ def render_psd_mockup(psd_path: str, design: Image.Image, layer_name: str | None
     design_rgba = design.convert("RGBA")
     placeholders = [l for l in psd.descendants() if _is_placeholder_so(l, layer_name)]
 
+    # İsimle eşleşmediyse (ör. tek smart object farklı adlı): arka plan/renk/doku
+    # OLMAYAN tüm smart object'leri placeholder say (genelde tek tanedir).
+    if not placeholders:
+        for l in psd.descendants():
+            if getattr(l, "kind", None) != "smartobject":
+                continue
+            so = getattr(l, "smart_object", None)
+            fn = (getattr(so, "filename", "") or "").lower()
+            nm = (getattr(l, "name", "") or "").lower()
+            if any(x in fn for x in ("background", "color", "texture")) or \
+               any(x in nm for x in ("background", "arka", "renk", "color", "texture", "gölge", "shadow")):
+                continue
+            placeholders.append(l)
+
     patched = 0
     for l in placeholders:
         try:

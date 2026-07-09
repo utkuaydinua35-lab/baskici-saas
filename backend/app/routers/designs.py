@@ -254,6 +254,9 @@ async def create_design(
     slot: int = Form(1),  # couple: 1 = 1. kılıf (assigned_design_id), 2 = 2. kılıf (assigned_design_id_2)
     # Opsiyonel: line item'a otomatik bağla
     line_item_id: uuid.UUID | None = Form(None),
+    # Sync line item'ları yeniden oluşturunca id değişir; Shopify line item id (external_id)
+    # STABİL kalır. id bulunamazsa buna düşülür -> "Line item bulunamadı" önlenir.
+    line_item_external_id: str | None = Form(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -278,13 +281,22 @@ async def create_design(
 
     # line_item_id verildiyse line_item'ı doğrula ve is_kisiye_ozel=True yap
     line_item = None
-    if line_item_id:
-        line_item = db.scalar(
-            select(LineItem).where(
-                LineItem.id == line_item_id,
-                LineItem.tenant_id == user.tenant_id,
+    if line_item_id or line_item_external_id:
+        if line_item_id:
+            line_item = db.scalar(
+                select(LineItem).where(
+                    LineItem.id == line_item_id,
+                    LineItem.tenant_id == user.tenant_id,
+                )
             )
-        )
+        # id bulunamadı (ör. sync yeniden oluşturdu) -> stabil external_id ile dene
+        if not line_item and line_item_external_id:
+            line_item = db.scalar(
+                select(LineItem).where(
+                    LineItem.external_id == str(line_item_external_id),
+                    LineItem.tenant_id == user.tenant_id,
+                )
+            )
         if not line_item:
             raise HTTPException(status_code=404, detail="Line item bulunamadı")
         is_kisiye_ozel = True  # otomatik

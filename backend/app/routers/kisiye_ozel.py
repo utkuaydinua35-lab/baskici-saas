@@ -152,6 +152,7 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
 
     return {
         "id": str(li.id),
+        "external_id": getattr(li, "external_id", None),   # sync sonrası stabil eşleşme
         "title": li.title,
         "variant_title": li.variant_title,
         "model_info": model_info,

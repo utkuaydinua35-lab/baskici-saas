@@ -848,6 +848,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
       if (ucuncu) fd.append('ucuncu_renk', ucuncu)
       fd.append('is_kisiye_ozel', 'true')
       fd.append('line_item_id', lineItem.id)
+      if (lineItem.external_id) fd.append('line_item_external_id', lineItem.external_id)
       fd.append('slot', String(slot || 1))
 
       const res = await fetch('/api/designs', {

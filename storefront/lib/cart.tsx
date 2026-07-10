@@ -24,6 +24,18 @@ export interface CartItem {
   price: string; // yalnızca GÖSTERİM için — sunucu yeniden hesaplar
   image: string | null;
   quantity: number;
+  // Couple ürünler: setin 2. kılıfının modeli
+  secondVariantId?: string | null;
+  secondModelDisplay?: string | null;
+  // Kişiye özel alanlar {key: value} — sunucu ürün tanımına göre doğrular
+  custom?: Record<string, string> | null;
+  // Satır kimliği: aynı varyantın farklı özel içerikleri ayrı satır olur
+  lineId?: string;
+}
+
+export function cartLineId(i: Pick<CartItem, "variantId" | "secondVariantId" | "custom">): string {
+  if (!i.secondVariantId && !i.custom) return i.variantId;
+  return `${i.variantId}::${i.secondVariantId || ""}::${JSON.stringify(i.custom || {})}`;
 }
 
 export interface AppliedCoupon {
@@ -94,29 +106,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback((item: Omit<CartItem, "quantity">, quantity = 1) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.variantId === item.variantId);
+      const lid = item.lineId ?? cartLineId(item);
+      const existing = prev.find((i) => (i.lineId ?? cartLineId(i)) === lid);
       if (existing) {
         return prev.map((i) =>
-          i.variantId === item.variantId
+          (i.lineId ?? cartLineId(i)) === lid
             ? { ...i, quantity: Math.min(MAX_QTY, i.quantity + quantity) }
             : i,
         );
       }
       if (prev.length >= MAX_ITEMS) return prev;
-      return [...prev, { ...item, quantity: Math.min(MAX_QTY, quantity) }];
+      return [...prev, { ...item, lineId: lid, quantity: Math.min(MAX_QTY, quantity) }];
     });
   }, []);
 
-  const removeItem = useCallback((variantId: string) => {
-    setItems((prev) => prev.filter((i) => i.variantId !== variantId));
+  const removeItem = useCallback((lineOrVariantId: string) => {
+    setItems((prev) => prev.filter((i) => (i.lineId ?? cartLineId(i)) !== lineOrVariantId));
   }, []);
 
-  const setQuantity = useCallback((variantId: string, quantity: number) => {
+  const setQuantity = useCallback((lineOrVariantId: string, quantity: number) => {
     setItems((prev) =>
       quantity <= 0
-        ? prev.filter((i) => i.variantId !== variantId)
+        ? prev.filter((i) => (i.lineId ?? cartLineId(i)) !== lineOrVariantId)
         : prev.map((i) =>
-            i.variantId === variantId
+            (i.lineId ?? cartLineId(i)) === lineOrVariantId
               ? { ...i, quantity: Math.min(MAX_QTY, quantity) }
               : i,
           ),

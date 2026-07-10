@@ -17,6 +17,13 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   const [variation, setVariation] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  // Couple: ikinci kılıfın model seçimi (aynı varyant listesinden)
+  const isCouple = (product.models_per_item ?? 1) >= 2;
+  const [secondId, setSecondId] = useState<string>("");
+  // Kişiye özel alanlar {key: value}
+  const fields = product.custom_fields ?? [];
+  const [custom, setCustom] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
 
   // Markalar (varyantlardan; null → "Diğer")
   const brands = useMemo(() => {
@@ -58,7 +65,13 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
 
   const price = selected ? selected.price : product.price;
   const needsVariation = variations.length > 1 && variation === null;
-  const canAdd = !!selected && !needsVariation && selected.in_stock;
+  const secondVariant = isCouple
+    ? product.variants.find((v) => v.id === secondId) ?? null
+    : null;
+  const missingCustom = fields.some((f) => f.required && !(custom[f.key] || "").trim());
+  const canAdd = !!selected && !needsVariation && selected.in_stock
+    && (!isCouple || (!!secondVariant && secondVariant.in_stock))
+    && !missingCustom && !uploading;
 
   // Galeriye haber ver: seçilen varyanta bağlı görsel varsa öne gelsin
   useEffect(() => {
@@ -87,6 +100,9 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       variation: selected.variation,
       price: selected.price,
       image: product.images[0]?.url ?? null,
+      secondVariantId: secondVariant?.id ?? null,
+      secondModelDisplay: secondVariant?.model_display ?? null,
+      custom: Object.keys(custom).length > 0 ? custom : null,
     }, qty);
     trackAddToCart({
       id: selected.id,
@@ -175,6 +191,97 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
           </div>
         </div>
       )}
+
+      {isCouple && (
+        <div>
+          <label className="block text-sm font-medium mb-1.5" htmlFor="second-model">
+            2. Kılıfın Modeli <span className="text-zinc-400 font-normal">(set 2 kılıf içerir)</span>
+          </label>
+          <select
+            id="second-model"
+            value={secondId}
+            onChange={(e) => setSecondId(e.target.value)}
+            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm bg-white"
+          >
+            <option value="">İkinci modeli seçin…</option>
+            {product.variants.filter((v) => v.in_stock).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.model_display}{v.variation ? ` · ${v.variation}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {fields.map((f) => (
+        <div key={f.key}>
+          <label className="block text-sm font-medium mb-1.5">
+            {f.label}
+            {f.required ? <span className="text-red-500"> *</span>
+              : <span className="text-zinc-400 font-normal"> (isteğe bağlı)</span>}
+          </label>
+          {f.type === "text" && (
+            <input
+              value={custom[f.key] || ""}
+              onChange={(e) => setCustom((c) => ({ ...c, [f.key]: e.target.value }))}
+              maxLength={200}
+              placeholder="Buraya yazın…"
+              className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm bg-white"
+            />
+          )}
+          {f.type === "color" && (
+            <div className="flex gap-2 flex-wrap">
+              {(f.options ?? []).map((opt) => (
+                <button
+                  key={opt} type="button"
+                  onClick={() => setCustom((c) => ({ ...c, [f.key]: opt }))}
+                  className={`px-3 py-1.5 rounded-full border text-sm transition ${
+                    custom[f.key] === opt
+                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-zinc-300 hover:border-zinc-500"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          )}
+          {f.type === "image" && (
+            custom[f.key] ? (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={custom[f.key]} alt={f.label}
+                  className="h-16 w-16 object-cover rounded-xl border border-zinc-200" />
+                <button type="button"
+                  onClick={() => setCustom((c) => { const n = { ...c }; delete n[f.key]; return n; })}
+                  className="text-xs text-red-500 underline">Kaldır</button>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 w-fit rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 cursor-pointer hover:border-zinc-500">
+                {uploading === f.key ? "Yükleniyor…" : "📷 Fotoğraf yükle (25MB'a kadar)"}
+                <input type="file" accept="image/*" className="hidden"
+                  disabled={uploading !== null}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploading(f.key);
+                    try {
+                      const fd = new FormData();
+                      fd.append("file", file);
+                      const res = await fetch("/api/upload", { method: "POST", body: fd });
+                      const data = await res.json();
+                      if (res.ok && data.url) {
+                        setCustom((c) => ({ ...c, [f.key]: data.url }));
+                      }
+                    } finally {
+                      setUploading(null);
+                    }
+                  }} />
+              </label>
+            )
+          )}
+        </div>
+      ))}
 
       {selected && !selected.in_stock && (
         <StockAlertForm variantId={selected.id} />

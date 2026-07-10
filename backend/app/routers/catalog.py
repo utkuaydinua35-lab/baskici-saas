@@ -74,6 +74,8 @@ class ProductUpdate(BaseModel):
     tags: str | None = Field(None, max_length=500)
     position: int | None = None
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
+    custom_fields: list[dict] | None = None   # kişiye özel alanlar (aşağıda temizlenir)
+    models_per_item: int | None = Field(None, ge=1, le=2)
 
 
 class VariantCreate(BaseModel):
@@ -129,6 +131,29 @@ def _get_storefront_store(db: Session, tenant_id, store_id) -> Store:
     return store
 
 
+def _clean_custom_fields(raw) -> list[dict]:
+    """Kişiye özel alan tanımlarını temizle (max 6; type: text|image|color)."""
+    out = []
+    for f in (raw or [])[:6]:
+        if not isinstance(f, dict):
+            continue
+        label = str(f.get("label") or "").strip()[:80]
+        if not label:
+            continue
+        ftype = f.get("type") if f.get("type") in ("text", "image", "color") else "text"
+        entry = {
+            "key": slugify(label)[:40] or "alan",
+            "label": label,
+            "type": ftype,
+            "required": bool(f.get("required")),
+        }
+        if ftype == "color":
+            entry["options"] = [str(o).strip()[:30]
+                                for o in (f.get("options") or [])[:12] if str(o).strip()]
+        out.append(entry)
+    return out
+
+
 def _get_product(db: Session, tenant_id, product_id, *, eager: bool = False) -> CatalogProduct:
     q = select(CatalogProduct).where(
         CatalogProduct.id == product_id, CatalogProduct.tenant_id == tenant_id,
@@ -180,6 +205,9 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
         "currency": p.currency,
         "tags": p.tags,
         "position": p.position,
+        "variant_set_id": str(p.variant_set_id) if p.variant_set_id else None,
+        "custom_fields": p.custom_fields or [],
+        "models_per_item": p.models_per_item or 1,
         "publish_at": p.publish_at.isoformat() if p.publish_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -273,6 +301,8 @@ def update_product(
 ):
     product = _get_product(db, user.tenant_id, product_id, eager=True)
     updates = body.model_dump(exclude_unset=True)
+    if "custom_fields" in updates:
+        updates["custom_fields"] = _clean_custom_fields(updates["custom_fields"])
     if "slug" in updates and updates["slug"]:
         updates["slug"] = slugify(updates["slug"])
         clash = db.scalar(select(CatalogProduct).where(
@@ -812,6 +842,200 @@ def publish_due_products(db: Session) -> int:
     )
     db.commit()
     return result.rowcount
+
+
+# ─── Varyant Setleri (hazır varyantlar — tek yerden yönetim) ──
+
+class VariantSetItem(BaseModel):
+    model_key: str = Field(..., min_length=1, max_length=60)
+    model_display: str = Field(..., min_length=1, max_length=120)
+    brand: str | None = Field(None, max_length=60)
+    variation: str | None = Field(None, max_length=80)
+    price_override: Decimal | None = Field(None, ge=0)
+
+
+class VariantSetCreate(BaseModel):
+    store_id: uuid.UUID
+    name: str = Field(..., min_length=2, max_length=120)
+    items: list[VariantSetItem] = Field(default_factory=list, max_length=500)
+
+
+class VariantSetUpdate(BaseModel):
+    name: str | None = Field(None, min_length=2, max_length=120)
+    items: list[VariantSetItem] | None = Field(None, max_length=500)
+
+
+def _serialize_variant_set(vs, product_count: int | None = None) -> dict:
+    data = {
+        "id": str(vs.id),
+        "name": vs.name,
+        "items": vs.items or [],
+        "updated_at": vs.updated_at.isoformat() if vs.updated_at else None,
+    }
+    if product_count is not None:
+        data["product_count"] = product_count
+    return data
+
+
+def sync_set_to_product(db: Session, product: CatalogProduct, items: list[dict]) -> dict:
+    """Set kalemlerini ürünün varyantlarına uygula (upsert by model_key+variation).
+
+    Mevcut varyantın STOK ve stok-takibi KORUNUR; görünen ad/marka/fiyat setten
+    gelir. Sette olmayan varyantlar silinir (set = tek doğruluk kaynağı).
+    """
+    from app.services.brands import infer_brand
+
+    keyof = lambda mk, var: (str(mk), str(var or ""))  # noqa: E731
+    wanted = {keyof(i["model_key"], i.get("variation")): i for i in items}
+    existing = {keyof(v.model_key, v.variation): v for v in product.variants}
+
+    created = updated = deleted = 0
+    for key, item in wanted.items():
+        brand = item.get("brand") or infer_brand(item["model_display"])
+        price = item.get("price_override")
+        if key in existing:
+            v = existing[key]
+            v.model_display = item["model_display"]
+            v.brand = brand
+            v.price_override = price
+            updated += 1
+        else:
+            db.add(CatalogVariant(
+                tenant_id=product.tenant_id,
+                product_id=product.id,
+                model_key=item["model_key"],
+                model_display=item["model_display"],
+                brand=brand,
+                variation=item.get("variation"),
+                price_override=price,
+                track_stock=False,  # setten gelen varyant sınırsız doğar
+                position=len(existing) + created,
+            ))
+            created += 1
+    for key, v in existing.items():
+        if key not in wanted:
+            db.delete(v)
+            deleted += 1
+    return {"created": created, "updated": updated, "deleted": deleted}
+
+
+@router.get("/variant-sets", response_model=list[dict])
+def list_variant_sets(
+    store_id: uuid.UUID = Query(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import VariantSet
+    _get_storefront_store(db, user.tenant_id, store_id)
+    sets = db.scalars(select(VariantSet).where(VariantSet.store_id == store_id)
+                      .order_by(VariantSet.name)).all()
+    counts = dict(db.execute(
+        select(CatalogProduct.variant_set_id, func.count(CatalogProduct.id))
+        .where(CatalogProduct.store_id == store_id,
+               CatalogProduct.variant_set_id.isnot(None))
+        .group_by(CatalogProduct.variant_set_id)
+    ).all())
+    return [_serialize_variant_set(vs, counts.get(vs.id, 0)) for vs in sets]
+
+
+@router.post("/variant-sets", response_model=dict, status_code=status.HTTP_201_CREATED)
+def create_variant_set(
+    body: VariantSetCreate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import VariantSet
+    _get_storefront_store(db, user.tenant_id, body.store_id)
+    if db.scalar(select(VariantSet).where(
+            VariantSet.store_id == body.store_id, VariantSet.name == body.name.strip())):
+        raise HTTPException(409, "Bu adla bir set zaten var")
+    vs = VariantSet(
+        tenant_id=user.tenant_id, store_id=body.store_id,
+        name=body.name.strip(),
+        items=[i.model_dump(mode="json") for i in body.items],
+    )
+    db.add(vs)
+    db.commit()
+    db.refresh(vs)
+    return _serialize_variant_set(vs, 0)
+
+
+@router.patch("/variant-sets/{set_id}", response_model=dict)
+def update_variant_set(
+    set_id: uuid.UUID,
+    body: VariantSetUpdate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Seti güncelle — bağlı TÜM ürünlerin varyantları senkronlanır."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.models import VariantSet
+    vs = db.scalar(select(VariantSet).where(
+        VariantSet.id == set_id, VariantSet.tenant_id == user.tenant_id))
+    if not vs:
+        raise HTTPException(404, "Set bulunamadı")
+
+    if body.name:
+        vs.name = body.name.strip()
+    synced = 0
+    if body.items is not None:
+        vs.items = [i.model_dump(mode="json") for i in body.items]
+        flag_modified(vs, "items")
+        products = db.scalars(
+            select(CatalogProduct)
+            .where(CatalogProduct.variant_set_id == vs.id)
+            .options(selectinload(CatalogProduct.variants))
+        ).all()
+        for p in products:
+            sync_set_to_product(db, p, vs.items)
+            synced += 1
+    db.commit()
+    db.refresh(vs)
+    out = _serialize_variant_set(vs)
+    out["synced_products"] = synced
+    return out
+
+
+@router.delete("/variant-sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_variant_set(
+    set_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Seti sil — ürünlerin varyantları YERİNDE KALIR, yalnızca bağ kopar."""
+    from app.models import VariantSet
+    vs = db.scalar(select(VariantSet).where(
+        VariantSet.id == set_id, VariantSet.tenant_id == user.tenant_id))
+    if not vs:
+        raise HTTPException(404, "Set bulunamadı")
+    db.delete(vs)
+    db.commit()
+
+
+@router.post("/products/{product_id}/apply-variant-set", response_model=dict)
+def apply_variant_set(
+    product_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ürüne set bağla (varyantlar hemen senkronlanır) ya da bağı kopar."""
+    from app.models import VariantSet
+    product = _get_product(db, user.tenant_id, product_id, eager=True)
+    set_id = body.get("variant_set_id")
+    if not set_id:
+        product.variant_set_id = None  # varyantlar olduğu gibi kalır
+        db.commit()
+        return {"detached": True}
+    vs = db.scalar(select(VariantSet).where(
+        VariantSet.id == set_id, VariantSet.tenant_id == user.tenant_id,
+        VariantSet.store_id == product.store_id))
+    if not vs:
+        raise HTTPException(404, "Set bulunamadı")
+    product.variant_set_id = vs.id
+    stats = sync_set_to_product(db, product, vs.items or [])
+    db.commit()
+    return {"applied": vs.name, **stats}
 
 
 # ─── Envanter (Shopify Inventory ekranı) ─────────────────────

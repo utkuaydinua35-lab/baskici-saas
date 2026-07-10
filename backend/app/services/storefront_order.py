@@ -28,6 +28,19 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
     full_name = f"{cust.get('first_name', '')} {cust.get('last_name', '')}".strip()
     line_items = []
     for n, item in enumerate(session.cart_snapshot or []):
+        # Kişiye özel alanlar → Shopify tarzı properties (panelde/üretimde görünür)
+        custom_props = []
+        labels = item.get("custom_labels") or {}
+        for key, val in (item.get("custom") or {}).items():
+            custom_props.append({"name": labels.get(key, key), "value": val})
+
+        props = [
+            {"name": "Telefon Modeli", "value": item.get("model_display") or ""},
+        ] + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []) \
+          + ([{"name": "2. Kılıf Modeli", "value": item["second_model_display"]}]
+             if item.get("second_model_display") else []) \
+          + custom_props
+
         line_items.append({
             "id": f"sfli_{session.id.hex}_{n}",
             "product_id": item.get("product_id"),
@@ -39,10 +52,28 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
             "sku": item.get("sku"),
             "quantity": int(item.get("quantity", 1)),
             "price": item.get("unit_price"),
-            "properties": [
-                {"name": "Telefon Modeli", "value": item.get("model_display") or ""},
-            ] + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []),
+            "properties": props,
         })
+
+        # Couple ürün: 2. kılıf ÜRETİM için ayrı kalem (fiyatı 0 — tutar ilk
+        # kalemde; kalıp planlayıcı her iki modeli de görür)
+        if item.get("second_model_display"):
+            line_items.append({
+                "id": f"sfli_{session.id.hex}_{n}b",
+                "product_id": item.get("product_id"),
+                "variant_id": item.get("second_variant_id"),
+                "title": f"{item.get('title', '')} — 2. kılıf (set)",
+                "variant_title": " / ".join(
+                    x for x in (item.get("second_model_display"), item.get("variation")) if x
+                ),
+                "sku": item.get("sku"),
+                "quantity": int(item.get("quantity", 1)),
+                "price": "0.00",
+                "properties": [
+                    {"name": "Telefon Modeli", "value": item["second_model_display"]},
+                    {"name": "Set", "value": "Çift kılıf setinin 2. parçası"},
+                ] + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []),
+            })
 
     return {
         "id": f"sf_{session.id.hex}",
@@ -100,9 +131,15 @@ def _decrement_stock(db: Session, session: CheckoutSession, order: Order) -> Non
     kalemi tedarik-bekliyor işaretle (ödemesi alınmış müşteri mağdur olmaz)."""
     from app.services import stock as stock_svc
 
+    # Couple setlerde ikinci varyantın stoğu da düşer
+    stock_entries = []
     for item in (session.cart_snapshot or []):
+        stock_entries.append((item, item.get("variant_id")))
+        if item.get("second_variant_id"):
+            stock_entries.append((item, item.get("second_variant_id")))
+
+    for item, vid in stock_entries:
         qty = int(item.get("quantity", 1))
-        vid = item.get("variant_id")
         res = db.execute(
             update(CatalogVariant)
             .where(

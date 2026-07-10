@@ -1314,6 +1314,16 @@ class CatalogProduct(Base):
     )
     # Zamanlanmış yayın: draft üründe doluysa scheduler saati gelince yayınlar
     publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hazır varyant seti — bağlıysa varyantlar setten senkronlanır
+    variant_set_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("variant_sets.id", ondelete="SET NULL"), nullable=True
+    )
+    # Kişiye özel alanlar: [{key, label, type: text|image|color, required, options}]
+    custom_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Ürün başına seçilecek model sayısı (couple kılıflar = 2)
+    models_per_item: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1")
+    )
 
     seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     seo_description: Mapped[str | None] = mapped_column(String(400), nullable=True)
@@ -1572,6 +1582,34 @@ class Customer(Base):
     login_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     login_code_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     login_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class VariantSet(Base):
+    """Hazır varyant seti — model listesi TEK yerden yönetilir; sete bağlı
+    ürünlerin varyantları set kaydedilince senkronlanır (stok/adet korunur).
+
+    items: [{model_key, model_display, brand, variation, price_override}]
+    """
+    __tablename__ = "variant_sets"
+    __table_args__ = (
+        UniqueConstraint("store_id", "name", name="uq_variant_set_store_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(120))
+    items: Mapped[list] = mapped_column(JSONB, default=list)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

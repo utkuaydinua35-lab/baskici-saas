@@ -93,6 +93,42 @@ def validate_and_snapshot(
             variant.price_override if variant.price_override is not None
             else product.base_price
         ))
+
+        # Couple ürün: ikinci model AYNI ürünün aktif varyantı olmalı
+        second = None
+        if (product.models_per_item or 1) >= 2:
+            svid = str(entry.get("second_variant_id") or "")
+            if not svid:
+                raise CheckoutError(f"'{product.title}' için ikinci telefon modelini seçin")
+            second = db.scalar(select(CatalogVariant).where(
+                CatalogVariant.id == svid,
+                CatalogVariant.product_id == product.id,
+                CatalogVariant.is_active.is_(True),
+            ))
+            if not second:
+                raise CheckoutError("İkinci model artık satışta değil")
+            if second.track_stock and second.quantity < qty:
+                raise CheckoutError(
+                    f"'{product.title} — {second.model_display}' için yeterli stok yok")
+
+        # Kişiye özel alanlar: ürün tanımına göre doğrula (bilinmeyen anahtar atılır)
+        custom_clean = None
+        fields = product.custom_fields or []
+        if fields:
+            raw_custom = entry.get("custom") or {}
+            custom_clean = {}
+            for f in fields:
+                val = str(raw_custom.get(f["key"]) or "").strip()
+                if f.get("required") and not val:
+                    raise CheckoutError(f"'{product.title}': {f['label']} alanı zorunlu")
+                if not val:
+                    continue
+                if f["type"] == "color" and f.get("options") and val not in f["options"]:
+                    raise CheckoutError(f"'{f['label']}' için geçersiz seçim")
+                custom_clean[f["key"]] = val[:500] if f["type"] != "image" else val[:500]
+            if not custom_clean:
+                custom_clean = None
+
         total += unit_price * qty
         snapshot.append({
             "variant_id": str(variant.id),
@@ -105,6 +141,11 @@ def validate_and_snapshot(
             "quantity": qty,
             "unit_price": str(unit_price),
             "stock_item_id": str(variant.stock_item_id) if variant.stock_item_id else None,
+            **({"second_variant_id": str(second.id),
+                "second_model_key": second.model_key,
+                "second_model_display": second.model_display} if second else {}),
+            **({"custom": custom_clean} if custom_clean else {}),
+            **({"custom_labels": {f["key"]: f["label"] for f in fields}} if custom_clean else {}),
         })
 
     return snapshot, total

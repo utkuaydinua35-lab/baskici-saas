@@ -109,7 +109,7 @@ function CartInner({
       <ul className="space-y-3">
         {items.map((item) => (
           <li
-            key={item.variantId}
+            key={item.lineId ?? item.variantId}
             className="flex gap-3 bg-white border border-zinc-200 rounded-2xl p-3"
           >
             <Link href={`/urun/${item.productSlug}`} className="shrink-0">
@@ -128,13 +128,19 @@ function CartInner({
               </Link>
               <div className="text-xs text-zinc-500 mt-0.5">
                 {item.modelDisplay}
+                {item.secondModelDisplay ? ` + ${item.secondModelDisplay}` : ""}
                 {item.variation ? ` · ${item.variation}` : ""}
               </div>
+              {item.custom && Object.keys(item.custom).length > 0 && (
+                <div className="text-[10px] text-zinc-400 mt-0.5 line-clamp-1">
+                  ✏️ {Object.values(item.custom).filter(v => !v.startsWith("/storage")).join(" · ") || "Kişiye özel"}
+                </div>
+              )}
               <div className="mt-2 flex items-center gap-3">
                 <div className="inline-flex items-center border border-zinc-300 rounded-lg">
                   <button
                     className="px-2.5 py-1 text-sm"
-                    onClick={() => setQuantity(item.variantId, item.quantity - 1)}
+                    onClick={() => setQuantity(item.lineId ?? item.variantId, item.quantity - 1)}
                     aria-label="Azalt"
                   >
                     −
@@ -142,14 +148,14 @@ function CartInner({
                   <span className="px-2 text-sm tabular-nums">{item.quantity}</span>
                   <button
                     className="px-2.5 py-1 text-sm"
-                    onClick={() => setQuantity(item.variantId, item.quantity + 1)}
+                    onClick={() => setQuantity(item.lineId ?? item.variantId, item.quantity + 1)}
                     aria-label="Artır"
                   >
                     +
                   </button>
                 </div>
                 <button
-                  onClick={() => removeItem(item.variantId)}
+                  onClick={() => removeItem(item.lineId ?? item.variantId)}
                   className="text-xs text-zinc-400 hover:text-red-600"
                 >
                   Kaldır

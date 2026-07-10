@@ -55,9 +55,19 @@ export interface ProductVariant {
   max_qty?: number | null;
 }
 
+export interface CustomField {
+  key: string;
+  label: string;
+  type: "text" | "image" | "color";
+  required: boolean;
+  options?: string[];
+}
+
 export interface ProductDetail {
   slug: string;
   title: string;
+  custom_fields?: CustomField[];
+  models_per_item?: number;
   description: string | null;
   seo_title: string | null;
   seo_description: string | null;

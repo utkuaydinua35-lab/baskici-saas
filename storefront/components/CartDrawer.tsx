@@ -51,7 +51,7 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
             <p className="text-sm text-zinc-500 text-center py-10">Sepetiniz boş.</p>
           )}
           {items.map((item) => (
-            <div key={item.variantId} className="flex gap-3">
+            <div key={item.lineId ?? item.variantId} className="flex gap-3">
               <div className="w-16 h-16 rounded-xl bg-zinc-100 overflow-hidden shrink-0">
                 {item.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -63,15 +63,17 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium line-clamp-1">{item.title}</div>
                 <div className="text-xs text-zinc-500">
-                  {item.modelDisplay}{item.variation ? ` · ${item.variation}` : ""}
+                  {item.modelDisplay}
+                  {item.secondModelDisplay ? ` + ${item.secondModelDisplay}` : ""}
+                  {item.variation ? ` · ${item.variation}` : ""}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <div className="inline-flex items-center border border-zinc-300 rounded-lg text-sm">
-                    <button className="px-2" onClick={() => setQuantity(item.variantId, item.quantity - 1)}>−</button>
+                    <button className="px-2" onClick={() => setQuantity(item.lineId ?? item.variantId, item.quantity - 1)}>−</button>
                     <span className="px-1.5 tabular-nums">{item.quantity}</span>
-                    <button className="px-2" onClick={() => setQuantity(item.variantId, item.quantity + 1)}>+</button>
+                    <button className="px-2" onClick={() => setQuantity(item.lineId ?? item.variantId, item.quantity + 1)}>+</button>
                   </div>
-                  <button onClick={() => removeItem(item.variantId)}
+                  <button onClick={() => removeItem(item.lineId ?? item.variantId)}
                     className="text-[11px] text-zinc-400 hover:text-red-600">Kaldır</button>
                 </div>
               </div>

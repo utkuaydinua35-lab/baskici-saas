@@ -79,6 +79,8 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
     return {
         "slug": p.slug,
         "title": p.title,
+        "custom_fields": p.custom_fields or [],
+        "models_per_item": p.models_per_item or 1,
         "description": p.description,
         "seo_title": p.seo_title,
         "seo_description": p.seo_description,
@@ -306,6 +308,10 @@ def get_product(
 class CheckoutItemIn(BaseModel):
     variant_id: uuid.UUID
     quantity: int = Field(..., ge=1, le=20)
+    # Couple ürünler: ikinci kılıfın modeli (aynı ürünün varyantı olmalı)
+    second_variant_id: uuid.UUID | None = None
+    # Kişiye özel alanlar: {key: value} — üründeki tanıma göre doğrulanır
+    custom: dict | None = None
 
 
 class CheckoutCustomerIn(BaseModel):
@@ -387,7 +393,11 @@ def create_checkout(
         session, init = checkout_svc.create_session(
             db,
             store,
-            items=[{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items],
+            items=[{
+                "variant_id": str(i.variant_id), "quantity": i.quantity,
+                "second_variant_id": str(i.second_variant_id) if i.second_variant_id else None,
+                "custom": i.custom or None,
+            } for i in body.items],
             customer=body.customer.model_dump(),
             client_ip=client_ip(request),
             discount_code=body.discount_code,
@@ -1040,6 +1050,37 @@ login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
 newsletter_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
 unlock_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
 contact_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
+upload_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
+
+
+@router.post("/{store_slug}/upload")
+async def customer_upload(
+    store_slug: str,
+    request: Request,
+    _rl: None = Depends(upload_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Kişiye özel ürün fotoğrafı yükleme (checkout öncesi) — optimize edilir,
+    /storage URL'i döner; siparişin özel alanında saklanır."""
+    from fastapi import UploadFile
+    from app.services import storage as storage_svc
+
+    store = _resolve_store(db, store_slug)
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(413, "Dosya 25MB'ı aşamaz")
+    try:
+        url = storage_svc.save_store_asset(
+            store.tenant_id, store.id, "musteri",
+            data, getattr(file, "filename", None) or "musteri.jpg")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"url": url}
+
 
 
 class ContactRequest(BaseModel):

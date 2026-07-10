@@ -11,6 +11,7 @@ export default function UrunDetayPage() {
   const navigate = useNavigate()
   const { storeId, store } = useStore()
   const [p, setP] = useState(null)
+  const [vsets, setVsets] = useState([])
   const [collections, setCollections] = useState([])
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -23,6 +24,8 @@ export default function UrunDetayPage() {
     try {
       const prod = await api.get(`/api/catalog/products/${productId}`)
       setP(prod)
+      api.get(`/api/catalog/variant-sets?store_id=${prod.store_id}`)
+        .then(setVsets).catch(() => {})
       setForm({
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
@@ -222,9 +225,51 @@ export default function UrunDetayPage() {
       )}
 
       <section className="card space-y-3">
+        <h2 className="text-sm font-semibold">🎨 Kişiye Özel Alanlar ve Set Ürünü</h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={(p.models_per_item || 1) >= 2}
+            onChange={async e => {
+              try {
+                await api.patch(`/api/catalog/products/${p.id}`,
+                  { models_per_item: e.target.checked ? 2 : 1 })
+                await load()
+              } catch { setMsg({ ok: false, text: 'Güncellenemedi' }) }
+            }} />
+          👫 Çift kılıf seti (couple) — müşteri <b>2 telefon modeli</b> seçer,
+          üretime iki kalem düşer
+        </label>
+        <CustomFieldsEditor product={p} onChanged={load} setMsg={setMsg} />
+      </section>
+
+      <section className="card space-y-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Varyantlar ({p.variants.length})</h2>
           <span className="text-[11px] text-panel-muted">— fiyat/stok hücresine tıklayıp düzenleyin</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm bg-panel-input rounded-xl px-3 py-2">
+          <span className="text-xs text-panel-muted">🧩 Hazır set:</span>
+          <select className="input !py-1.5 !w-56 text-xs" value={p.variant_set_id || ''}
+            onChange={async e => {
+              const v = e.target.value
+              if (v && !window.confirm('Set uygulanınca mevcut varyantlar set listesine göre '
+                  + 'güncellenir (sette olmayanlar silinir). Devam?')) { load(); return }
+              try {
+                const r = await api.post(`/api/catalog/products/${p.id}/apply-variant-set`,
+                  { variant_set_id: v || null })
+                setMsg({ ok: true, text: v
+                  ? `"${r.applied}" uygulandı — ${r.created} yeni, ${r.updated} güncel, ${r.deleted} silindi`
+                  : 'Set bağlantısı kaldırıldı (varyantlar yerinde)' })
+                await load()
+              } catch { setMsg({ ok: false, text: 'Set uygulanamadı' }) }
+            }}>
+            <option value="">Sete bağlı değil</option>
+            {vsets.map(vs => <option key={vs.id} value={vs.id}>{vs.name} ({vs.items.length} model)</option>)}
+          </select>
+          {p.variant_set_id && (
+            <span className="text-[11px] text-emerald-700">
+              ✓ Set düzenlenince bu ürün otomatik güncellenir
+            </span>
+          )}
         </div>
         <div className="flex gap-2">
           <input className="input flex-1" value={variations}
@@ -461,6 +506,68 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
       {product.variants.length === 0 && (
         <div className="text-xs text-panel-muted p-3">Henüz varyant yok.</div>
       )}
+    </div>
+  )
+}
+
+// Kişiye özel alanlar — müşteriden checkout'ta istenecek girdiler.
+function CustomFieldsEditor({ product, onChanged, setMsg }) {
+  const [fields, setFields] = useState(product.custom_fields || [])
+  const [dirtyF, setDirtyF] = useState(false)
+  useEffect(() => { setFields(product.custom_fields || []); setDirtyF(false) }, [product.id])
+
+  const patchF = (i, p2) => { setFields(f => f.map((x, j) => j === i ? { ...x, ...p2 } : x)); setDirtyF(true) }
+
+  const save = async () => {
+    try {
+      await api.patch(`/api/catalog/products/${product.id}`, { custom_fields: fields })
+      setMsg({ ok: true, text: 'Kişiye özel alanlar kaydedildi' })
+      setDirtyF(false)
+      onChanged()
+    } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-panel-muted">
+        Müşteriden istenecek ek bilgiler — yazı, fotoğraf ya da renk seçimi.
+        Cevaplar sipariş detayında ve üretim kaleminde görünür.
+      </p>
+      {fields.map((f, i) => (
+        <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
+          <div className="flex gap-1.5">
+            <input className="input !py-1.5 text-xs flex-1" value={f.label || ''} maxLength={80}
+              onChange={e => patchF(i, { label: e.target.value })}
+              placeholder="Alan adı (örn: Kılıf Üzeri Yazı)" />
+            <select className="input !py-1.5 text-xs !w-28" value={f.type || 'text'}
+              onChange={e => patchF(i, { type: e.target.value })}>
+              <option value="text">Yazı</option>
+              <option value="image">Fotoğraf</option>
+              <option value="color">Renk seçimi</option>
+            </select>
+            <label className="text-[11px] flex items-center gap-1 whitespace-nowrap">
+              <input type="checkbox" checked={!!f.required}
+                onChange={e => patchF(i, { required: e.target.checked })} /> zorunlu
+            </label>
+            <button onClick={() => { setFields(fl => fl.filter((_, j) => j !== i)); setDirtyF(true) }}
+              className="text-red-400 hover:text-red-600 px-1">×</button>
+          </div>
+          {f.type === 'color' && (
+            <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}
+              onChange={e => patchF(i, { options: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
+              placeholder="Seçenekler (virgülle): Beyaz, Siyah, Altın" />
+          )}
+        </div>
+      ))}
+      <div className="flex gap-2">
+        {fields.length < 6 && (
+          <button onClick={() => { setFields(f => [...f, { label: '', type: 'text', required: false }]); setDirtyF(true) }}
+            className="btn-ghost !py-1 text-xs">+ Alan Ekle</button>
+        )}
+        {dirtyF && (
+          <button onClick={save} className="btn-primary !py-1 text-xs ml-auto">Alanları Kaydet</button>
+        )}
+      </div>
     </div>
   )
 }

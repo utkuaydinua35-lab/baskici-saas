@@ -125,7 +125,11 @@ export default function CheckoutPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity })),
+          items: items.map((i) => ({
+            variant_id: i.variantId, quantity: i.quantity,
+            second_variant_id: i.secondVariantId || null,
+            custom: i.custom || null,
+          })),
           customer: {
             first_name: fd.get("first_name"),
             last_name: fd.get("last_name"),

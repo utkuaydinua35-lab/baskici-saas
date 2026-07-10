@@ -15,6 +15,7 @@ export default function UrunlerPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
+  const [showSets, setShowSets] = useState(false)
 
   const exportCsv = async () => {
     try {
@@ -68,6 +69,7 @@ export default function UrunlerPage() {
         <h1 className="text-xl font-semibold">Ürünler</h1>
         <span className="text-sm text-panel-muted">{products.length} ürün</span>
         <div className="ml-auto flex gap-2">
+          <button onClick={() => setShowSets(true)} className="btn-ghost text-xs">🧩 Varyant Setleri</button>
           <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
           <button onClick={() => setShowImport(true)} className="btn-ghost text-xs">⬆ İçe Aktar</button>
           <button onClick={() => setShowCreate(true)} className="btn-primary">+ Yeni Ürün</button>
@@ -91,6 +93,8 @@ export default function UrunlerPage() {
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
         </div>
       )}
+
+      {showSets && <VariantSetsModal storeId={storeId} onClose={() => setShowSets(false)} />}
 
       {showBulkEdit && (
         <BulkEditModal ids={[...checked]} storeId={storeId}
@@ -405,6 +409,177 @@ export function BulkEditModal({ ids, storeId, onClose, onDone }) {
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button disabled={busy} className="btn-primary">
             {busy ? 'Uygulanıyor…' : `${ids.length} Ürüne Uygula`}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// Varyant Setleri — hazır model listeleri; set düzenlenince bağlı TÜM ürünler
+// senkronlanır (Shopify'da olmayan, üretici dostu bir kolaylık).
+const trSlug = (t) => t.toLowerCase()
+  .replaceAll('ı', 'i').replaceAll('ğ', 'g').replaceAll('ü', 'u')
+  .replaceAll('ş', 's').replaceAll('ö', 'o').replaceAll('ç', 'c')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+
+export function VariantSetsModal({ storeId, onClose }) {
+  const [sets, setSets] = useState([])
+  const [editing, setEditing] = useState(null)  // null | 'new' | set
+  const [err, setErr] = useState('')
+
+  const load = async () => {
+    try { setSets(await api.get(`/api/catalog/variant-sets?store_id=${storeId}`)) }
+    catch { setErr('Setler yüklenemedi') }
+  }
+  useEffect(() => { load() }, [storeId])
+
+  const remove = async (vs) => {
+    if (!window.confirm(`"${vs.name}" seti silinecek — ürünlerdeki varyantlar YERİNDE kalır, `
+        + `yalnızca bağ kopar. Emin misiniz?`)) return
+    try { await api.del(`/api/catalog/variant-sets/${vs.id}`); load() }
+    catch { setErr('Silinemedi') }
+  }
+
+  if (editing !== null) {
+    return <VariantSetEditor storeId={storeId} vset={editing === 'new' ? null : editing}
+      onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />
+  }
+
+  return (
+    <Modal title="🧩 Varyant Setleri" onClose={onClose}>
+      <p className="text-xs text-panel-muted -mt-1 mb-3">
+        Model listesini TEK yerden yönetin: seti düzenleyince bağlı tüm ürünlerin
+        varyantları otomatik güncellenir (stok adetleri korunur). Sete bağlamayı
+        ürün detayından yaparsınız.
+      </p>
+      {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+      <div className="space-y-2">
+        {sets.map(vs => (
+          <div key={vs.id} className="flex items-center gap-2 border border-panel-border rounded-xl px-3 py-2.5 text-sm">
+            <span className="font-medium">{vs.name}</span>
+            <span className="text-xs text-panel-muted">
+              {vs.items.length} model · {vs.product_count ?? 0} üründe
+            </span>
+            <span className="ml-auto flex gap-2">
+              <button onClick={() => setEditing(vs)}
+                className="text-xs text-panel-muted hover:text-panel-ink">Düzenle</button>
+              <button onClick={() => remove(vs)}
+                className="text-xs text-red-400 hover:text-red-600">Sil</button>
+            </span>
+          </div>
+        ))}
+        {sets.length === 0 && (
+          <p className="text-sm text-panel-muted text-center py-4">
+            Henüz set yok — örn. "Standart Silikon" ya da "Şeffaf Kılıf" seti oluşturun.
+          </p>
+        )}
+      </div>
+      <div className="flex justify-end pt-3">
+        <button onClick={() => setEditing('new')} className="btn-primary">+ Yeni Set</button>
+      </div>
+    </Modal>
+  )
+}
+
+function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
+  const isNew = !vset
+  const [name, setName] = useState(vset?.name || '')
+  const [items, setItems] = useState(vset?.items?.length ? vset.items
+    : [{ model_key: '', model_display: '', variation: '', price_override: '' }])
+  const [bulkText, setBulkText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const patchRow = (i, p) => setItems(rows => rows.map((r, j) => j === i ? { ...r, ...p } : r))
+
+  const addBulk = () => {
+    const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean)
+    if (!lines.length) return
+    setItems(rows => [
+      ...rows.filter(r => r.model_display),
+      ...lines.map(l => ({ model_key: trSlug(l), model_display: l, variation: '', price_override: '' })),
+    ])
+    setBulkText('')
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    const cleaned = items
+      .filter(r => (r.model_display || '').trim())
+      .map(r => ({
+        model_key: (r.model_key || trSlug(r.model_display)).trim(),
+        model_display: r.model_display.trim(),
+        variation: (r.variation || '').trim() || null,
+        price_override: r.price_override ? Number(r.price_override) : null,
+      }))
+    if (!cleaned.length) { setErr('En az bir model girin'); return }
+    setBusy(true); setErr('')
+    try {
+      if (isNew) {
+        await api.post('/api/catalog/variant-sets', { store_id: storeId, name: name.trim(), items: cleaned })
+      } else {
+        const r = await api.patch(`/api/catalog/variant-sets/${vset.id}`, { name: name.trim(), items: cleaned })
+        if (r.synced_products > 0) window.alert(`${r.synced_products} üründeki varyantlar senkronlandı ✓`)
+      }
+      onSaved()
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Kaydedilemedi')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title={isNew ? 'Yeni Varyant Seti' : `Set: ${vset.name}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <label className="block text-sm">
+          <span className="text-panel-muted text-xs">Set adı</span>
+          <input className="input mt-1" value={name} onChange={e => setName(e.target.value)}
+            required minLength={2} maxLength={120} placeholder="Standart Silikon" />
+        </label>
+
+        <div className="max-h-72 overflow-y-auto space-y-1.5 border border-panel-border rounded-xl p-2">
+          {items.map((r, i) => (
+            <div key={i} className="flex gap-1.5">
+              <input className="input !py-1.5 text-xs flex-1" value={r.model_display || ''}
+                onChange={e => patchRow(i, { model_display: e.target.value, model_key: trSlug(e.target.value) })}
+                placeholder="Model adı (iPhone 15 Pro)" />
+              <input className="input !py-1.5 text-xs !w-24" value={r.variation || ''}
+                onChange={e => patchRow(i, { variation: e.target.value })} placeholder="Renk (ops.)" />
+              <input className="input !py-1.5 text-xs !w-20" type="number" step="0.01" min="0"
+                value={r.price_override ?? ''}
+                onChange={e => patchRow(i, { price_override: e.target.value })} placeholder="₺ (ops.)" />
+              <button type="button" onClick={() => setItems(rows => rows.filter((_, j) => j !== i))}
+                className="text-red-400 hover:text-red-600 px-1">×</button>
+            </div>
+          ))}
+          <button type="button"
+            onClick={() => setItems(rows => [...rows, { model_key: '', model_display: '', variation: '', price_override: '' }])}
+            className="btn-ghost !py-1 text-xs">+ Satır</button>
+        </div>
+
+        <details className="text-sm">
+          <summary className="text-xs text-panel-muted cursor-pointer">
+            Toplu ekle (her satıra bir model adı yapıştırın)
+          </summary>
+          <div className="mt-2 flex gap-2">
+            <textarea className="input text-xs" rows={4} value={bulkText}
+              onChange={e => setBulkText(e.target.value)}
+              placeholder={'iPhone 15\niPhone 15 Pro\nSamsung Galaxy S24'} />
+            <button type="button" onClick={addBulk} className="btn-ghost !py-1.5 text-xs self-start">Ekle</button>
+          </div>
+        </details>
+
+        {!isNew && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+            ⚠ Kaydedince bu sete bağlı <b>tüm ürünlerin</b> varyantları bu listeye göre güncellenir
+            (listeden çıkan modeller ürünlerden silinir; stoklar korunur).
+          </p>
+        )}
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-ghost">Geri</button>
+          <button disabled={busy} className="btn-primary">
+            {busy ? 'Kaydediliyor…' : isNew ? 'Set Oluştur' : 'Kaydet ve Senkronla'}
           </button>
         </div>
       </form>

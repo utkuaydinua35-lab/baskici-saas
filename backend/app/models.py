@@ -1497,6 +1497,7 @@ class DiscountCode(Base):
     value: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
 
     min_subtotal: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    min_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)  # "N adet üzeri"
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

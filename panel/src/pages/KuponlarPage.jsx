@@ -60,8 +60,11 @@ export default function KuponlarPage() {
                 </td>
                 <td className="px-4 py-2.5">{kindLabel(c)}</td>
                 <td className="px-4 py-2.5 text-panel-muted text-xs">
-                  {c.min_subtotal ? `min ${fmt(c.min_subtotal)}` : '—'}
-                  {c.once_per_customer && ' · müşteri başına 1'}
+                  {[
+                    c.min_subtotal && `min ${fmt(c.min_subtotal)}`,
+                    c.min_quantity && `min ${c.min_quantity} adet`,
+                    c.once_per_customer && 'müşteri başına 1',
+                  ].filter(Boolean).join(' · ') || '—'}
                 </td>
                 <td className="px-4 py-2.5 tabular-nums">
                   {c.usage_count}{c.usage_limit ? ` / ${c.usage_limit}` : ''}
@@ -111,6 +114,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     kind: coupon?.kind || 'percent',
     value: coupon?.value || '',
     min_subtotal: coupon?.min_subtotal || '',
+    min_quantity: coupon?.min_quantity || '',
     starts_at: coupon?.starts_at ? coupon.starts_at.slice(0, 10) : '',
     ends_at: coupon?.ends_at ? coupon.ends_at.slice(0, 10) : '',
     usage_limit: coupon?.usage_limit || '',
@@ -131,6 +135,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     const payload = {
       value: form.kind === 'free_shipping' ? 0 : Number(form.value),
       min_subtotal: form.min_subtotal ? Number(form.min_subtotal) : null,
+      min_quantity: form.min_quantity ? Number(form.min_quantity) : null,
       starts_at: form.starts_at ? `${form.starts_at}T00:00:00+03:00` : null,
       ends_at: form.ends_at ? `${form.ends_at}T23:59:59+03:00` : null,
       usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
@@ -194,6 +199,11 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
               value={form.usage_limit} onChange={set('usage_limit')} />
           </label>
         </div>
+        <label className="block text-sm">
+          <span className="text-panel-muted text-xs">Min. ürün adedi (ops. — örn "3 al %20")</span>
+          <input className="input mt-1 !w-32" type="number" min="2" max="100"
+            value={form.min_quantity} onChange={set('min_quantity')} />
+        </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm">
             <span className="text-panel-muted text-xs">Başlangıç (ops.)</span>

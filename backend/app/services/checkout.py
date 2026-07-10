@@ -112,6 +112,7 @@ def validate_and_snapshot(
 
 def apply_discount(
     db: Session, store: Store, code: str, items_total: Decimal, email: str | None,
+    items_count: int | None = None,
 ) -> tuple[DiscountCode, Decimal, bool]:
     """Kupon kodunu doğrula; (kupon, indirim_tutarı, kargo_bedava) döndür.
 
@@ -130,12 +131,13 @@ def apply_discount(
     if not dc:
         raise CheckoutError("Kupon kodu geçersiz")
 
-    discount, free_shipping = evaluate_discount(db, dc, items_total, email)
+    discount, free_shipping = evaluate_discount(db, dc, items_total, email, items_count)
     return dc, discount, free_shipping
 
 
 def evaluate_discount(
     db: Session, dc: DiscountCode, items_total: Decimal, email: str | None,
+    items_count: int | None = None,
 ) -> tuple[Decimal, bool]:
     """Kuponun koşullarını denetle, (indirim_tutarı, kargo_bedava) hesapla."""
     now = datetime.now(timezone.utc)
@@ -149,6 +151,8 @@ def evaluate_discount(
         raise CheckoutError(
             f"Bu kupon en az {Decimal(str(dc.min_subtotal)):.2f} TL sepet tutarında geçerli"
         )
+    if dc.min_quantity is not None and (items_count or 0) < dc.min_quantity:
+        raise CheckoutError(f"Bu indirim en az {dc.min_quantity} ürünle geçerli")
     if dc.once_per_customer and email:
         used = db.scalar(
             select(CheckoutSession.id).where(
@@ -175,7 +179,7 @@ def evaluate_discount(
 
 def best_automatic_discount(
     db: Session, store: Store, items_total: Decimal, email: str | None,
-    shipping_fee: Decimal,
+    shipping_fee: Decimal, items_count: int | None = None,
 ) -> tuple[DiscountCode, Decimal, bool] | None:
     """Kod girilmemiş sepette koşulu sağlayan otomatik indirimlerden en
     kazançlısını seç (Shopify gibi: otomatikler birleşmez, tek kazanan olur).
@@ -190,7 +194,7 @@ def best_automatic_discount(
     best_saving = Decimal("0")
     for dc in candidates:
         try:
-            discount, free_shipping = evaluate_discount(db, dc, items_total, email)
+            discount, free_shipping = evaluate_discount(db, dc, items_total, email, items_count)
         except CheckoutError:
             continue  # koşulu sağlamayan otomatik sessizce atlanır
         saving = discount + (shipping_fee if free_shipping else Decimal("0"))
@@ -231,13 +235,14 @@ def create_session(
     discount = Decimal("0")
     free_shipping = False
     email = (customer or {}).get("email")
+    items_count = sum(int(i.get("quantity", 1)) for i in snapshot)
     if discount_code:
         # Kod girildiyse kod kazanır (otomatikle birleşmez — Shopify davranışı)
         dc, discount, free_shipping = apply_discount(
-            db, store, discount_code, items_total, email)
+            db, store, discount_code, items_total, email, items_count)
     else:
         auto = best_automatic_discount(
-            db, store, items_total, email, _shipping_fee(store, items_total))
+            db, store, items_total, email, _shipping_fee(store, items_total), items_count)
         if auto:
             dc, discount, free_shipping = auto
 

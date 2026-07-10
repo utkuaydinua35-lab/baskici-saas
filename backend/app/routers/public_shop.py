@@ -342,7 +342,8 @@ def validate_discount_code(
             db, store,
             [{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items])
         dc, discount, free_shipping = checkout_svc.apply_discount(
-            db, store, body.code, items_total, body.email)
+            db, store, body.code, items_total, body.email,
+            sum(i.quantity for i in body.items))
     except checkout_svc.CheckoutError as e:
         return {"valid": False, "message": str(e)}
 
@@ -664,6 +665,8 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
         label = "Ücretsiz kargo"
     if best.min_subtotal:
         label = f"{Decimal(str(best.min_subtotal)):.0f} TL üzeri {label}"
+    if best.min_quantity:
+        label = f"{best.min_quantity}+ ürüne {label}"
     return {
         "label": f"{label} — sepette otomatik uygulanır",
         "kind": best.kind,

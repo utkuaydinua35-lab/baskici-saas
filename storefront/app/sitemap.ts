@@ -44,6 +44,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         entries.push({ url: `${SITE_URL}/sayfa/${pg.slug}`, priority: 0.4 });
       }
     }
+
+    // Blog yazıları
+    const blogRes = await fetch(`${BACKEND_URL}/api/shop/${slug}/blog`, {
+      next: { revalidate: 3600 },
+    });
+    if (blogRes.ok) {
+      const b = await blogRes.json();
+      if ((b.posts ?? []).length > 0) {
+        entries.push({ url: `${SITE_URL}/blog`, changeFrequency: "weekly", priority: 0.6 });
+        for (const post of b.posts) {
+          entries.push({
+            url: `${SITE_URL}/blog/${post.slug}`,
+            changeFrequency: "monthly",
+            priority: 0.5,
+          });
+        }
+      }
+    }
   } catch {
     // backend erişilemezse statik girdilerle yetinilir
   }

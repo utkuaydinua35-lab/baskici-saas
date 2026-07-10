@@ -345,6 +345,9 @@ function StudioSettings({ cfg, storeId, onSaved, onMockup, mockupPct }) {
   )
 }
 
+// URL'den gerçek dosya uzantısı (query'siz) — indir adı doğru olsun (png/jpg/pdf)
+const _ext = (url) => { const p = (url || '').split('?')[0]; const e = p.split('.').pop(); return (e && e.length <= 4) ? e.toLowerCase() : 'jpg' }
+
 function PreviewCard({ it, onChange, onRemove }) {
   const [open, setOpen] = useState(false)
   return (
@@ -367,8 +370,8 @@ function PreviewCard({ it, onChange, onRemove }) {
       </div>
       <div className="flex items-center gap-3 mt-2 text-[11px]">
         <button onClick={() => setOpen(o => !o)} className="text-gray-400 hover:text-gray-200">{open ? '▲ Açıklamayı gizle' : '▼ Açıklama'}</button>
-        <a href={it.mockup_url} download={`${it.code}_mockup.jpg`} className="text-accent hover:underline">⬇ mockup.jpg</a>
-        <a href={it.baski_url} download={`${it.code}_baski.jpg`} className="text-accent hover:underline">⬇ baskı.jpg</a>
+        <a href={it.mockup_url} download={`${it.code}_mockup.${_ext(it.mockup_url)}`} className="text-accent hover:underline">⬇ mockup.{_ext(it.mockup_url)}</a>
+        <a href={it.baski_url} download={`${it.code}_baski.${_ext(it.baski_url)}`} className="text-accent hover:underline">⬇ baskı.{_ext(it.baski_url)}</a>
         {it.baski_pdf_url && <a href={it.baski_pdf_url} download={`${it.code}_baski.pdf`} className="text-emerald-300 hover:underline">⬇ baskı.pdf (CMYK)</a>}
         {it.admin_url && <a href={it.admin_url} target="_blank" rel="noreferrer" className="text-emerald-300 hover:underline ml-auto">Shopify'da aç →</a>}
       </div>

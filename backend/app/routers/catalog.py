@@ -709,6 +709,76 @@ def bulk_status(
     return {"updated": result.rowcount, "status": body.status}
 
 
+class BulkEditRequest(BaseModel):
+    """Toplu düzenleme (Shopify bulk editor) — tek istekte bir işlem."""
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    # Fiyat: percent (+%10 = 10, -%15 = -15) | set (sabit TL) — base_price'a uygulanır
+    price_mode: str | None = Field(None, pattern="^(percent|set)$")
+    price_value: Decimal | None = None
+    compare_at_from_old: bool = False   # eski fiyatı "indirim öncesi"ne taşı
+    add_collection_id: uuid.UUID | None = None
+    add_tags: str | None = Field(None, max_length=300)   # virgüllü
+
+
+@router.post("/products/bulk-edit", response_model=dict)
+def bulk_edit(
+    body: BulkEditRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Seçili ürünlere toplu işlem: fiyat / koleksiyon / etiket."""
+    products = db.scalars(
+        select(CatalogProduct).where(
+            CatalogProduct.id.in_(body.ids),
+            CatalogProduct.tenant_id == user.tenant_id,
+        )
+    ).all()
+    if not products:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    collection = None
+    if body.add_collection_id:
+        from app.models import CatalogCollection
+        collection = db.scalar(select(CatalogCollection).where(
+            CatalogCollection.id == body.add_collection_id,
+            CatalogCollection.tenant_id == user.tenant_id,
+        ))
+        if not collection:
+            raise HTTPException(404, "Koleksiyon bulunamadı")
+
+    if body.price_mode and body.price_value is None:
+        raise HTTPException(422, "Fiyat değeri gerekli")
+    if body.price_mode == "set" and body.price_value is not None and body.price_value <= 0:
+        raise HTTPException(422, "Sabit fiyat 0'dan büyük olmalı")
+
+    updated = 0
+    for p in products:
+        if body.price_mode:
+            old_price = Decimal(str(p.base_price))
+            if body.price_mode == "percent":
+                new_price = (old_price * (1 + Decimal(str(body.price_value)) / 100)
+                             ).quantize(Decimal("0.01"))
+                if new_price <= 0:
+                    continue  # anlamsız sonuç — ürünü atla
+            else:
+                new_price = Decimal(str(body.price_value))
+            if body.compare_at_from_old and new_price < old_price:
+                p.compare_at_price = old_price  # indirim rozeti otomatik doğar
+            p.base_price = new_price
+        if collection and collection not in p.collections:
+            p.collections.append(collection)
+        if body.add_tags:
+            existing = [t.strip() for t in (p.tags or "").split(",") if t.strip()]
+            for t in body.add_tags.split(","):
+                t = t.strip()
+                if t and t not in existing:
+                    existing.append(t)
+            p.tags = ", ".join(existing)
+        updated += 1
+    db.commit()
+    return {"updated": updated}
+
+
 # ─── CSV Export / Import ─────────────────────────────────────
 
 CSV_COLUMNS = [

@@ -10,6 +10,7 @@ import CartDrawer from "@/components/CartDrawer";
 import Pixels from "@/components/Pixels";
 import CustomCode from "@/components/CustomCode";
 import NewsletterForm from "@/components/NewsletterForm";
+import WhatsAppButton from "@/components/WhatsAppButton";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
 const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
@@ -116,6 +117,9 @@ export default async function RootLayout({
               </div>
             </div>
           </footer>
+          {theme.whatsapp?.enabled && theme.whatsapp.number && (
+            <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
+          )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
         </CartProvider>
       </body>

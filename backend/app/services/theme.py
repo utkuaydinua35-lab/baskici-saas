@@ -31,7 +31,17 @@ SECTION_DEFAULTS: dict[str, dict] = {
     "featured_products": {"title": "Öne Çıkan Ürünler", "slugs": []},
     "rich_text": {"title": "", "body": ""},
     "banner": {"image": None, "url": ""},
+    # Görsel + metin (Shopify "Image with text")
+    "image_with_text": {"image": None, "title": "", "body": "",
+                        "cta_text": "", "cta_url": "", "image_side": "left"},
+    # SSS akordeonu (Shopify "Collapsible content")
+    "faq": {"title": "Sıkça Sorulan Sorular", "items": []},  # [{q, a}]
+    # Bülten kayıt bölümü (footer'daki formun büyük hali)
+    "newsletter": {"title": "Kampanyalardan haberdar olun",
+                   "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."},
 }
+
+MAX_FAQ_ITEMS = 12
 
 _SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url"}
 
@@ -56,6 +66,10 @@ DEFAULT_THEME: dict = {
     ],
     "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
     "footer": {"about": "", "instagram": ""},
+    # WhatsApp yüzen butonu (TR e-ticareti standardı) — boşsa görünmez
+    "whatsapp": {"enabled": False, "number": "", "message": "Merhaba, sipariş hakkında bilgi almak istiyorum."},
+    # Ürün sayfası + checkout güven şeridi
+    "trust_badges": {"enabled": True},
 }
 
 FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
@@ -140,6 +154,16 @@ def _normalize_sections(sections: list) -> list:
                 settings["limit"] = min(24, max(1, int(settings.get("limit") or 8)))
             except (TypeError, ValueError):
                 settings["limit"] = 8
+        elif stype == "image_with_text":
+            if settings.get("image_side") not in ("left", "right"):
+                settings["image_side"] = "left"
+        elif stype == "faq":
+            settings["items"] = [
+                {"q": str((i or {}).get("q") or "")[:300],
+                 "a": str((i or {}).get("a") or "")[:2000]}
+                for i in (settings.get("items") or [])[:MAX_FAQ_ITEMS]
+                if isinstance(i, dict) and (i.get("q") or i.get("a"))
+            ]
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
             "type": stype,
@@ -167,7 +191,7 @@ def resolve_theme(store_config: dict | None) -> dict:
 def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
-    for key in ("colors", "announcement", "animations", "footer"):
+    for key in ("colors", "announcement", "animations", "footer", "whatsapp", "trust_badges"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]
         if isinstance(value, dict):

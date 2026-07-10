@@ -20,6 +20,9 @@ const SECTION_TYPES = {
   featured_products: { label: 'Öne Çıkan Ürünler (elle seç)', icon: '🌟' },
   rich_text: { label: 'Metin Bölümü', icon: '📝' },
   banner: { label: 'Banner Görseli', icon: '🖼️' },
+  image_with_text: { label: 'Görsel + Metin', icon: '🏞️' },
+  faq: { label: 'SSS (Akordeon)', icon: '❓' },
+  newsletter: { label: 'Bülten Kaydı', icon: '📮' },
 }
 
 const SECTION_DEFAULTS = {
@@ -29,6 +32,9 @@ const SECTION_DEFAULTS = {
   featured_products: { title: 'Öne Çıkan Ürünler', slugs: [] },
   rich_text: { title: '', body: '' },
   banner: { image: null, url: '' },
+  image_with_text: { image: null, title: '', body: '', cta_text: '', cta_url: '', image_side: 'left' },
+  faq: { title: 'Sıkça Sorulan Sorular', items: [] },
+  newsletter: { title: 'Kampanyalardan haberdar olun', subtitle: 'İndirim ve yeni tasarımlar e-postanıza gelsin.' },
 }
 
 export default function TemaPage() {
@@ -191,6 +197,27 @@ export default function TemaPage() {
                 placeholder="Tıklanınca gidilecek adres (ops.)" />
             </>
           )}
+        </Section>
+
+        <Section title="WhatsApp Butonu" icon="💬">
+          <Toggle checked={!!theme.whatsapp?.enabled}
+            onChange={v => set('whatsapp.enabled', v)} label="Vitrinde yüzen WhatsApp butonu göster" />
+          {theme.whatsapp?.enabled && (
+            <>
+              <input className="input" value={theme.whatsapp.number || ''} maxLength={15}
+                onChange={e => set('whatsapp.number', e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="905xxxxxxxxx (ülke koduyla, + olmadan)" />
+              <input className="input" value={theme.whatsapp.message || ''} maxLength={200}
+                onChange={e => set('whatsapp.message', e.target.value)}
+                placeholder="Hazır mesaj (müşteri tıklayınca dolu gelir)" />
+            </>
+          )}
+        </Section>
+
+        <Section title="Güven Şeridi" icon="🛡️">
+          <Toggle checked={theme.trust_badges?.enabled !== false}
+            onChange={v => set('trust_badges.enabled', v)}
+            label="Ürün ve ödeme sayfasında güven rozetleri (SSL, iade, kargo) göster" />
         </Section>
 
         {/* ── Bölüm Editörü ── */}
@@ -462,6 +489,79 @@ function SectionSettings({ sec, collections, products = [], patch, uploadAsset }
           onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
         <textarea className="input" rows={4} maxLength={2000} value={s.body || ''}
           onChange={e => patch({ body: e.target.value })} placeholder="Metin (satır sonları korunur)" />
+      </>
+    )
+  }
+
+  if (sec.type === 'image_with_text') {
+    return (
+      <>
+        <AssetField label="Görsel" current={s.image}
+          onUpload={f => uploadAsset('hero', f, url => patch({ image: url }))}
+          onClear={() => patch({ image: null })} />
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
+        <textarea className="input" rows={3} maxLength={2000} value={s.body || ''}
+          onChange={e => patch({ body: e.target.value })} placeholder="Metin" />
+        <div className="grid grid-cols-2 gap-2">
+          <input className="input" value={s.cta_text || ''} maxLength={40}
+            onChange={e => patch({ cta_text: e.target.value })} placeholder="Buton yazısı (ops.)" />
+          <input className="input" value={s.cta_url || ''}
+            onChange={e => patch({ cta_url: e.target.value })} placeholder="Buton adresi" />
+        </div>
+        <div className="flex gap-2 text-xs items-center">
+          <span className="text-panel-muted">Görsel tarafı:</span>
+          {[['left', 'Sol'], ['right', 'Sağ']].map(([v, l]) => (
+            <button key={v} onClick={() => patch({ image_side: v })}
+              className={`px-2.5 py-1 rounded-full border ${(s.image_side || 'left') === v
+                ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                : 'border-panel-border text-panel-muted'}`}>{l}</button>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  if (sec.type === 'faq') {
+    const items = s.items || []
+    const patchItem = (i, p2) =>
+      patch({ items: items.map((it, j) => j === i ? { ...it, ...p2 } : it) })
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <div className="space-y-2">
+          {items.map((it, i) => (
+            <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
+              <div className="flex gap-1.5">
+                <input className="input !py-1.5 text-xs" value={it.q || ''} maxLength={300}
+                  onChange={e => patchItem(i, { q: e.target.value })} placeholder="Soru" />
+                <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
+                  className="text-red-400 hover:text-red-600 px-1">×</button>
+              </div>
+              <textarea className="input !py-1.5 text-xs" rows={2} maxLength={2000} value={it.a || ''}
+                onChange={e => patchItem(i, { a: e.target.value })} placeholder="Cevap" />
+            </div>
+          ))}
+        </div>
+        {items.length < 12 && (
+          <button onClick={() => patch({ items: [...items, { q: '', a: '' }] })}
+            className="btn-ghost !py-1 text-xs">+ Soru Ekle</button>
+        )}
+        <p className="text-[11px] text-panel-muted">
+          SSS, Google'da zengin sonuç (FAQ şeması) olarak da işaretlenir.
+        </p>
+      </>
+    )
+  }
+
+  if (sec.type === 'newsletter') {
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
+        <input className="input" value={s.subtitle || ''} maxLength={200}
+          onChange={e => patch({ subtitle: e.target.value })} placeholder="Alt başlık (ops.)" />
       </>
     )
   }

@@ -15,7 +15,7 @@ export interface HeroSlide {
 export interface ThemeSection {
   id: string;
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
-    | "rich_text" | "banner";
+    | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;
@@ -26,6 +26,11 @@ export interface ThemeSection {
     body?: string;
     image?: string | null;
     url?: string;
+    cta_text?: string;
+    cta_url?: string;
+    image_side?: string;
+    items?: { q: string; a: string }[];
+    subtitle?: string;
   };
 }
 
@@ -39,6 +44,8 @@ export interface Theme {
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   footer: { about: string; instagram: string };
+  whatsapp?: { enabled: boolean; number: string; message: string };
+  trust_badges?: { enabled: boolean };
 }
 
 export interface ThemePayload {

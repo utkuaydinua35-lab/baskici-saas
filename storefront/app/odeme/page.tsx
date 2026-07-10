@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
 import { trackInitiateCheckout } from "@/lib/track";
+import TrustBadges from "@/components/TrustBadges";
 
 interface CheckoutResponse {
   token: string;
@@ -235,6 +236,7 @@ export default function CheckoutPage() {
           <p className="text-[11px] text-zinc-400 text-center">
             🔒 Kart bilgileriniz bize değil, yalnızca ödeme kuruluşuna iletilir.
           </p>
+          <TrustBadges compact />
         </aside>
       </form>
     </div>

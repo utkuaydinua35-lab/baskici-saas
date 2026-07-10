@@ -14,6 +14,7 @@ export default function UrunlerPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showBulkEdit, setShowBulkEdit] = useState(false)
 
   const exportCsv = async () => {
     try {
@@ -85,8 +86,16 @@ export default function UrunlerPage() {
             className="px-3 py-1 rounded-lg text-xs bg-slate-100 text-slate-600 disabled:opacity-50">Taslağa Al</button>
           <button disabled={bulkBusy} onClick={() => bulkStatus('archived')}
             className="px-3 py-1 rounded-lg text-xs bg-amber-100 text-amber-700 disabled:opacity-50">Arşivle</button>
+          <button disabled={bulkBusy} onClick={() => setShowBulkEdit(true)}
+            className="px-3 py-1 rounded-lg text-xs bg-indigo-100 text-indigo-700 disabled:opacity-50">✏️ Toplu Düzenle</button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
         </div>
+      )}
+
+      {showBulkEdit && (
+        <BulkEditModal ids={[...checked]} storeId={storeId}
+          onClose={() => setShowBulkEdit(false)}
+          onDone={() => { setShowBulkEdit(false); setChecked(new Set()); load() }} />
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -310,6 +319,95 @@ function ImportModal({ storeId, onClose, onDone }) {
 
         {err && <p className="text-sm text-red-600">{err}</p>}
       </div>
+    </Modal>
+  )
+}
+
+// Toplu düzenleme (Shopify bulk editor) — seçili ürünlere fiyat/koleksiyon/etiket.
+export function BulkEditModal({ ids, storeId, onClose, onDone }) {
+  const [collections, setCollections] = useState([])
+  const [priceMode, setPriceMode] = useState('')     // '' | percent | set
+  const [priceValue, setPriceValue] = useState('')
+  const [compareFromOld, setCompareFromOld] = useState(true)
+  const [collectionId, setCollectionId] = useState('')
+  const [tags, setTags] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    api.get(`/api/catalog/collections?store_id=${storeId}`)
+      .then(c => setCollections(c.filter(x => x.is_active))).catch(() => {})
+  }, [storeId])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!priceMode && !collectionId && !tags.trim()) {
+      setErr('En az bir işlem seçin'); return
+    }
+    setBusy(true); setErr('')
+    try {
+      const r = await api.post('/api/catalog/products/bulk-edit', {
+        ids,
+        price_mode: priceMode || null,
+        price_value: priceMode ? Number(priceValue) : null,
+        compare_at_from_old: priceMode === 'percent' && compareFromOld,
+        add_collection_id: collectionId || null,
+        add_tags: tags.trim() || null,
+      })
+      onDone(r.updated)
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Toplu düzenleme başarısız')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title={`Toplu Düzenle — ${ids.length} ürün`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">💰 Fiyat</legend>
+          <div className="flex gap-2 items-center flex-wrap">
+            <select className="input !w-44" value={priceMode} onChange={e => setPriceMode(e.target.value)}>
+              <option value="">Değiştirme</option>
+              <option value="percent">Yüzde değiştir (±%)</option>
+              <option value="set">Sabit fiyat yap (₺)</option>
+            </select>
+            {priceMode && (
+              <input className="input !w-28" type="number" step="0.01" required
+                value={priceValue} onChange={e => setPriceValue(e.target.value)}
+                placeholder={priceMode === 'percent' ? 'örn -15' : 'örn 399.90'} />
+            )}
+          </div>
+          {priceMode === 'percent' && (
+            <label className="flex items-center gap-2 text-xs text-panel-muted">
+              <input type="checkbox" checked={compareFromOld}
+                onChange={e => setCompareFromOld(e.target.checked)} />
+              İndirimde eski fiyatı "indirim öncesi" olarak göster (%X İNDİRİM rozeti çıkar)
+            </label>
+          )}
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">🗂️ Koleksiyona ekle</legend>
+          <select className="input" value={collectionId} onChange={e => setCollectionId(e.target.value)}>
+            <option value="">Ekleme</option>
+            {collections.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+          </select>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">🏷️ Etiket ekle</legend>
+          <input className="input" value={tags} onChange={e => setTags(e.target.value)}
+            placeholder="yaz-koleksiyonu, indirim (virgülle)" maxLength={300} />
+        </fieldset>
+
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
+          <button disabled={busy} className="btn-primary">
+            {busy ? 'Uygulanıyor…' : `${ids.length} Ürüne Uygula`}
+          </button>
+        </div>
+      </form>
     </Modal>
   )
 }

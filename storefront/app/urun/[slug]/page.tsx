@@ -7,6 +7,8 @@ import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import TrustBadges from "@/components/TrustBadges";
+import { getThemePayload } from "@/lib/theme";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
 
@@ -35,6 +37,8 @@ export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
   const [product, reviews] = await Promise.all([getProduct(slug), getReviews(slug)]);
   if (!product) notFound();
+  const { theme } = await getThemePayload();
+  const trustEnabled = theme.trust_badges?.enabled !== false;
 
   // Google zengin sonuçlar (fiyat/stok) için yapısal veri
   const anyInStock = product.variants.some((v) => v.in_stock);
@@ -92,6 +96,11 @@ export default async function ProductPage({ params }: Props) {
           <div className="mt-5">
             <VariantPicker product={product} />
           </div>
+          {trustEnabled && (
+            <div className="mt-5">
+              <TrustBadges />
+            </div>
+          )}
           {product.description && (
             <div className="mt-8 border-t border-zinc-200 pt-5 text-sm text-zinc-600 whitespace-pre-line">
               {product.description}

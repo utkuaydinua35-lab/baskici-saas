@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 
 // Mağaza analitiği — ciro, en çok satanlar, checkout hunisi.
@@ -36,6 +36,20 @@ export default function AnalitikPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <h1 className="text-xl font-semibold mr-2">Analitik</h1>
+        <button onClick={async () => {
+          const r = RANGES.find(x => x.key === range)
+          try {
+            const res = await fetch(
+              `/api/analytics/export.csv?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`,
+              { headers: { Authorization: `Bearer ${getToken()}` } })
+            if (!res.ok) throw new Error()
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url; a.download = 'satis-raporu.csv'; a.click()
+            URL.revokeObjectURL(url)
+          } catch { setError('Rapor indirilemedi') }
+        }} className="btn-ghost text-xs ml-auto">⬇ Rapor (CSV)</button>
         {RANGES.map(r => (
           <button key={r.key} onClick={() => setRange(r.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${range === r.key

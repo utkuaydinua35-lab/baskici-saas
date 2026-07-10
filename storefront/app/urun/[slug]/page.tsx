@@ -9,6 +9,8 @@ import TrackProductView from "@/components/TrackProductView";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import TrustBadges from "@/components/TrustBadges";
 import FavButton from "@/components/FavButton";
+import ShareButtons from "@/components/ShareButtons";
+import Link from "next/link";
 import { getThemePayload } from "@/lib/theme";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
@@ -74,10 +76,27 @@ export default async function ProductPage({ params }: Props) {
       : {}),
   };
 
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Ürünler", item: `${SITE_URL}/urunler` },
+      { "@type": "ListItem", position: 2, name: product.title,
+        item: `${SITE_URL}/urun/${product.slug}` },
+    ],
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <script type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
+      <nav className="text-xs text-zinc-500 mb-4">
+        <Link href="/urunler" className="hover:underline">Ürünler</Link>
+        {" / "}
+        <span className="text-zinc-700">{product.title}</span>
+      </nav>
       <TrackProductView id={product.slug} name={product.title} price={Number(product.price)} />
       <div className="grid md:grid-cols-2 gap-8">
         <ProductGallery images={product.images} title={product.title} />
@@ -112,6 +131,9 @@ export default async function ProductPage({ params }: Props) {
               {product.description}
             </div>
           )}
+          <div className="mt-5">
+            <ShareButtons title={product.title} />
+          </div>
           <div className="mt-6 text-xs text-zinc-400 space-y-1">
             <p>• Siparişinize özel üretilir, 1–3 iş gününde kargoya verilir.</p>
             <p>• Kişiye özel üretim olduğundan iade koşulları için “İade ve Değişim” sayfasına bakın.</p>

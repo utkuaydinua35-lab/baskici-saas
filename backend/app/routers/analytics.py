@@ -166,6 +166,37 @@ def analytics_summary(
     }
 
 
+@router.get("/export.csv")
+def analytics_export(
+    start: date = Query(...),
+    end: date = Query(...),
+    store_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("dashboard")),
+    db: Session = Depends(get_db),
+):
+    """Günlük satış raporu CSV — summary ile aynı kurallar (iptal/iade hariç)."""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    data = analytics_summary(start=start, end=end, store_id=store_id, user=user, db=db)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["gun", "ciro_try", "siparis_adedi"])
+    for row in data["daily"]:
+        w.writerow([row["gun"], row["tutar"], row["adet"]])
+    w.writerow([])
+    w.writerow(["TOPLAM", data["revenue"], data["orders_count"]])
+    w.writerow(["ortalama_sepet", data["aov"], ""])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=satis-raporu-{start}-{end}.csv"},
+    )
+
+
 @router.get("/live")
 def analytics_live(
     store_id: uuid.UUID | None = Query(None),

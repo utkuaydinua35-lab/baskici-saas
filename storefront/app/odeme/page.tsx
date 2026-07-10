@@ -27,13 +27,29 @@ export default function CheckoutPage() {
   const [corporate, setCorporate] = useState(false);
   const [giftWrapOn, setGiftWrapOn] = useState(false);   // mağaza ayarı açık mı
   const [giftWrap, setGiftWrap] = useState(false);       // müşteri istedi mi
+  const [shipCfg, setShipCfg] = useState<{ fee: number; freeOver: number } | null>(null);
 
   useEffect(() => {
     fetch("/api/shop-config")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setGiftWrapOn(!!d?.settings?.gift_wrap_enabled))
+      .then((d) => {
+        setGiftWrapOn(!!d?.settings?.gift_wrap_enabled);
+        setShipCfg({
+          fee: Number(d?.settings?.shipping_fee || 0),
+          freeOver: Number(d?.settings?.free_shipping_over || 0),
+        });
+      })
       .catch(() => {});
   }, []);
+
+  // Tahmini kargo/toplam — kesin tutar yine sunucuda hesaplanır
+  const discountAmt = coupon && !coupon.freeShipping ? Number(coupon.discountAmount) : 0;
+  const estShipping = shipCfg == null ? null
+    : coupon?.freeShipping ? 0
+    : shipCfg.freeOver > 0 && subtotal >= shipCfg.freeOver ? 0
+    : shipCfg.fee;
+  const estTotal = estShipping == null ? null
+    : Math.max(0, subtotal - discountAmt) + estShipping;
 
   // Girişli müşteri: kayıtlı bilgilerle formu doldur
   useEffect(() => {
@@ -240,8 +256,22 @@ export default function CheckoutPage() {
           {coupon?.freeShipping && (
             <div className="text-sm text-emerald-600">🎟️ Ücretsiz kargo uygulandı</div>
           )}
+          {estShipping != null && (
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-500">Kargo</span>
+              <span>{estShipping === 0
+                ? <span className="text-emerald-600 font-medium">Ücretsiz</span>
+                : formatPrice(estShipping)}</span>
+            </div>
+          )}
+          {estTotal != null && (
+            <div className="flex justify-between text-sm border-t border-zinc-200 pt-2 font-semibold">
+              <span>Tahmini Toplam</span>
+              <span>{formatPrice(estTotal)}</span>
+            </div>
+          )}
           <p className="text-[11px] text-zinc-400">
-            Kargo dahil kesin tutar, güvenli ödeme sayfasında gösterilir.
+            Kesin tutar güvenli ödeme sayfasında onaylanır.
           </p>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button

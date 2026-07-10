@@ -9,7 +9,7 @@ import { StatusBadge } from './UrunlerPage'
 export default function UrunDetayPage() {
   const { productId } = useParams()
   const navigate = useNavigate()
-  const { storeId } = useStore()
+  const { storeId, store } = useStore()
   const [p, setP] = useState(null)
   const [collections, setCollections] = useState([])
   const [form, setForm] = useState(null)
@@ -89,7 +89,14 @@ export default function UrunDetayPage() {
         <Link to="/urunler" className="text-panel-muted hover:text-panel-ink">←</Link>
         <h1 className="text-xl font-semibold truncate max-w-md">{p.title}</h1>
         <StatusBadge status={p.status} />
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-2 items-center">
+          {p.status === 'active' && (
+            <a href={`${(store?.config?.storefront_url
+                || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : '')
+              ).replace(/\/$/, '')}/urun/${p.slug}`}
+              target="_blank" rel="noopener noreferrer"
+              className="btn-ghost !py-1.5 text-xs">👁 Vitrinde Gör</a>
+          )}
           {p.status !== 'active'
             ? <button disabled={busy} onClick={() => patchStatus('active')}
                 className="px-3 py-1.5 rounded-xl text-xs bg-emerald-100 text-emerald-700">Yayınla</button>

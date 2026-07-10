@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -72,6 +73,7 @@ class ProductUpdate(BaseModel):
     compare_at_price: Decimal | None = Field(None, ge=0)
     tags: str | None = Field(None, max_length=500)
     position: int | None = None
+    publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
 
 
 class VariantCreate(BaseModel):
@@ -178,6 +180,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
         "currency": p.currency,
         "tags": p.tags,
         "position": p.position,
+        "publish_at": p.publish_at.isoformat() if p.publish_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
     if full:
@@ -787,6 +790,23 @@ CSV_COLUMNS = [
     "model_key", "model_adi", "renk", "sku", "varyant_fiyat", "stok", "varyant_aktif",
 ]
 IMPORT_ROW_LIMIT = 5000
+
+
+def publish_due_products(db: Session) -> int:
+    """Yayın zamanı gelmiş taslakları aktifleştir (scheduler 10 dk'da bir çağırır)."""
+    from datetime import datetime, timezone
+    from sqlalchemy import update as sa_update
+    result = db.execute(
+        sa_update(CatalogProduct)
+        .where(
+            CatalogProduct.status == "draft",
+            CatalogProduct.publish_at.isnot(None),
+            CatalogProduct.publish_at <= datetime.now(timezone.utc),
+        )
+        .values(status="active", publish_at=None)
+    )
+    db.commit()
+    return result.rowcount
 
 
 # ─── Envanter (Shopify Inventory ekranı) ─────────────────────

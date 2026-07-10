@@ -75,8 +75,11 @@ export async function PUT(req: NextRequest) {
   if (!token) return NextResponse.json({ detail: "Oturum yok" }, { status: 401 });
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ detail: "Geçersiz istek" }, { status: 400 });
-  const target = req.nextUrl.searchParams.get("action") === "marketing"
+  const action = req.nextUrl.searchParams.get("action");
+  const target = action === "marketing"
     ? "/api/shop/account/marketing"
+    : action === "addresses"
+    ? "/api/shop/account/addresses"
     : "/api/shop/account/address";
   const { res, data } = await backendFetch(target, {
     method: "PUT",

@@ -44,6 +44,7 @@ export default function TemaPage() {
   const [products, setProducts] = useState([])
   const [busy, setBusy] = useState(false)
   const [saveCount, setSaveCount] = useState(0)  // iframe reload anahtarı
+  const [device, setDevice] = useState('desktop') // desktop | mobile önizleme
   const toast = useToast()
   const initialRef = useRef('')
   const [openSection, setOpenSection] = useState(null)  // açık bölüm id'si
@@ -315,11 +316,25 @@ export default function TemaPage() {
       {/* Sağ: önizleme */}
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-center gap-2 py-2">
-          <span className="text-xs text-panel-muted">Önizleme — {storefrontUrl}</span>
-          <button onClick={() => setSaveCount(n => n + 1)} className="btn-ghost !py-1 text-xs ml-auto">↻ Yenile</button>
+          <span className="text-xs text-panel-muted truncate">Önizleme — {storefrontUrl}</span>
+          <div className="flex gap-1 bg-panel-input rounded-lg p-0.5 ml-auto">
+            {[['desktop', '🖥 Masaüstü'], ['mobile', '📱 Mobil']].map(([k, l]) => (
+              <button key={k} onClick={() => setDevice(k)}
+                className={`px-2.5 py-1 rounded-md text-xs transition ${device === k
+                  ? 'bg-white shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setSaveCount(n => n + 1)} className="btn-ghost !py-1 text-xs">↻ Yenile</button>
         </div>
-        <iframe key={saveCount} src={storefrontUrl} title="Vitrin önizleme"
-          className="flex-1 w-full rounded-2xl border border-panel-border bg-white min-h-[70vh]" />
+        <div className={`flex-1 min-h-[70vh] ${device === 'mobile'
+          ? 'flex justify-center bg-panel-input/50 rounded-2xl py-4' : ''}`}>
+          <iframe key={`${saveCount}-${device}`} src={storefrontUrl} title="Vitrin önizleme"
+            className={device === 'mobile'
+              ? 'w-[390px] h-full rounded-[2rem] border-8 border-zinc-800 bg-white shadow-xl'
+              : 'w-full h-full rounded-2xl border border-panel-border bg-white'} />
+        </div>
         <p className="text-[11px] text-panel-muted mt-1">
           Vitrin temayı ~1 dakika önbellekler; değişiklik hemen görünmezse Yenile'ye basın.
         </p>

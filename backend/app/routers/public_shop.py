@@ -1232,6 +1232,10 @@ def account_me(request: Request, db: Session = Depends(get_db)):
         "phone": customer.phone,
         "orders_count": customer.orders_count,
         "default_address": customer.default_address,
+        # Eski tek-adres kayıtları listeye dönüştürerek göster
+        "addresses": customer.addresses
+            if customer.addresses is not None
+            else ([customer.default_address] if customer.default_address else []),
         "accepts_marketing": customer.accepts_marketing,
     }
 
@@ -1269,6 +1273,35 @@ def account_orders(request: Request, db: Session = Depends(get_db)):
         }
         for o in orders
     ]}
+
+
+_ADDR_KEYS = ("label", "first_name", "last_name", "phone", "address1",
+              "city", "province", "zip")
+
+
+@router.put("/account/addresses")
+def account_addresses(
+    request: Request,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Adres defterini güncelle (Shopify address book) — ilk adres varsayılandır,
+    checkout prefill için default_address'e de yazılır. En fazla 5 adres."""
+    customer, _store = _get_customer_from_token(request, db)
+    raw = body.get("addresses")
+    if not isinstance(raw, list):
+        raise HTTPException(422, "addresses listesi gerekli")
+    cleaned = []
+    for a in raw[:5]:
+        if not isinstance(a, dict):
+            continue
+        entry = {k: str(a.get(k) or "").strip()[:300] for k in _ADDR_KEYS}
+        if entry.get("address1") or entry.get("city"):
+            cleaned.append(entry)
+    customer.addresses = cleaned
+    customer.default_address = cleaned[0] if cleaned else None
+    db.commit()
+    return {"ok": True, "addresses": cleaned}
 
 
 @router.put("/account/marketing")

@@ -137,6 +137,19 @@ def _checkout_sweep_job():
         db.close()
 
 
+def _publish_due_job():
+    db = SessionLocal()
+    try:
+        from app.routers.catalog import publish_due_products
+        n = publish_due_products(db)
+        if n:
+            logger.info(f"[scheduler] zamanlanmis yayin: {n} urun aktiflesti")
+    except Exception as e:
+        logger.exception(f"[scheduler] zamanlanmis yayin hata: {e}")
+    finally:
+        db.close()
+
+
 def _instagram_daily_job():
     """Her sabah: otomatik üretim açık markalar için 1 post + 3 story taslağı üret,
     sonra tenant'a 'içerikler hazır, onayla' push'u gönder."""
@@ -217,6 +230,8 @@ def start_scheduler():
     _scheduler.add_job(_backup_job, "cron", hour=3, minute=30,
                        id="daily_backup", max_instances=1, coalesce=True)
     # Vitrin: suresi dolan odeme oturumlari + KVKK PII temizligi — her gece 04:00
+    _scheduler.add_job(_publish_due_job, "interval", minutes=10,
+                       id="publish_due", max_instances=1, coalesce=True)
     _scheduler.add_job(_checkout_sweep_job, "cron", hour=4, minute=0,
                        id="checkout_sweep", max_instances=1, coalesce=True)
     # Vitrin: terk sepet otomatik hatirlatmasi (magaza config kapili) — saatlik

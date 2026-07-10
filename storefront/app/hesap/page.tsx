@@ -11,6 +11,7 @@ interface Me {
   phone: string | null;
   orders_count: number;
   default_address: Record<string, string> | null;
+  addresses?: Record<string, string>[];
   accepts_marketing?: boolean;
 }
 interface AccountOrder {
@@ -129,9 +130,6 @@ function LoginView({ onSuccess }: { onSuccess: () => void }) {
 // ── Hesap görünümü: siparişler + adres ──
 function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const [orders, setOrders] = useState<AccountOrder[]>([]);
-  const [addr, setAddr] = useState<Record<string, string>>(me.default_address || {});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [marketing, setMarketing] = useState(!!me.accepts_marketing);
 
   const toggleMarketing = async (next: boolean) => {
@@ -156,21 +154,6 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
     onLogout();
   };
 
-  const saveAddress = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true); setSaved(false);
-    try {
-      const res = await fetch("/api/account", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(addr),
-      });
-      if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 2500); }
-    } finally { setSaving(false); }
-  };
-
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setAddr((a) => ({ ...a, [k]: e.target.value }));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -229,33 +212,9 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
           )}
         </div>
 
-        {/* Kayıtlı adres */}
-        <form onSubmit={saveAddress} className="bg-white border border-zinc-200 rounded-2xl p-4 space-y-2.5">
-          <div className="text-sm font-semibold">Kayıtlı Adres</div>
-          <p className="text-[11px] text-zinc-400 -mt-1">Ödeme sayfasında otomatik doldurulur.</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input value={addr.first_name || ""} onChange={set("first_name")} placeholder="Ad"
-              className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-            <input value={addr.last_name || ""} onChange={set("last_name")} placeholder="Soyad"
-              className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-          </div>
-          <input value={addr.phone || ""} onChange={set("phone")} placeholder="Telefon"
-            className="w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-          <input value={addr.address1 || ""} onChange={set("address1")} placeholder="Adres"
-            className="w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-          <div className="grid grid-cols-3 gap-2">
-            <input value={addr.city || ""} onChange={set("city")} placeholder="İl"
-              className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-            <input value={addr.province || ""} onChange={set("province")} placeholder="İlçe"
-              className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-            <input value={addr.zip || ""} onChange={set("zip")} placeholder="P. Kodu"
-              className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
-          </div>
-          <button disabled={saving}
-            className="w-full rounded-xl text-white text-sm font-medium py-2.5 disabled:opacity-50 hover:opacity-90 transition"
-            style={{ background: "var(--c-primary)" }}>
-            {saving ? "Kaydediliyor…" : saved ? "Kaydedildi ✓" : "Adresi Kaydet"}
-          </button>
+        {/* Adres defteri + bülten */}
+        <div className="bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
+          <AddressBook initial={me.addresses ?? (me.default_address ? [me.default_address] : [])} />
 
           <label className="flex items-start gap-2 text-xs text-zinc-600 pt-2 border-t border-zinc-100">
             <input type="checkbox" checked={marketing} className="mt-0.5"
@@ -267,8 +226,130 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
               </span>
             </span>
           </label>
-        </form>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// Adres defteri — ilk adres varsayılandır (ödeme sayfası onu doldurur).
+const ADDR_FIELDS: [string, string][] = [
+  ["label", "Etiket (Ev, İş… ops.)"], ["first_name", "Ad"], ["last_name", "Soyad"],
+  ["phone", "Telefon"], ["address1", "Adres"], ["city", "İl"],
+  ["province", "İlçe"], ["zip", "Posta Kodu"],
+];
+
+function AddressBook({ initial }: { initial: Record<string, string>[] }) {
+  const [addresses, setAddresses] = useState<Record<string, string>[]>(initial.filter(Boolean));
+  const [editing, setEditing] = useState<number | null>(null); // -1 = yeni
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+
+  const persist = async (next: Record<string, string>[]) => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account?action=addresses", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addresses: next }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAddresses(data.addresses ?? next);
+        setEditing(null);
+      }
+    } finally { setBusy(false); }
+  };
+
+  const startEdit = (i: number) => {
+    setEditing(i);
+    setForm(i === -1 ? {} : { ...addresses[i] });
+  };
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = [...addresses];
+    if (editing === -1) next.push(form);
+    else if (editing != null) next[editing] = form;
+    persist(next);
+  };
+  const remove = (i: number) => persist(addresses.filter((_, j) => j !== i));
+  const makeDefault = (i: number) =>
+    persist([addresses[i], ...addresses.filter((_, j) => j !== i)]);
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center">
+        <div className="text-sm font-semibold">Adres Defteri</div>
+        {addresses.length < 5 && editing === null && (
+          <button onClick={() => startEdit(-1)}
+            className="ml-auto text-xs underline text-zinc-600 hover:text-zinc-900">
+            + Yeni Adres
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-zinc-400 -mt-1.5">
+        İlk adres varsayılandır — ödeme sayfasında otomatik doldurulur.
+      </p>
+
+      {addresses.length === 0 && editing === null && (
+        <p className="text-xs text-zinc-400">Henüz kayıtlı adres yok.</p>
+      )}
+
+      {addresses.map((a, i) => (
+        <div key={i} className={`rounded-xl border p-2.5 text-xs ${
+          i === 0 ? "border-emerald-300 bg-emerald-50/40" : "border-zinc-200"}`}>
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium">
+              {a.label || `${a.first_name || ""} ${a.last_name || ""}`.trim() || "Adres"}
+            </span>
+            {i === 0 && (
+              <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                Varsayılan
+              </span>
+            )}
+            <span className="ml-auto flex gap-1.5">
+              {i !== 0 && (
+                <button onClick={() => makeDefault(i)} disabled={busy}
+                  className="text-zinc-500 hover:text-zinc-900 underline">Varsayılan yap</button>
+              )}
+              <button onClick={() => startEdit(i)} className="text-zinc-500 hover:text-zinc-900 underline">
+                Düzenle
+              </button>
+              <button onClick={() => remove(i)} disabled={busy}
+                className="text-red-400 hover:text-red-600 underline">Sil</button>
+            </span>
+          </div>
+          <div className="mt-1 text-zinc-500 leading-relaxed">
+            {a.address1}<br />
+            {[a.province, a.city, a.zip].filter(Boolean).join(" / ")}
+            {a.phone && <> · {a.phone}</>}
+          </div>
+        </div>
+      ))}
+
+      {editing !== null && (
+        <form onSubmit={submit} className="rounded-xl border border-zinc-300 p-3 space-y-2">
+          <div className="text-xs font-medium">{editing === -1 ? "Yeni Adres" : "Adresi Düzenle"}</div>
+          <div className="grid grid-cols-2 gap-2">
+            {ADDR_FIELDS.map(([k, ph]) => (
+              <input key={k} value={form[k] || ""} placeholder={ph}
+                required={k === "address1" || k === "city"}
+                onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+                className={`rounded-lg border border-zinc-300 px-2.5 py-2 text-sm ${
+                  k === "address1" ? "col-span-2" : ""}`} />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button disabled={busy}
+              className="flex-1 rounded-lg text-white text-sm font-medium py-2 disabled:opacity-50 hover:opacity-90 transition"
+              style={{ background: "var(--c-primary)" }}>
+              {busy ? "Kaydediliyor…" : "Kaydet"}
+            </button>
+            <button type="button" onClick={() => setEditing(null)}
+              className="rounded-lg border border-zinc-300 px-3 text-sm">Vazgeç</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -1312,6 +1312,8 @@ class CatalogProduct(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="draft", server_default=text("'draft'"), nullable=False, index=True
     )
+    # Zamanlanmış yayın: draft üründe doluysa scheduler saati gelince yayınlar
+    publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     seo_description: Mapped[str | None] = mapped_column(String(400), nullable=True)
@@ -1565,6 +1567,8 @@ class Customer(Base):
 
     # Vitrin müşteri hesabı (şifresiz giriş): kayıtlı adres + tek kullanımlık kod
     default_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Adres defteri (Shopify address book) — ilk kayıt varsayılandır
+    addresses: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     login_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     login_code_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     login_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

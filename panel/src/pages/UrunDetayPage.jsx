@@ -60,8 +60,19 @@ export default function UrunDetayPage() {
 
   const patchStatus = async (status) => {
     setBusy(true)
-    try { await api.patch(`/api/catalog/products/${p.id}`, { status }); await load() }
+    try { await api.patch(`/api/catalog/products/${p.id}`, { status, publish_at: null }); await load() }
     catch { setMsg({ ok: false, text: 'Durum değiştirilemedi' }) }
+    finally { setBusy(false) }
+  }
+
+  const schedulePublish = async (val) => {
+    setBusy(true)
+    try {
+      await api.patch(`/api/catalog/products/${p.id}`,
+        { publish_at: val ? new Date(val).toISOString() : null })
+      await load()
+      setMsg({ ok: true, text: val ? 'Yayın zamanı planlandı ⏰' : 'Plan kaldırıldı' })
+    } catch { setMsg({ ok: false, text: 'Planlanamadı' }) }
     finally { setBusy(false) }
   }
 
@@ -108,6 +119,33 @@ export default function UrunDetayPage() {
           <button disabled={busy} onClick={save} className="btn-primary !py-1.5">Kaydet</button>
         </div>
       </div>
+
+      {p.status === 'draft' && (
+        <div className="card !py-2.5 flex items-center gap-3 text-sm border-indigo-200 bg-indigo-50/50">
+          <span>⏰</span>
+          {p.publish_at ? (
+            <>
+              <span className="text-indigo-800">
+                <b>{new Date(p.publish_at).toLocaleString('tr-TR', {
+                  day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</b>'de
+                otomatik yayınlanacak
+              </span>
+              <button onClick={() => schedulePublish(null)} disabled={busy}
+                className="ml-auto text-xs text-indigo-700 underline">Planı kaldır</button>
+            </>
+          ) : (
+            <>
+              <span className="text-indigo-800">Yayın zamanı planla:</span>
+              <input type="datetime-local" className="input !w-56 !py-1.5"
+                min={new Date().toISOString().slice(0, 16)}
+                onChange={e => e.target.value && schedulePublish(e.target.value)} />
+              <span className="text-[11px] text-panel-muted ml-auto">
+                Saati gelince ürün kendiliğinden yayına girer
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <section className="card space-y-3">
         <h2 className="text-sm font-semibold">Temel Bilgiler</h2>

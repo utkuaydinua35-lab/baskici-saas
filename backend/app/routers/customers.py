@@ -57,6 +57,7 @@ def list_customers(
     sort: str = Query("last_order_at"),
     store_id: uuid.UUID | None = Query(None),
     subscribed: bool = Query(False),
+    segment: str | None = Query(None, pattern="^(vip|tekrar|tek)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     user: User = Depends(require_permission("musteri")),
@@ -66,6 +67,13 @@ def list_customers(
     if q:
         needle = f"%{q.strip()}%"
         base = base.where(or_(Customer.email.ilike(needle), Customer.name.ilike(needle)))
+    # Segmentler (Shopify customer segments'in pratik hali)
+    if segment == "vip":
+        base = base.where(Customer.total_spent >= 1000)
+    elif segment == "tekrar":
+        base = base.where(Customer.orders_count >= 2)
+    elif segment == "tek":
+        base = base.where(Customer.orders_count == 1)
     if subscribed:
         # Bülten aboneleri: siparişsiz kayıt da olabilir (footer formu) —
         # mağaza sipariş kapsamı uygulanmaz, tenant tekil vitrine sahiptir

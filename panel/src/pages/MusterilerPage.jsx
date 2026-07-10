@@ -10,6 +10,7 @@ export default function MusterilerPage() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('last_order_at')
   const [subscribed, setSubscribed] = useState(false)
+  const [segment, setSegment] = useState('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState(null)
   const [error, setError] = useState('')
@@ -21,11 +22,12 @@ export default function MusterilerPage() {
       const params = new URLSearchParams({ sort, page: String(page), store_id: storeId })
       if (q.trim()) params.set('q', q.trim())
       if (subscribed) params.set('subscribed', 'true')
+      if (segment) params.set('segment', segment)
       setData(await api.get(`/api/customers?${params}`))
     } catch (e) {
       setError(typeof e?.detail === 'string' ? e.detail : 'Müşteriler yüklenemedi')
     }
-  }, [storeId, q, sort, page, subscribed])
+  }, [storeId, q, sort, page, subscribed, segment])
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0)
@@ -66,6 +68,14 @@ export default function MusterilerPage() {
           <option value="total_spent">Toplam harcama</option>
           <option value="orders_count">Sipariş sayısı</option>
         </select>
+        {[['', 'Tümü'], ['vip', '💎 VIP (1000₺+)'], ['tekrar', '🔁 Tekrar alan'], ['tek', 'Tek sipariş']].map(([k, l]) => (
+          <button key={k} onClick={() => { setSegment(k); setPage(1) }}
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${segment === k
+              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+            {l}
+          </button>
+        ))}
         <button onClick={() => { setSubscribed(v => !v); setPage(1) }}
           className={`text-xs px-3 py-1.5 rounded-full border transition ${subscribed
             ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'

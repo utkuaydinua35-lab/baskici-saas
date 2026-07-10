@@ -17,15 +17,15 @@ export default async function ProductsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    q?: string; sayfa?: string; koleksiyon?: string;
+    q?: string; sayfa?: string; koleksiyon?: string; etiket?: string;
     sirala?: string; marka?: string; min?: string; max?: string;
   }>;
 }) {
-  const { q, sayfa, koleksiyon, sirala, marka, min, max } = await searchParams;
+  const { q, sayfa, koleksiyon, etiket, sirala, marka, min, max } = await searchParams;
   const page = Math.max(1, Number(sayfa) || 1);
   const [data, collections] = await Promise.all([
     getProducts({
-      q, page, collection: koleksiyon,
+      q, page, collection: koleksiyon, tag: etiket,
       sort: sirala, brand: marka, minPrice: min, maxPrice: max,
     }),
     getCollections(),
@@ -74,6 +74,14 @@ export default async function ProductsPage({
         </div>
       )}
 
+      {etiket && (
+        <div className="mb-3">
+          <Link href="/urunler"
+            className="inline-flex items-center gap-1.5 text-xs bg-zinc-900 text-white rounded-full px-3 py-1.5">
+            🏷 {etiket} <span className="opacity-70">×</span>
+          </Link>
+        </div>
+      )}
       <Suspense>
         <FilterBar brands={data?.facets?.brands ?? []} />
       </Suspense>
@@ -95,6 +103,7 @@ export default async function ProductsPage({
           {(() => {
             const base: Record<string, string> = {
               ...(q ? { q } : {}), ...(koleksiyon ? { koleksiyon } : {}),
+              ...(etiket ? { etiket } : {}),
               ...(sirala ? { sirala } : {}), ...(marka ? { marka } : {}),
               ...(min ? { min } : {}), ...(max ? { max } : {}),
             };

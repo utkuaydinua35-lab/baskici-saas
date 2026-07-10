@@ -1039,6 +1039,49 @@ class AddressIn(BaseModel):
 login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
 newsletter_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
 unlock_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
+contact_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
+
+
+class ContactRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    email: EmailStr
+    message: str = Field(..., min_length=10, max_length=3000)
+
+
+@router.post("/{store_slug}/contact")
+def contact_message(
+    store_slug: str,
+    body: ContactRequest,
+    _rl: None = Depends(contact_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """İletişim formu — mesajı mağazanın iletişim e-postasına iletir."""
+    from xml.sax.saxutils import escape
+    from app.services import email_service
+
+    store = _resolve_store(db, store_slug)
+    to = ((store.config or {}).get("contact_email") or "").strip()
+    if not to:
+        raise HTTPException(503, "İletişim formu şu an kullanılamıyor")
+
+    tenant = getattr(store, "tenant", None)
+    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    html = email_service.render_email(
+        title="Vitrinden yeni mesaj",
+        body_html=(
+            f"<p><b>{escape(body.name.strip())}</b> "
+            f"(<a href='mailto:{escape(str(body.email))}'>{escape(str(body.email))}</a>) yazdı:</p>"
+            f"<p style='white-space:pre-line'>{escape(body.message.strip())}</p>"
+        ),
+        preheader=f"{body.name.strip()} iletişim formunu doldurdu",
+        emoji="✉️",
+        **brand,
+    )
+    ok = email_service.send_email(to, f"Vitrin iletişim: {body.name.strip()}", html)
+    if not ok:
+        raise HTTPException(502, "Mesaj gönderilemedi — lütfen daha sonra tekrar deneyin")
+    return {"ok": True, "message": "Mesajınız iletildi — en kısa sürede dönüş yapacağız"}
+
 
 
 class UnlockRequest(BaseModel):

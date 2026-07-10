@@ -8,6 +8,11 @@ import Banner from "@/components/sections/Banner";
 import ImageWithText from "@/components/sections/ImageWithText";
 import Faq from "@/components/sections/Faq";
 import NewsletterSection from "@/components/sections/NewsletterSection";
+import IconBar from "@/components/sections/IconBar";
+import Comparison from "@/components/sections/Comparison";
+import Testimonials from "@/components/sections/Testimonials";
+import Gallery from "@/components/sections/Gallery";
+import ContactSection from "@/components/sections/ContactSection";
 
 // Anasayfa — tema bölüm listesine (sections) göre kurulur.
 export default async function HomePage() {
@@ -47,9 +52,31 @@ export default async function HomePage() {
                 imageSide={s.image_side} />
             );
           case "faq":
-            return <Faq key={section.id} title={s.title} items={s.items ?? []} />;
+            return (
+              <Faq key={section.id} title={s.title}
+                items={(s.items ?? []) as { q: string; a: string }[]} />
+            );
           case "newsletter":
             return <NewsletterSection key={section.id} title={s.title} subtitle={s.subtitle} />;
+          case "icon_bar":
+            return (
+              <IconBar key={section.id}
+                items={(s.items ?? []) as { icon: string; title: string; text?: string }[]} />
+            );
+          case "comparison":
+            return (
+              <Comparison key={section.id} title={s.title}
+                usLabel={s.us_label} themLabel={s.them_label} rows={s.rows ?? []} />
+            );
+          case "testimonials":
+            return (
+              <Testimonials key={section.id} title={s.title}
+                items={(s.items ?? []) as { author: string; text: string; rating: number }[]} />
+            );
+          case "gallery":
+            return <Gallery key={section.id} title={s.title} images={s.images ?? []} />;
+          case "contact":
+            return <ContactSection key={section.id} title={s.title} subtitle={s.subtitle} />;
           default:
             return null;
         }

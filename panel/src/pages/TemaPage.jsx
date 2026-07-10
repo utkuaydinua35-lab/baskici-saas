@@ -23,6 +23,11 @@ const SECTION_TYPES = {
   image_with_text: { label: 'Görsel + Metin', icon: '🏞️' },
   faq: { label: 'SSS (Akordeon)', icon: '❓' },
   newsletter: { label: 'Bülten Kaydı', icon: '📮' },
+  icon_bar: { label: 'İkon Şeridi (Avantajlar)', icon: '✨' },
+  comparison: { label: 'Karşılaştırma (Biz vs Diğerleri)', icon: '⚖️' },
+  testimonials: { label: 'Müşteri Yorumları Vitrini', icon: '💬' },
+  gallery: { label: 'Görsel Galerisi', icon: '🖼️' },
+  contact: { label: 'İletişim Formu', icon: '✉️' },
 }
 
 const SECTION_DEFAULTS = {
@@ -35,6 +40,12 @@ const SECTION_DEFAULTS = {
   image_with_text: { image: null, title: '', body: '', cta_text: '', cta_url: '', image_side: 'left' },
   faq: { title: 'Sıkça Sorulan Sorular', items: [] },
   newsletter: { title: 'Kampanyalardan haberdar olun', subtitle: 'İndirim ve yeni tasarımlar e-postanıza gelsin.' },
+  icon_bar: { items: [{ icon: '🚚', title: 'Hızlı Kargo', text: '1-3 iş gününde kargoda' }] },
+  comparison: { title: 'Neden Biz?', us_label: 'Biz', them_label: 'Diğerleri',
+    rows: [{ feature: 'Kişiye özel baskı kalitesi', us: true, them: false }] },
+  testimonials: { title: 'Müşterilerimiz Ne Diyor?', items: [] },
+  gallery: { title: 'Sizden Gelenler', images: [] },
+  contact: { title: 'İletişim', subtitle: 'Soru ve önerileriniz için bize yazın.' },
 }
 
 export default function TemaPage() {
@@ -646,6 +657,148 @@ function SectionSettings({ sec, collections, products = [], patch, uploadAsset }
           onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
         <input className="input" value={s.subtitle || ''} maxLength={200}
           onChange={e => patch({ subtitle: e.target.value })} placeholder="Alt başlık (ops.)" />
+      </>
+    )
+  }
+
+  if (sec.type === 'icon_bar') {
+    const items = s.items || []
+    const patchItem = (i, p2) => patch({ items: items.map((it, j) => j === i ? { ...it, ...p2 } : it) })
+    return (
+      <>
+        {items.map((it, i) => (
+          <div key={i} className="flex gap-1.5 items-start">
+            <input className="input !py-1.5 text-base !w-14 text-center" value={it.icon || ''} maxLength={8}
+              onChange={e => patchItem(i, { icon: e.target.value })} placeholder="🚚" />
+            <div className="flex-1 space-y-1">
+              <input className="input !py-1.5 text-xs" value={it.title || ''} maxLength={80}
+                onChange={e => patchItem(i, { title: e.target.value })} placeholder="Başlık" />
+              <input className="input !py-1.5 text-xs" value={it.text || ''} maxLength={200}
+                onChange={e => patchItem(i, { text: e.target.value })} placeholder="Kısa açıklama (ops.)" />
+            </div>
+            <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
+              className="text-red-400 hover:text-red-600 px-1">×</button>
+          </div>
+        ))}
+        {items.length < 6 && (
+          <button onClick={() => patch({ items: [...items, { icon: '✨', title: '', text: '' }] })}
+            className="btn-ghost !py-1 text-xs">+ Avantaj Ekle</button>
+        )}
+      </>
+    )
+  }
+
+  if (sec.type === 'comparison') {
+    const rows = s.rows || []
+    const patchRow = (i, p2) => patch({ rows: rows.map((r, j) => j === i ? { ...r, ...p2 } : r) })
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <div className="grid grid-cols-2 gap-2">
+          <input className="input !py-1.5 text-xs" value={s.us_label || ''} maxLength={30}
+            onChange={e => patch({ us_label: e.target.value })} placeholder="Sol kolon (Biz)" />
+          <input className="input !py-1.5 text-xs" value={s.them_label || ''} maxLength={30}
+            onChange={e => patch({ them_label: e.target.value })} placeholder="Sağ kolon (Diğerleri)" />
+        </div>
+        {rows.map((r, i) => (
+          <div key={i} className="flex gap-1.5 items-center">
+            <input className="input !py-1.5 text-xs flex-1" value={r.feature || ''} maxLength={120}
+              onChange={e => patchRow(i, { feature: e.target.value })} placeholder="Özellik" />
+            <label className="text-[11px] flex items-center gap-1" title={s.us_label || 'Biz'}>
+              <input type="checkbox" checked={!!r.us} onChange={e => patchRow(i, { us: e.target.checked })} />✓
+            </label>
+            <label className="text-[11px] flex items-center gap-1 text-panel-muted" title={s.them_label || 'Diğerleri'}>
+              <input type="checkbox" checked={!!r.them} onChange={e => patchRow(i, { them: e.target.checked })} />✓
+            </label>
+            <button onClick={() => patch({ rows: rows.filter((_, j) => j !== i) })}
+              className="text-red-400 hover:text-red-600 px-1">×</button>
+          </div>
+        ))}
+        {rows.length < 8 && (
+          <button onClick={() => patch({ rows: [...rows, { feature: '', us: true, them: false }] })}
+            className="btn-ghost !py-1 text-xs">+ Satır Ekle</button>
+        )}
+      </>
+    )
+  }
+
+  if (sec.type === 'testimonials') {
+    const items = s.items || []
+    const patchItem = (i, p2) => patch({ items: items.map((it, j) => j === i ? { ...it, ...p2 } : it) })
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        {items.map((it, i) => (
+          <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
+            <div className="flex gap-1.5">
+              <input className="input !py-1.5 text-xs" value={it.author || ''} maxLength={80}
+                onChange={e => patchItem(i, { author: e.target.value })} placeholder="Müşteri adı" />
+              <select className="input !py-1.5 text-xs !w-24" value={it.rating ?? 5}
+                onChange={e => patchItem(i, { rating: Number(e.target.value) })}>
+                {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
+              </select>
+              <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
+                className="text-red-400 hover:text-red-600 px-1">×</button>
+            </div>
+            <textarea className="input !py-1.5 text-xs" rows={2} maxLength={600} value={it.text || ''}
+              onChange={e => patchItem(i, { text: e.target.value })} placeholder="Yorum metni" />
+          </div>
+        ))}
+        {items.length < 6 && (
+          <button onClick={() => patch({ items: [...items, { author: '', text: '', rating: 5 }] })}
+            className="btn-ghost !py-1 text-xs">+ Yorum Ekle</button>
+        )}
+        <p className="text-[11px] text-panel-muted">
+          Ürün sayfalarındaki gerçek yorumlardan bağımsız, anasayfa vitrini içindir.
+        </p>
+      </>
+    )
+  }
+
+  if (sec.type === 'gallery') {
+    const images = s.images || []
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <div className="grid grid-cols-4 gap-1.5">
+          {images.map((u, i) => (
+            <div key={i} className="relative group">
+              <img src={u} alt="" className="w-full aspect-square object-cover rounded-lg border border-panel-border" />
+              <button onClick={() => patch({ images: images.filter((_, j) => j !== i) })}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs
+                  opacity-0 group-hover:opacity-100 transition">×</button>
+            </div>
+          ))}
+          {images.length < 8 && (
+            <label className="aspect-square rounded-lg border border-dashed border-panel-border
+              flex items-center justify-center text-panel-muted cursor-pointer text-lg">
+              +
+              <input type="file" accept="image/*" className="hidden"
+                onChange={e => e.target.files?.[0] && uploadAsset('hero', e.target.files[0],
+                  url => patch({ images: [...images, url] }))} />
+            </label>
+          )}
+        </div>
+        <p className="text-[11px] text-panel-muted">
+          Müşteri fotoğrafları, kullanım kareleri… (en fazla 8 görsel)
+        </p>
+      </>
+    )
+  }
+
+  if (sec.type === 'contact') {
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
+        <input className="input" value={s.subtitle || ''} maxLength={200}
+          onChange={e => patch({ subtitle: e.target.value })} placeholder="Alt başlık (ops.)" />
+        <p className="text-[11px] text-panel-muted">
+          Mesajlar, Ayarlar'daki <b>iletişim e-postanıza</b> gönderilir — orayı doldurmayı unutmayın.
+        </p>
       </>
     )
   }

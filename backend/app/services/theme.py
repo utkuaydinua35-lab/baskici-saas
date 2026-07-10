@@ -39,9 +39,21 @@ SECTION_DEFAULTS: dict[str, dict] = {
     # Bülten kayıt bölümü (footer'daki formun büyük hali)
     "newsletter": {"title": "Kampanyalardan haberdar olun",
                    "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."},
+    # İkon şeridi (ShinePro icon-bar): avantaj vurguları
+    "icon_bar": {"items": []},   # [{icon, title, text}] max 6
+    # Karşılaştırma tablosu (ShinePro comparison-table): Biz vs Diğerleri
+    "comparison": {"title": "Neden Biz?", "us_label": "Biz", "them_label": "Diğerleri",
+                   "rows": []},  # [{feature, us: bool, them: bool}] max 8
+    # Müşteri yorumları vitrini (ShinePro results/testimonials)
+    "testimonials": {"title": "Müşterilerimiz Ne Diyor?", "items": []},  # [{author, text, rating}]
+    # Görsel galerisi (ShinePro image-slider "Sizden Gelenler")
+    "gallery": {"title": "Sizden Gelenler", "images": []},  # [url] max 8
+    # İletişim formu (ShinePro contact-form) — mağaza e-postasına iletir
+    "contact": {"title": "İletişim", "subtitle": "Soru ve önerileriniz için bize yazın."},
 }
 
 MAX_FAQ_ITEMS = 12
+MAX_LIST_ITEMS = 8
 
 _SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url"}
 
@@ -118,12 +130,37 @@ THEME_PRESETS: dict[str, dict] = {
                  "settings": {"slides": [], "autoplay_sec": 5}},
                 {"id": "sp-cok-satan", "type": "products_grid",
                  "settings": {"title": "ÇOK SATANLAR", "collection": None, "limit": 8}},
-                {"id": "sp-neden", "type": "image_with_text",
-                 "settings": {"image": None, "title": "Neden Biz?",
-                              "body": "Kişiye özel baskı, darbelere dayanıklı malzeme ve "
-                                      "1-3 iş gününde kargo. Tasarımını seç, gerisini bize bırak.",
-                              "cta_text": "Ürünlere Göz At", "cta_url": "/urunler",
-                              "image_side": "left"}},
+                {"id": "sp-ikonlar", "type": "icon_bar",
+                 "settings": {"items": [
+                     {"icon": "🚚", "title": "Hızlı Kargo",
+                      "text": "1-3 iş gününde kargoda"},
+                     {"icon": "🎨", "title": "Kişiye Özel Baskı",
+                      "text": "Tasarımını seç, biz basalım"},
+                     {"icon": "🛡️", "title": "Dayanıklı Malzeme",
+                      "text": "Darbe emici kaliteli kılıf"},
+                     {"icon": "🔒", "title": "Güvenli Ödeme",
+                      "text": "iyzico / PayTR güvencesi"},
+                 ]}},
+                {"id": "sp-karsilastirma", "type": "comparison",
+                 "settings": {"title": "NEDEN BİZ?", "us_label": "Biz",
+                              "them_label": "Diğerleri", "rows": [
+                     {"feature": "Kişiye özel baskı kalitesi", "us": True, "them": False},
+                     {"feature": "1-3 iş gününde kargo", "us": True, "them": False},
+                     {"feature": "Yüzlerce telefon modeli", "us": True, "them": False},
+                     {"feature": "Kolay iade ve değişim", "us": True, "them": False},
+                     {"feature": "Gerçek müşteri desteği", "us": True, "them": False},
+                 ]}},
+                {"id": "sp-galeri", "type": "gallery",
+                 "settings": {"title": "SİZDEN GELENLER", "images": []}},
+                {"id": "sp-yorumlar", "type": "testimonials",
+                 "settings": {"title": "MÜŞTERİLERİMİZ NE DİYOR?", "items": [
+                     {"author": "Elif K.", "rating": 5,
+                      "text": "Baskı kalitesi harika, telefonuma tam oturdu. Kargolama da çok hızlıydı!"},
+                     {"author": "Mert A.", "rating": 5,
+                      "text": "Kendi tasarımımı yaptırdım, beklediğimden çok daha iyi geldi. Kesinlikle tavsiye ederim."},
+                     {"author": "Zeynep D.", "rating": 5,
+                      "text": "İkinci siparişim — renkleri canlı, malzemesi sağlam. Teşekkürler!"},
+                 ]}},
                 {"id": "sp-kolek", "type": "featured_collections",
                  "settings": {"title": "Koleksiyonlar", "slugs": []}},
                 {"id": "sp-sss", "type": "faq",
@@ -136,6 +173,9 @@ THEME_PRESETS: dict[str, dict] = {
                       "a": "Ürün sayfasındaki model seçiciden telefonunuzu bulabilirsiniz — "
                            "yüzlerce model için üretim yapıyoruz."},
                  ]}},
+                {"id": "sp-iletisim", "type": "contact",
+                 "settings": {"title": "İLETİŞİM",
+                              "subtitle": "Soru ve önerileriniz için bize yazın."}},
                 {"id": "sp-bulten", "type": "newsletter",
                  "settings": {"title": "Kampanyalardan haberdar olun",
                               "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."}},
@@ -233,6 +273,41 @@ def _normalize_sections(sections: list) -> list:
                  "a": str((i or {}).get("a") or "")[:2000]}
                 for i in (settings.get("items") or [])[:MAX_FAQ_ITEMS]
                 if isinstance(i, dict) and (i.get("q") or i.get("a"))
+            ]
+        elif stype == "icon_bar":
+            settings["items"] = [
+                {"icon": str((i or {}).get("icon") or "✨")[:8],
+                 "title": str((i or {}).get("title") or "")[:80],
+                 "text": str((i or {}).get("text") or "")[:200]}
+                for i in (settings.get("items") or [])[:6]
+                if isinstance(i, dict) and i.get("title")
+            ]
+        elif stype == "comparison":
+            settings["rows"] = [
+                {"feature": str((r or {}).get("feature") or "")[:120],
+                 "us": bool((r or {}).get("us", True)),
+                 "them": bool((r or {}).get("them", False))}
+                for r in (settings.get("rows") or [])[:MAX_LIST_ITEMS]
+                if isinstance(r, dict) and r.get("feature")
+            ]
+        elif stype == "testimonials":
+            cleaned_items = []
+            for i in (settings.get("items") or [])[:6]:
+                if not isinstance(i, dict) or not i.get("text"):
+                    continue
+                try:
+                    rating = min(5, max(1, int(i.get("rating") or 5)))
+                except (TypeError, ValueError):
+                    rating = 5
+                cleaned_items.append({
+                    "author": str(i.get("author") or "Müşteri")[:80],
+                    "text": str(i.get("text") or "")[:600],
+                    "rating": rating,
+                })
+            settings["items"] = cleaned_items
+        elif stype == "gallery":
+            settings["images"] = [
+                str(u)[:500] for u in (settings.get("images") or [])[:MAX_LIST_ITEMS] if u
             ]
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],

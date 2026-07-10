@@ -854,6 +854,37 @@ def publish_due_products(db: Session) -> int:
     return result.rowcount
 
 
+@router.post("/products/{product_id}/video", response_model=dict)
+async def upload_product_video(
+    product_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ürün videosu yükle (mp4/webm/mov, max 100MB) — galeride ▶ karesi olur."""
+    product = _get_product(db, user.tenant_id, product_id)
+    data = await file.read()
+    try:
+        url = storage_svc.save_store_video(
+            user.tenant_id, product.store_id, data, file.filename or "video.mp4")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    product.video_url = url
+    db.commit()
+    return {"video_url": url}
+
+
+@router.delete("/products/{product_id}/video", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product_video(
+    product_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    product = _get_product(db, user.tenant_id, product_id)
+    product.video_url = None
+    db.commit()
+
+
 # ─── Varyant Setleri (hazır varyantlar — tek yerden yönetim) ──
 
 class VariantSetItem(BaseModel):

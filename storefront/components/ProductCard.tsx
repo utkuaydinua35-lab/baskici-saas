@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatPrice } from "@/lib/format";
 import type { ProductCard as ProductCardType } from "@/lib/api";
 import FavButton from "@/components/FavButton";
+import CardMedia from "@/components/CardMedia";
 
 export default function ProductCard({ product }: { product: ProductCardType }) {
   const price = Number(product.price);
@@ -37,21 +38,12 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
           )}
         </div>
       )}
-      <div className="aspect-square bg-zinc-100 overflow-hidden hover-zoom">
-        {product.cover_image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={product.cover_image}
-            alt={product.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl text-zinc-300">
-            📱
-          </div>
-        )}
-      </div>
+      <CardMedia
+        cover={product.cover_image}
+        hoverImage={product.hover_image}
+        videoUrl={product.video_url}
+        title={product.title}
+      />
       <div className="p-3">
         <h3 className="text-sm font-medium text-zinc-900 line-clamp-2">{product.title}</h3>
         <div className="mt-1.5 flex items-baseline gap-2">

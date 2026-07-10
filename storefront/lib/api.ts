@@ -38,6 +38,8 @@ export interface ProductCard {
   compare_at_price: string | null;
   currency: string;
   cover_image: string | null;
+  hover_image?: string | null;
+  video_url?: string | null;
   tags: string | null;
   model_count: number;
   total_stock: number | null;

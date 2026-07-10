@@ -253,6 +253,27 @@ STORE_ASSET_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "ico"}
 MAX_STORE_ASSET_SIZE = 25 * 1024 * 1024  # 25 MB (kabul; diske optimize yazılır)
 
 
+VIDEO_EXTENSIONS = {"mp4", "webm", "mov", "m4v"}
+MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100 MB
+
+
+def save_store_video(tenant_id, store_id, file_data: bytes, original_filename: str) -> str:
+    """Ürün videosu kaydet (optimize edilmez). Dönüş: /storage/... URL yolu."""
+    ext = get_extension(original_filename)
+    if ext not in VIDEO_EXTENSIONS:
+        raise ValueError(f"İzin verilen video formatları: {', '.join(sorted(VIDEO_EXTENSIONS))}")
+    if len(file_data) > MAX_VIDEO_SIZE:
+        raise ValueError(f"Video çok büyük (max {MAX_VIDEO_SIZE // 1024 // 1024} MB)")
+    import time
+    rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"video-{int(time.time())}.{ext}"
+    with open(full_dir / fname, "wb") as f:
+        f.write(file_data)
+    return f"/storage/{(rel_dir / fname).as_posix()}"
+
+
 def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_filename: str) -> str:
     """Tema varlığını kaydet. Dönüş: /storage/... URL yolu."""
     if kind not in STORE_ASSET_KINDS:

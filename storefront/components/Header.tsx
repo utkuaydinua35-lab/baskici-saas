@@ -69,7 +69,7 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-zinc-200">
-      <div className="mx-auto max-w-6xl px-4 h-14 flex items-center gap-5">
+      <div className="mx-auto max-w-6xl px-4 min-h-14 py-1.5 flex items-center gap-5">
         {/* Mobil hamburger */}
         <button onClick={() => setMobileOpen(true)} aria-label="Menü"
           className="sm:hidden -ml-1 p-1 text-zinc-700">
@@ -82,8 +82,8 @@ export default function Header({
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt={siteName}
-              className="w-auto object-contain max-h-12"
-              style={{ width: logoWidth, maxWidth: logoWidth }} />
+              className="h-auto object-contain"
+              style={{ width: logoWidth, maxWidth: "45vw" }} />
           ) : (
             siteName
           )}

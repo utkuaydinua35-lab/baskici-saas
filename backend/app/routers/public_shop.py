@@ -69,6 +69,9 @@ def _serialize_product_card(p: CatalogProduct) -> dict:
         "compare_at_price": str(p.compare_at_price) if p.compare_at_price is not None else None,
         "currency": p.currency,
         "cover_image": f"/storage/{p.images[0].file_path}" if p.images else None,
+        # Kart hover'ı: 2. görsel varsa o, yoksa video oynar
+        "hover_image": f"/storage/{p.images[1].file_path}" if len(p.images) > 1 else None,
+        "video_url": p.video_url,
         "tags": p.tags,
         "model_count": len(models),
         "total_stock": total_stock,

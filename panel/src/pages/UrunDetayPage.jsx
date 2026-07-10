@@ -30,7 +30,6 @@ export default function UrunDetayPage() {
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
         description: prod.description || '', tags: prod.tags || '',
-        video_url: prod.video_url || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
       })
       if (storeId) {
@@ -53,7 +52,6 @@ export default function UrunDetayPage() {
         base_price: Number(form.base_price),
         compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
         description: form.description || null, tags: form.tags || null,
-        video_url: form.video_url?.trim() || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
       await load()
@@ -174,10 +172,46 @@ export default function UrunDetayPage() {
           <textarea className="input mt-1" rows={5} value={form.description}
             onChange={set('description')} maxLength={20000} />
         </Field>
-        <Field label="🎬 Ürün videosu (YouTube linki veya .mp4 — galeride ▶ karesi olur)">
-          <input className="input mt-1" value={form.video_url || ''} onChange={set('video_url')}
-            maxLength={500} placeholder="https://youtube.com/watch?v=…" />
-        </Field>
+        <div className="text-sm">
+          <span className="text-panel-muted text-xs">
+            🎬 Ürün videosu (mp4/webm, max 100MB — galeride ▶ karesi, kartta hover'da oynar)
+          </span>
+          <div className="mt-1 flex items-center gap-3">
+            {p.video_url ? (
+              <>
+                <video src={p.video_url} muted loop playsInline
+                  onMouseEnter={e => e.target.play()} onMouseLeave={e => e.target.pause()}
+                  className="h-20 rounded-lg border border-panel-border bg-black" />
+                <button type="button" disabled={busy}
+                  onClick={async () => {
+                    try { await api.del(`/api/catalog/products/${p.id}/video`); await load() }
+                    catch { setMsg({ ok: false, text: 'Video kaldırılamadı' }) }
+                  }}
+                  className="text-xs text-red-400 hover:text-red-600">Videoyu Kaldır</button>
+              </>
+            ) : (
+              <label className="btn-ghost !py-1.5 text-xs cursor-pointer">
+                {busy ? 'Yükleniyor…' : '⬆ Video Yükle'}
+                <input type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden"
+                  disabled={busy}
+                  onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setBusy(true)
+                    try {
+                      const fd = new FormData()
+                      fd.append('file', file)
+                      await api.postForm(`/api/catalog/products/${p.id}/video`, fd)
+                      await load()
+                      setMsg({ ok: true, text: 'Video yüklendi 🎬' })
+                    } catch (e2) {
+                      setMsg({ ok: false, text: typeof e2?.detail === 'string' ? e2.detail : 'Video yüklenemedi' })
+                    } finally { setBusy(false) }
+                  }} />
+              </label>
+            )}
+          </div>
+        </div>
         <Field label="Etiketler (virgülle)">
           <input className="input mt-1" value={form.tags} onChange={set('tags')} maxLength={500}
             placeholder="retro, minimal, yaz" />

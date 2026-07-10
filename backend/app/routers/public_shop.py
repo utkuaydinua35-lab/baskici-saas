@@ -306,6 +306,10 @@ class CheckoutCustomerIn(BaseModel):
     province: str | None = Field(None, max_length=60)
     zip: str | None = Field(None, max_length=20)
     note: str | None = Field(None, max_length=500)
+    # Kurumsal fatura (opsiyonel) — e-fatura/e-arşiv için
+    invoice_company: str | None = Field(None, max_length=200)
+    invoice_tax_office: str | None = Field(None, max_length=100)
+    invoice_tax_no: str | None = Field(None, max_length=20)
 
 
 class CheckoutRequest(BaseModel):

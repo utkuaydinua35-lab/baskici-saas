@@ -362,6 +362,9 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
             "payment_status": order.financial_status,
         },
 
+        # Kurumsal fatura bilgisi (vitrin checkout'unda opsiyonel alan)
+        "invoice": raw.get("invoice") or None,
+
         "line_items": _li_list,
         "status_history": [
             {

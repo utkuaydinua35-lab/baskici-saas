@@ -23,6 +23,7 @@ export default function CheckoutPage() {
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Record<string, string>>({});
+  const [corporate, setCorporate] = useState(false);
 
   // Girişli müşteri: kayıtlı bilgilerle formu doldur
   useEffect(() => {
@@ -109,6 +110,9 @@ export default function CheckoutPage() {
             province: fd.get("province") || null,
             zip: fd.get("zip") || null,
             note: fd.get("note") || null,
+            invoice_company: fd.get("invoice_company") || null,
+            invoice_tax_office: fd.get("invoice_tax_office") || null,
+            invoice_tax_no: fd.get("invoice_tax_no") || null,
           },
           kvkk_accept: fd.get("kvkk_accept") === "on",
           discount_code: coupon?.code || null,
@@ -160,6 +164,23 @@ export default function CheckoutPage() {
             <Input name="zip" label="Posta Kodu" autoComplete="postal-code" defaultValue={prefill.zip} />
           </div>
           <Input name="note" label="Sipariş notu (isteğe bağlı)" />
+
+          <label className="flex items-center gap-2 text-sm pt-1">
+            <input type="checkbox" checked={corporate}
+              onChange={(e) => setCorporate(e.target.checked)} />
+            Kurumsal fatura istiyorum
+          </label>
+          {corporate && (
+            <div className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <Input name="invoice_company" label="Firma Ünvanı" required maxLength={200} />
+              <div className="grid grid-cols-2 gap-3">
+                <Input name="invoice_tax_office" label="Vergi Dairesi" required maxLength={100} />
+                <Input name="invoice_tax_no" label="Vergi No / TC Kimlik No" required
+                  maxLength={20} inputMode="numeric" />
+              </div>
+            </div>
+          )}
+
           <label className="flex items-start gap-2 text-xs text-zinc-600 pt-1">
             <input type="checkbox" name="kvkk_accept" required className="mt-0.5" />
             <span>

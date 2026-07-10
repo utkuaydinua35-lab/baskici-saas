@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { Modal } from './UrunlerPage'
@@ -37,6 +37,20 @@ export default function SiparislerPage() {
     return () => clearTimeout(t)
   }, [load, search])
 
+  const exportCsv = async () => {
+    try {
+      const res = await fetch(`/api/orders/export/orders.csv?store_id=${storeId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'siparisler.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch { setError('Dışa aktarma başarısız') }
+  }
+
   const lastPage = Math.max(1, Math.ceil((data.total || 0) / (data.per_page || 50)))
 
   return (
@@ -46,6 +60,7 @@ export default function SiparislerPage() {
         <span className="text-sm text-panel-muted">{data.total ?? 0} sipariş</span>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
           placeholder="Sipariş no veya müşteri ara…" className="input !w-64 ml-auto" />
+        <button onClick={exportCsv} className="btn-ghost text-xs">⬇ CSV</button>
         <button onClick={() => setDraftOpen(true)} className="btn-primary">＋ Sipariş Oluştur</button>
       </div>
 

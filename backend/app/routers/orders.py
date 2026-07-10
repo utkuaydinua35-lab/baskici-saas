@@ -446,6 +446,65 @@ def tab_counts(
     return counts
 
 
+@router.get("/export/orders.csv")
+def export_orders_csv(
+    store_id: uuid.UUID = Query(...),
+    start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    end: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Mağaza siparişlerini CSV indir (muhasebe/e-fatura aktarımı).
+
+    Tarih aralığı platform sipariş tarihine göre (dahil); boşsa tümü.
+    """
+    import csv
+    import io
+    from datetime import datetime, timedelta, timezone as _tz
+
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy.orm import selectinload as _sel
+
+    q = (
+        select(Order)
+        .where(Order.tenant_id == user.tenant_id, Order.store_id == store_id)
+        .options(_sel(Order.line_items))
+        .order_by(Order.created_at_platform.desc().nulls_last())
+    )
+    if start:
+        q = q.where(Order.created_at_platform >= datetime.fromisoformat(start).replace(tzinfo=_tz.utc))
+    if end:
+        q = q.where(Order.created_at_platform
+                    < datetime.fromisoformat(end).replace(tzinfo=_tz.utc) + timedelta(days=1))
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["siparis_no", "tarih", "musteri", "eposta", "tutar", "para_birimi",
+                "odeme_durumu", "kalem_sayisi", "urunler", "kargo_takip_no", "iptal"])
+    for o in db.scalars(q).all():
+        raw = o.raw or {}
+        w.writerow([
+            o.name or f"#{o.order_number}",
+            o.created_at_platform.isoformat() if o.created_at_platform else "",
+            o.customer_name or "",
+            o.customer_email or "",
+            raw.get("total_price") or "",
+            raw.get("currency") or "TRY",
+            o.financial_status or "",
+            sum(li.quantity for li in o.line_items),
+            " | ".join(f"{li.title} ({li.variant_title or '-'}) x{li.quantity}"
+                       for li in o.line_items),
+            (o.kargo_info or {}).get("takip_no") or "",
+            "evet" if o.cancelled_at else "",
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=siparisler.csv"},
+    )
+
+
 @router.get("", response_model=dict)
 def list_orders(
     store_id: uuid.UUID | None = Query(None),

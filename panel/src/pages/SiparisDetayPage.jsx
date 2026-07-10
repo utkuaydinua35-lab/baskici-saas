@@ -174,6 +174,18 @@ export default function SiparisDetayPage() {
             </div>
           )}
 
+          {/* Kurumsal fatura */}
+          {d.invoice && (d.invoice.company || d.invoice.tax_no) && (
+            <div className="card">
+              <h2 className="text-sm font-semibold mb-2">🧾 Fatura Bilgisi</h2>
+              <div className="text-xs text-panel-muted leading-relaxed">
+                {d.invoice.company && <div className="text-panel-ink font-medium">{d.invoice.company}</div>}
+                {d.invoice.tax_office && <div>Vergi Dairesi: {d.invoice.tax_office}</div>}
+                {d.invoice.tax_no && <div>VKN/TCKN: <span className="font-mono">{d.invoice.tax_no}</span></div>}
+              </div>
+            </div>
+          )}
+
           {/* Kargo */}
           <div className="card">
             <h2 className="text-sm font-semibold mb-2">Kargo</h2>

@@ -86,6 +86,12 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
         **({"discount": {"code": session.discount_code,
                          "amount": str(session.discount_amount)}}
            if session.discount_code else {}),
+        # Kurumsal fatura bilgisi (checkout'ta opsiyonel) — panel detayda gösterilir
+        **({"invoice": {
+            "company": cust.get("invoice_company"),
+            "tax_office": cust.get("invoice_tax_office"),
+            "tax_no": cust.get("invoice_tax_no"),
+        }} if cust.get("invoice_company") or cust.get("invoice_tax_no") else {}),
     }
 
 

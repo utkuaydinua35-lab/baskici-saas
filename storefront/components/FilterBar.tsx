@@ -5,7 +5,13 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-export default function FilterBar({ brands }: { brands: string[] }) {
+export default function FilterBar({
+  brands,
+  basePath = "/urunler",
+}: {
+  brands: string[];
+  basePath?: string;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const sort = params.get("sirala") || "yeni";
@@ -20,7 +26,7 @@ export default function FilterBar({ brands }: { brands: string[] }) {
       else next.delete(k);
     }
     next.delete("sayfa"); // filtre değişince ilk sayfaya dön
-    router.push(`/urunler?${next.toString()}`);
+    router.push(`${basePath}?${next.toString()}`);
   };
 
   const hasFilter = brand || params.get("min") || params.get("max") || sort !== "yeni";

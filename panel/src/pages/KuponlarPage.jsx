@@ -63,6 +63,7 @@ export default function KuponlarPage() {
                   {[
                     c.min_subtotal && `min ${fmt(c.min_subtotal)}`,
                     c.min_quantity && `min ${c.min_quantity} adet`,
+                    c.collection_id && 'koleksiyona özel',
                     c.once_per_customer && 'müşteri başına 1',
                   ].filter(Boolean).join(' · ') || '—'}
                 </td>
@@ -109,6 +110,11 @@ function dateRange(c) {
 
 function CouponModal({ storeId, coupon, onClose, onSaved }) {
   const isNew = !coupon
+  const [collections, setCollections] = useState([])
+  useEffect(() => {
+    api.get(`/api/catalog/collections?store_id=${storeId}`)
+      .then(c => setCollections(c.filter(x => x.is_active))).catch(() => {})
+  }, [storeId])
   const [form, setForm] = useState(() => ({
     code: coupon?.code || '',
     kind: coupon?.kind || 'percent',
@@ -120,6 +126,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     usage_limit: coupon?.usage_limit || '',
     once_per_customer: coupon?.once_per_customer || false,
     is_automatic: coupon?.is_automatic || false,
+    collection_id: coupon?.collection_id || '',
   }))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -141,6 +148,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
       usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
       once_per_customer: form.once_per_customer,
       is_automatic: form.is_automatic,
+      collection_id: form.collection_id || null,
     }
     try {
       if (isNew) {
@@ -204,6 +212,18 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
           <input className="input mt-1 !w-32" type="number" min="2" max="100"
             value={form.min_quantity} onChange={set('min_quantity')} />
         </label>
+        {collections.length > 0 && (
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Yalnızca şu koleksiyonda geçerli (ops.)</span>
+            <select className="input mt-1" value={form.collection_id} onChange={set('collection_id')}>
+              <option value="">Tüm ürünler</option>
+              {collections.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+            <span className="block text-[11px] text-panel-muted mt-0.5">
+              İndirim yalnızca bu koleksiyondaki sepet kalemlerine uygulanır.
+            </span>
+          </label>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm">
             <span className="text-panel-muted text-xs">Başlangıç (ops.)</span>

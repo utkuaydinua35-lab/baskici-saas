@@ -1498,6 +1498,11 @@ class DiscountCode(Base):
 
     min_subtotal: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     min_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)  # "N adet üzeri"
+    # Yalnızca bu koleksiyondaki ürünlere uygulanır (null = tüm sepet)
+    collection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_collections.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

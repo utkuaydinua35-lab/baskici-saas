@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import FilterBar from "@/components/FilterBar";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
 
 interface Props {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ sirala?: string; marka?: string; min?: string; max?: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -21,11 +24,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function CollectionPage({ params }: Props) {
+export default async function CollectionPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const { sirala, marka, min, max } = (await searchParams) ?? {};
   const [collections, data] = await Promise.all([
     getCollections(),
-    getProducts({ collection: slug }),
+    getProducts({ collection: slug, sort: sirala, brand: marka, minPrice: min, maxPrice: max }),
   ]);
   const collection = collections.find((c) => c.slug === slug);
   if (!collection) notFound();
@@ -43,12 +47,18 @@ export default async function CollectionPage({ params }: Props) {
         <p className="mt-1 text-sm text-zinc-600 max-w-xl">{collection.description}</p>
       )}
 
+      <div className="mt-5">
+        <Suspense>
+          <FilterBar brands={data?.facets?.brands ?? []} basePath={`/koleksiyon/${slug}`} />
+        </Suspense>
+      </div>
+
       {items.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-400">
           Bu koleksiyonda henüz ürün yok.
         </p>
       ) : (
-        <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="mt-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {items.map((p) => (
             <ProductCard key={p.slug} product={p} />
           ))}

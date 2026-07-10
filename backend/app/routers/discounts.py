@@ -34,6 +34,7 @@ class DiscountCreate(BaseModel):
     value: Decimal = Field(0, ge=0)
     min_subtotal: Decimal | None = Field(None, ge=0)
     min_quantity: int | None = Field(None, ge=2, le=100)
+    collection_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     usage_limit: int | None = Field(None, ge=1)
@@ -61,6 +62,7 @@ class DiscountUpdate(BaseModel):
     value: Decimal | None = Field(None, ge=0)
     min_subtotal: Decimal | None = Field(None, ge=0)
     min_quantity: int | None = Field(None, ge=2, le=100)
+    collection_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     usage_limit: int | None = Field(None, ge=1)
@@ -78,6 +80,7 @@ def _serialize(dc: DiscountCode) -> dict:
         "value": str(dc.value),
         "min_subtotal": str(dc.min_subtotal) if dc.min_subtotal is not None else None,
         "min_quantity": dc.min_quantity,
+        "collection_id": str(dc.collection_id) if dc.collection_id else None,
         "starts_at": dc.starts_at.isoformat() if dc.starts_at else None,
         "ends_at": dc.ends_at.isoformat() if dc.ends_at else None,
         "usage_limit": dc.usage_limit,

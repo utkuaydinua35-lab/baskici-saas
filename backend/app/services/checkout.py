@@ -112,7 +112,7 @@ def validate_and_snapshot(
 
 def apply_discount(
     db: Session, store: Store, code: str, items_total: Decimal, email: str | None,
-    items_count: int | None = None,
+    items_count: int | None = None, snapshot: list[dict] | None = None,
 ) -> tuple[DiscountCode, Decimal, bool]:
     """Kupon kodunu doğrula; (kupon, indirim_tutarı, kargo_bedava) döndür.
 
@@ -131,13 +131,34 @@ def apply_discount(
     if not dc:
         raise CheckoutError("Kupon kodu geçersiz")
 
-    discount, free_shipping = evaluate_discount(db, dc, items_total, email, items_count)
+    discount, free_shipping = evaluate_discount(
+        db, dc, items_total, email, items_count, snapshot)
     return dc, discount, free_shipping
+
+
+def _eligible_total(db: Session, dc: DiscountCode, snapshot: list[dict]) -> Decimal:
+    """Koleksiyon kısıtlı kuponda: yalnızca o koleksiyondaki kalemlerin toplamı."""
+    from app.models import catalog_product_collections
+    product_ids = {i.get("product_id") for i in snapshot if i.get("product_id")}
+    if not product_ids:
+        return Decimal("0")
+    rows = db.execute(
+        select(catalog_product_collections.c.product_id).where(
+            catalog_product_collections.c.collection_id == dc.collection_id,
+            catalog_product_collections.c.product_id.in_(list(product_ids)),
+        )
+    ).all()
+    in_collection = {str(r[0]) for r in rows}
+    return sum(
+        (Decimal(str(i.get("unit_price", "0"))) * int(i.get("quantity", 1))
+         for i in snapshot if str(i.get("product_id")) in in_collection),
+        Decimal("0"),
+    )
 
 
 def evaluate_discount(
     db: Session, dc: DiscountCode, items_total: Decimal, email: str | None,
-    items_count: int | None = None,
+    items_count: int | None = None, snapshot: list[dict] | None = None,
 ) -> tuple[Decimal, bool]:
     """Kuponun koşullarını denetle, (indirim_tutarı, kargo_bedava) hesapla."""
     now = datetime.now(timezone.utc)
@@ -164,11 +185,20 @@ def evaluate_discount(
         if used:
             raise CheckoutError("Bu kuponu daha önce kullandınız")
 
+    # Koleksiyon kısıtı: indirim yalnızca o koleksiyondaki kalemlere işler
+    base_total = items_total
+    if dc.collection_id is not None:
+        if snapshot is None:
+            raise CheckoutError("Bu kupon sepet içeriğiyle doğrulanmalı")
+        base_total = _eligible_total(db, dc, snapshot)
+        if base_total <= 0:
+            raise CheckoutError("Bu kupon sepetinizdeki ürünlerde geçerli değil")
+
     free_shipping = dc.kind == "free_shipping"
     if dc.kind == "percent":
-        discount = (items_total * Decimal(str(dc.value)) / 100).quantize(Decimal("0.01"))
+        discount = (base_total * Decimal(str(dc.value)) / 100).quantize(Decimal("0.01"))
     elif dc.kind == "amount":
-        discount = min(Decimal(str(dc.value)), items_total)
+        discount = min(Decimal(str(dc.value)), base_total)
     else:
         discount = Decimal("0")
 
@@ -180,6 +210,7 @@ def evaluate_discount(
 def best_automatic_discount(
     db: Session, store: Store, items_total: Decimal, email: str | None,
     shipping_fee: Decimal, items_count: int | None = None,
+    snapshot: list[dict] | None = None,
 ) -> tuple[DiscountCode, Decimal, bool] | None:
     """Kod girilmemiş sepette koşulu sağlayan otomatik indirimlerden en
     kazançlısını seç (Shopify gibi: otomatikler birleşmez, tek kazanan olur).
@@ -194,7 +225,8 @@ def best_automatic_discount(
     best_saving = Decimal("0")
     for dc in candidates:
         try:
-            discount, free_shipping = evaluate_discount(db, dc, items_total, email, items_count)
+            discount, free_shipping = evaluate_discount(
+                db, dc, items_total, email, items_count, snapshot)
         except CheckoutError:
             continue  # koşulu sağlamayan otomatik sessizce atlanır
         saving = discount + (shipping_fee if free_shipping else Decimal("0"))
@@ -239,10 +271,11 @@ def create_session(
     if discount_code:
         # Kod girildiyse kod kazanır (otomatikle birleşmez — Shopify davranışı)
         dc, discount, free_shipping = apply_discount(
-            db, store, discount_code, items_total, email, items_count)
+            db, store, discount_code, items_total, email, items_count, snapshot)
     else:
         auto = best_automatic_discount(
-            db, store, items_total, email, _shipping_fee(store, items_total), items_count)
+            db, store, items_total, email, _shipping_fee(store, items_total),
+            items_count, snapshot)
         if auto:
             dc, discount, free_shipping = auto
 

@@ -354,7 +354,7 @@ def validate_discount_code(
             [{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items])
         dc, discount, free_shipping = checkout_svc.apply_discount(
             db, store, body.code, items_total, body.email,
-            sum(i.quantity for i in body.items))
+            sum(i.quantity for i in body.items), _snapshot)
     except checkout_svc.CheckoutError as e:
         return {"valid": False, "message": str(e)}
 

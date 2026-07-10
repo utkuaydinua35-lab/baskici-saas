@@ -357,15 +357,23 @@ async def analyze(
             reserved.add(code)
             cdir = _studio_dir(user.tenant_id, store_id) / code
             cdir.mkdir(parents=True, exist_ok=True)
-            img.save(str(cdir / "mockup.jpg"), "JPEG", quality=92)
-            img.save(str(cdir / "baski.jpg"), "JPEG", quality=95)   # Design kaydı için görsel
+            # Şeffaflığı KORU: alfası varsa PNG (jpg şeffaf arkaplanı doldurur), yoksa JPG
+            _pim = Image.open(io.BytesIO(raw))
+            _has_alpha = ("A" in _pim.getbands()) or (_pim.mode == "P" and "transparency" in _pim.info)
+            mext = "png" if _has_alpha else "jpg"
+            if _has_alpha:
+                _pim.convert("RGBA").save(str(cdir / "mockup.png"), "PNG")
+                _pim.convert("RGBA").save(str(cdir / "baski.png"), "PNG")
+            else:
+                _pim.convert("RGB").save(str(cdir / "mockup.jpg"), "JPEG", quality=92)
+                _pim.convert("RGB").save(str(cdir / "baski.jpg"), "JPEG", quality=95)
             rel = f"tenants/{user.tenant_id}/studio/{store_id}/{code}"
             results.append({
                 "ok": True, "code": code, "title": content["title"],
                 "body_html": content["body_html"], "tags": content["tags"],
                 "design_name": content["design_name"], "analysis": analysis,
-                "mockup_url": f"/storage/{rel}/mockup.jpg",
-                "baski_url": f"/storage/{rel}/baski.jpg",
+                "mockup_url": f"/storage/{rel}/mockup.{mext}",
+                "baski_url": f"/storage/{rel}/baski.{mext}",
                 "baski_pdf_url": None, "ai_expanded": False, "ready_mockup": True,
             })
             continue
@@ -480,20 +488,27 @@ def publish(req: PublishIn, user: User = Depends(require_permission("tasarim")),
             out.append({"code": it.code, "ok": False, "error": "Geçersiz kod"})
             continue
         cdir = sdir / code
-        baski = cdir / "baski.jpg"
-        mock = cdir / "mockup.jpg"
-        if not baski.exists() or not mock.exists():
+
+        def _find(stem):  # uzantı bağımsız: png/jpg (şeffaf hazır mockup png olabilir)
+            for e in ("png", "jpg", "jpeg"):
+                p = cdir / f"{stem}.{e}"
+                if p.exists():
+                    return p, e
+            return None, None
+        mock, mext = _find("mockup")
+        pdf = cdir / "baski.pdf"
+        baski_img, bext = _find("baski")
+        if not mock or not (pdf.exists() or baski_img):
             out.append({"code": code, "ok": False, "error": "Dosyalar bulunamadı (önce analiz)"})
             continue
 
-        # 1) Design kaydı (üretim tasarımı = CMYK PDF varsa o, yoksa JPG). Kod çakışırsa atla.
-        pdf = cdir / "baski.pdf"
+        # 1) Design kaydı (üretim tasarımı = CMYK PDF varsa o, yoksa görsel). Kod çakışırsa atla.
         if pdf.exists():
             _rel = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.pdf"
             _fmt, _sz = "pdf", pdf.stat().st_size
         else:
-            _rel = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.jpg"
-            _fmt, _sz = "jpg", baski.stat().st_size
+            _rel = f"tenants/{user.tenant_id}/studio/{req.store_id}/{code}/baski.{bext}"
+            _fmt, _sz = bext, baski_img.stat().st_size
         exists = db.scalar(select(Design).where(Design.store_id == s.id, Design.code == code))
         if exists:
             design = exists
@@ -513,7 +528,7 @@ def publish(req: PublishIn, user: User = Depends(require_permission("tasarim")),
             img_b64 = base64.standard_b64encode(mock.read_bytes()).decode()
             shop = adapter.create_product(
                 title=it.title, body_html=it.body_html or "",
-                tags=it.tags or [], image_b64=img_b64, image_filename=f"{code}.jpg",
+                tags=it.tags or [], image_b64=img_b64, image_filename=f"{code}.{mext}",
                 status="active", price=(str(price) if price not in (None, "") else None),
                 vendor=brand,
             )

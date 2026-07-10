@@ -246,12 +246,18 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
     db.flush()
 
     # Kalıp planlayıcı doğrudan çalışsın: model + varyasyon alanlarını doldur
-    by_ext = {f"sfli_{session.id.hex}_{n}": item
-              for n, item in enumerate(session.cart_snapshot or [])}
+    # (couple setin 2. kalemi "_{n}b" ekiyle gelir — ikinci modeli alır)
+    by_ext: dict[str, tuple[dict, bool]] = {}
+    for n, item in enumerate(session.cart_snapshot or []):
+        by_ext[f"sfli_{session.id.hex}_{n}"] = (item, False)
+        if item.get("second_model_display"):
+            by_ext[f"sfli_{session.id.hex}_{n}b"] = (item, True)
     for li in order.line_items:
-        item = by_ext.get(li.external_id or "")
-        if item:
-            li.device_model_override = item.get("model_display")
+        hit = by_ext.get(li.external_id or "")
+        if hit:
+            item, is_second = hit
+            li.device_model_override = (
+                item.get("second_model_display") if is_second else item.get("model_display"))
             li.kilif_varyasyon = item.get("variation")
 
     _decrement_stock(db, session, order)

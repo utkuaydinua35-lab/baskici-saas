@@ -41,7 +41,11 @@ export default function CouponInput({ email }: { email?: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: trimmed,
-          items: items.map((i) => ({ variant_id: i.variantId, quantity: i.quantity })),
+          items: items.map((i) => ({
+            variant_id: i.variantId, quantity: i.quantity,
+            second_variant_id: i.secondVariantId || null,
+            custom: i.custom || null,
+          })),
           email: email || null,
         }),
       });

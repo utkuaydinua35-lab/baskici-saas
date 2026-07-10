@@ -33,6 +33,9 @@ function RestoreHandler() {
               variation: i.variation,
               price: i.unit_price,
               image: i.image,
+              secondVariantId: i.second_variant_id || null,
+              secondModelDisplay: i.second_model_display || null,
+              custom: i.custom || null,
             },
             i.quantity,
           );

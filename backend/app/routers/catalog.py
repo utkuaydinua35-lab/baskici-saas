@@ -712,6 +712,9 @@ def duplicate_product(
         seo_title=src.seo_title, seo_description=src.seo_description,
         base_price=src.base_price, compare_at_price=src.compare_at_price,
         tags=src.tags, position=src.position,
+        variant_set_id=src.variant_set_id,
+        custom_fields=src.custom_fields,
+        models_per_item=src.models_per_item,
     )
     db.add(copy)
     db.flush()
@@ -719,6 +722,7 @@ def duplicate_product(
         db.add(CatalogVariant(
             tenant_id=v.tenant_id, product_id=copy.id,
             model_key=v.model_key, model_display=v.model_display,
+            brand=v.brand,
             variation=v.variation, sku=None,  # SKU tekil kalsın — kopyalanmaz
             price_override=v.price_override, quantity=v.quantity,
             track_stock=v.track_stock, stock_item_id=v.stock_item_id,

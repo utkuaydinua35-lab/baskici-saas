@@ -645,6 +645,10 @@ def restore_cart(
             "unit_price": i.get("unit_price"),
             "product_slug": product.slug,
             "image": f"/storage/{product.images[0].file_path}" if product.images else None,
+            # Couple + kişiye özel alanlar da geri yüklensin
+            "second_variant_id": i.get("second_variant_id"),
+            "second_model_display": i.get("second_model_display"),
+            "custom": i.get("custom"),
         })
     return {"items": items}
 

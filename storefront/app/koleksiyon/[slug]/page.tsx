@@ -42,9 +42,26 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         {" / "}
         <span className="text-zinc-700">{collection.title}</span>
       </nav>
-      <h1 className="text-2xl font-bold">{collection.title}</h1>
-      {collection.description && (
-        <p className="mt-1 text-sm text-zinc-600 max-w-xl">{collection.description}</p>
+      {collection.image_url ? (
+        <div className="relative rounded-2xl overflow-hidden border border-zinc-200">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={collection.image_url} alt={collection.title}
+            className="w-full max-h-56 object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute bottom-0 inset-x-0 p-5">
+            <h1 className="text-2xl font-bold text-white">{collection.title}</h1>
+            {collection.description && (
+              <p className="mt-0.5 text-sm text-white/85 max-w-xl">{collection.description}</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-2xl font-bold">{collection.title}</h1>
+          {collection.description && (
+            <p className="mt-1 text-sm text-zinc-600 max-w-xl">{collection.description}</p>
+          )}
+        </>
       )}
 
       <div className="mt-5">

@@ -498,6 +498,7 @@ class CollectionCreate(BaseModel):
 class CollectionUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=2000)
+    image_path: str | None = Field(None, max_length=500)  # /storage/... URL'inden path
     position: int | None = None
     is_active: bool | None = None
 
@@ -513,6 +514,7 @@ def _serialize_collection(c, product_count: int | None = None) -> dict:
         "slug": c.slug,
         "title": c.title,
         "description": c.description,
+        "image_url": f"/storage/{c.image_path}" if c.image_path else None,
         "position": c.position,
         "is_active": c.is_active,
     }
@@ -582,7 +584,10 @@ def update_collection(
         CatalogCollection.id == collection_id, CatalogCollection.tenant_id == user.tenant_id))
     if not collection:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if updates.get("image_path"):
+        updates["image_path"] = updates["image_path"].removeprefix("/storage/")
+    for k, v in updates.items():
         setattr(collection, k, v)
     db.commit()
     db.refresh(collection)

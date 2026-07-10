@@ -247,7 +247,7 @@ def delete_catalog_image(relative_path: str) -> bool:
 
 # ─── Mağaza tema varlıkları (logo/favicon/hero) ──────────────
 
-STORE_ASSET_KINDS = {"logo", "favicon", "hero", "blog"}
+STORE_ASSET_KINDS = {"logo", "favicon", "hero", "blog", "collection"}
 # SVG bilinçli olarak yok: SafeStaticFiles XSS koruması SVG'yi inline göstermez
 STORE_ASSET_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "ico"}
 MAX_STORE_ASSET_SIZE = 25 * 1024 * 1024  # 25 MB (kabul; diske optimize yazılır)

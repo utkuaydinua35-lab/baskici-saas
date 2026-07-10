@@ -130,7 +130,8 @@ def list_collections(
     ).all()
     response.headers["Cache-Control"] = "public, max-age=60"
     return [
-        {"slug": c.slug, "title": c.title, "description": c.description}
+        {"slug": c.slug, "title": c.title, "description": c.description,
+         "image_url": f"/storage/{c.image_path}" if c.image_path else None}
         for c in collections
     ]
 

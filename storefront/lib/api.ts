@@ -118,6 +118,7 @@ export interface Collection {
   slug: string;
   title: string;
   description: string | null;
+  image_url?: string | null;
 }
 
 export function getProducts(params?: {

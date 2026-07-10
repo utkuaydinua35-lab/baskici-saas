@@ -39,6 +39,25 @@ export default function KoleksiyonlarPage() {
     try { await api.patch(`/api/catalog/collections/${c.id}`, { title: t }); load() }
     catch { setErr('Yeniden adlandırılamadı') }
   }
+  const uploadImage = async (c, file) => {
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'collection')
+      const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
+      await api.patch(`/api/catalog/collections/${c.id}`, { image_path: r.url })
+      load()
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Görsel yüklenemedi')
+    } finally { setBusy(false) }
+  }
+  const clearImage = async (c) => {
+    try { await api.patch(`/api/catalog/collections/${c.id}`, { image_path: '' }); load() }
+    catch { setErr('Görsel kaldırılamadı') }
+  }
+
   const remove = async (c) => {
     if (!window.confirm(`"${c.title}" silinecek (ürünler silinmez). Emin misiniz?`)) return
     try { await api.del(`/api/catalog/collections/${c.id}`); load() }
@@ -58,6 +77,18 @@ export default function KoleksiyonlarPage() {
       <div className="card !p-0 divide-y divide-panel-border overflow-hidden">
         {collections.map(c => (
           <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+            {c.image_url ? (
+              <img src={c.image_url} alt={c.title}
+                className="w-10 h-10 rounded-lg object-cover border border-panel-border shrink-0" />
+            ) : (
+              <label className="w-10 h-10 rounded-lg border border-dashed border-panel-border
+                flex items-center justify-center text-panel-muted text-xs cursor-pointer shrink-0"
+                title="Koleksiyon görseli yükle">
+                📷
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => uploadImage(c, e.target.files?.[0])} />
+              </label>
+            )}
             <span className="font-medium">{c.title}</span>
             <span className="text-xs text-panel-muted">/{c.slug} · {c.product_count ?? 0} ürün</span>
             <div className="ml-auto flex items-center gap-2">
@@ -66,6 +97,10 @@ export default function KoleksiyonlarPage() {
                   ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                 {c.is_active ? 'Aktif' : 'Pasif'}
               </button>
+              {c.image_url && (
+                <button onClick={() => clearImage(c)}
+                  className="text-xs text-panel-muted hover:text-red-600">Görseli kaldır</button>
+              )}
               <button onClick={() => rename(c)} className="text-xs text-panel-muted hover:text-panel-ink">Adlandır</button>
               <button onClick={() => remove(c)} className="text-xs text-red-400 hover:text-red-600">Sil</button>
             </div>

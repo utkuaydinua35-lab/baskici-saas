@@ -18,9 +18,7 @@ import ContactSection from "@/components/sections/ContactSection";
 export default async function HomePage() {
   const { theme } = await getThemePayload();
 
-  return (
-    <div>
-      {theme.sections.map((section) => {
+  const renderSection = (section: (typeof theme.sections)[number]) => {
         const s = section.settings;
         switch (section.type) {
           case "hero_slider":
@@ -80,7 +78,18 @@ export default async function HomePage() {
           default:
             return null;
         }
-      })}
+  };
+
+  return (
+    <div>
+      {theme.sections
+        .filter((sec) => !sec.hidden)
+        .map((sec) => (
+          <div key={sec.id}
+            className={sec.scheme === "band" ? "bg-white border-y border-zinc-200 my-4" : ""}>
+            {renderSection(sec)}
+          </div>
+        ))}
     </div>
   );
 }

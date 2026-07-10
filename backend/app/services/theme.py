@@ -55,7 +55,7 @@ SECTION_DEFAULTS: dict[str, dict] = {
 MAX_FAQ_ITEMS = 12
 MAX_LIST_ITEMS = 8
 
-_SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url"}
+_SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url", "cta2_text", "cta2_url"}
 
 DEFAULT_THEME: dict = {
     "version": 2,
@@ -313,6 +313,10 @@ def _normalize_sections(sections: list) -> list:
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
             "type": stype,
             "settings": settings,
+            # Gizle/göster: silmeden kapatma (Shopify eye toggle)
+            "hidden": bool(sec.get("hidden")),
+            # Zemin şeması: none (sayfa zemini) | band (beyaz bant)
+            "scheme": sec.get("scheme") if sec.get("scheme") in ("none", "band") else "none",
         })
     return cleaned
 

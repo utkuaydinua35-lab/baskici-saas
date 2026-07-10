@@ -77,11 +77,21 @@ export default function HeroSlider({
               {slide.subtitle && (
                 <p className="mt-3 text-white/85 max-w-xl mx-auto">{slide.subtitle}</p>
               )}
-              {slide.cta_text && (
-                <Link href={slide.cta_url || "/urunler"}
-                  className="mt-7 inline-block rounded-xl bg-white text-zinc-900 px-6 py-3 font-medium hover:scale-[1.03] transition">
-                  {slide.cta_text}
-                </Link>
+              {(slide.cta_text || slide.cta2_text) && (
+                <div className="mt-7 flex justify-center gap-3 flex-wrap">
+                  {slide.cta_text && (
+                    <Link href={slide.cta_url || "/urunler"}
+                      className="inline-block rounded-xl bg-white text-zinc-900 px-6 py-3 font-medium hover:scale-[1.03] transition">
+                      {slide.cta_text}
+                    </Link>
+                  )}
+                  {slide.cta2_text && (
+                    <Link href={slide.cta2_url || "/urunler"}
+                      className="inline-block rounded-xl border-2 border-white/80 text-white px-6 py-3 font-medium hover:bg-white/10 transition">
+                      {slide.cta2_text}
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
           </div>

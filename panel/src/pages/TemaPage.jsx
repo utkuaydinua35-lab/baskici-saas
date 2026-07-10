@@ -153,6 +153,12 @@ export default function TemaPage() {
   }
 
   // ── Bölüm işlemleri ──
+  const patchSectionMeta = (id, meta) => {
+    setTheme(t => ({
+      ...t,
+      sections: t.sections.map(s => s.id === id ? { ...s, ...meta } : s),
+    }))
+  }
   const patchSection = (id, patch) => {
     setTheme(t => ({
       ...t,
@@ -308,12 +314,22 @@ export default function TemaPage() {
               const meta = SECTION_TYPES[sec.type] || { label: sec.type, icon: '▫️' }
               const open = openSection === sec.id
               return (
-                <div key={sec.id} className="border border-panel-border rounded-xl overflow-hidden">
+                <div key={sec.id} className={`border border-panel-border rounded-xl overflow-hidden ${
+                  sec.hidden ? 'opacity-55' : ''}`}>
                   <div className="flex items-center gap-2 px-3 py-2 bg-panel-input">
                     <button onClick={() => setOpenSection(open ? null : sec.id)}
-                      className="flex items-center gap-2 text-sm font-medium flex-1 text-left">
-                      <span>{meta.icon}</span> {meta.label}
+                      className="flex items-center gap-2 text-sm font-medium flex-1 text-left min-w-0">
+                      <span>{meta.icon}</span>
+                      <span className="truncate">{meta.label}</span>
+                      {sec.hidden && (
+                        <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full shrink-0">gizli</span>
+                      )}
                       <span className="text-panel-muted text-xs">{open ? '▾' : '▸'}</span>
+                    </button>
+                    <button onClick={() => patchSectionMeta(sec.id, { hidden: !sec.hidden })}
+                      title={sec.hidden ? 'Vitrinde göster' : 'Vitrinde gizle (silmez)'}
+                      className="w-6 h-6 rounded-lg border border-panel-border text-xs">
+                      {sec.hidden ? '🙈' : '👁'}
                     </button>
                     <button onClick={() => moveSec(i, -1)} disabled={i === 0}
                       className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
@@ -324,6 +340,15 @@ export default function TemaPage() {
                   </div>
                   {open && (
                     <div className="p-3 space-y-2 bg-white">
+                      <div className="flex items-center gap-2 text-xs text-panel-muted">
+                        Zemin:
+                        {[['none', 'Sayfa rengi'], ['band', 'Beyaz bant']].map(([v, l]) => (
+                          <button key={v} onClick={() => patchSectionMeta(sec.id, { scheme: v })}
+                            className={`px-2 py-0.5 rounded-full border ${(sec.scheme || 'none') === v
+                              ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                              : 'border-panel-border'}`}>{l}</button>
+                        ))}
+                      </div>
                       <SectionSettings sec={sec} collections={collections} products={products}
                         patch={p => patchSection(sec.id, p)}
                         uploadAsset={uploadAsset} />
@@ -451,6 +476,11 @@ function SectionSettings({ sec, collections, products = [], patch, uploadAsset }
                 onChange={e => patchSlide(i, { cta_text: e.target.value })} placeholder="Buton yazısı" />
               <input className="input" value={slide.cta_url || ''}
                 onChange={e => patchSlide(i, { cta_url: e.target.value })} placeholder="/urunler" />
+              <input className="input" value={slide.cta2_text || ''} maxLength={40}
+                onChange={e => patchSlide(i, { cta2_text: e.target.value })}
+                placeholder="2. buton yazısı (ops. — çerçeveli görünür)" />
+              <input className="input" value={slide.cta2_url || ''}
+                onChange={e => patchSlide(i, { cta2_url: e.target.value })} placeholder="2. buton adresi" />
             </div>
           </div>
         ))}

@@ -10,10 +10,14 @@ export interface HeroSlide {
   subtitle: string;
   cta_text: string;
   cta_url: string;
+  cta2_text?: string;
+  cta2_url?: string;
 }
 
 export interface ThemeSection {
   id: string;
+  hidden?: boolean;
+  scheme?: "none" | "band";
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
     | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter"
     | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact";

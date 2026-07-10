@@ -9,6 +9,7 @@ export default function DashboardPage() {
   const [data, setData] = useState(null)
   const [live, setLive] = useState(null)
   const [stok, setStok] = useState(null)   // {low_stock, out_of_stock}
+  const [guide, setGuide] = useState(null) // kurulum rehberi adımları
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -21,6 +22,25 @@ export default function DashboardPage() {
     api.get(`/api/catalog/inventory?store_id=${storeId}`)
       .then(d => setStok({ low_stock: d.low_stock, out_of_stock: d.out_of_stock }))
       .catch(() => {})
+    // Kurulum rehberi (Shopify setup guide) — tamamlanınca kart kaybolur
+    if (localStorage.getItem(`kurulum_gizle_${storeId}`)) { setGuide([]); return }
+    Promise.all([
+      api.get(`/api/catalog/products?store_id=${storeId}`).catch(() => []),
+      api.get(`/api/store-settings/${storeId}`).catch(() => null),
+      api.get(`/api/store-settings/${storeId}/theme`).catch(() => null),
+      api.get(`/api/orders?store_id=${storeId}&per_page=1`).catch(() => null),
+    ]).then(([prods, settings, theme, orders]) => {
+      const cfg = settings?.config || {}
+      setGuide([
+        { label: 'İlk ürününü ekle', done: (prods || []).length > 0, to: '/urunler' },
+        { label: 'Logo ve tema renklerini ayarla', done: !!theme?.logo_url, to: '/tema' },
+        { label: 'Kargo ücretini belirle', done: !!cfg.shipping_fee, to: '/ayarlar' },
+        { label: 'Ödeme sağlayıcını bağla (iyzico/PayTR)',
+          done: !!(cfg.iyzico_api_key || cfg.paytr_merchant_id), to: '/ayarlar' },
+        { label: 'Alan adını bağla', done: !!(cfg.custom_domain || cfg.shop_domain), to: '/ayarlar' },
+        { label: 'İlk siparişini al 🎉', done: (orders?.total || 0) > 0, to: '/siparisler' },
+      ])
+    })
   }, [storeId])
 
   // Canlı veri — 30 sn'de bir; sekme gizliyken durur
@@ -52,6 +72,39 @@ export default function DashboardPage() {
           hint={data?.funnel?.abandoned_count > 0
             ? `${data.funnel.abandoned_count} terk sepet` : 'checkout verisi yok'} />
       </div>
+
+      {guide && guide.length > 0 && guide.some(g => !g.done) && (
+        <div className="card">
+          <div className="flex items-center">
+            <h2 className="text-sm font-semibold">🚀 Kurulum Rehberi</h2>
+            <span className="ml-2 text-xs text-panel-muted">
+              {guide.filter(g => g.done).length}/{guide.length} tamamlandı
+            </span>
+            <button onClick={() => { localStorage.setItem(`kurulum_gizle_${storeId}`, '1'); setGuide([]) }}
+              className="ml-auto text-xs text-panel-muted hover:text-panel-ink">Gizle</button>
+          </div>
+          <div className="mt-2 h-1.5 rounded-full bg-panel-input overflow-hidden">
+            <div className="h-full bg-emerald-500 transition-all"
+              style={{ width: `${(guide.filter(g => g.done).length / guide.length) * 100}%` }} />
+          </div>
+          <ul className="mt-3 space-y-1.5">
+            {guide.map(g => (
+              <li key={g.label}>
+                <Link to={g.to} className="flex items-center gap-2.5 text-sm group">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0 ${
+                    g.done ? 'bg-emerald-500 text-white' : 'border-2 border-panel-border'}`}>
+                    {g.done ? '✓' : ''}
+                  </span>
+                  <span className={g.done ? 'text-panel-muted line-through' : 'group-hover:underline'}>
+                    {g.label}
+                  </span>
+                  {!g.done && <span className="ml-auto text-xs text-panel-muted">→</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {stok && (stok.low_stock > 0 || stok.out_of_stock > 0) && (
         <Link to="/envanter"

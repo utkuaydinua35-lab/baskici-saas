@@ -25,6 +25,15 @@ export default function CheckoutPage() {
   const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Record<string, string>>({});
   const [corporate, setCorporate] = useState(false);
+  const [giftWrapOn, setGiftWrapOn] = useState(false);   // mağaza ayarı açık mı
+  const [giftWrap, setGiftWrap] = useState(false);       // müşteri istedi mi
+
+  useEffect(() => {
+    fetch("/api/shop-config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setGiftWrapOn(!!d?.settings?.gift_wrap_enabled))
+      .catch(() => {});
+  }, []);
 
   // Girişli müşteri: kayıtlı bilgilerle formu doldur
   useEffect(() => {
@@ -110,7 +119,8 @@ export default function CheckoutPage() {
             city: fd.get("city"),
             province: fd.get("province") || null,
             zip: fd.get("zip") || null,
-            note: fd.get("note") || null,
+            note: [giftWrap ? "🎁 Hediye paketi istiyorum" : null, fd.get("note") || null]
+              .filter(Boolean).join(" — ") || null,
             invoice_company: fd.get("invoice_company") || null,
             invoice_tax_office: fd.get("invoice_tax_office") || null,
             invoice_tax_no: fd.get("invoice_tax_no") || null,
@@ -165,6 +175,13 @@ export default function CheckoutPage() {
             <Input name="zip" label="Posta Kodu" autoComplete="postal-code" defaultValue={prefill.zip} />
           </div>
           <Input name="note" label="Sipariş notu (isteğe bağlı)" />
+          {giftWrapOn && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={giftWrap}
+                onChange={(e) => setGiftWrap(e.target.checked)} />
+              🎁 Hediye paketi istiyorum (ücretsiz)
+            </label>
+          )}
 
           <label className="flex items-center gap-2 text-sm pt-1">
             <input type="checkbox" checked={corporate}

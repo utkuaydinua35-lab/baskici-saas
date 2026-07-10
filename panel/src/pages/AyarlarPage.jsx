@@ -110,6 +110,11 @@ export default function AyarlarPage() {
             onChange={set('shipping_email_enabled')} />
           Kargoya verilince müşteriye otomatik bildirim e-postası gönder (takip no ile, 1 kez)
         </label>
+        <label className="flex items-center gap-2 text-sm mt-1">
+          <input type="checkbox" checked={!!cfg.gift_wrap_enabled}
+            onChange={set('gift_wrap_enabled')} />
+          🎁 Ödeme sayfasında "hediye paketi istiyorum" seçeneği sun (ücretsiz, sipariş notuna düşer)
+        </label>
       </Section>
 
       <Section title="Ödeme Sağlayıcı" icon="💳">

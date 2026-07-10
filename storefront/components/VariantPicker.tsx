@@ -15,6 +15,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   const [brand, setBrand] = useState<string>("");
   const [modelKey, setModelKey] = useState<string>("");
   const [variation, setVariation] = useState<string | null>(null);
+  const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
 
   // Markalar (varyantlardan; null → "Diğer")
@@ -62,10 +63,13 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   // Galeriye haber ver: seçilen varyanta bağlı görsel varsa öne gelsin
   useEffect(() => {
     if (!selected) return;
+    setQty(1); // varyant değişince adet sıfırlanır (stok sınırı farklı olabilir)
     window.dispatchEvent(
       new CustomEvent("variant-selected", { detail: { variantId: selected.id } }),
     );
   }, [selected]);
+
+  const maxQty = Math.min(20, selected?.max_qty ?? 20);
 
   const pickBrand = (b: string) => {
     setBrand(b);
@@ -83,12 +87,12 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       variation: selected.variation,
       price: selected.price,
       image: product.images[0]?.url ?? null,
-    });
+    }, qty);
     trackAddToCart({
       id: selected.id,
       name: `${product.title} — ${selected.model_display}`,
       price: Number(selected.price),
-      quantity: 1,
+      quantity: qty,
     });
     setAdded(true);
     setDrawerOpen(true); // çekmece kapalıysa no-op (layout render etmez)
@@ -176,14 +180,31 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
         <StockAlertForm variantId={selected.id} />
       )}
 
-      <button
-        onClick={add}
-        disabled={!canAdd}
-        className="w-full rounded-xl text-white font-medium py-3 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
-        style={{ background: "var(--c-primary)" }}
-      >
-        {added ? "Sepete eklendi ✓" : "Sepete Ekle"}
-      </button>
+      {selected?.low_stock_left != null && selected.in_stock && (
+        <p className="text-xs font-medium text-red-600">
+          🔥 Son {selected.low_stock_left} adet — tükenmeden sipariş verin!
+        </p>
+      )}
+
+      <div className="flex gap-3">
+        <div className="inline-flex items-center border border-zinc-300 rounded-xl bg-white shrink-0">
+          <button type="button" onClick={() => setQty((n) => Math.max(1, n - 1))}
+            className="px-3.5 py-3 text-lg leading-none disabled:opacity-30" disabled={qty <= 1}
+            aria-label="Adet azalt">−</button>
+          <span className="px-1 min-w-8 text-center text-sm tabular-nums font-medium">{qty}</span>
+          <button type="button" onClick={() => setQty((n) => Math.min(maxQty, n + 1))}
+            className="px-3.5 py-3 text-lg leading-none disabled:opacity-30" disabled={qty >= maxQty}
+            aria-label="Adet artır">+</button>
+        </div>
+        <button
+          onClick={add}
+          disabled={!canAdd}
+          className="flex-1 rounded-xl text-white font-medium py-3 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
+          style={{ background: "var(--c-primary)" }}
+        >
+          {added ? "Sepete eklendi ✓" : "Sepete Ekle"}
+        </button>
+      </div>
       {!activeBrand && (
         <p className="text-xs text-zinc-500">Önce telefon markanızı seçin.</p>
       )}

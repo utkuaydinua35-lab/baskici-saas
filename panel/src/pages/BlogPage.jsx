@@ -96,11 +96,26 @@ function PostModal({ storeId, post, onClose, onSaved }) {
     slug: post?.slug || '',
     excerpt: post?.excerpt || '',
     content: post?.content || '',
+    cover_url: post?.cover_url || null,
     seo_title: post?.seo_title || '',
     seo_description: post?.seo_description || '',
     is_published: post?.is_published || false,
   }))
   const [busy, setBusy] = useState(false)
+
+  const uploadCover = async (file) => {
+    if (!file) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'blog')
+      const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
+      setForm(f => ({ ...f, cover_url: r.url }))
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Görsel yüklenemedi')
+    } finally { setBusy(false) }
+  }
 
   const set = (k) => (e) => {
     const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value
@@ -115,6 +130,7 @@ function PostModal({ storeId, post, onClose, onSaved }) {
       slug: form.slug.trim() || null,
       excerpt: form.excerpt.trim() || null,
       content: form.content,
+      cover_url: form.cover_url,
       seo_title: form.seo_title.trim() || null,
       seo_description: form.seo_description.trim() || null,
       is_published: form.is_published,
@@ -142,6 +158,25 @@ function PostModal({ storeId, post, onClose, onSaved }) {
           <input className="input mt-1 font-mono text-xs" value={form.slug}
             onChange={set('slug')} placeholder="kilif-bakim-rehberi" />
         </label>
+        <div className="text-sm">
+          <span className="text-panel-muted text-xs">Kapak görseli (ops.)</span>
+          <div className="mt-1 flex items-center gap-2">
+            {form.cover_url ? (
+              <>
+                <img src={form.cover_url} alt="Kapak"
+                  className="h-16 max-w-[160px] object-cover rounded-lg border border-panel-border" />
+                <button type="button" onClick={() => setForm(f => ({ ...f, cover_url: null }))}
+                  className="text-xs text-red-400 hover:text-red-600">Kaldır</button>
+              </>
+            ) : (
+              <label className="btn-ghost !py-1.5 text-xs cursor-pointer">
+                ⬆ Görsel Yükle
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => uploadCover(e.target.files?.[0])} />
+              </label>
+            )}
+          </div>
+        </div>
         <label className="block text-sm">
           <span className="text-panel-muted text-xs">Özet (listede görünür, ops.)</span>
           <input className="input mt-1" value={form.excerpt} onChange={set('excerpt')} maxLength={500} />

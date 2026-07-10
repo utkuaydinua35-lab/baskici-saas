@@ -51,6 +51,8 @@ export interface ProductVariant {
   variation: string | null;
   price: string;
   in_stock: boolean;
+  low_stock_left?: number | null;
+  max_qty?: number | null;
 }
 
 export interface ProductDetail {

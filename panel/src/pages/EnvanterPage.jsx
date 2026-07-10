@@ -31,10 +31,9 @@ export default function EnvanterPage() {
       toast.error(typeof e?.detail === 'string' ? e.detail : 'Envanter yüklenemedi')
     }
   }, [storeId, filter])
-  useEffect(() => { load() }, [load])
   useEffect(() => {
     qRef.current = q
-    const t = setTimeout(load, 300)
+    const t = setTimeout(load, q ? 300 : 0)  // aramada debounce, ilk yüklemede anında
     return () => clearTimeout(t)
   }, [q, load])
 

@@ -100,6 +100,12 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
                 "variation": v.variation,
                 "price": _effective_price(p, v),
                 "in_stock": (not v.track_stock) or v.quantity > 0,
+                # Aciliyet: takipli ve 5'ten az stok varsa kalan adet (yoksa null)
+                "low_stock_left": (
+                    v.quantity if v.track_stock and 0 < v.quantity < 5 else None
+                ),
+                # Sepette adet üst sınırı (takipsizse null = servis limiti geçerli)
+                "max_qty": v.quantity if v.track_stock else None,
             }
             for v in p.variants if v.is_active
         ],
@@ -834,6 +840,7 @@ def get_store_theme(
             "shipping_fee": config.get("shipping_fee"),
             "free_shipping_over": config.get("free_shipping_over"),
             "min_order_amount": config.get("min_order_amount"),
+            "gift_wrap_enabled": bool(config.get("gift_wrap_enabled")),
         },
         "contact": {
             "email": config.get("contact_email"),

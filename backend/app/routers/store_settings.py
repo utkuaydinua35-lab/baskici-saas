@@ -39,7 +39,7 @@ _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
 }
-_BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled"}
+_BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled"}
 # E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
 _EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok"}
 ALLOWED_KEYS = _MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS | {"email_texts"}

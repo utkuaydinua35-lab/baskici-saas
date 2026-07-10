@@ -11,6 +11,8 @@ import Pixels from "@/components/Pixels";
 import CustomCode from "@/components/CustomCode";
 import NewsletterForm from "@/components/NewsletterForm";
 import WhatsAppButton from "@/components/WhatsAppButton";
+import CouponFromUrl from "@/components/CouponFromUrl";
+import { Suspense } from "react";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
 const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
@@ -69,6 +71,7 @@ export default async function RootLayout({
         {custom_code?.css && <style dangerouslySetInnerHTML={{ __html: custom_code.css }} />}
         {custom_code?.head_html && <CustomCode html={custom_code.head_html} />}
         <CartProvider>
+          <Suspense><CouponFromUrl /></Suspense>
           <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
           {theme.announcement.enabled && (
             <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url} />

@@ -1,9 +1,13 @@
 "use client";
 
 // Kupon kodu girişi — doğrulama sunucuda; geçerliyse cart context'e yazılır.
-import { useState } from "react";
+// Paylaşım linkiyle (?kupon=KOD) gelen kod localStorage'da bekler, sepette
+// ürün olunca otomatik uygulanır.
+import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+
+export const PENDING_COUPON_KEY = "bernz_pending_coupon";
 
 export default function CouponInput({ email }: { email?: string }) {
   const { items, coupon, setCoupon } = useCart();
@@ -11,8 +15,23 @@ export default function CouponInput({ email }: { email?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Paylaşım linkinden gelen bekleyen kupon — sepet doluysa otomatik dene
+  useEffect(() => {
+    if (coupon || items.length === 0) return;
+    let pending: string | null = null;
+    try { pending = localStorage.getItem(PENDING_COUPON_KEY); } catch { /* yok */ }
+    if (!pending) return;
+    try { localStorage.removeItem(PENDING_COUPON_KEY); } catch { /* yok */ }
+    applyCode(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
+
   const apply = async () => {
-    const trimmed = code.trim();
+    applyCode(code);
+  };
+
+  const applyCode = async (raw: string) => {
+    const trimmed = raw.trim();
     if (!trimmed || busy) return;
     setBusy(true);
     setError("");

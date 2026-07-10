@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatPrice } from "@/lib/format";
 import type { ProductCard as ProductCardType } from "@/lib/api";
+import FavButton from "@/components/FavButton";
 
 export default function ProductCard({ product }: { product: ProductCardType }) {
   const price = Number(product.price);
@@ -17,6 +18,8 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
       href={`/urun/${product.slug}`}
       className="group relative block rounded-2xl border border-zinc-200 overflow-hidden bg-white hover:shadow-md transition-shadow"
     >
+      <FavButton item={{ slug: product.slug, title: product.title, price: product.price,
+        currency: product.currency, image: product.cover_image }} />
       {(discountPct != null || lowStock != null) && (
         <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
           {discountPct != null && (

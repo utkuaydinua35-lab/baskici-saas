@@ -210,10 +210,18 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
                     <div className="font-medium whitespace-nowrap">{formatPrice(o.total_price)}</div>
                   )}
                   {o.lookup_token && (
-                    <Link href={`/siparis/${o.lookup_token}`}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500 whitespace-nowrap">
-                      Takip Et
-                    </Link>
+                    <div className="flex gap-1.5">
+                      <Link href={`/siparis/${o.lookup_token}`}
+                        className="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500 whitespace-nowrap">
+                        Takip Et
+                      </Link>
+                      <Link href={`/sepet?restore=${o.lookup_token}`}
+                        className="text-xs px-2.5 py-1.5 rounded-lg text-white whitespace-nowrap hover:opacity-90"
+                        style={{ background: "var(--c-primary)" }}
+                        title="Aynı ürünleri sepete ekle">
+                        Tekrar Al
+                      </Link>
+                    </div>
                   )}
                 </div>
               ))}

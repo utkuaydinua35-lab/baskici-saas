@@ -8,6 +8,7 @@ import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import TrustBadges from "@/components/TrustBadges";
+import FavButton from "@/components/FavButton";
 import { getThemePayload } from "@/lib/theme";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
@@ -81,7 +82,12 @@ export default async function ProductPage({ params }: Props) {
       <div className="grid md:grid-cols-2 gap-8">
         <ProductGallery images={product.images} title={product.title} />
         <div>
-          <h1 className="text-2xl font-bold">{product.title}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-bold">{product.title}</h1>
+            <FavButton floating={false} item={{ slug: product.slug, title: product.title,
+              price: product.price, currency: product.currency,
+              image: product.images[0]?.url ?? null }} />
+          </div>
           {product.rating_count ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-sm">
               <span className="text-amber-400">

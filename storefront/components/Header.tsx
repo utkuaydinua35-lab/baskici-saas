@@ -110,6 +110,7 @@ export default function Header({
 
         <div className="ml-auto flex items-center gap-4">
           <SearchBox />
+          <FavHeaderLink />
           <Link href="/hesap" aria-label="Hesabım"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -154,6 +155,7 @@ export default function Header({
         <nav className="flex-1 overflow-y-auto py-3">
           <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>
           <Link href="/hesap" className="block px-5 py-2.5 text-sm font-medium">👤 Hesabım</Link>
+          <Link href="/favoriler" className="block px-5 py-2.5 text-sm font-medium">❤️ Favorilerim</Link>
           {collections.length > 0 && (
             <>
               <div className="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
@@ -293,5 +295,39 @@ function SearchBox() {
         </>
       )}
     </>
+  );
+}
+
+// Favoriler linki — localStorage sayacını "fav-changed" olayıyla canlı tutar.
+function FavHeaderLink() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = localStorage.getItem("vitrin_favoriler");
+        const list = raw ? JSON.parse(raw) : [];
+        setCount(Array.isArray(list) ? list.length : 0);
+      } catch { setCount(0); }
+    };
+    read();
+    const onChange = (e: Event) =>
+      setCount((e as CustomEvent<{ count: number }>).detail?.count ?? 0);
+    window.addEventListener("fav-changed", onChange);
+    return () => window.removeEventListener("fav-changed", onChange);
+  }, []);
+
+  return (
+    <Link href="/favoriler" aria-label="Favorilerim"
+      className="relative hidden sm:inline-flex items-center text-zinc-600 hover:text-zinc-900">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+      </svg>
+      {count > 0 && (
+        <span className="absolute -top-2 -right-2.5 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center"
+          style={{ background: "var(--c-accent)" }}>
+          {count}
+        </span>
+      )}
+    </Link>
   );
 }

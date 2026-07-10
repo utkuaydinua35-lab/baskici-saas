@@ -605,11 +605,11 @@ def restore_cart(
     _rl: None = Depends(status_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """Terk edilmiş sepeti geri yükleme — kalem + ürün gösterim bilgisi döner
+    """Sepeti geri yükleme — terk edilen sepet, taslak sipariş VE "tekrar sipariş
+    ver" (ödenmiş sipariş) için ortak uç. Kalem + ürün gösterim bilgisi döner
     (müşteri PII'si ASLA dönmez; fiyat yine ödeme anında sunucuda hesaplanır)."""
     session = db.scalar(select(CheckoutSession).where(
         CheckoutSession.lookup_token == lookup_token,
-        CheckoutSession.order_id.is_(None),
     ))
     if not session:
         raise HTTPException(404, "Sepet bulunamadı")

@@ -15,6 +15,7 @@ const NAV = [
   { to: '/analitik', label: 'Analitik', icon: '📈' },
   { to: '/tema', label: 'Tema', icon: '🎨' },
   { to: '/sayfalar', label: 'Sayfalar', icon: '📄' },
+  { to: '/blog', label: 'Blog', icon: '✍️' },
   { to: '/ayarlar', label: 'Ayarlar', icon: '⚙️' },
 ]
 

@@ -1570,6 +1570,40 @@ class Customer(Base):
     )
 
 
+class BlogPost(Base):
+    """Vitrin blog yazısı (Shopify Online Store > Blog) — SEO içeriği."""
+    __tablename__ = "blog_posts"
+    __table_args__ = (
+        UniqueConstraint("store_id", "slug", name="uq_blog_store_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    slug: Mapped[str] = mapped_column(String(220))
+    title: Mapped[str] = mapped_column(String(300))
+    excerpt: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    cover_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    seo_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class StockAlert(Base):
     """'Gelince haber ver' kaydı — stoksuz varyanta e-posta bırakılır,
     stok girilince bir kez bildirim gider (notified_at kilidi)."""

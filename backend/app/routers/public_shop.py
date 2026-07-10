@@ -674,6 +674,65 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
     }
 
 
+@router.get("/{store_slug}/blog")
+def list_blog_posts(
+    store_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Yayında olan blog yazıları (liste — içerik hariç)."""
+    from app.models import BlogPost
+
+    store = _resolve_store(db, store_slug)
+    rows = db.scalars(
+        select(BlogPost).where(
+            BlogPost.store_id == store.id, BlogPost.is_published.is_(True))
+        .order_by(BlogPost.published_at.desc().nulls_last())
+    ).all()
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return {"posts": [
+        {
+            "slug": p_.slug,
+            "title": p_.title,
+            "excerpt": p_.excerpt,
+            "cover_url": p_.cover_url,
+            "published_at": p_.published_at.isoformat() if p_.published_at else None,
+        } for p_ in rows
+    ]}
+
+
+@router.get("/{store_slug}/blog/{post_slug}")
+def get_blog_post(
+    store_slug: str,
+    post_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    from app.models import BlogPost
+
+    store = _resolve_store(db, store_slug)
+    post = db.scalar(select(BlogPost).where(
+        BlogPost.store_id == store.id,
+        BlogPost.slug == post_slug,
+        BlogPost.is_published.is_(True),
+    ))
+    if not post:
+        raise HTTPException(404, "Yazı bulunamadı")
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return {
+        "slug": post.slug,
+        "title": post.title,
+        "excerpt": post.excerpt,
+        "content": post.content,
+        "cover_url": post.cover_url,
+        "seo_title": post.seo_title,
+        "seo_description": post.seo_description,
+        "published_at": post.published_at.isoformat() if post.published_at else None,
+    }
+
+
 @router.get("/{store_slug}/feed/google.xml")
 def google_shopping_feed(
     store_slug: str,
@@ -742,6 +801,14 @@ def google_shopping_feed(
     )
 
 
+def _has_blog(db: Session, store: Store) -> bool:
+    from app.models import BlogPost
+    return bool(db.scalar(
+        select(func.count()).select_from(BlogPost).where(
+            BlogPost.store_id == store.id, BlogPost.is_published.is_(True))
+    ))
+
+
 @router.get("/{store_slug}/theme")
 def get_store_theme(
     store_slug: str,
@@ -779,6 +846,7 @@ def get_store_theme(
         ],
         "custom_code": config.get("custom_code") or None,
         "active_promotion": _active_promotion(db, store),
+        "has_blog": _has_blog(db, store),
         "legal": {
             "kvkk": config.get("kvkk_text") or None,
             "mesafeli_satis": config.get("mesafeli_satis_text") or None,

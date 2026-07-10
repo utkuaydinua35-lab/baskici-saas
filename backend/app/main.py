@@ -41,6 +41,7 @@ from app.routers.shortcuts import router as shortcuts_router
 from app.routers.stores import router as stores_router
 from app.routers.catalog import router as catalog_router
 from app.routers.discounts import router as discounts_router
+from app.routers.blog import router as blog_router
 from app.routers.customers import router as customers_router
 from app.routers.analytics import router as analytics_router
 from app.routers.checkout_admin import router as checkout_admin_router
@@ -120,6 +121,7 @@ app.include_router(push_router)
 app.include_router(instagram_router)
 app.include_router(catalog_router)
 app.include_router(discounts_router)
+app.include_router(blog_router)
 app.include_router(customers_router)
 app.include_router(analytics_router)
 app.include_router(checkout_admin_router)

@@ -98,6 +98,7 @@ export default async function RootLayout({
                 <a href="/gizlilik" className="hover:text-zinc-800">Gizlilik ve KVKK</a>
                 <a href="/mesafeli-satis" className="hover:text-zinc-800">Mesafeli Satış Sözleşmesi</a>
                 <a href="/iade" className="hover:text-zinc-800">İade ve Değişim</a>
+                {payload.has_blog && <a href="/blog" className="hover:text-zinc-800">Blog</a>}
                 {pages.map((pg) => (
                   <a key={pg.slug} href={`/sayfa/${pg.slug}`} className="hover:text-zinc-800">
                     {pg.title}

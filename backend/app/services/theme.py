@@ -69,6 +69,7 @@ DEFAULT_THEME: dict = {
     },
     "font": "inter",            # inter | poppins | playfair | dm-sans
     "logo_url": None,
+    "logo_width": 120,   # px — panelden ayarlanır (60-320)
     "favicon_url": None,
     "announcement": {"enabled": False, "text": "", "url": ""},
     "sections": [
@@ -87,6 +88,11 @@ DEFAULT_THEME: dict = {
     "whatsapp": {"enabled": False, "number": "", "message": "Merhaba, sipariş hakkında bilgi almak istiyorum."},
     # Ürün sayfası + checkout güven şeridi
     "trust_badges": {"enabled": True},
+    # Sepet kampanya mesajları — {kalan} {x} {y} yer tutucuları desteklenir
+    "cart_messages": {
+        "bxgy_progress": "🎁 {x} AL {y} ÖDE'den yararlanmak için sepetine {kalan} ürün daha ekle!",
+        "bxgy_reached": "🎉 {x} AL {y} ÖDE kazandın — en ucuz ürünler bedava!",
+    },
 }
 
 FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
@@ -343,7 +349,8 @@ def resolve_theme(store_config: dict | None) -> dict:
 def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
-    for key in ("colors", "announcement", "animations", "footer", "whatsapp", "trust_badges"):
+    for key in ("colors", "announcement", "animations", "footer", "whatsapp",
+                "trust_badges", "cart_messages"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]
         if isinstance(value, dict):
@@ -351,6 +358,11 @@ def validate_theme_patch(patch: dict) -> dict:
     for key in ("font", "logo_url", "favicon_url"):
         if key in patch:
             cleaned[key] = patch[key]
+    if "logo_width" in patch:
+        try:
+            cleaned["logo_width"] = min(320, max(60, int(patch["logo_width"] or 120)))
+        except (TypeError, ValueError):
+            cleaned["logo_width"] = 120
     if "nav_links" in patch:
         cleaned["nav_links"] = [
             {"label": str((l or {}).get("label") or "")[:40],

@@ -41,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description:
       "Özel tasarım baskılı telefon kılıfları. Yüzlerce model için kişiye özel üretim, hızlı kargo.",
-    icons: theme.favicon_url ? { icon: theme.favicon_url } : undefined,
+    // favicon <head> içinde manuel link — metadataBase host farkına takılmasın
   };
 }
 
@@ -86,6 +86,14 @@ export default async function RootLayout({
         } as React.CSSProperties
       }
     >
+      <head>
+        {theme.favicon_url && (
+          <>
+            <link rel="icon" href={theme.favicon_url} />
+            <link rel="apple-touch-icon" href={theme.favicon_url} />
+          </>
+        )}
+      </head>
       <body className="min-h-full flex flex-col text-zinc-900" style={{ background: "var(--c-bg)" }}>
         {custom_code?.css && <style dangerouslySetInnerHTML={{ __html: custom_code.css }} />}
         {custom_code?.head_html && <CustomCode html={custom_code.head_html} />}
@@ -98,6 +106,7 @@ export default async function RootLayout({
           <Header
             siteName={store_name}
             logoUrl={theme.logo_url}
+            logoWidth={theme.logo_width ?? 120}
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
             navLinks={theme.nav_links ?? []}

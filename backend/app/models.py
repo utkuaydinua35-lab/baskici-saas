@@ -1505,8 +1505,11 @@ class DiscountCode(Base):
     )
 
     code: Mapped[str] = mapped_column(String(40))  # UPPERCASE saklanır
-    kind: Mapped[str] = mapped_column(String(20))  # percent | amount | free_shipping
+    kind: Mapped[str] = mapped_column(String(20))  # percent | amount | free_shipping | bxgy
     value: Mapped[float] = mapped_column(Numeric(12, 2), default=0)
+    # bxgy (X Al Y Öde): buy_x adet alana pay_y adet ücreti — en ucuzlar bedava
+    buy_x: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pay_y: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     min_subtotal: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     min_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)  # "N adet üzeri"

@@ -25,7 +25,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import require_permission
@@ -384,6 +384,10 @@ def bulk_create_variants(
     if body.brands:
         wanted = {b.lower() for b in body.brands}
         by_key = {k: v for k, v in by_key.items() if (v.brand or "").lower() in wanted}
+    if not by_key:
+        raise HTTPException(422, "Telefon modeli listesi boş — bu buton Baskıcı'daki "
+                                 "Telefon Modelleri tablosundan üretir. Alternatif: "
+                                 "Ürünler sayfasındaki 🧩 Varyant Setleri'ni kullanın.")
 
     existing = {
         (v.model_key, v.variation)

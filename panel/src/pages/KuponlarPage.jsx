@@ -101,7 +101,9 @@ export default function KuponlarPage() {
 
 const fmt = (v) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(Number(v))
 const kindLabel = (c) => c.kind === 'percent' ? `%${Number(c.value)}`
-  : c.kind === 'amount' ? fmt(c.value) : 'Ücretsiz kargo'
+  : c.kind === 'amount' ? fmt(c.value)
+  : c.kind === 'bxgy' ? `${c.buy_x} Al ${c.pay_y} Öde`
+  : 'Ücretsiz kargo'
 function dateRange(c) {
   const f = (s) => s ? new Date(s).toLocaleDateString('tr-TR') : null
   const a = f(c.starts_at), b = f(c.ends_at)
@@ -127,6 +129,8 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     once_per_customer: coupon?.once_per_customer || false,
     is_automatic: coupon?.is_automatic || false,
     collection_id: coupon?.collection_id || '',
+    buy_x: coupon?.buy_x || '',
+    pay_y: coupon?.pay_y || '',
   }))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -140,7 +144,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     e.preventDefault()
     setBusy(true); setErr('')
     const payload = {
-      value: form.kind === 'free_shipping' ? 0 : Number(form.value),
+      value: (form.kind === 'free_shipping' || form.kind === 'bxgy') ? 0 : Number(form.value),
       min_subtotal: form.min_subtotal ? Number(form.min_subtotal) : null,
       min_quantity: form.min_quantity ? Number(form.min_quantity) : null,
       starts_at: form.starts_at ? `${form.starts_at}T00:00:00+03:00` : null,
@@ -149,6 +153,8 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
       once_per_customer: form.once_per_customer,
       is_automatic: form.is_automatic,
       collection_id: form.collection_id || null,
+      buy_x: form.kind === 'bxgy' ? Number(form.buy_x) : null,
+      pay_y: form.kind === 'bxgy' ? Number(form.pay_y) : null,
     }
     try {
       if (isNew) {
@@ -182,9 +188,25 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
               <option value="percent">Yüzde (%)</option>
               <option value="amount">Tutar (₺)</option>
               <option value="free_shipping">Ücretsiz kargo</option>
+              <option value="bxgy">X Al Y Öde (örn 3 al 2 öde)</option>
             </select>
           </label>
-          {form.kind !== 'free_shipping' && (
+          {form.kind === 'bxgy' && (
+            <div className="flex items-end gap-2">
+              <label className="block text-sm">
+                <span className="text-panel-muted text-xs">Al (X)</span>
+                <input className="input mt-1 !w-16" type="number" min="2" max="100" required
+                  value={form.buy_x} onChange={set('buy_x')} placeholder="3" />
+              </label>
+              <label className="block text-sm">
+                <span className="text-panel-muted text-xs">Öde (Y)</span>
+                <input className="input mt-1 !w-16" type="number" min="1" max="99" required
+                  value={form.pay_y} onChange={set('pay_y')} placeholder="2" />
+              </label>
+              <span className="text-[11px] text-panel-muted pb-2.5">en ucuz {form.buy_x && form.pay_y ? form.buy_x - form.pay_y : 'X−Y'} ürün bedava</span>
+            </div>
+          )}
+          {form.kind !== 'free_shipping' && form.kind !== 'bxgy' && (
             <label className="block text-sm">
               <span className="text-panel-muted text-xs">
                 {form.kind === 'percent' ? 'Yüzde (1-99)' : 'Tutar (₺)'}

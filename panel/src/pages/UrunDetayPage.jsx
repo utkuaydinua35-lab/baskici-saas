@@ -196,10 +196,9 @@ export default function UrunDetayPage() {
         </p>
       </section>
 
-      {collections.length > 0 && (
-        <section className="card space-y-2">
+      <section className="card space-y-2">
           <h2 className="text-sm font-semibold">Koleksiyonlar</h2>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {collections.map(c => {
               const active = (p.collection_ids || []).includes(c.id)
               return (
@@ -220,9 +219,10 @@ export default function UrunDetayPage() {
                 </button>
               )
             })}
+            <InlineCollectionCreate storeId={storeId} productId={p.id}
+              currentIds={p.collection_ids || []} onDone={load} setMsg={setMsg} />
           </div>
         </section>
-      )}
 
       <section className="card space-y-3">
         <h2 className="text-sm font-semibold">🎨 Kişiye Özel Alanlar ve Set Ürünü</h2>
@@ -282,7 +282,10 @@ export default function UrunDetayPage() {
                 const vars = variations.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
                 await api.post(`/api/catalog/products/${p.id}/variants/bulk`, { variations: vars })
                 await load()
-              } catch { setMsg({ ok: false, text: 'Varyantlar oluşturulamadı' }) }
+              } catch (e2) {
+                setMsg({ ok: false, text: typeof e2?.detail === 'string'
+                  ? e2.detail : 'Varyantlar oluşturulamadı' })
+              }
               finally { setBusy(false) }
             }}>
             Telefon modellerinden üret
@@ -569,5 +572,50 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
         )}
       </div>
     </div>
+  )
+}
+
+// Üründen ayrılmadan yeni koleksiyon oluştur + ürünü içine at.
+function InlineCollectionCreate({ storeId, productId, currentIds, onDone, setMsg }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const create = async () => {
+    if (!title.trim()) return
+    setBusy(true)
+    try {
+      const c = await api.post('/api/catalog/collections',
+        { store_id: storeId, title: title.trim() })
+      await api.put(`/api/catalog/products/${productId}/collections`,
+        { collection_ids: [...currentIds, c.id] })
+      setMsg({ ok: true, text: `"${c.title}" koleksiyonu oluşturuldu ve ürün eklendi ✓` })
+      setTitle(''); setOpen(false)
+      onDone()
+    } catch (e) {
+      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Oluşturulamadı' })
+    } finally { setBusy(false) }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="px-3 py-1 rounded-full text-xs border border-dashed border-panel-border
+          text-panel-muted hover:text-panel-ink hover:border-panel-accent transition">
+        + Yeni Koleksiyon
+      </button>
+    )
+  }
+  return (
+    <span className="inline-flex gap-1.5 items-center">
+      <input autoFocus className="input !py-1 !w-40 text-xs" value={title} maxLength={200}
+        onChange={e => setTitle(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); create() }
+          if (e.key === 'Escape') setOpen(false) }}
+        placeholder="Koleksiyon adı" />
+      <button onClick={create} disabled={busy || !title.trim()}
+        className="text-xs text-emerald-700 font-medium disabled:opacity-40">Oluştur</button>
+      <button onClick={() => setOpen(false)} className="text-xs text-panel-muted">Vazgeç</button>
+    </span>
   )
 }

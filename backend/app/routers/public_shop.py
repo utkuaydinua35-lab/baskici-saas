@@ -677,7 +677,8 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
             continue
         if dc.usage_limit is not None and dc.usage_count >= dc.usage_limit:
             continue
-        rank = Decimal(str(dc.value or 0))
+        rank = (Decimal(str((dc.buy_x or 0) - (dc.pay_y or 0))) * 100
+                if dc.kind == "bxgy" else Decimal(str(dc.value or 0)))
         if rank > best_rank:
             best, best_rank = dc, rank
     if not best:
@@ -687,6 +688,8 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
         label = f"%{Decimal(str(best.value)):.0f} indirim"
     elif best.kind == "amount":
         label = f"{Decimal(str(best.value)):.0f} TL indirim"
+    elif best.kind == "bxgy":
+        label = f"{best.buy_x} Al {best.pay_y} Öde"
     else:
         label = "Ücretsiz kargo"
     if best.min_subtotal:
@@ -697,6 +700,8 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
         "label": f"{label} — sepette otomatik uygulanır",
         "kind": best.kind,
         "min_subtotal": str(best.min_subtotal) if best.min_subtotal is not None else None,
+        "buy_x": best.buy_x,
+        "pay_y": best.pay_y,
     }
 
 

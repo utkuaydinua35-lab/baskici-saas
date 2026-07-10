@@ -50,6 +50,7 @@ export interface Theme {
   colors: { primary: string; accent: string; bg: string };
   font: "inter" | "poppins" | "playfair" | "dm-sans";
   logo_url: string | null;
+  logo_width?: number;
   favicon_url: string | null;
   announcement: { enabled: boolean; text: string; url: string };
   sections: ThemeSection[];
@@ -58,6 +59,7 @@ export interface Theme {
   nav_links?: { label: string; url: string }[];
   whatsapp?: { enabled: boolean; number: string; message: string };
   trust_badges?: { enabled: boolean };
+  cart_messages?: { bxgy_progress: string; bxgy_reached: string };
 }
 
 export interface ThemePayload {

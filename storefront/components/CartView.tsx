@@ -58,21 +58,35 @@ export interface Promotion {
   label: string;
   kind: string;
   min_subtotal: string | null;
+  buy_x?: number | null;
+  pay_y?: number | null;
+}
+
+export interface CartMessages {
+  bxgy_progress: string;
+  bxgy_reached: string;
+}
+
+function fillTemplate(tpl: string, vars: Record<string, string | number>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
 }
 
 export default function CartView({
   settings,
   promotion,
+  cartMessages,
   suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  cartMessages?: CartMessages | null;
   suggestions?: ProductCardType[];
 }) {
   return (
     <Suspense>
       <RestoreHandler />
-      <CartInner settings={settings} promotion={promotion} suggestions={suggestions} />
+      <CartInner settings={settings} promotion={promotion}
+        cartMessages={cartMessages} suggestions={suggestions} />
     </Suspense>
   );
 }
@@ -80,10 +94,12 @@ export default function CartView({
 function CartInner({
   settings,
   promotion,
+  cartMessages,
   suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  cartMessages?: CartMessages | null;
   suggestions?: ProductCardType[];
 }) {
   const { items, subtotal, coupon, setQuantity, removeItem } = useCart();
@@ -173,11 +189,30 @@ function CartInner({
       </ul>
 
       <div className="mt-6 bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
-        {promotion && !coupon && (
+        {promotion && !coupon && promotion.kind !== "bxgy" && (
           <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
             ⚡ {promotion.label}
           </p>
         )}
+        {promotion?.kind === "bxgy" && !coupon && promotion.buy_x && promotion.pay_y && (() => {
+          const units = items.reduce((s, i) => s + i.quantity, 0);
+          const x = promotion.buy_x!; const y = promotion.pay_y!;
+          const kalan = x - (units % x || x) === 0 ? 0 : x - (units % x);
+          const reached = units >= x;
+          const tpl = reached && units % x === 0
+            ? (cartMessages?.bxgy_reached || "🎉 {x} AL {y} ÖDE kazandın!")
+            : reached
+            ? (cartMessages?.bxgy_progress || "🎁 {kalan} ürün daha ekle!")
+            : (cartMessages?.bxgy_progress || "🎁 {x} AL {y} ÖDE için {kalan} ürün daha ekle!");
+          return (
+            <p className={`text-xs rounded-lg px-3 py-2 border font-medium ${
+              reached && units % x === 0
+                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                : "text-amber-800 bg-amber-50 border-amber-200"}`}>
+              {fillTemplate(tpl, { x, y, kalan })}
+            </p>
+          );
+        })()}
         <CouponInput />
         <div className="flex justify-between text-sm">
           <span className="text-zinc-500">Ara toplam</span>

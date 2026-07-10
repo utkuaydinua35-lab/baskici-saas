@@ -485,20 +485,37 @@ export function VariantSetsModal({ storeId, onClose }) {
 function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
   const isNew = !vset
   const [name, setName] = useState(vset?.name || '')
-  const [items, setItems] = useState(vset?.items?.length ? vset.items
-    : [{ model_key: '', model_display: '', variation: '', price_override: '' }])
+  const [items, setItems] = useState(vset?.items?.length ? vset.items : [])
   const [bulkText, setBulkText] = useState('')
+  const [bulkBrand, setBulkBrand] = useState('')
+  const [newBrand, setNewBrand] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  // Ana varyant (marka) → alt varyantlar (modeller) gruplaması
+  const brands = [...new Set(items.map(r => r.brand || 'Diğer'))]
+
   const patchRow = (i, p) => setItems(rows => rows.map((r, j) => j === i ? { ...r, ...p } : r))
+
+  const addBrand = () => {
+    const b = newBrand.trim()
+    if (!b) return
+    setItems(rows => [...rows, { brand: b, model_key: '', model_display: '', variation: '', price_override: '' }])
+    setNewBrand('')
+  }
+
+  const addModelTo = (brand) => {
+    setItems(rows => [...rows,
+      { brand: brand === 'Diğer' ? '' : brand, model_key: '', model_display: '', variation: '', price_override: '' }])
+  }
 
   const addBulk = () => {
     const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean)
     if (!lines.length) return
     setItems(rows => [
       ...rows.filter(r => r.model_display),
-      ...lines.map(l => ({ model_key: trSlug(l), model_display: l, variation: '', price_override: '' })),
+      ...lines.map(l => ({ brand: bulkBrand.trim() || '', model_key: trSlug(l),
+        model_display: l, variation: '', price_override: '' })),
     ])
     setBulkText('')
   }
@@ -510,6 +527,7 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
       .map(r => ({
         model_key: (r.model_key || trSlug(r.model_display)).trim(),
         model_display: r.model_display.trim(),
+        brand: (r.brand || '').trim() || null,
         variation: (r.variation || '').trim() || null,
         price_override: r.price_override ? Number(r.price_override) : null,
       }))
@@ -537,35 +555,65 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
             required minLength={2} maxLength={120} placeholder="Standart Silikon" />
         </label>
 
-        <div className="max-h-72 overflow-y-auto space-y-1.5 border border-panel-border rounded-xl p-2">
-          {items.map((r, i) => (
-            <div key={i} className="flex gap-1.5">
-              <input className="input !py-1.5 text-xs flex-1" value={r.model_display || ''}
-                onChange={e => patchRow(i, { model_display: e.target.value, model_key: trSlug(e.target.value) })}
-                placeholder="Model adı (iPhone 15 Pro)" />
-              <input className="input !py-1.5 text-xs !w-24" value={r.variation || ''}
-                onChange={e => patchRow(i, { variation: e.target.value })} placeholder="Renk (ops.)" />
-              <input className="input !py-1.5 text-xs !w-20" type="number" step="0.01" min="0"
-                value={r.price_override ?? ''}
-                onChange={e => patchRow(i, { price_override: e.target.value })} placeholder="₺ (ops.)" />
-              <button type="button" onClick={() => setItems(rows => rows.filter((_, j) => j !== i))}
-                className="text-red-400 hover:text-red-600 px-1">×</button>
-            </div>
-          ))}
-          <button type="button"
-            onClick={() => setItems(rows => [...rows, { model_key: '', model_display: '', variation: '', price_override: '' }])}
-            className="btn-ghost !py-1 text-xs">+ Satır</button>
+        <div className="max-h-80 overflow-y-auto space-y-2.5 border border-panel-border rounded-xl p-2">
+          {brands.map(brand => {
+            const groupRows = items.map((r, i) => [r, i]).filter(([r]) => (r.brand || 'Diğer') === brand)
+            return (
+              <div key={brand} className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-panel-muted uppercase tracking-wide">
+                  📱 {brand}
+                  <span className="font-normal normal-case">({groupRows.length} model)</span>
+                  <button type="button" onClick={() => addModelTo(brand)}
+                    className="ml-auto text-emerald-700 normal-case font-normal hover:underline">+ model</button>
+                  <button type="button"
+                    onClick={() => setItems(rows => rows.filter(r => (r.brand || 'Diğer') !== brand))}
+                    className="text-red-400 hover:text-red-600 normal-case font-normal">markayı sil</button>
+                </div>
+                {groupRows.map(([r, i]) => (
+                  <div key={i} className="flex gap-1.5 pl-3">
+                    <input className="input !py-1.5 text-xs flex-1" value={r.model_display || ''}
+                      onChange={e => patchRow(i, { model_display: e.target.value, model_key: trSlug(e.target.value) })}
+                      placeholder="Model adı (iPhone 15 Pro)" />
+                    <input className="input !py-1.5 text-xs !w-24" value={r.variation || ''}
+                      onChange={e => patchRow(i, { variation: e.target.value })} placeholder="Renk (ops.)" />
+                    <input className="input !py-1.5 text-xs !w-20" type="number" step="0.01" min="0"
+                      value={r.price_override ?? ''}
+                      onChange={e => patchRow(i, { price_override: e.target.value })} placeholder="₺ (ops.)" />
+                    <button type="button" onClick={() => setItems(rows => rows.filter((_, j) => j !== i))}
+                      className="text-red-400 hover:text-red-600 px-1">×</button>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+          {items.length === 0 && (
+            <p className="text-xs text-panel-muted text-center py-2">
+              Önce ana varyant (marka) ekleyin — altına modelleri dizin.
+            </p>
+          )}
+          <div className="flex gap-1.5 pt-1 border-t border-panel-border">
+            <input className="input !py-1.5 text-xs !w-44" value={newBrand}
+              onChange={e => setNewBrand(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBrand() } }}
+              placeholder="Ana varyant: Apple, Samsung…" />
+            <button type="button" onClick={addBrand} className="btn-ghost !py-1 text-xs">+ Ana Varyant</button>
+          </div>
         </div>
 
         <details className="text-sm">
           <summary className="text-xs text-panel-muted cursor-pointer">
             Toplu ekle (her satıra bir model adı yapıştırın)
           </summary>
-          <div className="mt-2 flex gap-2">
-            <textarea className="input text-xs" rows={4} value={bulkText}
-              onChange={e => setBulkText(e.target.value)}
-              placeholder={'iPhone 15\niPhone 15 Pro\nSamsung Galaxy S24'} />
-            <button type="button" onClick={addBulk} className="btn-ghost !py-1.5 text-xs self-start">Ekle</button>
+          <div className="mt-2 space-y-1.5">
+            <input className="input !py-1.5 text-xs !w-44" value={bulkBrand}
+              onChange={e => setBulkBrand(e.target.value)}
+              placeholder="Bu modellerin markası (ops.)" />
+            <div className="flex gap-2">
+              <textarea className="input text-xs" rows={4} value={bulkText}
+                onChange={e => setBulkText(e.target.value)}
+                placeholder={'iPhone 15\niPhone 15 Pro\niPhone 16'} />
+              <button type="button" onClick={addBulk} className="btn-ghost !py-1.5 text-xs self-start">Ekle</button>
+            </div>
           </div>
         </details>
 

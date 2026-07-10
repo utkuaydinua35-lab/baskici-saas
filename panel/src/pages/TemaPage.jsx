@@ -245,6 +245,17 @@ export default function TemaPage() {
           <AssetField label="Logo" current={theme.logo_url}
             onUpload={f => uploadAsset('logo', f, url => set('logo_url', url))}
             onClear={() => set('logo_url', null)} />
+          {theme.logo_url && (
+            <label className="block text-sm">
+              <span className="text-panel-muted text-xs">
+                Logo genişliği: <b>{theme.logo_width || 120}px</b>
+              </span>
+              <input type="range" min="60" max="320" step="10"
+                value={theme.logo_width || 120}
+                onChange={e => set('logo_width', Number(e.target.value))}
+                className="w-full mt-1 accent-emerald-600" />
+            </label>
+          )}
           <AssetField label="Favicon" current={theme.favicon_url}
             onUpload={f => uploadAsset('favicon', f, url => set('favicon_url', url))}
             onClear={() => set('favicon_url', null)} />
@@ -302,6 +313,25 @@ export default function TemaPage() {
                 placeholder="Hazır mesaj (müşteri tıklayınca dolu gelir)" />
             </>
           )}
+        </Section>
+
+        <Section title="Sepet Kampanya Mesajları" icon="🛒">
+          <p className="text-[11px] text-panel-muted -mt-1">
+            X Al Y Öde kampanyası aktifken sepette görünen yazılar.
+            Yer tutucular: <code>{'{x}'}</code> <code>{'{y}'}</code> <code>{'{kalan}'}</code>
+          </p>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Hedefe yaklaşırken</span>
+            <input className="input mt-1" maxLength={200}
+              value={theme.cart_messages?.bxgy_progress || ''}
+              onChange={e => set('cart_messages.bxgy_progress', e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Hedefe ulaşınca</span>
+            <input className="input mt-1" maxLength={200}
+              value={theme.cart_messages?.bxgy_reached || ''}
+              onChange={e => set('cart_messages.bxgy_reached', e.target.value)} />
+          </label>
         </Section>
 
         <Section title="Güven Şeridi" icon="🛡️">

@@ -16,19 +16,30 @@ interface NavCollection {
 export default function Header({
   siteName,
   logoUrl,
+  logoWidth = 120,
   cartDrawer,
   collections = [],
   navLinks = [],
 }: {
   siteName: string;
   logoUrl?: string | null;
+  logoWidth?: number;
   cartDrawer?: boolean;
   collections?: NavCollection[];
   navLinks?: { label: string; url: string }[];
 }) {
   const { count, setDrawerOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [bump, setBump] = useState(false);
   const pathname = usePathname();
+
+  // Sepete ürün eklenince rozet zıplasın
+  useEffect(() => {
+    if (count === 0) return;
+    setBump(true);
+    const t = setTimeout(() => setBump(false), 400);
+    return () => clearTimeout(t);
+  }, [count]);
 
   // Route değişince mobil menüyü kapat
   useEffect(() => setMobileOpen(false), [pathname]);
@@ -46,7 +57,8 @@ export default function Header({
       Sepet
       {count > 0 && (
         <span
-          className="absolute -top-2 -right-3 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center"
+          className={`absolute -top-2 -right-3 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center transition-transform duration-300 ${
+            bump ? "scale-150" : "scale-100"}`}
           style={{ background: "var(--c-primary)" }}
         >
           {count}
@@ -69,7 +81,9 @@ export default function Header({
         <Link href="/" className="font-bold text-lg tracking-tight flex items-center gap-2">
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={siteName} className="h-8 w-auto max-w-[140px] object-contain" />
+            <img src={logoUrl} alt={siteName}
+              className="w-auto object-contain max-h-12"
+              style={{ width: logoWidth, maxWidth: logoWidth }} />
           ) : (
             siteName
           )}

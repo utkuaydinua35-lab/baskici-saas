@@ -14,6 +14,7 @@ export default async function CartPage() {
     <CartView
       settings={settings}
       promotion={payload.active_promotion ?? null}
+      cartMessages={payload.theme.cart_messages ?? null}
       suggestions={(data?.items ?? []).slice(0, 8)}
     />
   );

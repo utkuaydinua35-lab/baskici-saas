@@ -240,6 +240,34 @@ def evaluate_discount(
         discount = (base_total * Decimal(str(dc.value)) / 100).quantize(Decimal("0.01"))
     elif dc.kind == "amount":
         discount = min(Decimal(str(dc.value)), base_total)
+    elif dc.kind == "bxgy":
+        # X Al Y Öde: her X adetlik grupta en ucuz (X-Y) adet bedava.
+        # Koleksiyon kısıtı varsa yalnız o kalemler; birim fiyat listesi açılır.
+        if snapshot is None:
+            raise CheckoutError("Bu kampanya sepet içeriğiyle doğrulanmalı")
+        x = int(dc.buy_x or 0)
+        y = int(dc.pay_y or 0)
+        if x <= 0 or y <= 0 or y >= x:
+            raise CheckoutError("Kampanya tanımı hatalı")
+        eligible_items = snapshot
+        if dc.collection_id is not None:
+            from app.models import catalog_product_collections
+            rows = db.execute(
+                select(catalog_product_collections.c.product_id).where(
+                    catalog_product_collections.c.collection_id == dc.collection_id,
+                )
+            ).all()
+            in_col = {str(r[0]) for r in rows}
+            eligible_items = [i for i in snapshot if str(i.get("product_id")) in in_col]
+        units: list[Decimal] = []
+        for i in eligible_items:
+            units.extend([Decimal(str(i.get("unit_price", "0")))] * int(i.get("quantity", 1)))
+        groups = len(units) // x
+        if groups <= 0:
+            raise CheckoutError(f"Bu kampanya için sepette en az {x} ürün olmalı")
+        free_count = groups * (x - y)
+        units.sort()  # en ucuzlar bedava
+        discount = sum(units[:free_count], Decimal("0")).quantize(Decimal("0.01"))
     else:
         discount = Decimal("0")
 

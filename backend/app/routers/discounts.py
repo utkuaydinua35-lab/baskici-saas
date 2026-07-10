@@ -24,7 +24,7 @@ router = APIRouter(
     dependencies=[Depends(require_permission("vitrin"))],
 )
 
-KINDS = {"percent", "amount", "free_shipping"}
+KINDS = {"percent", "amount", "free_shipping", "bxgy"}
 
 
 class DiscountCreate(BaseModel):
@@ -34,6 +34,8 @@ class DiscountCreate(BaseModel):
     value: Decimal = Field(0, ge=0)
     min_subtotal: Decimal | None = Field(None, ge=0)
     min_quantity: int | None = Field(None, ge=2, le=100)
+    buy_x: int | None = Field(None, ge=2, le=100)   # bxgy: X al
+    pay_y: int | None = Field(None, ge=1, le=99)    # bxgy: Y öde
     collection_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -62,6 +64,8 @@ class DiscountUpdate(BaseModel):
     value: Decimal | None = Field(None, ge=0)
     min_subtotal: Decimal | None = Field(None, ge=0)
     min_quantity: int | None = Field(None, ge=2, le=100)
+    buy_x: int | None = Field(None, ge=2, le=100)   # bxgy: X al
+    pay_y: int | None = Field(None, ge=1, le=99)    # bxgy: Y öde
     collection_id: uuid.UUID | None = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -80,6 +84,8 @@ def _serialize(dc: DiscountCode) -> dict:
         "value": str(dc.value),
         "min_subtotal": str(dc.min_subtotal) if dc.min_subtotal is not None else None,
         "min_quantity": dc.min_quantity,
+        "buy_x": dc.buy_x,
+        "pay_y": dc.pay_y,
         "collection_id": str(dc.collection_id) if dc.collection_id else None,
         "starts_at": dc.starts_at.isoformat() if dc.starts_at else None,
         "ends_at": dc.ends_at.isoformat() if dc.ends_at else None,
@@ -97,6 +103,15 @@ def _validate_kind_value(kind: str, value: Decimal) -> None:
         raise HTTPException(422, "Yüzde indirimi 1-99 arasında olmalı (%100 desteklenmez)")
     if kind == "amount" and value <= 0:
         raise HTTPException(422, "Tutar indirimi 0'dan büyük olmalı")
+
+
+def _validate_bxgy(kind: str, buy_x, pay_y) -> None:
+    if kind != "bxgy":
+        return
+    if not buy_x or not pay_y:
+        raise HTTPException(422, "X Al Y Öde için iki adet de gerekli (örn 3 al 2 öde)")
+    if pay_y >= buy_x:
+        raise HTTPException(422, "Ödenecek adet, alınan adetten küçük olmalı (örn 3 al 2 öde)")
 
 
 @router.get("", response_model=list[dict])
@@ -126,6 +141,7 @@ def create_discount(
         raise HTTPException(404, "Vitrin mağazası bulunamadı")
 
     _validate_kind_value(body.kind, body.value)
+    _validate_bxgy(body.kind, body.buy_x, body.pay_y)
     if body.starts_at and body.ends_at and body.ends_at <= body.starts_at:
         raise HTTPException(422, "Bitiş tarihi başlangıçtan sonra olmalı")
 

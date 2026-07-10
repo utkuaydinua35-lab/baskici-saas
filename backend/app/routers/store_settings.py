@@ -40,7 +40,29 @@ _SECRET_CFG_KEYS = {
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
 }
 _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled"}
-ALLOWED_KEYS = _MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
+# E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
+_EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok"}
+ALLOWED_KEYS = _MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS | {"email_texts"}
+
+
+def _sanitize_email_texts(value) -> dict:
+    """email_texts sözlüğünü temizle: yalnız bilinen tipler + subject/intro."""
+    if not isinstance(value, dict):
+        raise HTTPException(422, "email_texts sözlük olmalı")
+    out = {}
+    for t, v in value.items():
+        if t not in _EMAIL_TEXT_TYPES or not isinstance(v, dict):
+            continue
+        entry = {}
+        subject = str(v.get("subject") or "").strip()[:200]
+        intro = str(v.get("intro") or "").strip()[:1000]
+        if subject:
+            entry["subject"] = subject
+        if intro:
+            entry["intro"] = intro
+        if entry:
+            out[t] = entry
+    return out
 
 
 class SettingsPatch(BaseModel):
@@ -100,6 +122,10 @@ def patch_settings(
                 raise HTTPException(422, f"Geçersiz tutar: {key}")
         if key in _BOOL_KEYS:
             value = bool(value)
+        if key == "email_texts" and value not in (None, ""):
+            value = _sanitize_email_texts(value)
+            if not value:
+                value = None  # tümü boşsa anahtarı sil
         if value in (None, ""):
             config.pop(key, None)
         else:

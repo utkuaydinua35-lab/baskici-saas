@@ -169,9 +169,11 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
     site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
     track_url = f"{site}/siparis/{session.lookup_token}"
 
+    subj_over, intro_over = email_service.store_email_text(store, "siparis_onay")
     body = (
         f"<p>Merhaba {cust.get('first_name', '')},</p>"
-        f"<p>Siparişiniz alındı ve üretim sırasına eklendi. "
+        + (intro_over or "")
+        + f"<p>Siparişiniz alındı ve üretim sırasına eklendi. "
         f"Sipariş numaranız: <b>#{order.order_number}</b></p>"
         f"<table width='100%' style='border-collapse:collapse;margin:10px 0'>{rows}{discount_row}{shipping_row}"
         f"<tr><td style='padding:10px 0 0;font-weight:700'>Toplam</td>"
@@ -188,7 +190,8 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
         emoji="🛍️",
         **brand,
     )
-    email_service.send_email(email, f"Siparişiniz alındı — #{order.order_number}", html)
+    email_service.send_email(
+        email, subj_over or f"Siparişiniz alındı — #{order.order_number}", html)
 
 
 def create_order_from_session(db: Session, session: CheckoutSession) -> Order:

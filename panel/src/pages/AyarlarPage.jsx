@@ -164,6 +164,43 @@ export default function AyarlarPage() {
         </p>
       </Section>
 
+      <Section title="E-posta Bildirimleri" icon="🔔">
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Müşteriye giden otomatik e-postaların konu ve giriş metnini özelleştirin.
+          Boş bırakılan alanda hazır metin kullanılır.
+        </p>
+        {[
+          ['siparis_onay', 'Sipariş onayı', 'Siparişiniz alındı — #1234'],
+          ['kargo', 'Kargo bildirimi', 'Siparişiniz kargoya verildi 📦'],
+          ['terk_sepet', 'Terk sepet hatırlatması', 'Sepetinizdeki ürünler sizi bekliyor 🛒'],
+          ['odeme_linki', 'Ödeme linki (taslak sipariş)', 'Siparişiniz için ödeme bağlantınız 🧾'],
+          ['stok', 'Stok bildirimi', '{Ürün} yeniden stokta 🔔'],
+        ].map(([key, label, ph]) => {
+          const t = (cfg.email_texts || {})[key] || {}
+          const setT = (field) => (e) => setCfg(c => ({
+            ...c,
+            email_texts: { ...(c.email_texts || {}), [key]: { ...t, [field]: e.target.value } },
+          }))
+          return (
+            <details key={key} className="border border-panel-border rounded-xl px-3 py-2">
+              <summary className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                {label}
+                {(t.subject || t.intro) && (
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">özel</span>
+                )}
+              </summary>
+              <div className="mt-2 space-y-2">
+                <input className="input" value={t.subject || ''} maxLength={200}
+                  onChange={setT('subject')} placeholder={`Konu (varsayılan: ${ph})`} />
+                <textarea className="input" rows={2} maxLength={1000} value={t.intro || ''}
+                  onChange={setT('intro')}
+                  placeholder="Giriş paragrafı — 'Merhaba {ad}' satırından hemen sonra eklenir (ops.)" />
+              </div>
+            </details>
+          )
+        })}
+      </Section>
+
       <Section title="Pazarlama Pikselleri" icon="🎯">
         <p className="text-[11px] text-panel-muted -mt-1">
           ID'yi girip kaydedin — vitrin otomatik olarak sayfa görüntüleme, sepete ekleme,

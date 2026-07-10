@@ -194,6 +194,7 @@ def _send_draft_email(session: CheckoutSession, store: Store, link: str) -> bool
     cust = session.customer or {}
     tenant = getattr(store, "tenant", None)
     brand = email_service.brand_kwargs(tenant) if tenant else {}
+    subj_over, intro_over = email_service.store_email_text(store, "odeme_linki")
     rows = "".join(
         f"<tr><td style='padding:5px 0;color:#374151;font-size:14px'>"
         f"{i.get('title', '')} — {i.get('model_display', '')} × {i.get('quantity', 1)}</td>"
@@ -203,7 +204,8 @@ def _send_draft_email(session: CheckoutSession, store: Store, link: str) -> bool
     )
     body = (
         f"<p>Merhaba {cust.get('first_name', '')},</p>"
-        f"<p>Sizin için hazırladığımız sipariş aşağıdadır. Ödemeyi güvenli "
+        + (intro_over or "")
+        + f"<p>Sizin için hazırladığımız sipariş aşağıdadır. Ödemeyi güvenli "
         f"ödeme sayfamızdan tamamlayabilirsiniz:</p>"
         f"<table width='100%' style='border-collapse:collapse;margin:10px 0'>{rows}</table>"
         f"<p style='font-size:14px'><b>Toplam (kargo dahil): {Decimal(str(session.amount)):.2f} ₺</b></p>"
@@ -220,7 +222,7 @@ def _send_draft_email(session: CheckoutSession, store: Store, link: str) -> bool
         **brand,
     )
     return email_service.send_email(
-        cust.get("email"), "Siparişiniz için ödeme bağlantınız 🧾", html)
+        cust.get("email"), subj_over or "Siparişiniz için ödeme bağlantınız 🧾", html)
 
 
 def _send_reminder_email(db: Session, session: CheckoutSession, store: Store) -> bool:
@@ -230,6 +232,7 @@ def _send_reminder_email(db: Session, session: CheckoutSession, store: Store) ->
         return False
     tenant = getattr(store, "tenant", None)
     brand = email_service.brand_kwargs(tenant) if tenant else {}
+    subj_over, intro_over = email_service.store_email_text(store, "terk_sepet")
 
     config = store.config or {}
     site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
@@ -244,7 +247,8 @@ def _send_reminder_email(db: Session, session: CheckoutSession, store: Store) ->
     )
     body = (
         f"<p>Merhaba {cust.get('first_name', '')},</p>"
-        f"<p>Sepetinizde bıraktığınız ürünler sizi bekliyor. Tek tıkla kaldığınız "
+        + (intro_over or "")
+        + f"<p>Sepetinizde bıraktığınız ürünler sizi bekliyor. Tek tıkla kaldığınız "
         f"yerden devam edebilirsiniz:</p>"
         f"<table width='100%' style='border-collapse:collapse;margin:10px 0'>{rows}</table>"
         f"<p style='color:#6b7280;font-size:12px'>Bu e-posta, tamamlanmayan "
@@ -259,4 +263,5 @@ def _send_reminder_email(db: Session, session: CheckoutSession, store: Store) ->
         emoji="🛒",
         **brand,
     )
-    return email_service.send_email(email, "Sepetinizdeki ürünler sizi bekliyor 🛒", html)
+    return email_service.send_email(
+        email, subj_over or "Sepetinizdeki ürünler sizi bekliyor 🛒", html)

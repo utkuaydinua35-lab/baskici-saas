@@ -55,12 +55,14 @@ def _notify(db: Session, variant: CatalogVariant) -> int:
     brand = email_service.brand_kwargs(tenant) if tenant else {}
     variant_label = variant.model_display + (f" · {variant.variation}" if variant.variation else "")
 
+    subj_over, intro_over = email_service.store_email_text(store, "stok")
     sent = 0
     now = datetime.now(timezone.utc)
     for alert in alerts:
         body = (
             f"<p>Merhaba,</p>"
-            f"<p>Beklediğiniz ürün yeniden stokta:</p>"
+            + (intro_over or "")
+            + f"<p>Beklediğiniz ürün yeniden stokta:</p>"
             f"<p style='font-size:15px'><b>{product.title}</b><br/>"
             f"<span style='color:#6b7280'>{variant_label}</span></p>"
             f"<p style='color:#6b7280;font-size:12px'>Stoklar sınırlı olabilir — "
@@ -75,7 +77,8 @@ def _notify(db: Session, variant: CatalogVariant) -> int:
             emoji="🔔",
             **brand,
         )
-        if email_service.send_email(alert.email, f"{product.title} yeniden stokta 🔔", html):
+        if email_service.send_email(
+                alert.email, subj_over or f"{product.title} yeniden stokta 🔔", html):
             alert.notified_at = now
             sent += 1
     return sent

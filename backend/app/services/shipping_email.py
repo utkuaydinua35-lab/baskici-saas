@@ -73,6 +73,7 @@ def _send(db: Session, order: Order) -> bool:
     if session and isinstance(session.customer, dict):
         first_name = session.customer.get("first_name") or ""
 
+    subj_over, intro_over = email_service.store_email_text(store, "kargo")
     rows = "".join(
         f"<tr><td style='padding:4px 0;color:#374151;font-size:14px'>"
         f"{li.title} — {li.variant_title or ''} × {li.quantity}</td></tr>"
@@ -80,7 +81,8 @@ def _send(db: Session, order: Order) -> bool:
     )
     body = (
         f"<p>Merhaba {first_name},</p>"
-        f"<p><b>{order.name or ('#' + str(order.order_number or ''))}</b> numaralı "
+        + (intro_over or "")
+        + f"<p><b>{order.name or ('#' + str(order.order_number or ''))}</b> numaralı "
         f"siparişiniz kargoya verildi! 🎉</p>"
         f"<p style='font-size:14px'>Kargo firması: <b>{firma}</b><br/>"
         f"Takip numarası: <b style='font-family:monospace'>{takip_no}</b></p>"
@@ -96,7 +98,7 @@ def _send(db: Session, order: Order) -> bool:
         emoji="📦",
         **brand,
     )
-    ok = email_service.send_email(email, "Siparişiniz kargoya verildi 📦", html)
+    ok = email_service.send_email(email, subj_over or "Siparişiniz kargoya verildi 📦", html)
     if not ok:
         return False
 

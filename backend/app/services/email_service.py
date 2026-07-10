@@ -62,6 +62,18 @@ def send_email(to: str, subject: str, html: str, text: str | None = None,
 DEFAULT_ACCENT = "#6d28d9"
 
 
+def store_email_text(store, key: str) -> tuple[str | None, str | None]:
+    """Panelden özelleştirilen e-posta metni: (subject, intro) — yoksa (None, None).
+
+    intro, gövdenin başına ayrı paragraf olarak eklenir; subject varsayılanı ezer.
+    """
+    from xml.sax.saxutils import escape
+    cfg = ((getattr(store, "config", None) or {}).get("email_texts") or {}).get(key) or {}
+    subject = (cfg.get("subject") or "").strip() or None
+    intro = (cfg.get("intro") or "").strip() or None
+    return subject, (f"<p>{escape(intro)}</p>" if intro else None)
+
+
 def brand_kwargs(tenant) -> dict:
     """Tenant'tan render_email marka parametreleri (brand, accent, logo_url).
     Tenant yoksa boş döner -> render_email varsayılan BERNZ/mor kullanır."""

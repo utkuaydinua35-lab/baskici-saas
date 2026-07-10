@@ -1,5 +1,7 @@
 // Vitrin teması — backend'ten çekilir (60 sn revalidate), defaults fallback.
+// Önizleme çerezi (canlı tema editörü) varsa taslak tema önbelleksiz gelir.
 import "server-only";
+import { cookies } from "next/headers";
 import { getStoreSlug } from "./api";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
@@ -98,12 +100,17 @@ const DEFAULT_PAYLOAD: ThemePayload = {
   legal: { kvkk: null, mesafeli_satis: null, iade: null },
 };
 
-export async function getThemePayload(): Promise<ThemePayload> {
+export async function getThemePayload(): Promise<ThemePayload & { is_preview?: boolean }> {
   try {
     const slug = await getStoreSlug();
-    const res = await fetch(`${BACKEND_URL}/api/shop/${slug}/theme`, {
-      next: { revalidate: 60 },
-    });
+    let preview = false;
+    try {
+      preview = (await cookies()).get("vitrin_onizleme")?.value === "1";
+    } catch { /* statik render */ }
+    const res = await fetch(
+      `${BACKEND_URL}/api/shop/${slug}/theme${preview ? "?preview=1" : ""}`,
+      preview ? { cache: "no-store" } : { next: { revalidate: 60 } },
+    );
     if (!res.ok) return DEFAULT_PAYLOAD;
     const payload = (await res.json()) as ThemePayload;
     // Şema koruması: eski önbellek/eksik alan sayfayı düşürmesin
@@ -114,7 +121,7 @@ export async function getThemePayload(): Promise<ThemePayload> {
     payload.theme.colors = { ...DEFAULT_PAYLOAD.theme.colors, ...payload.theme.colors };
     payload.theme.announcement = { ...DEFAULT_PAYLOAD.theme.announcement, ...payload.theme.announcement };
     payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
-    return payload;
+    return { ...payload, is_preview: preview };
   } catch {
     return DEFAULT_PAYLOAD; // backend erişilemezse varsayılan temayla render
   }

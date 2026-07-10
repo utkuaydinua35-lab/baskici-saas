@@ -13,6 +13,7 @@ import NewsletterForm from "@/components/NewsletterForm";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CouponFromUrl from "@/components/CouponFromUrl";
 import LockScreen from "@/components/LockScreen";
+import PreviewBridge from "@/components/PreviewBridge";
 import { cookies } from "next/headers";
 import { Suspense } from "react";
 
@@ -55,7 +56,8 @@ export default async function RootLayout({
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
 
   // Yayın öncesi kilit (Shopify password page) — çerez yoksa yalnız kilit ekranı
-  const locked = payload.password_protected && !(await cookies()).get("vitrin_kilit");
+  const locked = payload.password_protected && !payload.is_preview
+    && !(await cookies()).get("vitrin_kilit");
   if (locked) {
     return (
       <html lang="tr"
@@ -153,6 +155,7 @@ export default async function RootLayout({
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
+          {payload.is_preview && <PreviewBridge />}
         </CartProvider>
       </body>
     </html>

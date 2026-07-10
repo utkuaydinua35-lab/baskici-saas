@@ -844,15 +844,26 @@ def _has_blog(db: Session, store: Store) -> bool:
 def get_store_theme(
     store_slug: str,
     response: Response,
+    preview: bool = Query(False),
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """Vitrin teması + mağaza ayarları + yasal metin override'ları (tek istek)."""
+    """Vitrin teması + mağaza ayarları + yasal metin override'ları (tek istek).
+
+    preview=1: panel canlı editörünün taslağı (config.theme_preview) döner —
+    önbelleksiz; taslak yoksa canlı temaya düşer.
+    """
     from app.services.theme import resolve_theme
 
     store = _resolve_store(db, store_slug)
     config = store.config or {}
-    response.headers["Cache-Control"] = "public, max-age=60"
+    if preview and config.get("theme_preview"):
+        response.headers["Cache-Control"] = "no-store"
+        preview_config = dict(config)
+        preview_config["theme"] = config["theme_preview"]
+        config = preview_config
+    else:
+        response.headers["Cache-Control"] = "public, max-age=60"
     return {
         "store_name": store.name,
         "theme": resolve_theme(config),

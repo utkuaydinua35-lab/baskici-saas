@@ -178,6 +178,38 @@ def put_theme(
     return resolve_theme(store.config)
 
 
+@router.put("/{store_id}/theme/preview", response_model=dict)
+def put_theme_preview(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Canlı editör taslağı — vitrin ?onizleme=1 modunda bunu gösterir,
+    gerçek tema değişmez. Kaydet'e basılınca normal PUT /theme çalışır."""
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    config["theme_preview"] = validate_theme_patch(body or {})
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{store_id}/theme/preview", status_code=204)
+def clear_theme_preview(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    if config.pop("theme_preview", None) is not None:
+        store.config = config
+        flag_modified(store, "config")
+        db.commit()
+
+
 @router.get("/{store_id}/theme/presets", response_model=list[dict])
 def list_theme_presets(
     store_id: uuid.UUID,

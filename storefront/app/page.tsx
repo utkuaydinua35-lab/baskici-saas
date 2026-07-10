@@ -91,7 +91,7 @@ export default async function HomePage() {
       {theme.sections
         .filter((sec) => !sec.hidden)
         .map((sec) => (
-          <div key={sec.id}
+          <div key={sec.id} data-sec-id={sec.id}
             className={sec.scheme === "band" ? "bg-white border-y border-zinc-200 my-4" : ""}>
             {renderSection(sec)}
           </div>

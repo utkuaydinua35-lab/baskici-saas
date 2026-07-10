@@ -67,6 +67,35 @@ export default function TemaPage() {
 
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : 'http://localhost:3001')
+  const iframeRef = useRef(null)
+  const previewTimer = useRef(null)
+  const skipFirst = useRef(true)
+
+  // CANLI ÖNİZLEME: her değişiklikten 800ms sonra taslağı gönder, iframe'i tazele
+  useEffect(() => {
+    if (!theme || !storeId) return
+    if (skipFirst.current) { skipFirst.current = false; return }
+    clearTimeout(previewTimer.current)
+    previewTimer.current = setTimeout(async () => {
+      try {
+        await api.put(`/api/store-settings/${storeId}/theme/preview`, theme)
+        iframeRef.current?.contentWindow?.location.reload()
+      } catch { /* önizleme başarısız — kaydetmeyi engellemez */ }
+    }, 800)
+    return () => clearTimeout(previewTimer.current)
+  }, [theme, storeId])
+
+  // Önizlemede bölüme tıklanınca o bölümün editörünü aç
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === 'vitrin-sec-click' && e.data.id) {
+        setOpenSection(e.data.id)
+        document.getElementById('bolumler-katmani')?.scrollIntoView({ behavior: 'smooth' })
+      }
+    }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -99,8 +128,9 @@ export default function TemaPage() {
       ])
       setTheme(t)
       initialRef.current = JSON.stringify([t, customCode])
+      api.del(`/api/store-settings/${storeId}/theme/preview`).catch(() => {})
       setSaveCount(n => n + 1)
-      toast.success('Tema kaydedildi — vitrin ~1 dk içinde güncellenir')
+      toast.success('Tema kaydedildi ve yayında ✓')
     } catch (e) {
       toast.error(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
     } finally { setBusy(false) }
@@ -110,6 +140,9 @@ export default function TemaPage() {
     try {
       const [t, cc] = JSON.parse(initialRef.current)
       setTheme(t); setCustomCode(cc)
+      api.del(`/api/store-settings/${storeId}/theme/preview`)
+        .then(() => iframeRef.current?.contentWindow?.location.reload())
+        .catch(() => {})
     } catch { /* ilk yükleme yoksa */ }
   }
   const dirty = !!theme && initialRef.current !== '' &&
@@ -199,6 +232,20 @@ export default function TemaPage() {
       {/* Sol: form */}
       <div className="w-[400px] shrink-0 space-y-4 overflow-y-auto pb-10">
         <h1 className="text-xl font-semibold py-2">Tema</h1>
+
+        <nav className="flex gap-1.5 flex-wrap text-xs" aria-label="Katmanlar">
+          {[['ust-bilgi-katmani', '⬆ Üst Bilgi'], ['bolumler-katmani', '🧱 Bölümler'],
+            ['alt-bilgi-katmani', '⬇ Alt Bilgi']].map(([id, l]) => (
+            <button key={id}
+              onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-2.5 py-1 rounded-full border border-panel-border text-panel-muted
+                hover:text-panel-ink hover:border-panel-accent transition">
+              {l}
+            </button>
+          ))}
+        </nav>
+
+        <div id="ust-bilgi-katmani" />
 
         {presets.length > 0 && (
           <Section title="Hazır Şablonlar" icon="🎁">
@@ -340,6 +387,7 @@ export default function TemaPage() {
             label="Ürün ve ödeme sayfasında güven rozetleri (SSL, iade, kargo) göster" />
         </Section>
 
+        <div id="bolumler-katmani" />
         {/* ── Bölüm Editörü ── */}
         <Section title={`Anasayfa Bölümleri (${theme.sections.length})`} icon="🧱">
           <div className="space-y-2">
@@ -412,7 +460,22 @@ export default function TemaPage() {
             onChange={v => set('animations.cart_drawer', v)} label="Sepet çekmecesi (yandan kayan)" />
         </Section>
 
-        <Section title="Özel Kod (Gelişmiş)" icon="⚡">
+                <div id="alt-bilgi-katmani" />
+        <Section title="Alt Bilgi (Footer)" icon="⬇️">
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Hakkında metni (footer'da görünür)</span>
+            <textarea className="input mt-1" rows={3} maxLength={500}
+              value={theme.footer?.about || ''}
+              onChange={e => set('footer.about', e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Instagram kullanıcı adı</span>
+            <input className="input mt-1" value={theme.footer?.instagram || ''} maxLength={60}
+              onChange={e => set('footer.instagram', e.target.value)} placeholder="@magazam" />
+          </label>
+        </Section>
+
+<Section title="Özel Kod (Gelişmiş)" icon="⚡">
           <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
             ⚠️ Buraya eklenen kod vitrininizde aynen çalışır — yalnızca güvendiğiniz
             kodu ekleyin. Panel ve yönetim sistemleri etkilenmez.
@@ -442,13 +505,6 @@ export default function TemaPage() {
           )}
         </Section>
 
-        <Section title="Footer" icon="🦶">
-          <textarea className="input" rows={2} maxLength={300} value={theme.footer.about}
-            onChange={e => set('footer.about', e.target.value)}
-            placeholder="Kısa marka tanıtımı (ops.)" />
-          <input className="input" value={theme.footer.instagram} maxLength={60}
-            onChange={e => set('footer.instagram', e.target.value)} placeholder="Instagram kullanıcı adı" />
-        </Section>
       </div>
 
       {/* Sağ: önizleme */}
@@ -468,13 +524,15 @@ export default function TemaPage() {
         </div>
         <div className={`flex-1 min-h-[70vh] ${device === 'mobile'
           ? 'flex justify-center bg-panel-input/50 rounded-2xl py-4' : ''}`}>
-          <iframe key={`${saveCount}-${device}`} src={storefrontUrl} title="Vitrin önizleme"
+          <iframe key={`${saveCount}-${device}`} ref={iframeRef}
+            src={`${storefrontUrl}/?onizleme=1`} title="Vitrin önizleme"
             className={device === 'mobile'
               ? 'w-[390px] h-full rounded-[2rem] border-8 border-zinc-800 bg-white shadow-xl'
               : 'w-full h-full rounded-2xl border border-panel-border bg-white'} />
         </div>
         <p className="text-[11px] text-panel-muted mt-1">
-          Vitrin temayı ~1 dakika önbellekler; değişiklik hemen görünmezse Yenile'ye basın.
+          ⚡ Canlı önizleme: değişiklikler ~1 sn içinde yansır (kaydetmeden yayınlanmaz).
+          Önizlemede bir bölüme tıklayın — editörü solda açılır.
         </p>
       </div>
     </div>

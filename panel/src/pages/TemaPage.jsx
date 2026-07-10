@@ -28,6 +28,7 @@ const SECTION_TYPES = {
   testimonials: { label: 'Müşteri Yorumları Vitrini', icon: '💬' },
   gallery: { label: 'Görsel Galerisi', icon: '🖼️' },
   contact: { label: 'İletişim Formu', icon: '✉️' },
+  countdown: { label: 'Kampanya Geri Sayımı', icon: '⏳' },
 }
 
 const SECTION_DEFAULTS = {
@@ -46,6 +47,8 @@ const SECTION_DEFAULTS = {
   testimonials: { title: 'Müşterilerimiz Ne Diyor?', items: [] },
   gallery: { title: 'Sizden Gelenler', images: [] },
   contact: { title: 'İletişim', subtitle: 'Soru ve önerileriniz için bize yazın.' },
+  countdown: { title: 'Kampanya bitiyor!', subtitle: '', ends_at: '',
+    cta_text: 'Alışverişe Başla', cta_url: '/urunler' },
 }
 
 export default function TemaPage() {
@@ -828,6 +831,32 @@ function SectionSettings({ sec, collections, products = [], patch, uploadAsset }
           onChange={e => patch({ subtitle: e.target.value })} placeholder="Alt başlık (ops.)" />
         <p className="text-[11px] text-panel-muted">
           Mesajlar, Ayarlar'daki <b>iletişim e-postanıza</b> gönderilir — orayı doldurmayı unutmayın.
+        </p>
+      </>
+    )
+  }
+
+  if (sec.type === 'countdown') {
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={100}
+          onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
+        <input className="input" value={s.subtitle || ''} maxLength={200}
+          onChange={e => patch({ subtitle: e.target.value })} placeholder="Alt başlık (ops.)" />
+        <label className="block text-sm">
+          <span className="text-panel-muted text-xs">Bitiş zamanı</span>
+          <input className="input mt-1" type="datetime-local"
+            value={s.ends_at ? s.ends_at.slice(0, 16) : ''}
+            onChange={e => patch({ ends_at: e.target.value ? new Date(e.target.value).toISOString() : '' })} />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="input" value={s.cta_text || ''} maxLength={40}
+            onChange={e => patch({ cta_text: e.target.value })} placeholder="Buton yazısı" />
+          <input className="input" value={s.cta_url || ''}
+            onChange={e => patch({ cta_url: e.target.value })} placeholder="/urunler" />
+        </div>
+        <p className="text-[11px] text-panel-muted">
+          Süre dolunca bölüm vitrinde kendiliğinden kaybolur.
         </p>
       </>
     )

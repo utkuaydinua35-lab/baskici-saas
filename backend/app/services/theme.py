@@ -50,6 +50,9 @@ SECTION_DEFAULTS: dict[str, dict] = {
     "gallery": {"title": "Sizden Gelenler", "images": []},  # [url] max 8
     # İletişim formu (ShinePro contact-form) — mağaza e-postasına iletir
     "contact": {"title": "İletişim", "subtitle": "Soru ve önerileriniz için bize yazın."},
+    # Kampanya geri sayımı — süre dolunca bölüm kendini gizler
+    "countdown": {"title": "Kampanya bitiyor!", "subtitle": "", "ends_at": "",
+                  "cta_text": "Alışverişe Başla", "cta_url": "/urunler"},
 }
 
 MAX_FAQ_ITEMS = 12

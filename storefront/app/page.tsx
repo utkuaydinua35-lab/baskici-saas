@@ -13,6 +13,7 @@ import Comparison from "@/components/sections/Comparison";
 import Testimonials from "@/components/sections/Testimonials";
 import Gallery from "@/components/sections/Gallery";
 import ContactSection from "@/components/sections/ContactSection";
+import Countdown from "@/components/sections/Countdown";
 
 // Anasayfa — tema bölüm listesine (sections) göre kurulur.
 export default async function HomePage() {
@@ -75,6 +76,11 @@ export default async function HomePage() {
             return <Gallery key={section.id} title={s.title} images={s.images ?? []} />;
           case "contact":
             return <ContactSection key={section.id} title={s.title} subtitle={s.subtitle} />;
+          case "countdown":
+            return (
+              <Countdown key={section.id} title={s.title} subtitle={s.subtitle}
+                endsAt={s.ends_at} ctaText={s.cta_text} ctaUrl={s.cta_url} />
+            );
           default:
             return null;
         }

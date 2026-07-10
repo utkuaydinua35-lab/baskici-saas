@@ -20,7 +20,7 @@ export interface ThemeSection {
   scheme?: "none" | "band";
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
     | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter"
-    | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact";
+    | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact" | "countdown";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;
@@ -41,6 +41,7 @@ export interface ThemeSection {
     them_label?: string;
     rows?: { feature: string; us: boolean; them: boolean }[];
     images?: string[];
+    ends_at?: string;
   };
 }
 

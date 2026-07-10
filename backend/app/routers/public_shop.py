@@ -1125,6 +1125,7 @@ def account_me(request: Request, db: Session = Depends(get_db)):
         "phone": customer.phone,
         "orders_count": customer.orders_count,
         "default_address": customer.default_address,
+        "accepts_marketing": customer.accepts_marketing,
     }
 
 
@@ -1161,6 +1162,23 @@ def account_orders(request: Request, db: Session = Depends(get_db)):
         }
         for o in orders
     ]}
+
+
+@router.put("/account/marketing")
+def account_marketing(
+    request: Request,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Bülten aboneliğini aç/kapa — KVKK: rıza her an geri çekilebilir."""
+    from datetime import datetime, timezone
+
+    customer, _store = _get_customer_from_token(request, db)
+    subscribed = bool(body.get("subscribed"))
+    customer.accepts_marketing = subscribed
+    customer.marketing_opted_at = datetime.now(timezone.utc) if subscribed else None
+    db.commit()
+    return {"ok": True, "accepts_marketing": subscribed}
 
 
 @router.put("/account/address")

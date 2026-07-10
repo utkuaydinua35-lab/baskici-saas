@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
+import ProductCard from "@/components/ProductCard";
+import type { ProductCard as ProductCardType } from "@/lib/api";
 
 // Hatırlatma e-postasındaki ?restore= linki — terk edilen sepeti geri yükler.
 function RestoreHandler() {
@@ -58,14 +60,16 @@ export interface Promotion {
 export default function CartView({
   settings,
   promotion,
+  suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  suggestions?: ProductCardType[];
 }) {
   return (
     <Suspense>
       <RestoreHandler />
-      <CartInner settings={settings} promotion={promotion} />
+      <CartInner settings={settings} promotion={promotion} suggestions={suggestions} />
     </Suspense>
   );
 }
@@ -73,9 +77,11 @@ export default function CartView({
 function CartInner({
   settings,
   promotion,
+  suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  suggestions?: ProductCardType[];
 }) {
   const { items, subtotal, coupon, setQuantity, removeItem } = useCart();
   const minAmount = Number(settings?.min_order_amount || 0);
@@ -201,6 +207,24 @@ function CartInner({
           </Link>
         )}
       </div>
+
+      <CrossSell suggestions={suggestions} inCart={items.map((i) => i.productSlug)} />
     </div>
+  );
+}
+
+// Sepette çapraz satış — sepette olmayan ilk 4 ürün önerilir
+function CrossSell({ suggestions, inCart }: { suggestions: ProductCardType[]; inCart: string[] }) {
+  const picks = suggestions.filter((p) => !inCart.includes(p.slug)).slice(0, 4);
+  if (picks.length === 0) return null;
+  return (
+    <section className="mt-10">
+      <h2 className="text-base font-semibold mb-4">Bunlar da hoşunuza gidebilir</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {picks.map((p) => (
+          <ProductCard key={p.slug} product={p} />
+        ))}
+      </div>
+    </section>
   );
 }

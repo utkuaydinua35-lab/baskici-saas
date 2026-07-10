@@ -10,5 +10,11 @@ export const metadata: Metadata = { title: "Sepet" };
 export default async function CartPage() {
   const [data, payload] = await Promise.all([getProducts({ page: 1 }), getThemePayload()]);
   const settings = data?.store?.settings ?? {};
-  return <CartView settings={settings} promotion={payload.active_promotion ?? null} />;
+  return (
+    <CartView
+      settings={settings}
+      promotion={payload.active_promotion ?? null}
+      suggestions={(data?.items ?? []).slice(0, 8)}
+    />
+  );
 }

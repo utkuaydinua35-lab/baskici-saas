@@ -11,6 +11,7 @@ interface Me {
   phone: string | null;
   orders_count: number;
   default_address: Record<string, string> | null;
+  accepts_marketing?: boolean;
 }
 interface AccountOrder {
   order_number: string;
@@ -131,6 +132,17 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const [addr, setAddr] = useState<Record<string, string>>(me.default_address || {});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [marketing, setMarketing] = useState(!!me.accepts_marketing);
+
+  const toggleMarketing = async (next: boolean) => {
+    setMarketing(next); // iyimser güncelle
+    const res = await fetch("/api/account?action=marketing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscribed: next }),
+    }).catch(() => null);
+    if (!res?.ok) setMarketing(!next);
+  };
 
   useEffect(() => {
     fetch("/api/account/orders")
@@ -236,6 +248,17 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
             style={{ background: "var(--c-primary)" }}>
             {saving ? "Kaydediliyor…" : saved ? "Kaydedildi ✓" : "Adresi Kaydet"}
           </button>
+
+          <label className="flex items-start gap-2 text-xs text-zinc-600 pt-2 border-t border-zinc-100">
+            <input type="checkbox" checked={marketing} className="mt-0.5"
+              onChange={(e) => toggleMarketing(e.target.checked)} />
+            <span>
+              Kampanya ve indirim e-postaları almak istiyorum.
+              <span className="block text-[10px] text-zinc-400 mt-0.5">
+                Onayınızı dilediğiniz an bu kutudan geri çekebilirsiniz (KVKK).
+              </span>
+            </span>
+          </label>
         </form>
       </div>
     </div>

@@ -858,6 +858,8 @@ def get_store_theme(
         ],
         "custom_code": config.get("custom_code") or None,
         "active_promotion": _active_promotion(db, store),
+        # Yayin oncesi kilit (Shopify password page) — sifrenin kendisi ASLA donmez
+        "password_protected": bool((config.get("storefront_password") or "").strip()),
         "has_blog": _has_blog(db, store),
         "legal": {
             "kvkk": config.get("kvkk_text") or None,
@@ -1035,6 +1037,31 @@ class AddressIn(BaseModel):
 
 login_rate_limit = make_rate_limiter(max_hits=5, window=300.0)  # 5 kod/5 dk/IP
 newsletter_rate_limit = make_rate_limiter(max_hits=5, window=300.0)
+unlock_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
+
+
+class UnlockRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/{store_slug}/unlock")
+def unlock_store(
+    store_slug: str,
+    body: UnlockRequest,
+    _rl: None = Depends(unlock_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Yayın öncesi vitrin kilidini aç (Shopify password page karşılığı)."""
+    import hmac
+
+    store = _resolve_store(db, store_slug)
+    expected = ((store.config or {}).get("storefront_password") or "").strip()
+    if not expected:
+        return {"ok": True}  # koruma kapalı
+    if not hmac.compare_digest(body.password.strip(), expected):
+        raise HTTPException(403, "Şifre hatalı")
+    return {"ok": True}
+
 stock_alert_rate_limit = make_rate_limiter(max_hits=10, window=300.0)
 
 

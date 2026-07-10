@@ -58,6 +58,7 @@ export interface ThemePayload {
   custom_code?: { head_html?: string; css?: string; body_html?: string } | null;
   active_promotion?: { label: string; kind: string; min_subtotal: string | null } | null;
   has_blog?: boolean;
+  password_protected?: boolean;
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };
 }
 

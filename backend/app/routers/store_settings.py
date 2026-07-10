@@ -34,6 +34,7 @@ _TEXT_KEYS = {
     "kvkk_text", "mesafeli_satis_text", "iade_text", "sla_days",
     "iyzico_base_url", "paytr_test_mode",
     "meta_pixel_id", "ga4_id", "tiktok_pixel_id",
+    "storefront_password",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",

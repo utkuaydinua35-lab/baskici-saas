@@ -227,6 +227,18 @@ export default function AyarlarPage() {
         </div>
       </Section>
 
+      <Section title="Yayın Öncesi Kilit" icon="🔒">
+        <Field label="Mağaza şifresi (boş = koruma kapalı)">
+          <input className="input mt-1 !w-64" value={cfg.storefront_password || ''}
+            onChange={set('storefront_password')} maxLength={100}
+            placeholder="örn. onizleme2026" />
+        </Field>
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Doluyken vitrin ziyaretçilere kilit ekranı gösterir (Shopify password page).
+          Yayına çıkarken bu alanı boşaltın.
+        </p>
+      </Section>
+
       <Section title="Domain Bağlama" icon="🌐">
         <Field label="Vitrin adresi (aktif)">
           <input className="input mt-1" value={cfg.storefront_url || ''} onChange={set('storefront_url')}

@@ -12,6 +12,8 @@ import CustomCode from "@/components/CustomCode";
 import NewsletterForm from "@/components/NewsletterForm";
 import WhatsAppButton from "@/components/WhatsAppButton";
 import CouponFromUrl from "@/components/CouponFromUrl";
+import LockScreen from "@/components/LockScreen";
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
@@ -51,6 +53,23 @@ export default async function RootLayout({
   const fontFamily = FONT_VAR[theme.font] || FONT_VAR.inter;
   const year = new Date().getFullYear();
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
+
+  // Yayın öncesi kilit (Shopify password page) — çerez yoksa yalnız kilit ekranı
+  const locked = payload.password_protected && !(await cookies()).get("vitrin_kilit");
+  if (locked) {
+    return (
+      <html lang="tr"
+        className={`${inter.variable} h-full antialiased`}
+        style={{
+          "--c-primary": theme.colors.primary,
+          "--c-bg": theme.colors.bg,
+        } as React.CSSProperties}>
+        <body className="min-h-full">
+          <LockScreen storeName={store_name} />
+        </body>
+      </html>
+    );
+  }
 
   return (
     <html

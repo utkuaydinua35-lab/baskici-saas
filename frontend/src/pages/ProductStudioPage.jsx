@@ -36,6 +36,7 @@ export default function ProductStudioPage() {
   const [analyzePct, setAnalyzePct] = useState(null) // analiz yükleme %
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)  // {image_url, info}
+  const [readyMockup, setReadyMockup] = useState(false)  // görsel zaten mockup'lı
 
   const runMockupTest = async () => {
     if (!cfg?.mockup_ready) { toast.error('Önce mockup yükle'); return }
@@ -77,10 +78,11 @@ export default function ProductStudioPage() {
 
   const analyze = async () => {
     if (!files.length) { toast.error('Tasarım görseli seç'); return }
-    if (!cfg?.mockup_ready) { toast.error('Önce mockup PSD yükle'); return }
+    if (!readyMockup && !cfg?.mockup_ready) { toast.error('Önce mockup PSD yükle (ya da "Hazır mockup" seç)'); return }
     setAnalyzing(true); setItems([]); setSkipped([]); setAnalyzePct(0)
     try {
       const fd = new FormData(); fd.append('store_id', storeId)
+      if (readyMockup) fd.append('ready_mockup', 'true')
       files.forEach(f => fd.append('files', f))
       const r = await uploadXHR('/api/studio/analyze', fd, setAnalyzePct)
       const ok = (r.items || []).filter(x => x.ok)
@@ -145,11 +147,19 @@ export default function ProductStudioPage() {
         {showSettings && cfg && <StudioSettings cfg={cfg} storeId={storeId} onSaved={loadCfg} onMockup={uploadMockup} mockupPct={mockupPct} />}
       </div>
 
+      {/* Hazır mockup modu — mockup PSD olmadan da açılabilsin */}
+      {storeId && (
+        <label className="card mb-3 flex items-center gap-2 text-sm text-gray-200 cursor-pointer !py-2.5">
+          <input type="checkbox" checked={readyMockup} onChange={e => setReadyMockup(e.target.checked)} className="accent-accent" />
+          🖼 Hazır mockup — görsel zaten kılıfa/sahneye oturtulmuş (render yapma, sadece AI analiz + sisteme al)
+        </label>
+      )}
+
       {/* Tasarım yükleme */}
-      {cfg?.mockup_ready && (
+      {(cfg?.mockup_ready || readyMockup) && (
         <div className="card mb-4">
           <label className="block border border-dashed border-brand-border rounded-lg p-6 text-center text-sm text-gray-400 cursor-pointer hover:border-accent">
-            {files.length ? `${files.length} görsel seçildi — değiştir` : '🖼 Tasarım görsellerini seç (çoklu)'}
+            {files.length ? `${files.length} görsel seçildi — değiştir` : (readyMockup ? '🖼 Hazır mockup görsellerini seç (çoklu)' : '🖼 Tasarım görsellerini seç (çoklu)')}
             <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="hidden"
               onChange={e => setFiles(Array.from(e.target.files || []))} />
           </label>
@@ -159,11 +169,13 @@ export default function ProductStudioPage() {
             </div>
           )}
           <div className="flex gap-2 mt-3">
-            <button onClick={runMockupTest} disabled={testing} className="btn-secondary !text-sm disabled:opacity-50" title="Mockup'ı deneme tasarımıyla dene (AI harcamaz)">
-              {testing ? 'Test ediliyor…' : '🧪 Mockup Test'}
-            </button>
+            {cfg?.mockup_ready && !readyMockup && (
+              <button onClick={runMockupTest} disabled={testing} className="btn-secondary !text-sm disabled:opacity-50" title="Mockup'ı deneme tasarımıyla dene (AI harcamaz)">
+                {testing ? 'Test ediliyor…' : '🧪 Mockup Test'}
+              </button>
+            )}
             <button onClick={analyze} disabled={analyzing || !files.length} className="btn-primary flex-1 !text-sm disabled:opacity-50">
-              {analyzing ? 'İşleniyor…' : '✨ Analiz Et'}
+              {analyzing ? 'İşleniyor…' : (readyMockup ? '✨ Analiz Et (hazır mockup)' : '✨ Analiz Et')}
             </button>
           </div>
           {analyzing && (

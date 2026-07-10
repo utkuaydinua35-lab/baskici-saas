@@ -315,19 +315,25 @@ def _existing_studio_codes(tenant_id, store_id) -> set:
 async def analyze(
     store_id: uuid.UUID = Form(...),
     files: list[UploadFile] = File(...),
+    ready_mockup: bool = Form(False),   # görsel zaten mockup'a oturtulmuş -> render etme
     user: User = Depends(require_permission("tasarim")),
     db: Session = Depends(get_db),
 ):
-    """Tasarım görsellerini işle: AI analiz + PSD mockup + kod + içerik -> önizleme."""
+    """Tasarım görsellerini işle: AI analiz + (render ya da hazır mockup) + kod + içerik.
+    ready_mockup=True ise görsel zaten mockup'lı kabul edilir; PSD render/oran/upscale
+    yapılmaz, görsel doğrudan mockup olarak kullanılır."""
     s = _get_store(db, store_id, user.tenant_id)
     cfg = _cfg(s)
-    mockup_rel = (s.config or {}).get("mockup_psd")
-    if not mockup_rel:
-        raise HTTPException(400, "Önce bu mağazaya mockup PSD'si yükleyin")
-    psd_path = STORAGE_ROOT / mockup_rel
-    if not psd_path.exists():
-        raise HTTPException(400, "Mockup dosyası bulunamadı, yeniden yükleyin")
-    _mock_transparent = _mockup_transparent(s, mockup_rel)
+    psd_path = None
+    _mock_transparent = False
+    if not ready_mockup:
+        mockup_rel = (s.config or {}).get("mockup_psd")
+        if not mockup_rel:
+            raise HTTPException(400, "Önce bu mağazaya mockup PSD'si yükleyin")
+        psd_path = STORAGE_ROOT / mockup_rel
+        if not psd_path.exists():
+            raise HTTPException(400, "Mockup dosyası bulunamadı, yeniden yükleyin")
+        _mock_transparent = _mockup_transparent(s, mockup_rel)
     brand = cfg["brand"]
     prefix = cfg["prefix"]
 
@@ -340,10 +346,33 @@ async def analyze(
         except Exception:  # noqa: BLE001
             results.append({"ok": False, "filename": f.filename, "error": "Görsel okunamadı"})
             continue
+        ai_expanded = False
+
+        # ── HAZIR MOCKUP: görsel zaten mockup'lı; render/oran/upscale yok ──
+        if ready_mockup:
+            media = "image/png" if (f.filename or "").lower().endswith("png") else "image/jpeg"
+            analysis = ps.analyze_design(raw, media_type=media) or {}
+            content = ps.build_content(analysis, brand)
+            code = ps.next_design_code(db, store_id, prefix, reserved=reserved)
+            reserved.add(code)
+            cdir = _studio_dir(user.tenant_id, store_id) / code
+            cdir.mkdir(parents=True, exist_ok=True)
+            img.save(str(cdir / "mockup.jpg"), "JPEG", quality=92)
+            img.save(str(cdir / "baski.jpg"), "JPEG", quality=95)   # Design kaydı için görsel
+            rel = f"tenants/{user.tenant_id}/studio/{store_id}/{code}"
+            results.append({
+                "ok": True, "code": code, "title": content["title"],
+                "body_html": content["body_html"], "tags": content["tags"],
+                "design_name": content["design_name"], "analysis": analysis,
+                "mockup_url": f"/storage/{rel}/mockup.jpg",
+                "baski_url": f"/storage/{rel}/baski.jpg",
+                "baski_pdf_url": None, "ai_expanded": False, "ready_mockup": True,
+            })
+            continue
+
         # En-boy oranı telefon kılıfına (~1:2) uygun değilse:
         # - ai_expand açıksa: alta yaslayıp üstünü AI ile genişlet (1:2)
         # - değilse / başarısızsa: KENARA AL
-        ai_expanded = False
         if not ps.aspect_ok(img.width, img.height):
             _exp = None
             _exp_reason = None

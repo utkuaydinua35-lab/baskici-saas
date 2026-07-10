@@ -178,6 +178,25 @@ def put_theme(
     return resolve_theme(store.config)
 
 
+@router.get("/{store_id}/theme/presets", response_model=list[dict])
+def list_theme_presets(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Hazır tema şablonları — panel 'Uygula' deyince istemci tarafında
+    mevcut temaya merge edilir (logo/özel kod korunur), Kaydet ile kalıcılaşır."""
+    from app.services.theme import THEME_PRESETS
+
+    _get_store(db, user, store_id)
+    return [
+        {"key": key, "label": p_["label"], "description": p_["description"],
+         "colors": p_["theme"]["colors"], "font": p_["theme"]["font"],
+         "theme": p_["theme"]}
+        for key, p_ in THEME_PRESETS.items()
+    ]
+
+
 @router.post("/{store_id}/assets", response_model=dict)
 async def upload_asset(
     store_id: uuid.UUID,

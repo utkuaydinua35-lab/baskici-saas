@@ -49,6 +49,7 @@ export default function TemaPage() {
   const initialRef = useRef('')
   const [openSection, setOpenSection] = useState(null)  // açık bölüm id'si
   const [customCode, setCustomCode] = useState(null)     // {head_html, css, body_html}
+  const [presets, setPresets] = useState([])             // hazır şablonlar
 
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : 'http://localhost:3001')
@@ -65,6 +66,8 @@ export default function TemaPage() {
       setTheme(t)
       setCollections(c.filter(x => x.is_active))
       setProducts(pr)
+      api.get(`/api/store-settings/${storeId}/theme/presets`)
+        .then(setPresets).catch(() => {})
       setCustomCode(cc)
       initialRef.current = JSON.stringify([t, cc])
     } catch (e) {
@@ -97,6 +100,21 @@ export default function TemaPage() {
   }
   const dirty = !!theme && initialRef.current !== '' &&
     JSON.stringify([theme, customCode]) !== initialRef.current
+
+  const applyPreset = (preset) => {
+    if (!window.confirm(`"${preset.label}" şablonu uygulanacak — renk, yazı tipi, duyuru ve `
+        + `anasayfa bölümleri değişir; logo, WhatsApp ve özel kodunuz korunur. Devam?`)) return
+    setTheme(t => ({
+      ...t,
+      colors: { ...preset.theme.colors },
+      font: preset.theme.font,
+      announcement: { ...preset.theme.announcement },
+      animations: { ...t.animations, ...preset.theme.animations },
+      sections: structuredClone(preset.theme.sections),
+    }))
+    setOpenSection(null)
+    toast.success(`${preset.label} yüklendi — beğendiyseniz Kaydet'e basın`)
+  }
 
   const uploadAsset = async (kind, file, target) => {
     if (!file) return
@@ -161,6 +179,33 @@ export default function TemaPage() {
       {/* Sol: form */}
       <div className="w-[400px] shrink-0 space-y-4 overflow-y-auto pb-10">
         <h1 className="text-xl font-semibold py-2">Tema</h1>
+
+        {presets.length > 0 && (
+          <Section title="Hazır Şablonlar" icon="🎁">
+            <div className="space-y-2">
+              {presets.map(pr => (
+                <div key={pr.key} className="border border-panel-border rounded-xl p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex gap-1">
+                      {[pr.colors.primary, pr.colors.accent, pr.colors.bg].map((c2, i) => (
+                        <span key={i} className="w-4 h-4 rounded-full border border-panel-border"
+                          style={{ background: c2 }} />
+                      ))}
+                    </span>
+                    <span className="text-sm font-medium">{pr.label}</span>
+                    <button onClick={() => applyPreset(pr)}
+                      className="btn-ghost !py-1 text-xs ml-auto">Uygula</button>
+                  </div>
+                  <p className="text-[11px] text-panel-muted mt-1.5">{pr.description}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-panel-muted">
+              Şablon; renk, yazı tipi ve anasayfa düzenini değiştirir. Logo, görseller ve
+              özel kodunuz korunur — Kaydet'e basmadan vitrine yansımaz.
+            </p>
+          </Section>
+        )}
 
         <Section title="Renkler" icon="🎨">
           <div className="grid grid-cols-3 gap-3">

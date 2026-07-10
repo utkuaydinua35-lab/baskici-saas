@@ -74,6 +74,74 @@ DEFAULT_THEME: dict = {
 
 FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
 
+# ─── Hazır tema şablonları (Shopify theme library karşılığı) ─────
+# Uygulanınca renk/font/duyuru/bölümler değişir; logo, favicon, WhatsApp,
+# özel kod ve mağazaya özel ayarlar KORUNUR (panel tarafı merge eder).
+THEME_PRESETS: dict[str, dict] = {
+    "bernz-modern": {
+        "label": "Bernz Modern",
+        "description": "Sade ve çağdaş varsayılan tasarım — Inter yazı tipi, "
+                       "koyu butonlar, amber vurgu.",
+        "theme": {
+            "colors": {"primary": "#18181b", "accent": "#f59e0b", "bg": "#fafafa"},
+            "font": "inter",
+            "announcement": {"enabled": False, "text": "", "url": ""},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+            "sections": [
+                {"id": "bm-hero", "type": "hero_slider",
+                 "settings": {"slides": [], "autoplay_sec": 5}},
+                {"id": "bm-kolek", "type": "featured_collections",
+                 "settings": {"title": "Koleksiyonlar", "slugs": []}},
+                {"id": "bm-urun", "type": "products_grid",
+                 "settings": {"title": "Öne Çıkanlar", "collection": None, "limit": 8}},
+            ],
+        },
+    },
+    # luneracase.com ShinePro 1.3.0 Shopify dışa aktarımından türetildi:
+    # Poppins başlık, koyu butonlar (#121212), mor vurgu (#6d388b),
+    # anasayfa: slayt → çok satanlar → neden biz → SSS → bülten.
+    "shinepro": {
+        "label": "ShinePro (Lunera)",
+        "description": "Lunera Case temasından uyarlandı — Poppins yazı tipi, "
+                       "mor vurgu, kampanya şeridi ve zengin anasayfa akışı.",
+        "theme": {
+            "colors": {"primary": "#121212", "accent": "#6d388b", "bg": "#ffffff"},
+            "font": "poppins",
+            "announcement": {"enabled": True,
+                             "text": "🚚 Tüm siparişlerde hızlı kargo — bugün sipariş ver, hemen üretelim!",
+                             "url": "/urunler"},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+            "sections": [
+                {"id": "sp-hero", "type": "hero_slider",
+                 "settings": {"slides": [], "autoplay_sec": 5}},
+                {"id": "sp-cok-satan", "type": "products_grid",
+                 "settings": {"title": "ÇOK SATANLAR", "collection": None, "limit": 8}},
+                {"id": "sp-neden", "type": "image_with_text",
+                 "settings": {"image": None, "title": "Neden Biz?",
+                              "body": "Kişiye özel baskı, darbelere dayanıklı malzeme ve "
+                                      "1-3 iş gününde kargo. Tasarımını seç, gerisini bize bırak.",
+                              "cta_text": "Ürünlere Göz At", "cta_url": "/urunler",
+                              "image_side": "left"}},
+                {"id": "sp-kolek", "type": "featured_collections",
+                 "settings": {"title": "Koleksiyonlar", "slugs": []}},
+                {"id": "sp-sss", "type": "faq",
+                 "settings": {"title": "Sıkça Sorulan Sorular", "items": [
+                     {"q": "Kargoya ne zaman verilir?",
+                      "a": "Siparişiniz kişiye özel üretilir ve 1-3 iş günü içinde kargoya verilir."},
+                     {"q": "İade edebilir miyim?",
+                      "a": "Kişiye özel üretimlerde iade koşulları için İade ve Değişim sayfamıza göz atın."},
+                     {"q": "Hangi telefon modelleri destekleniyor?",
+                      "a": "Ürün sayfasındaki model seçiciden telefonunuzu bulabilirsiniz — "
+                           "yüzlerce model için üretim yapıyoruz."},
+                 ]}},
+                {"id": "sp-bulten", "type": "newsletter",
+                 "settings": {"title": "Kampanyalardan haberdar olun",
+                              "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."}},
+            ],
+        },
+    },
+}
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)

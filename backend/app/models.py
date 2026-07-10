@@ -1324,6 +1324,8 @@ class CatalogProduct(Base):
     models_per_item: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1")
     )
+    # Ürün videosu: YouTube linki veya mp4 URL'i (galeriye eklenir)
+    video_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     seo_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     seo_description: Mapped[str | None] = mapped_column(String(400), nullable=True)

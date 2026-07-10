@@ -99,7 +99,7 @@ export default async function ProductPage({ params }: Props) {
       </nav>
       <TrackProductView id={product.slug} name={product.title} price={Number(product.price)} />
       <div className="grid md:grid-cols-2 gap-8">
-        <ProductGallery images={product.images} title={product.title} />
+        <ProductGallery images={product.images} title={product.title} videoUrl={product.video_url} />
         <div>
           <div className="flex items-start justify-between gap-3">
             <h1 className="text-2xl font-bold">{product.title}</h1>

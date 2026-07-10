@@ -30,6 +30,7 @@ export default function UrunDetayPage() {
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
         description: prod.description || '', tags: prod.tags || '',
+        video_url: prod.video_url || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
       })
       if (storeId) {
@@ -52,6 +53,7 @@ export default function UrunDetayPage() {
         base_price: Number(form.base_price),
         compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
         description: form.description || null, tags: form.tags || null,
+        video_url: form.video_url?.trim() || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
       await load()
@@ -171,6 +173,10 @@ export default function UrunDetayPage() {
         <Field label="Açıklama">
           <textarea className="input mt-1" rows={5} value={form.description}
             onChange={set('description')} maxLength={20000} />
+        </Field>
+        <Field label="🎬 Ürün videosu (YouTube linki veya .mp4 — galeride ▶ karesi olur)">
+          <input className="input mt-1" value={form.video_url || ''} onChange={set('video_url')}
+            maxLength={500} placeholder="https://youtube.com/watch?v=…" />
         </Field>
         <Field label="Etiketler (virgülle)">
           <input className="input mt-1" value={form.tags} onChange={set('tags')} maxLength={500}

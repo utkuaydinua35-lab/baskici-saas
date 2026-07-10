@@ -76,6 +76,7 @@ class ProductUpdate(BaseModel):
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
     custom_fields: list[dict] | None = None   # kişiye özel alanlar (aşağıda temizlenir)
     models_per_item: int | None = Field(None, ge=1, le=2)
+    video_url: str | None = Field(None, max_length=500)
 
 
 class VariantCreate(BaseModel):
@@ -208,6 +209,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
         "variant_set_id": str(p.variant_set_id) if p.variant_set_id else None,
         "custom_fields": p.custom_fields or [],
         "models_per_item": p.models_per_item or 1,
+        "video_url": p.video_url,
         "publish_at": p.publish_at.isoformat() if p.publish_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }

@@ -81,6 +81,7 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
         "title": p.title,
         "custom_fields": p.custom_fields or [],
         "models_per_item": p.models_per_item or 1,
+        "video_url": p.video_url,
         "description": p.description,
         "seo_title": p.seo_title,
         "seo_description": p.seo_description,

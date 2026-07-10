@@ -68,6 +68,7 @@ export interface ProductDetail {
   title: string;
   custom_fields?: CustomField[];
   models_per_item?: number;
+  video_url?: string | null;
   description: string | null;
   seo_title: string | null;
   seo_description: string | null;

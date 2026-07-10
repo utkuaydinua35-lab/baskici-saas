@@ -10,9 +10,26 @@ interface Image {
 
 // Varyant seçici galeriye "variant-selected" olayı yollar (bileşenler kardeş
 // olduğundan ortak state yerine hafif DOM olayı) — o varyanta bağlı görsel öne gelir.
-export default function ProductGallery({ images, title }: { images: Image[]; title: string }) {
+function youtubeId(url: string): string | null {
+  const m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,})/);
+  return m ? m[1] : null;
+}
+
+export default function ProductGallery({
+  images,
+  title,
+  videoUrl,
+}: {
+  images: Image[];
+  title: string;
+  videoUrl?: string | null;
+}) {
   const [active, setActive] = useState(0);
+  const hasVideo = !!videoUrl;
+  const videoIndex = images.length;          // video, galerinin son karesi
+  const showingVideo = hasVideo && active === videoIndex;
   const current = images[active];
+  const ytId = videoUrl ? youtubeId(videoUrl) : null;
 
   useEffect(() => {
     const onVariant = (e: Event) => {
@@ -28,14 +45,24 @@ export default function ProductGallery({ images, title }: { images: Image[]; tit
   return (
     <div>
       <div className="aspect-square rounded-2xl border border-zinc-200 bg-white overflow-hidden">
-        {current ? (
+        {showingVideo ? (
+          ytId ? (
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+              title={`${title} video`} allowFullScreen
+              className="w-full h-full"
+              allow="accelerometer; autoplay; encrypted-media; picture-in-picture" />
+          ) : (
+            <video src={videoUrl!} controls playsInline className="w-full h-full object-contain" />
+          )
+        ) : current ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={current.url} alt={current.alt || title} className="w-full h-full object-contain" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-6xl text-zinc-200">📱</div>
         )}
       </div>
-      {images.length > 1 && (
+      {(images.length + (hasVideo ? 1 : 0)) > 1 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {images.map((im, i) => (
             <button
@@ -50,6 +77,16 @@ export default function ProductGallery({ images, title }: { images: Image[]; tit
               <img src={im.url} alt={im.alt || ""} className="w-full h-full object-cover" />
             </button>
           ))}
+          {hasVideo && (
+            <button
+              onClick={() => setActive(videoIndex)}
+              className={`w-16 h-16 rounded-lg border overflow-hidden shrink-0 bg-zinc-900 text-white
+                flex items-center justify-center ${showingVideo ? "border-zinc-900" : "border-zinc-200"}`}
+              aria-label="Ürün videosu"
+            >
+              ▶
+            </button>
+          )}
         </div>
       )}
     </div>

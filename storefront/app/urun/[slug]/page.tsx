@@ -150,6 +150,37 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </div>
       </div>
+      {reviews.total > 0 && (
+        <section className="mt-12 border-t border-zinc-200 pt-8 max-w-2xl">
+          <h2 className="text-base font-semibold mb-4">
+            Değerlendirmeler ({reviews.total})
+          </h2>
+          <div className="space-y-4">
+            {reviews.items.slice(0, 10).map((r, i) => (
+              <div key={i} className="bg-white border border-zinc-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-amber-400 text-xs">
+                    {"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}
+                  </span>
+                  <span className="font-medium">{r.author}</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                    ✓ Doğrulanmış alıcı
+                  </span>
+                  {r.created_at && (
+                    <span className="ml-auto text-xs text-zinc-400">
+                      {new Date(r.created_at).toLocaleDateString("tr-TR")}
+                    </span>
+                  )}
+                </div>
+                {r.comment && (
+                  <p className="mt-2 text-sm text-zinc-600 leading-relaxed">{r.comment}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <RecentlyViewed
         current={{
           slug: product.slug,

@@ -44,6 +44,7 @@ export interface Theme {
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   footer: { about: string; instagram: string };
+  nav_links?: { label: string; url: string }[];
   whatsapp?: { enabled: boolean; number: string; message: string };
   trust_badges?: { enabled: boolean };
 }

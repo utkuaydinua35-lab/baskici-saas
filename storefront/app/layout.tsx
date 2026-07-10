@@ -100,6 +100,7 @@ export default async function RootLayout({
             logoUrl={theme.logo_url}
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
+            navLinks={theme.nav_links ?? []}
           />
           {theme.animations.cart_drawer && (
             <CartDrawer freeShippingOver={payload.settings?.free_shipping_over} />

@@ -230,6 +230,30 @@ export default function TemaPage() {
             onClear={() => set('favicon_url', null)} />
         </Section>
 
+        <Section title="Üst Menü" icon="🧭">
+          <p className="text-[11px] text-panel-muted -mt-1">
+            Boş bırakılırsa varsayılan menü (Ürünler + Koleksiyonlar) kullanılır.
+          </p>
+          {(theme.nav_links || []).map((l, i) => (
+            <div key={i} className="flex gap-1.5">
+              <input className="input !py-1.5 text-xs !w-32" value={l.label} maxLength={40}
+                placeholder="Etiket"
+                onChange={e => set('nav_links', theme.nav_links.map((x, j) =>
+                  j === i ? { ...x, label: e.target.value } : x))} />
+              <input className="input !py-1.5 text-xs font-mono" value={l.url} maxLength={300}
+                placeholder="/urunler veya https://…"
+                onChange={e => set('nav_links', theme.nav_links.map((x, j) =>
+                  j === i ? { ...x, url: e.target.value } : x))} />
+              <button onClick={() => set('nav_links', theme.nav_links.filter((_, j) => j !== i))}
+                className="text-red-400 hover:text-red-600 px-1">×</button>
+            </div>
+          ))}
+          {(theme.nav_links || []).length < 8 && (
+            <button onClick={() => set('nav_links', [...(theme.nav_links || []), { label: '', url: '' }])}
+              className="btn-ghost !py-1 text-xs">+ Link Ekle</button>
+          )}
+        </Section>
+
         <Section title="Duyuru Şeridi" icon="📢">
           <Toggle checked={theme.announcement.enabled}
             onChange={v => set('announcement.enabled', v)} label="Duyuru şeridini göster" />

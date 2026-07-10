@@ -66,6 +66,8 @@ DEFAULT_THEME: dict = {
     ],
     "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
     "footer": {"about": "", "instagram": ""},
+    # Üst menü linkleri (Shopify Navigation) — boşsa varsayılan menü kullanılır
+    "nav_links": [],   # [{label, url}]
     # WhatsApp yüzen butonu (TR e-ticareti standardı) — boşsa görünmez
     "whatsapp": {"enabled": False, "number": "", "message": "Merhaba, sipariş hakkında bilgi almak istiyorum."},
     # Ürün sayfası + checkout güven şeridi
@@ -267,6 +269,13 @@ def validate_theme_patch(patch: dict) -> dict:
     for key in ("font", "logo_url", "favicon_url"):
         if key in patch:
             cleaned[key] = patch[key]
+    if "nav_links" in patch:
+        cleaned["nav_links"] = [
+            {"label": str((l or {}).get("label") or "")[:40],
+             "url": str((l or {}).get("url") or "")[:300]}
+            for l in (patch.get("nav_links") or [])[:8]
+            if isinstance(l, dict) and (l.get("label") and l.get("url"))
+        ]
     cleaned["sections"] = _normalize_sections(patch.get("sections") or [])
     cleaned["version"] = 2
     return cleaned

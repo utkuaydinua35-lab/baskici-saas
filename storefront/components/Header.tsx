@@ -18,11 +18,13 @@ export default function Header({
   logoUrl,
   cartDrawer,
   collections = [],
+  navLinks = [],
 }: {
   siteName: string;
   logoUrl?: string | null;
   cartDrawer?: boolean;
   collections?: NavCollection[];
+  navLinks?: { label: string; url: string }[];
 }) {
   const { count, setDrawerOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -73,10 +75,19 @@ export default function Header({
           )}
         </Link>
 
-        {/* Desktop nav */}
+        {/* Desktop nav — panelden özel menü tanımlıysa o kullanılır */}
         <nav className="hidden sm:flex items-center gap-4 text-sm text-zinc-600">
+          {navLinks.length > 0 ? (
+            navLinks.map((l) => (
+              <Link key={`${l.label}-${l.url}`} href={l.url}
+                className="hover:text-zinc-900 py-4">
+                {l.label}
+              </Link>
+            ))
+          ) : (
           <Link href="/urunler" className="hover:text-zinc-900 py-4">Ürünler</Link>
-          {collections.length > 0 && (
+          )}
+          {navLinks.length === 0 && collections.length > 0 && (
             <div className="relative group">
               <button className="hover:text-zinc-900 py-4 flex items-center gap-1">
                 Koleksiyonlar
@@ -153,7 +164,15 @@ export default function Header({
             className="text-zinc-400 hover:text-zinc-900 text-xl leading-none">×</button>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
-          <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>
+          {navLinks.map((l) => (
+            <Link key={`m-${l.label}-${l.url}`} href={l.url}
+              className="block px-5 py-2.5 text-sm font-medium">
+              {l.label}
+            </Link>
+          ))}
+          {navLinks.length === 0 && (
+            <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>
+          )}
           <Link href="/hesap" className="block px-5 py-2.5 text-sm font-medium">👤 Hesabım</Link>
           <Link href="/favoriler" className="block px-5 py-2.5 text-sm font-medium">❤️ Favorilerim</Link>
           {collections.length > 0 && (

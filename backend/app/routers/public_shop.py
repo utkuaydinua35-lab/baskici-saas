@@ -138,6 +138,7 @@ def list_products(
     model: str | None = Query(None, max_length=120),
     brand: str | None = Query(None, max_length=60),
     collection: str | None = Query(None, max_length=200),
+    slugs: str | None = Query(None, max_length=2500),  # virgüllü, verilen sırada döner
     sort: str = Query("yeni", pattern="^(yeni|fiyat-artan|fiyat-azalan)$"),
     min_price: float | None = Query(None, ge=0),
     max_price: float | None = Query(None, ge=0),
@@ -192,6 +193,10 @@ def list_products(
         )
 
     products = db.scalars(query).all()
+    if slugs:
+        wanted = [x.strip() for x in slugs.split(",") if x.strip()][:24]
+        by_slug = {p_.slug: p_ for p_ in products}
+        products = [by_slug[w] for w in wanted if w in by_slug]
     if model:
         m = model.lower()
         products = [

@@ -2,6 +2,7 @@ import { getThemePayload } from "@/lib/theme";
 import HeroSlider from "@/components/sections/HeroSlider";
 import FeaturedCollections from "@/components/sections/FeaturedCollections";
 import ProductsGrid from "@/components/sections/ProductsGrid";
+import FeaturedProducts from "@/components/sections/FeaturedProducts";
 import RichText from "@/components/sections/RichText";
 import Banner from "@/components/sections/Banner";
 
@@ -27,6 +28,10 @@ export default async function HomePage() {
             return (
               <ProductsGrid key={section.id} title={s.title}
                 collection={s.collection} limit={s.limit} />
+            );
+          case "featured_products":
+            return (
+              <FeaturedProducts key={section.id} title={s.title} slugs={s.slugs ?? []} />
             );
           case "rich_text":
             return <RichText key={section.id} title={s.title} body={s.body} />;

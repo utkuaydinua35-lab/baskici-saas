@@ -127,7 +127,9 @@ export function getProducts(params?: {
   sort?: string;
   minPrice?: string;
   maxPrice?: string;
+  slugs?: string;
   page?: number;
+  perPage?: number;
 }): Promise<ProductListResponse | null> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -138,7 +140,9 @@ export function getProducts(params?: {
   if (params?.sort) qs.set("sort", params.sort);
   if (params?.minPrice) qs.set("min_price", params.minPrice);
   if (params?.maxPrice) qs.set("max_price", params.maxPrice);
+  if (params?.slugs) qs.set("slugs", params.slugs);
   if (params?.page) qs.set("page", String(params.page));
+  if (params?.perPage) qs.set("per_page", String(params.perPage));
   const suffix = qs.size > 0 ? `?${qs}` : "";
   return shopFetch<ProductListResponse>(`/products${suffix}`);
 }

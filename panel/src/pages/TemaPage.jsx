@@ -17,6 +17,7 @@ const SECTION_TYPES = {
   hero_slider: { label: 'Hero / Slayt Gösterisi', icon: '🌅' },
   featured_collections: { label: 'Koleksiyon Kartları', icon: '🗂️' },
   products_grid: { label: 'Ürün Izgarası', icon: '🛍️' },
+  featured_products: { label: 'Öne Çıkan Ürünler (elle seç)', icon: '🌟' },
   rich_text: { label: 'Metin Bölümü', icon: '📝' },
   banner: { label: 'Banner Görseli', icon: '🖼️' },
 }
@@ -25,6 +26,7 @@ const SECTION_DEFAULTS = {
   hero_slider: { slides: [], autoplay_sec: 5 },
   featured_collections: { title: 'Koleksiyonlar', slugs: [] },
   products_grid: { title: 'Öne Çıkanlar', collection: null, limit: 8 },
+  featured_products: { title: 'Öne Çıkan Ürünler', slugs: [] },
   rich_text: { title: '', body: '' },
   banner: { image: null, url: '' },
 }
@@ -33,6 +35,7 @@ export default function TemaPage() {
   const { storeId, store } = useStore()
   const [theme, setTheme] = useState(null)
   const [collections, setCollections] = useState([])
+  const [products, setProducts] = useState([])
   const [busy, setBusy] = useState(false)
   const [saveCount, setSaveCount] = useState(0)  // iframe reload anahtarı
   const toast = useToast()
@@ -46,13 +49,15 @@ export default function TemaPage() {
   const load = useCallback(async () => {
     if (!storeId) return
     try {
-      const [t, c, cc] = await Promise.all([
+      const [t, c, cc, pr] = await Promise.all([
         api.get(`/api/store-settings/${storeId}/theme`),
         api.get(`/api/catalog/collections?store_id=${storeId}`),
         api.get(`/api/store-settings/${storeId}/custom-code`),
+        api.get(`/api/catalog/products?store_id=${storeId}&status=active`),
       ])
       setTheme(t)
       setCollections(c.filter(x => x.is_active))
+      setProducts(pr)
       setCustomCode(cc)
       initialRef.current = JSON.stringify([t, cc])
     } catch (e) {
@@ -211,7 +216,7 @@ export default function TemaPage() {
                   </div>
                   {open && (
                     <div className="p-3 space-y-2 bg-white">
-                      <SectionSettings sec={sec} collections={collections}
+                      <SectionSettings sec={sec} collections={collections} products={products}
                         patch={p => patchSection(sec.id, p)}
                         uploadAsset={uploadAsset} />
                     </div>
@@ -297,7 +302,7 @@ export default function TemaPage() {
 }
 
 // Bölüm tipine özel ayar formu.
-function SectionSettings({ sec, collections, patch, uploadAsset }) {
+function SectionSettings({ sec, collections, products = [], patch, uploadAsset }) {
   const s = sec.settings
 
   if (sec.type === 'hero_slider') {
@@ -373,6 +378,55 @@ function SectionSettings({ sec, collections, patch, uploadAsset }) {
           </div>
         )}
         <p className="text-[11px] text-panel-muted">Hiçbiri seçilmezse ilk 4 koleksiyon gösterilir.</p>
+      </>
+    )
+  }
+
+  if (sec.type === 'featured_products') {
+    const slugs = s.slugs || []
+    const available = products.filter(pr => !slugs.includes(pr.slug))
+    const bySlug = Object.fromEntries(products.map(pr => [pr.slug, pr]))
+    const move = (i, dir) => {
+      const j = i + dir
+      if (j < 0 || j >= slugs.length) return
+      const next = [...slugs]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      patch({ slugs: next })
+    }
+    return (
+      <>
+        <input className="input" value={s.title || ''} maxLength={80}
+          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        {slugs.length > 0 && (
+          <div className="space-y-1">
+            {slugs.map((slug, i) => (
+              <div key={slug} className="flex items-center gap-1.5 text-xs bg-panel-input rounded-lg px-2 py-1.5">
+                <span className="flex-1 min-w-0 truncate">
+                  {bySlug[slug]?.title || <span className="text-red-400">{slug} (silinmiş ürün)</span>}
+                </span>
+                <button onClick={() => move(i, -1)} disabled={i === 0}
+                  className="text-panel-muted hover:text-panel-ink disabled:opacity-30 px-0.5">↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === slugs.length - 1}
+                  className="text-panel-muted hover:text-panel-ink disabled:opacity-30 px-0.5">↓</button>
+                <button onClick={() => patch({ slugs: slugs.filter(x => x !== slug) })}
+                  className="text-red-400 hover:text-red-600 px-0.5">×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {slugs.length < 12 && available.length > 0 && (
+          <select className="input" value=""
+            onChange={e => e.target.value && patch({ slugs: [...slugs, e.target.value] })}>
+            <option value="">+ Ürün ekle…</option>
+            {available.map(pr => <option key={pr.slug} value={pr.slug}>{pr.title}</option>)}
+          </select>
+        )}
+        {products.length === 0 && (
+          <p className="text-xs text-panel-muted">Önce Ürünler sayfasından aktif ürün ekleyin.</p>
+        )}
+        <p className="text-[11px] text-panel-muted">
+          Seçtiğiniz sırayla gösterilir (en fazla 12). Boşsa bölüm vitrinde görünmez.
+        </p>
       </>
     )
   }

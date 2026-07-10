@@ -5,6 +5,7 @@ v2: anasayfa `sections` LİSTESİDİR — [{id, type, settings}]. Tipler:
   hero_slider          {slides:[{image,title,subtitle,cta_text,cta_url}], autoplay_sec}
   featured_collections {title, slugs:[]}
   products_grid        {title, collection, limit}
+  featured_products    {title, slugs:[]}   ← elle seçilen ürünler (sıralı)
   rich_text            {title, body}
   banner               {image, url}
 
@@ -27,6 +28,7 @@ SECTION_DEFAULTS: dict[str, dict] = {
     },
     "featured_collections": {"title": "Koleksiyonlar", "slugs": []},
     "products_grid": {"title": "Öne Çıkanlar", "collection": None, "limit": 8},
+    "featured_products": {"title": "Öne Çıkan Ürünler", "slugs": []},
     "rich_text": {"title": "", "body": ""},
     "banner": {"image": None, "url": ""},
 }
@@ -131,7 +133,7 @@ def _normalize_sections(sections: list) -> list:
                 settings["autoplay_sec"] = min(30, max(0, int(settings.get("autoplay_sec") or 5)))
             except (TypeError, ValueError):
                 settings["autoplay_sec"] = 5
-        elif stype == "featured_collections":
+        elif stype in ("featured_collections", "featured_products"):
             settings["slugs"] = [str(s)[:200] for s in (settings.get("slugs") or [])[:12]]
         elif stype == "products_grid":
             try:

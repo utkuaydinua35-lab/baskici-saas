@@ -14,7 +14,8 @@ export interface HeroSlide {
 
 export interface ThemeSection {
   id: string;
-  type: "hero_slider" | "featured_collections" | "products_grid" | "rich_text" | "banner";
+  type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
+    | "rich_text" | "banner";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;

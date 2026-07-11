@@ -394,6 +394,14 @@ def get_spec(model: str):
         alt = prefix + key.replace("SAMSUNG-", "")
         if alt in _MODEL_SPECS:
             return _MODEL_SPECS[alt]
+    # 5G varyant adı tutarsızlığı (POCO/Xiaomi/Redmi vb.): "X6 Pro" ≡ "X6 Pro 5G".
+    # Her iki yönde de dene (adında 5G olan/olmayan aynı telefon).
+    if key.endswith("-5G"):
+        if key[:-3] in _MODEL_SPECS:
+            return _MODEL_SPECS[key[:-3]]
+    else:
+        if (key + "-5G") in _MODEL_SPECS:
+            return _MODEL_SPECS[key + "-5G"]
     return None
 
 

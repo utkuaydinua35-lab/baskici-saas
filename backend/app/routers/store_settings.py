@@ -7,7 +7,9 @@ Secretlar okuma yönünde maskelenir (_mask_config); '••' içeren değer yaz
 """
 from __future__ import annotations
 
+import re
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -208,6 +210,115 @@ def clear_theme_preview(
         store.config = config
         flag_modified(store, "config")
         db.commit()
+
+
+# ── Taslak temalar (tema kütüphanesi) ──
+# config["theme_drafts"] = {key: {"name", "theme", "updated_at"}} — yayındaki
+# temayı bozmadan ayrı temalar düzenlenir; Yayınla ile takas edilir (eski
+# yayın taslak olarak saklanır, Shopify tema kütüphanesi gibi).
+
+MAX_THEME_DRAFTS = 10
+
+
+@router.get("/{store_id}/theme/drafts", response_model=dict)
+def list_theme_drafts(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    drafts = (store.config or {}).get("theme_drafts") or {}
+    return {"drafts": [
+        {"key": k, "name": d.get("name") or "Adsız taslak",
+         "updated_at": d.get("updated_at"),
+         "theme": resolve_theme({"theme": d.get("theme") or {}})}
+        for k, d in drafts.items()
+    ]}
+
+
+@router.put("/{store_id}/theme/drafts/{draft_key}", response_model=dict)
+def put_theme_draft(
+    store_id: uuid.UUID,
+    draft_key: str,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    if not re.fullmatch(r"[a-z0-9-]{1,60}", draft_key):
+        raise HTTPException(422, "Geçersiz taslak anahtarı")
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    drafts = dict(config.get("theme_drafts") or {})
+    if draft_key not in drafts and len(drafts) >= MAX_THEME_DRAFTS:
+        raise HTTPException(422, f"En fazla {MAX_THEME_DRAFTS} taslak tema tutulabilir")
+    entry = dict(drafts.get(draft_key) or {})
+    if "name" in (body or {}):
+        entry["name"] = str(body["name"] or "")[:80] or "Adsız taslak"
+    if "theme" in (body or {}):
+        entry["theme"] = validate_theme_patch(body["theme"] or {})
+    if "theme" not in entry:  # ilk oluşturmada tema zorunlu
+        raise HTTPException(422, "theme alanı gerekli")
+    entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+    drafts[draft_key] = entry
+    config["theme_drafts"] = drafts
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True, "key": draft_key}
+
+
+@router.delete("/{store_id}/theme/drafts/{draft_key}", status_code=204)
+def delete_theme_draft(
+    store_id: uuid.UUID,
+    draft_key: str,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    drafts = dict(config.get("theme_drafts") or {})
+    if drafts.pop(draft_key, None) is not None:
+        config["theme_drafts"] = drafts
+        store.config = config
+        flag_modified(store, "config")
+        db.commit()
+
+
+@router.post("/{store_id}/theme/drafts/{draft_key}/publish", response_model=dict)
+def publish_theme_draft(
+    store_id: uuid.UUID,
+    draft_key: str,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Taslağı yayına al — eski yayın, taslak olarak saklanır (geri dönülebilir)."""
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    drafts = dict(config.get("theme_drafts") or {})
+    draft = drafts.pop(draft_key, None)
+    if not draft or not draft.get("theme"):
+        raise HTTPException(404, "Taslak bulunamadı")
+    now = datetime.now(timezone.utc)
+    old_key = f"eski-{now.strftime('%Y%m%d%H%M%S')}"
+    drafts[old_key] = {
+        "name": f"Önceki yayın — {now.astimezone().strftime('%d.%m.%Y %H:%M')}",
+        "theme": validate_theme_patch(config.get("theme") or {}),
+        "updated_at": now.isoformat(),
+    }
+    # Otomatik yedekler sınırı aşarsa en eski "eski-*" kayıtları buda
+    while len(drafts) > MAX_THEME_DRAFTS:
+        old_backups = sorted(k for k in drafts if k.startswith("eski-"))
+        if not old_backups:
+            break
+        drafts.pop(old_backups[0])
+    config["theme"] = validate_theme_patch(draft["theme"])
+    config["theme_drafts"] = drafts
+    config.pop("theme_preview", None)  # bayat önizleme kalmasın
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    db.refresh(store)
+    return resolve_theme(store.config)
 
 
 @router.get("/{store_id}/theme/presets", response_model=list[dict])

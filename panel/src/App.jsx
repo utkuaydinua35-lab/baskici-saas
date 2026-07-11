@@ -16,6 +16,7 @@ const TerkSepetlerPage = lazy(() => import('./pages/TerkSepetlerPage'))
 const MusterilerPage = lazy(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazy(() => import('./pages/AnalitikPage'))
 const TemaPage = lazy(() => import('./pages/TemaPage'))
+const TemaEditorPage = lazy(() => import('./pages/TemaEditorPage'))
 const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
 const BlogPage = lazy(() => import('./pages/BlogPage'))
 const YorumlarPage = lazy(() => import('./pages/YorumlarPage'))
@@ -55,6 +56,8 @@ export default function App() {
             <Route path="/tasarim-talepleri" element={<TasarimTalepleriPage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
           </Route>
+          {/* Tam ekran tema editörü — sol menüsüz (Shopify tarzı) */}
+          <Route path="/tema/duzenle" element={<TemaEditorPage />} />
         </Route>
         <Route path="*" element={
           <div className="min-h-screen flex items-center justify-center text-panel-muted">

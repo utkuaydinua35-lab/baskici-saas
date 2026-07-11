@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     const slug = await getStoreSlug();
     const query = slugs
-      ? `slugs=${encodeURIComponent(slugs)}&per_page=100`
+      ? `slugs=${encodeURIComponent(slugs)}&per_page=50`
       : `q=${encodeURIComponent(q)}&per_page=5`;
     const res = await fetch(
       `${BACKEND_URL}/api/shop/${slug}/products?${query}`,

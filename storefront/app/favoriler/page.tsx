@@ -22,10 +22,16 @@ export default function FavoritesPage() {
         const missing = serverSlugs.filter((s) => !local.some((f) => f.slug === s));
         let merged = local;
         if (missing.length > 0) {
-          // Eksik ürünlerin kart verisini çek (silinen/yayından kalkan ürünler elenir)
-          const pr = await fetch(`/api/search?slugs=${encodeURIComponent(missing.join(","))}`);
-          const pd = pr.ok ? await pr.json() : { items: [] };
-          const fetched: FavItem[] = (pd.items || []).map(
+          // Eksik ürünlerin kart verisini çek (backend sayfa sınırı 50 —
+          // parçalara böl; silinen/yayından kalkan ürünler elenir)
+          const chunks: string[][] = [];
+          for (let i = 0; i < missing.length; i += 50) chunks.push(missing.slice(i, i + 50));
+          const results = await Promise.all(chunks.map((ch) =>
+            fetch(`/api/search?slugs=${encodeURIComponent(ch.join(","))}`)
+              .then((r) => (r.ok ? r.json() : { items: [] }))
+              .catch(() => ({ items: [] })),
+          ));
+          const fetched: FavItem[] = results.flatMap((pd) => pd.items || []).map(
             (p: { slug: string; title: string; price: string; currency: string; cover_image: string | null }) => ({
               slug: p.slug, title: p.title, price: p.price,
               currency: p.currency, image: p.cover_image,

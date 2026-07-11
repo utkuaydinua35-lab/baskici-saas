@@ -39,6 +39,7 @@ from app.models import (
     User,
 )
 from app.services import storage as storage_svc
+from app.services.sanitize import sanitize_rich_text
 
 router = APIRouter(
     prefix="/api/catalog", tags=["catalog"],
@@ -270,7 +271,7 @@ def create_product(
         store_id=body.store_id,
         slug=slug,
         title=body.title,
-        description=body.description,
+        description=sanitize_rich_text(body.description),
         status=body.status,
         seo_title=body.seo_title,
         seo_description=body.seo_description,
@@ -303,6 +304,8 @@ def update_product(
 ):
     product = _get_product(db, user.tenant_id, product_id, eager=True)
     updates = body.model_dump(exclude_unset=True)
+    if "description" in updates:
+        updates["description"] = sanitize_rich_text(updates["description"])
     if "custom_fields" in updates:
         updates["custom_fields"] = _clean_custom_fields(updates["custom_fields"])
     if "slug" in updates and updates["slug"]:
@@ -1322,6 +1325,8 @@ async def import_csv(
             ):
                 val = (row.get(csv_key) or "").strip()
                 if val:
+                    if attr == "description":
+                        val = sanitize_rich_text(val) or ""
                     setattr(product, attr, val[:maxlen])
 
             # Koleksiyonlar (ad ile; yoksa oluştur)

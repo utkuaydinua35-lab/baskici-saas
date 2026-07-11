@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: product.seo_title || product.title,
     description:
       product.seo_description ||
-      product.description?.slice(0, 160) ||
+      product.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) ||
       `${product.title} — baskılı telefon kılıfı.`,
     alternates: { canonical: `${SITE_URL}/urun/${product.slug}` },
     openGraph: product.images[0]
@@ -50,7 +50,9 @@ export default async function ProductPage({ params }: Props) {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.title,
-    description: product.seo_description || product.description || undefined,
+    description: product.seo_description
+      || product.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+      || undefined,
     image: product.images.map((im) =>
       im.url.startsWith("http") ? im.url : `${SITE_URL}${im.url}`),
     ...(brands.length === 1 ? { brand: { "@type": "Brand", name: brands[0] } } : {}),
@@ -127,9 +129,21 @@ export default async function ProductPage({ params }: Props) {
             </div>
           )}
           {product.description && (
-            <div className="mt-8 border-t border-zinc-200 pt-5 text-sm text-zinc-600 whitespace-pre-line">
-              {product.description}
-            </div>
+            /<[a-zA-Z/!]/.test(product.description) ? (
+              // Zengin metin — backend beyaz listeyle temizleyip saklar (sanitize_rich_text)
+              <div
+                className="mt-8 border-t border-zinc-200 pt-5 text-sm text-zinc-600 space-y-2
+                  [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-zinc-900
+                  [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-zinc-900
+                  [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5
+                  [&_a]:underline [&_a]:text-zinc-900"
+                dangerouslySetInnerHTML={{ __html: product.description }}
+              />
+            ) : (
+              <div className="mt-8 border-t border-zinc-200 pt-5 text-sm text-zinc-600 whitespace-pre-line">
+                {product.description}
+              </div>
+            )
           )}
           {product.tags && (
             <div className="mt-5 flex gap-1.5 flex-wrap">

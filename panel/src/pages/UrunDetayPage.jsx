@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { StatusBadge } from './UrunlerPage'
+import RichTextEditor from '../components/RichTextEditor'
 
 // Tam sayfa ürün editörü — görsel sıralama (drag), inline varyant editi, SEO.
 export default function UrunDetayPage() {
@@ -169,8 +170,9 @@ export default function UrunDetayPage() {
           </Field>
         </div>
         <Field label="Açıklama">
-          <textarea className="input mt-1" rows={5} value={form.description}
-            onChange={set('description')} maxLength={20000} />
+          <RichTextEditor value={form.description}
+            onChange={v => setForm(f => ({ ...f, description: v }))}
+            placeholder="Ürün açıklaması — kalın, başlık, liste ve bağlantı kullanabilirsiniz…" />
         </Field>
         <div className="text-sm">
           <span className="text-panel-muted text-xs">

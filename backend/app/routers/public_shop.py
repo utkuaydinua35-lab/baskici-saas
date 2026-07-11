@@ -13,6 +13,7 @@ gelmez → CORS gerekmez). Ödeme sağlayıcı callback'leri de buraya gelir.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -797,7 +798,9 @@ def google_shopping_feed(
     for p in products:
         link = f"{site}/urun/{p.slug}"
         image = f"{site}/storage/{p.images[0].file_path}" if p.images else ""
-        desc = (p.seo_description or p.description or p.title or "")[:5000]
+        # Zengin metin açıklamadan etiketleri ayıkla (feed düz metin ister)
+        desc = re.sub(r"<[^>]*>", " ", p.seo_description or p.description or p.title or "")
+        desc = re.sub(r"\s+", " ", desc).strip()[:5000]
         for v in p.variants:
             if not v.is_active:
                 continue

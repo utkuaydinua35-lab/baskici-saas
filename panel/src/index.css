@@ -4,17 +4,77 @@
 
 body {
   @apply bg-panel-bg text-panel-ink antialiased;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /* Ortak kart/girdi sınıfları — sayfalar kısa yazsın */
-.card { @apply bg-panel-card border border-panel-border rounded-2xl p-4; }
+.card {
+  @apply bg-panel-card border border-panel-border rounded-2xl p-4
+    shadow-[0_1px_2px_rgba(15,23,42,0.04)]
+    transition-shadow duration-200;
+}
+.card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07); }
+
 .input { @apply w-full bg-white border border-panel-border rounded-xl px-3 py-2 text-sm
-         focus:outline-none focus:ring-2 focus:ring-panel-accent/30 focus:border-panel-accent; }
-.btn-primary { @apply px-4 py-2 rounded-xl bg-panel-accent text-white text-sm font-medium
-               hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed; }
+         transition-colors duration-150
+         focus:outline-none focus:ring-2 focus:ring-panel-accent/25 focus:border-panel-accent; }
+
+.btn-primary {
+  @apply px-4 py-2 rounded-xl text-white text-sm font-medium
+    transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  background-image: linear-gradient(135deg, #059669, #0d9488);
+  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.35);
+}
+.btn-primary:not(:disabled):hover { filter: brightness(1.07); box-shadow: 0 3px 10px rgba(5, 150, 105, 0.35); }
+.btn-primary:not(:disabled):active { transform: scale(0.98); }
+
 .btn-ghost { @apply px-3 py-2 rounded-xl border border-panel-border text-sm text-panel-muted
-             hover:text-panel-ink hover:border-slate-400 transition; }
+             bg-white hover:text-panel-ink hover:border-slate-400 hover:shadow-sm
+             active:scale-[0.98] transition-all duration-150; }
+
+/* Sayfa geçişi — route değişince içerik yumuşakça belirir */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.page-in { animation: page-in 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Sol menü öğeleri */
+.nav-item {
+  @apply relative flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-[13px]
+    text-panel-muted transition-all duration-150;
+}
+.nav-item:hover { @apply bg-panel-input text-panel-ink; }
+.nav-item.active { @apply bg-emerald-50 text-emerald-800 font-semibold; }
+.nav-item.active::before {
+  content: '';
+  @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full bg-panel-accent;
+}
+.nav-item .nav-icon { @apply text-[15px] leading-none transition-transform duration-150; }
+.nav-item:hover .nav-icon { transform: scale(1.15); }
+
+.nav-group-label {
+  @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 select-none;
+}
+
+/* Yükleme iskeleti */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  @apply rounded-lg;
+  background: linear-gradient(90deg, #eef2f6 25%, #f8fafc 50%, #eef2f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* Sayı/istatistik vurgusu — dashboard kartları */
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: none; }
+}
+.pop-in { animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
 /* Toast girişi */
 @keyframes toast-in {
@@ -22,3 +82,9 @@ body {
   to { opacity: 1; transform: none; }
 }
 .toast-in { animation: toast-in 0.25s ease-out; }
+
+/* İnce kaydırma çubukları (WebKit) */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+*::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+*::-webkit-scrollbar-track { background: transparent; }

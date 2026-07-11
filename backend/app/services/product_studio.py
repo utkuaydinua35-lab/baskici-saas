@@ -19,20 +19,21 @@ from app.models import Design
 logger = logging.getLogger("product_studio")
 
 NICHES = [
-    "Anime", "Doğa", "Soyut", "Minimal", "Sanat", "Araba", "Spor", "Müzik",
-    "Sevimli", "Retro", "Lüks", "Motto/Yazı", "Çiçek", "Manzara", "Diğer",
+    "Anime", "Nature", "Abstract", "Minimal", "Art", "Cars", "Sports", "Music",
+    "Cute", "Retro", "Luxury", "Quote", "Floral", "Landscape", "Other",
 ]
 
-_VISION_PROMPT = """Bu bir telefon kılıfı BASKI tasarımı görseli. Analiz et ve SADECE geçerli bir JSON döndür (markdown/açıklama YOK):
+_VISION_PROMPT = """This is a phone case PRINT design image. Analyze it and return ONLY valid JSON
+(no markdown/explanation). ALL text values MUST be in ENGLISH words:
 {{
-  "design_name": "<2-4 kelimelik YARATICI, benzersiz Türkçe tasarım adı — örn: Neon Samuray, Gece Ormanı, Altın Dalgalar>",
-  "niche": "<şunlardan biri: {niches}>",
-  "collection": "<koleksiyon/seri adı, 1-2 kelime Türkçe — örn: Anime, Doğa, Soyut>",
-  "keywords": ["<3-6 Türkçe anahtar kelime>"],
-  "colors": ["<2-3 baskın renk, Türkçe>"],
-  "style": "<tek Türkçe sıfat: Şık/Modern/Minimal/Sanatsal/Sevimli/Cesur/Retro/Lüks/Eğlenceli/Zarif>",
-  "main_subject": "<ne betimliyor, 2-4 kelime Türkçe>",
-  "mood": "<ruh hali, 2-3 kelime Türkçe>"
+  "design_name": "<2-4 word CREATIVE, unique ENGLISH design name — e.g., Neon Samurai, Night Forest, Golden Waves>",
+  "niche": "<one of: {niches}>",
+  "collection": "<collection/series name, 1-2 ENGLISH words — e.g., Anime, Nature, Abstract>",
+  "keywords": ["<3-6 ENGLISH keywords>"],
+  "colors": ["<2-3 dominant colors in ENGLISH>"],
+  "style": "<one ENGLISH adjective: Elegant/Modern/Minimal/Artistic/Cute/Bold/Retro/Luxury/Playful/Sleek>",
+  "main_subject": "<what it depicts, 2-4 ENGLISH words>",
+  "mood": "<mood, 2-3 ENGLISH words>"
 }}"""
 
 
@@ -126,12 +127,12 @@ def seo_fields(title: str, analysis: dict | None = None) -> dict:
     coll = ascii_fold((a.get("collection") or a.get("niche") or "").strip())
     kw = [ascii_fold(k) for k in (a.get("keywords") or []) if k][:4]
     seo_title = ascii_fold(title)[:60].strip()
-    desc = f"{dname} tasarimli ozel telefon kilifi."
+    desc = f"{dname} design phone case."
     if coll:
-        desc += f" {coll} serisi."
+        desc += f" {coll} series."
     if kw:
         desc += " " + ", ".join(kw) + "."
-    desc += " Yuksek kaliteli baski, tam koruma."
+    desc += " High quality print, full protection."
     seo_desc = ascii_fold(desc)[:160].strip()
     return {"seo_title": seo_title, "seo_description": seo_desc}
 
@@ -139,13 +140,13 @@ def seo_fields(title: str, analysis: dict | None = None) -> dict:
 def build_content(analysis: dict, brand_name: str) -> dict:
     """Analizden Shopify başlığı (İngilizce harf) + (sabit) açıklama + etiketler + SEO."""
     a = analysis or {}
-    dname = ascii_fold((a.get("design_name") or "Ozel Tasarim").strip())
-    coll = ascii_fold((a.get("collection") or a.get("niche") or "Ozel").strip())
+    dname = ascii_fold((a.get("design_name") or "Custom Design").strip())
+    coll = ascii_fold((a.get("collection") or a.get("niche") or "Custom").strip())
     colors = a.get("colors") or []
     keywords = a.get("keywords") or []
     style = (a.get("style") or "").strip()
 
-    title = ascii_fold(f'{brand_name} "{dname}" Tasarim Telefon Kilifi - {coll} Serisi')
+    title = ascii_fold(f'{brand_name} "{dname}" Design Phone Case - {coll} Series')
     body_html = description_html()
     tags = list(dict.fromkeys(
         [t for t in ([a.get("niche")] + keywords + colors + [style, coll]) if t]

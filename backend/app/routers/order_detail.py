@@ -526,6 +526,53 @@ def update_flags(
     return _serialize_detail(order, db)
 
 
+# ─── Zaman akışı yorumu + etiketler (Shopify order detail paritesi) ──
+
+class CommentIn(BaseModel):
+    message: str
+
+
+@router.post("/{order_ref}/comment", response_model=None)
+def add_comment(
+    order_ref: str,
+    payload: CommentIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Zaman akışına personel yorumu — yalnızca panelde görünür, müşteriye gitmez."""
+    msg = (payload.message or "").strip()[:2000]
+    if not msg:
+        raise HTTPException(status_code=422, detail="Yorum boş olamaz")
+    order = _resolve_order(db, order_ref, user.tenant_id, with_rels=False)
+    _log_history(db, order, user, action="not", note=msg)
+    db.commit()
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    return _serialize_detail(order, db)
+
+
+class TagsIn(BaseModel):
+    tags: list[str]
+
+
+@router.put("/{order_ref}/tags", response_model=None)
+def update_tags(
+    order_ref: str,
+    payload: TagsIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Sipariş etiketleri — virgüllü saklanır, filtre/arama için."""
+    order = _resolve_order(db, order_ref, user.tenant_id, with_rels=False)
+    clean: list[str] = []
+    for t in (payload.tags or [])[:20]:
+        t = str(t).strip()[:40]
+        if t and t.lower() not in [c.lower() for c in clean]:
+            clean.append(t)
+    order.tags = ", ".join(clean) or None
+    db.commit()
+    return {"ok": True, "tags": order.tags}
+
+
 # ─── Müşteriye şablonlu e-posta ─────────────────────────────
 
 class CustomerEmailIn(BaseModel):

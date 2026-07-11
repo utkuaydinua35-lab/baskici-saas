@@ -131,15 +131,28 @@ export default function SiparisDetayPage() {
           {/* Müşteri talepleri (iade/değişim/sorun) */}
           <RequestsCard orderId={d.id} />
 
-          {/* Zaman çizelgesi */}
+          {/* Zaman çizelgesi — üstte personel yorum kutusu (Shopify gibi) */}
           <div className="card">
-            <h2 className="text-sm font-semibold mb-3">Zaman Çizelgesi</h2>
+            <h2 className="text-sm font-semibold mb-3">Zaman Akışı</h2>
+            <CommentBox orderId={d.id} onSent={load} />
             <Timeline detail={d} />
           </div>
         </div>
 
         {/* ── Sağ kolon ── */}
         <div className="space-y-4">
+          {/* Notlar — müşterinin ödeme sırasında bıraktığı not */}
+          <div className="card">
+            <h2 className="text-sm font-semibold mb-1.5">Notlar</h2>
+            {d.note ? (
+              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-2 whitespace-pre-line">
+                {d.note}
+              </p>
+            ) : (
+              <p className="text-xs text-panel-muted">Müşteriden not yok</p>
+            )}
+          </div>
+
           {/* Müşteri */}
           <div className="card">
             <h2 className="text-sm font-semibold mb-2.5">Müşteri</h2>
@@ -150,16 +163,24 @@ export default function SiparisDetayPage() {
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{d.customer_name || '—'}</div>
                 {d.customer_email && (
-                  <a href={`mailto:${d.customer_email}`}
+                  <Link to={`/musteriler?q=${encodeURIComponent(d.customer_email)}`}
                     className="text-xs text-panel-accent hover:underline truncate block">
-                    {d.customer_email}
-                  </a>
+                    Müşteri profili →
+                  </Link>
                 )}
               </div>
             </div>
-            {ship.phone && (
-              <div className="mt-2 text-xs text-panel-muted">📞 {ship.phone}</div>
-            )}
+            <div className="mt-2.5 pt-2.5 border-t border-panel-border space-y-1 text-xs">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-panel-muted">İletişim bilgileri</div>
+              {d.customer_email ? (
+                <a href={`mailto:${d.customer_email}`} className="text-panel-accent hover:underline block truncate">
+                  {d.customer_email}
+                </a>
+              ) : <span className="text-panel-muted">E-posta yok</span>}
+              <div className="text-panel-muted">
+                {ship.phone ? `📞 ${ship.phone}` : 'Telefon numarası girilmemiş.'}
+              </div>
+            </div>
           </div>
 
           {/* Teslimat adresi */}
@@ -250,13 +271,8 @@ export default function SiparisDetayPage() {
             </div>
           )}
 
-          {/* Sipariş notu */}
-          {d.note && (
-            <div className="card !bg-amber-50 !border-amber-200">
-              <h2 className="text-sm font-semibold mb-1.5">📝 Sipariş Notu</h2>
-              <p className="text-xs text-amber-900 whitespace-pre-line">{d.note}</p>
-            </div>
-          )}
+          {/* Etiketler */}
+          <TagsCard orderId={d.id} initial={d.tags} />
         </div>
       </div>
     </div>
@@ -295,10 +311,14 @@ function Timeline({ detail }) {
     ...(detail.status_history || []).map(h => ({
       at: h.created_at,
       who: h.created_by,
-      text: h.action === 'stage_change' && h.to_label
-        ? `Aşama: ${h.from_label ? h.from_label + ' → ' : ''}${h.to_label}`
-        : (ACTION_LABELS[h.action] || h.action),
-      note: h.note,
+      // Personel yorumu: metnin kendisi olay olarak gösterilir (Shopify gibi)
+      comment: h.action === 'not',
+      text: h.action === 'not'
+        ? h.note
+        : h.action === 'stage_change' && h.to_label
+          ? `Aşama: ${h.from_label ? h.from_label + ' → ' : ''}${h.to_label}`
+          : (ACTION_LABELS[h.action] || h.action),
+      note: h.action === 'not' ? null : h.note,
     })),
     detail.created_at_platform && {
       at: detail.created_at_platform,
@@ -318,7 +338,13 @@ function Timeline({ detail }) {
       {events.map((e, i) => (
         <li key={i} className="ml-4">
           <span className="absolute -left-[5px] mt-1 w-2.5 h-2.5 rounded-full bg-panel-accent/70 border-2 border-white" />
-          <div className="text-sm">{e.text}</div>
+          {e.comment ? (
+            <div className="text-sm bg-panel-input/70 border border-panel-border rounded-xl px-3 py-2 whitespace-pre-line">
+              💬 {e.text}
+            </div>
+          ) : (
+            <div className="text-sm">{e.text}</div>
+          )}
           {e.note && <div className="text-xs text-panel-muted mt-0.5">{e.note}</div>}
           <div className="text-[11px] text-panel-muted mt-0.5">
             {e.at && new Date(e.at).toLocaleString('tr-TR', {
@@ -329,6 +355,95 @@ function Timeline({ detail }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+// Personel yorumu — zaman akışına düşer, yalnızca panelde görünür.
+function CommentBox({ orderId, onSent }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const send = async () => {
+    const msg = text.trim()
+    if (!msg) return
+    setBusy(true); setError('')
+    try {
+      await api.post(`/api/orders/${orderId}/comment`, { message: msg })
+      setText('')
+      onSent?.()
+    } catch (e) {
+      setError(typeof e?.detail === 'string' ? e.detail : 'Yorum gönderilemedi')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="mb-4">
+      <div className="flex gap-2">
+        <input className="input !py-2 text-sm" value={text} maxLength={2000}
+          placeholder="Yorum yazın…"
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} />
+        <button onClick={send} disabled={busy || !text.trim()}
+          className="btn-primary !py-2 text-xs whitespace-nowrap">
+          {busy ? '…' : 'Gönder'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
+      <p className="text-[10px] text-panel-muted mt-1 text-right">
+        Yorumları yalnızca siz ve diğer personel görebilir.
+      </p>
+    </div>
+  )
+}
+
+// Etiketler — virgüllü Order.tags; ekle/çıkar anında kaydedilir.
+function TagsCard({ orderId, initial }) {
+  const [tags, setTags] = useState(() =>
+    (initial || '').split(',').map(t => t.trim()).filter(Boolean))
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const persist = async (next) => {
+    setBusy(true); setError('')
+    try {
+      const r = await api.put(`/api/orders/${orderId}/tags`, { tags: next })
+      setTags((r.tags || '').split(',').map(t => t.trim()).filter(Boolean))
+    } catch {
+      setError('Etiketler kaydedilemedi')
+    } finally { setBusy(false) }
+  }
+
+  const add = () => {
+    const t = draft.trim()
+    if (!t) return
+    setDraft('')
+    if (tags.some(x => x.toLowerCase() === t.toLowerCase())) return
+    persist([...tags, t])
+  }
+
+  return (
+    <div className="card">
+      <h2 className="text-sm font-semibold mb-2">Etiketler</h2>
+      <input className="input !py-1.5 text-xs" value={draft} maxLength={40}
+        placeholder="Etiket yazıp Enter'a basın" disabled={busy}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
+      {tags.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap mt-2">
+          {tags.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 text-[11px] bg-panel-input
+              border border-panel-border rounded-full px-2 py-0.5">
+              {t}
+              <button onClick={() => persist(tags.filter(x => x !== t))} disabled={busy}
+                className="text-panel-muted hover:text-red-600">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
+    </div>
   )
 }
 

@@ -1,6 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { canUsePanel, useAuth } from '../lib/auth'
 import { useStore } from '../lib/store'
+import { BRAND } from '../lib/brand'
 
 export default function ProtectedRoute() {
   const { user, loading, logout } = useAuth()
@@ -22,7 +23,7 @@ export default function ProtectedRoute() {
           <div className="text-4xl">🔒</div>
           <h1 className="mt-3 font-semibold">Bu panele erişim yetkiniz yok</h1>
           <p className="mt-2 text-sm text-panel-muted">
-            Mağaza Paneli için hesabınızda <b>vitrin</b> yetkisi olmalı.
+            {BRAND} için hesabınızda <b>vitrin</b> yetkisi olmalı.
             Yöneticinizden Baskıcı Paneli üzerinden yetki isteyebilirsiniz.
           </p>
           <button onClick={logout} className="btn-ghost mt-4">Başka hesapla gir</button>

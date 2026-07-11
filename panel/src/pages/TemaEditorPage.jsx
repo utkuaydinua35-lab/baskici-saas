@@ -417,20 +417,14 @@ export default function TemaEditorPage() {
               <Section title="Üst Menü" icon="🧭">
                 <p className="text-[11px] text-panel-muted -mt-1">
                   Boş bırakılırsa varsayılan menü (Ürünler + Koleksiyonlar) kullanılır.
+                  Hedefi listeden seçin; dış site için "Özel bağlantı"yı kullanın.
                 </p>
                 {(theme.nav_links || []).map((l, i) => (
-                  <div key={i} className="flex gap-1.5">
-                    <input className="input !py-1.5 text-xs !w-32" value={l.label} maxLength={40}
-                      placeholder="Etiket"
-                      onChange={e => set('nav_links', theme.nav_links.map((x, j) =>
-                        j === i ? { ...x, label: e.target.value } : x))} />
-                    <input className="input !py-1.5 text-xs font-mono" value={l.url} maxLength={300}
-                      placeholder="/urunler veya https://…"
-                      onChange={e => set('nav_links', theme.nav_links.map((x, j) =>
-                        j === i ? { ...x, url: e.target.value } : x))} />
-                    <button onClick={() => set('nav_links', theme.nav_links.filter((_, j) => j !== i))}
-                      className="text-red-400 hover:text-red-600 px-1">×</button>
-                  </div>
+                  <NavLinkRow key={i} link={l}
+                    collections={collections} products={products} pages={pages}
+                    onChange={patch => set('nav_links', theme.nav_links.map((x, j) =>
+                      j === i ? { ...x, ...patch } : x))}
+                    onRemove={() => set('nav_links', theme.nav_links.filter((_, j) => j !== i))} />
                 ))}
                 {(theme.nav_links || []).length < 8 && (
                   <button onClick={() => set('nav_links', [...(theme.nav_links || []), { label: '', url: '' }])}
@@ -612,6 +606,65 @@ export default function TemaEditorPage() {
           </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Menü linki satırı — hedef, hazır listeden seçilir (Shopify Navigation);
+// dış site için "Özel bağlantı" metin girişini açar.
+const CUSTOM = '__ozel'
+const GENEL_LINKS = [
+  ['/', '🏠 Ana Sayfa'], ['/urunler', '🛍 Tüm Ürünler'], ['/sepet', '🛒 Sepet'],
+  ['/favoriler', '❤️ Favoriler'], ['/hesap', '👤 Hesabım'], ['/blog', '✍️ Blog'],
+]
+
+function NavLinkRow({ link, collections, products, pages, onChange, onRemove }) {
+  const options = [
+    { group: 'Genel', items: GENEL_LINKS },
+    { group: 'Koleksiyonlar', items: collections.map(c => [`/koleksiyon/${c.slug}`, c.title]) },
+    { group: 'Sayfalar', items: pages.map(p => [`/sayfa/${p.slug}`, p.title]) },
+    { group: 'Ürünler', items: products.slice(0, 30).map(p => [`/urun/${p.slug}`, p.title]) },
+  ].filter(g => g.items.length > 0)
+
+  const known = new Set(options.flatMap(g => g.items.map(([u]) => u)))
+  // Boş url yeni satırdır → seçim yapılmamış görünsün; bilinmeyen dolu url = özel bağlantı
+  const isCustom = !!link.url && !known.has(link.url)
+  const selectValue = isCustom ? CUSTOM : link.url
+
+  const pick = (value) => {
+    if (value === CUSTOM) { onChange({ url: 'https://' }); return }
+    const found = options.flatMap(g => g.items).find(([u]) => u === value)
+    // Etiket boşsa (veya önceki otomatik etiketse) seçilen sayfanın adını yaz
+    const cleanTitle = found ? found[1].replace(/^[^\wÇĞİÖŞÜçğıöşü]+\s*/u, '') : ''
+    onChange({ url: value, ...(link.label ? {} : { label: cleanTitle.slice(0, 40) }) })
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1.5">
+        <input className="input !py-1.5 text-xs !w-32" value={link.label} maxLength={40}
+          placeholder="Etiket"
+          onChange={e => onChange({ label: e.target.value })} />
+        <select className="input !py-1.5 text-xs flex-1" value={selectValue}
+          onChange={e => pick(e.target.value)}>
+          {!link.url && <option value="">Hedef seçin…</option>}
+          {options.map(g => (
+            <optgroup key={g.group} label={g.group}>
+              {g.items.map(([u, t]) => <option key={u} value={u}>{t}</option>)}
+            </optgroup>
+          ))}
+          <optgroup label="Diğer">
+            <option value={CUSTOM}>🔗 Özel bağlantı / dış site…</option>
+          </optgroup>
+        </select>
+        <button onClick={onRemove}
+          className="text-red-400 hover:text-red-600 px-1">×</button>
+      </div>
+      {isCustom && (
+        <input className="input !py-1.5 text-xs font-mono" value={link.url} maxLength={300}
+          placeholder="https://siparistakip.bernzcompany.com"
+          onChange={e => onChange({ url: e.target.value })} />
+      )}
     </div>
   )
 }

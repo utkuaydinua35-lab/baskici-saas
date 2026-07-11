@@ -65,8 +65,17 @@ export function AuthProvider({ children }) {
     api.post('/api/auth/logout', {}).catch(() => {})
   }
 
+  // Profil güncellemesi sonrası kullanıcı bilgisini tazele
+  const refresh = async () => {
+    try {
+      const me = await api.get('/api/auth/me')
+      setUser(me.user)
+      setTenant(me.tenant)
+    } catch { /* oturum düşmüşse api.js zaten login'e atar */ }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, login, verifyTwoFactor, logout }}>
+    <AuthContext.Provider value={{ user, tenant, loading, login, verifyTwoFactor, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   )

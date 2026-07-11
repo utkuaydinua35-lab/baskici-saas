@@ -6,8 +6,20 @@ import SaveBar from '../components/SaveBar'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
+// Shopify tarzı SEKMELER: her konu kendi panelinde, Kaydet tüm sekmeleri kapsar.
+const TABS = [
+  { key: 'genel', label: 'Genel', icon: '🏬' },
+  { key: 'kargo', label: 'Kargo & Sepet', icon: '📦' },
+  { key: 'odeme', label: 'Ödeme', icon: '💳' },
+  { key: 'eposta', label: 'E-posta', icon: '🔔' },
+  { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
+  { key: 'yayin', label: 'Yayın & Domain', icon: '🌐' },
+  { key: 'yasal', label: 'Yasal', icon: '📄' },
+]
+
 export default function AyarlarPage() {
   const { storeId } = useStore()
+  const [tab, setTab] = useState('genel')
   const [storeName, setStoreName] = useState('')
   const [cfg, setCfg] = useState({})
   const [loaded, setLoaded] = useState(false)
@@ -64,6 +76,20 @@ export default function AyarlarPage() {
       <SaveBar dirty={dirty} busy={busy} onSave={save} onDiscard={discard} />
       <h1 className="text-xl font-semibold">Ayarlar</h1>
 
+      {/* Sekmeler — Kaydet çubuğu tüm sekmelerdeki değişiklikleri kapsar */}
+      <div className="flex gap-1 border-b border-panel-border -mb-1 overflow-x-auto">
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-3.5 py-2 text-[13px] whitespace-nowrap rounded-t-xl border-b-2 transition-all duration-150 ${
+              tab === t.key
+                ? 'border-panel-accent text-emerald-800 font-semibold bg-emerald-50/60'
+                : 'border-transparent text-panel-muted hover:text-panel-ink hover:bg-panel-input'}`}>
+            <span className="mr-1.5">{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'genel' && (
       <Section title="Mağaza Bilgileri" icon="🏬">
         <Field label="Mağaza adı">
           <input className="input mt-1" value={storeName} onChange={e => setStoreName(e.target.value)} maxLength={200} />
@@ -80,7 +106,9 @@ export default function AyarlarPage() {
           <input className="input mt-1" value={cfg.contact_instagram || ''} onChange={set('contact_instagram')} placeholder="@markam" />
         </Field>
       </Section>
+      )}
 
+      {tab === 'kargo' && (
       <Section title="Kargo ve Sepet" icon="📦">
         <div className="grid grid-cols-3 gap-3">
           <Field label="Kargo ücreti (₺)">
@@ -116,7 +144,9 @@ export default function AyarlarPage() {
           🎁 Ödeme sayfasında "hediye paketi istiyorum" seçeneği sun (ücretsiz, sipariş notuna düşer)
         </label>
       </Section>
+      )}
 
+      {tab === 'odeme' && (
       <Section title="Ödeme Sağlayıcı" icon="💳">
         <Field label="Sağlayıcı">
           <select className="input mt-1 !w-48" value={cfg.payment_provider || 'iyzico'} onChange={set('payment_provider')}>
@@ -168,7 +198,9 @@ export default function AyarlarPage() {
           Kart bilgileri hiçbir zaman sunucularımıza gelmez.
         </p>
       </Section>
+      )}
 
+      {tab === 'eposta' && (
       <Section title="E-posta Bildirimleri" icon="🔔">
         <p className="text-[11px] text-panel-muted -mt-1">
           Müşteriye giden otomatik e-postaların konu ve giriş metnini özelleştirin.
@@ -205,7 +237,9 @@ export default function AyarlarPage() {
           )
         })}
       </Section>
+      )}
 
+      {tab === 'pazarlama' && (
       <Section title="Pazarlama Pikselleri" icon="🎯">
         <p className="text-[11px] text-panel-muted -mt-1">
           ID'yi girip kaydedin — vitrin otomatik olarak sayfa görüntüleme, sepete ekleme,
@@ -226,7 +260,9 @@ export default function AyarlarPage() {
           </Field>
         </div>
       </Section>
+      )}
 
+      {tab === 'yayin' && (<>
       <Section title="Yayın Öncesi Kilit" icon="🔒">
         <Field label="Mağaza şifresi (boş = koruma kapalı)">
           <input className="input mt-1 !w-64" value={cfg.storefront_password || ''}
@@ -254,7 +290,9 @@ export default function AyarlarPage() {
         <DomainVerify storeId={storeId} customDomain={cfg.custom_domain}
           onUseAsDomain={() => setCfg(c => ({ ...c, storefront_url: `https://${(c.custom_domain || '').trim()}` }))} />
       </Section>
+      </>)}
 
+      {tab === 'yasal' && (
       <Section title="Yasal Metinler" icon="📄">
         <p className="text-xs text-panel-muted -mt-1 mb-2">
           Boş bırakılan alanlarda vitrindeki hazır şablon metinler gösterilir.
@@ -269,6 +307,7 @@ export default function AyarlarPage() {
           <textarea className="input mt-1" rows={4} value={cfg.iade_text || ''} onChange={set('iade_text')} />
         </Field>
       </Section>
+      )}
     </div>
   )
 }

@@ -279,6 +279,25 @@ def me(
     )
 
 
+from pydantic import BaseModel as _ProfBaseModel, Field as _ProfField  # noqa: E402
+
+
+class _ProfileUpdateRequest(_ProfBaseModel):
+    full_name: str = _ProfField(..., min_length=1, max_length=200)
+
+
+@router.patch("/me", response_model=None)
+def update_me(
+    req: _ProfileUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kendi profil bilgisini güncelle (şimdilik yalnız ad soyad)."""
+    user.full_name = req.full_name.strip()
+    db.commit()
+    return {"ok": True, "full_name": user.full_name}
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout() -> None:
     """

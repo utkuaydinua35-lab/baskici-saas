@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { BRAND, BRAND_SHORT, TAGLINE } from '../lib/brand'
+import { BRAND, TAGLINE } from '../lib/brand'
+import BrandMark from '../components/BrandMark'
 
 // Giriş — Baskıcı ile aynı hesaplar (2FA destekli).
 export default function LoginPage() {
@@ -35,10 +36,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-6 bg-panel-bg">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2.5 justify-center mb-6 pop-in">
-          <div className="w-10 h-10 rounded-xl text-white flex items-center justify-center font-bold
-            bg-gradient-to-br from-emerald-400 to-teal-600 shadow-[0_4px_14px_rgba(16,185,129,0.4)]">
-            {BRAND_SHORT}
-          </div>
+          <BrandMark size={40} />
           <div>
             <div className="font-semibold leading-tight">{BRAND}</div>
             <div className="text-xs text-panel-muted leading-tight">{TAGLINE}</div>

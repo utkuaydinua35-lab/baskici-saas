@@ -104,7 +104,7 @@ export default function ProductStudioPage() {
     try {
       const r = await api.post('/api/studio/publish', {
         store_id: storeId,
-        items: items.map(it => ({ code: it.code, title: it.title, body_html: it.body_html, tags: it.tags || [] })),
+        items: items.map(it => ({ code: it.code, title: it.title, body_html: it.body_html, tags: it.tags || [], seo_title: it.seo_title || null, seo_description: it.seo_description || null })),
       })
       const res = r.results || []
       const ok = res.filter(x => x.ok).length
@@ -363,6 +363,10 @@ function PreviewCard({ it, onChange, onRemove }) {
             <button onClick={onRemove} className="ml-auto text-gray-500 hover:text-red-300 text-sm">×</button>
           </div>
           <input className="input w-full !text-sm mb-1" value={it.title} onChange={e => onChange({ title: e.target.value })} />
+          <div className="grid gap-1 mb-1">
+            <input className="input w-full !text-xs" placeholder="SEO başlığı" maxLength={70} value={it.seo_title || ''} onChange={e => onChange({ seo_title: e.target.value })} />
+            <input className="input w-full !text-xs" placeholder="SEO açıklaması" maxLength={320} value={it.seo_description || ''} onChange={e => onChange({ seo_description: e.target.value })} />
+          </div>
           <div className="flex flex-wrap gap-1">
             {(it.tags || []).slice(0, 6).map((t, i) => <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-400">{t}</span>)}
           </div>

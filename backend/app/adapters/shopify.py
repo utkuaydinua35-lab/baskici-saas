@@ -220,15 +220,23 @@ class ShopifyAdapter(StorePlatform):
         status: str = "active",
         price: str | None = None,
         vendor: str | None = None,
+        seo_title: str | None = None,
+        seo_description: str | None = None,
     ) -> dict:
         """Varyantsız ürün oluştur (POST /products.json). image_b64 = mockup görseli (base64,
-        prefix'siz). Dönüş: {ok, id, handle, admin_url} ya da {ok:False, error}."""
+        prefix'siz). seo_title/seo_description = arama motoru başlık/açıklaması.
+        Dönüş: {ok, id, handle, admin_url} ya da {ok:False, error}."""
         prod: dict = {
             "title": title,
             "body_html": body_html or "",
             "product_type": product_type,
             "status": status,  # active = yayında, draft = taslak
         }
+        # SEO başlık/açıklama — Shopify global metafield'ları (title_tag/description_tag)
+        if seo_title:
+            prod["metafields_global_title_tag"] = seo_title[:70]
+        if seo_description:
+            prod["metafields_global_description_tag"] = seo_description[:320]
         if vendor:
             prod["vendor"] = vendor
         if tags:

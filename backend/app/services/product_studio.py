@@ -104,21 +104,55 @@ def description_html() -> str:
     return _md_to_html(_DESC_TEMPLATE)
 
 
-def build_content(analysis: dict, brand_name: str) -> dict:
-    """Analizden Shopify başlığı + (sabit) açıklama + etiketleri üret."""
+_TR_ASCII = str.maketrans({
+    "ş": "s", "Ş": "S", "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G",
+    "ü": "u", "Ü": "U", "ö": "o", "Ö": "O", "ı": "i", "İ": "I",
+    "â": "a", "Â": "A", "î": "i", "Î": "I", "û": "u", "Û": "U",
+    "–": "-", "—": "-", "’": "'", "“": '"', "”": '"',
+})
+
+
+def ascii_fold(s: str | None) -> str:
+    """Türkçe/özel karakterleri İngilizce harflere çevir (ürün adı İngilizce harf)."""
+    if not s:
+        return ""
+    return str(s).translate(_TR_ASCII)
+
+
+def seo_fields(title: str, analysis: dict | None = None) -> dict:
+    """SEO başlık (≤60) + açıklama (≤160) üret — İngilizce harf, düz metin."""
     a = analysis or {}
-    dname = (a.get("design_name") or "Özel Tasarım").strip()
-    coll = (a.get("collection") or a.get("niche") or "Özel").strip()
+    dname = ascii_fold((a.get("design_name") or "").strip())
+    coll = ascii_fold((a.get("collection") or a.get("niche") or "").strip())
+    kw = [ascii_fold(k) for k in (a.get("keywords") or []) if k][:4]
+    seo_title = ascii_fold(title)[:60].strip()
+    desc = f"{dname} tasarimli ozel telefon kilifi."
+    if coll:
+        desc += f" {coll} serisi."
+    if kw:
+        desc += " " + ", ".join(kw) + "."
+    desc += " Yuksek kaliteli baski, tam koruma."
+    seo_desc = ascii_fold(desc)[:160].strip()
+    return {"seo_title": seo_title, "seo_description": seo_desc}
+
+
+def build_content(analysis: dict, brand_name: str) -> dict:
+    """Analizden Shopify başlığı (İngilizce harf) + (sabit) açıklama + etiketler + SEO."""
+    a = analysis or {}
+    dname = ascii_fold((a.get("design_name") or "Ozel Tasarim").strip())
+    coll = ascii_fold((a.get("collection") or a.get("niche") or "Ozel").strip())
     colors = a.get("colors") or []
     keywords = a.get("keywords") or []
     style = (a.get("style") or "").strip()
 
-    title = f'{brand_name} "{dname}" Tasarım Telefon Kılıfı – {coll} Serisi'
+    title = ascii_fold(f'{brand_name} "{dname}" Tasarim Telefon Kilifi - {coll} Serisi')
     body_html = description_html()
     tags = list(dict.fromkeys(
         [t for t in ([a.get("niche")] + keywords + colors + [style, coll]) if t]
     ))
-    return {"title": title, "body_html": body_html, "tags": tags, "design_name": dname}
+    seo = seo_fields(title, a)
+    return {"title": title, "body_html": body_html, "tags": tags, "design_name": dname,
+            "seo_title": seo["seo_title"], "seo_description": seo["seo_description"]}
 
 
 def next_design_code(db: Session, store_id, prefix: str, reserved=None) -> str:

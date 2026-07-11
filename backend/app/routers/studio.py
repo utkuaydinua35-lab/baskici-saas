@@ -372,6 +372,7 @@ async def analyze(
                 "ok": True, "code": code, "title": content["title"],
                 "body_html": content["body_html"], "tags": content["tags"],
                 "design_name": content["design_name"], "analysis": analysis,
+                "seo_title": content["seo_title"], "seo_description": content["seo_description"],
                 "mockup_url": f"/storage/{rel}/mockup.{mext}",
                 "baski_url": f"/storage/{rel}/baski.{mext}",
                 "baski_pdf_url": None, "ai_expanded": False, "ready_mockup": True,
@@ -443,6 +444,8 @@ async def analyze(
             "body_html": content["body_html"],
             "tags": content["tags"],
             "design_name": content["design_name"],
+            "seo_title": content["seo_title"],
+            "seo_description": content["seo_description"],
             "analysis": analysis,
             "mockup_url": f"/storage/{rel}/mockup.jpg",
             "baski_url": f"/storage/{rel}/baski.jpg",
@@ -457,6 +460,8 @@ class PublishItem(BaseModel):
     title: str
     body_html: str = ""
     tags: list[str] = []
+    seo_title: str | None = None
+    seo_description: str | None = None
 
 
 class PublishIn(BaseModel):
@@ -526,9 +531,14 @@ def publish(req: PublishIn, user: User = Depends(require_permission("tasarim")),
         if adapter is not None:
             import base64
             img_b64 = base64.standard_b64encode(mock.read_bytes()).decode()
+            # SEO: gönderilmediyse başlıktan üret (İngilizce harf, düz metin)
+            _seo = ps.seo_fields(it.title)
+            _seo_t = (it.seo_title or _seo["seo_title"])
+            _seo_d = (it.seo_description or _seo["seo_description"])
             shop = adapter.create_product(
                 title=it.title, body_html=it.body_html or "",
                 tags=it.tags or [], image_b64=img_b64, image_filename=f"{code}.{mext}",
+                seo_title=_seo_t, seo_description=_seo_d,
                 status="active", price=(str(price) if price not in (None, "") else None),
                 vendor=brand,
             )

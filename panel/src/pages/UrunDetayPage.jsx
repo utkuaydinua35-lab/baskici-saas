@@ -557,9 +557,16 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
 
 // Kişiye özel alanlar — müşteriden checkout'ta istenecek girdiler.
 function CustomFieldsEditor({ product, onChanged, setMsg }) {
+  const { storeId } = useStore()
   const [fields, setFields] = useState(product.custom_fields || [])
   const [dirtyF, setDirtyF] = useState(false)
+  const [presets, setPresets] = useState([])
   useEffect(() => { setFields(product.custom_fields || []); setDirtyF(false) }, [product.id])
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/store-settings/${storeId}/custom-field-presets`)
+      .then(r => setPresets(r.presets || [])).catch(() => {})
+  }, [storeId])
 
   const patchF = (i, p2) => { setFields(f => f.map((x, j) => j === i ? { ...x, ...p2 } : x)); setDirtyF(true) }
 
@@ -578,6 +585,18 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
         Müşteriden istenecek ek bilgiler — yazı, fotoğraf ya da renk seçimi.
         Cevaplar sipariş detayında ve üretim kaleminde görünür.
       </p>
+      {presets.length > 0 && (
+        <select className="input !py-1.5 text-xs" value=""
+          onChange={e => {
+            const p = presets[Number(e.target.value)]
+            if (p) { setFields(structuredClone(p.fields)); setDirtyF(true) }
+          }}>
+          <option value="">📋 Hazır düzen uygula… (Uygulamalar sayfasından yönetilir)</option>
+          {presets.map((p, i) => (
+            <option key={i} value={i}>{p.name} — {p.fields.map(f => f.label).join(', ')}</option>
+          ))}
+        </select>
+      )}
       {fields.map((f, i) => (
         <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
           <div className="flex gap-1.5">

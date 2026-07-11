@@ -13,6 +13,7 @@ const NAV = [
   { to: '/musteriler', label: 'Müşteriler', icon: '👥' },
   { to: '/yorumlar', label: 'Yorumlar', icon: '⭐' },
   { to: '/tasarim-talepleri', label: 'Tasarım Talepleri', icon: '🖌️' },
+  { to: '/uygulamalar', label: 'Uygulamalar', icon: '🧩' },
   { to: '/analitik', label: 'Analitik', icon: '📈' },
   { to: '/tema', label: 'Tema', icon: '🎨' },
   { to: '/sayfalar', label: 'Sayfalar', icon: '📄' },

@@ -21,6 +21,7 @@ const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
 const BlogPage = lazy(() => import('./pages/BlogPage'))
 const YorumlarPage = lazy(() => import('./pages/YorumlarPage'))
 const TasarimTalepleriPage = lazy(() => import('./pages/TasarimTalepleriPage'))
+const UygulamalarPage = lazy(() => import('./pages/UygulamalarPage'))
 const AyarlarPage = lazy(() => import('./pages/AyarlarPage'))
 
 function Loader() {
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/yorumlar" element={<YorumlarPage />} />
             <Route path="/tasarim-talepleri" element={<TasarimTalepleriPage />} />
+            <Route path="/uygulamalar" element={<UygulamalarPage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
           </Route>
           {/* Tam ekran tema editörü — sol menüsüz (Shopify tarzı) */}

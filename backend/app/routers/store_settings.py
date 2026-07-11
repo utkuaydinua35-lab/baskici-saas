@@ -212,6 +212,52 @@ def clear_theme_preview(
         db.commit()
 
 
+# ── Kişiye özel alan preset'leri (Uygulamalar sayfası) ──
+# config["custom_field_presets"] = [{"name", "fields": [...]}] — hazır alan
+# düzenleri; ürün detayında tek tıkla uygulanır.
+
+MAX_FIELD_PRESETS = 20
+
+
+@router.get("/{store_id}/custom-field-presets", response_model=dict)
+def get_field_presets(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    return {"presets": (store.config or {}).get("custom_field_presets") or []}
+
+
+@router.put("/{store_id}/custom-field-presets", response_model=dict)
+def put_field_presets(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.routers.catalog import _clean_custom_fields
+
+    raw = (body or {}).get("presets")
+    if not isinstance(raw, list):
+        raise HTTPException(422, "presets listesi gerekli")
+    presets = []
+    for p_ in raw[:MAX_FIELD_PRESETS]:
+        if not isinstance(p_, dict):
+            continue
+        name = str(p_.get("name") or "").strip()[:80]
+        fields = _clean_custom_fields(p_.get("fields") or [])
+        if name and fields:
+            presets.append({"name": name, "fields": fields})
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    config["custom_field_presets"] = presets
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True, "presets": presets}
+
+
 # ── Taslak temalar (tema kütüphanesi) ──
 # config["theme_drafts"] = {key: {"name", "theme", "updated_at"}} — yayındaki
 # temayı bozmadan ayrı temalar düzenlenir; Yayınla ile takas edilir (eski

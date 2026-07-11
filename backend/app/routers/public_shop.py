@@ -1493,6 +1493,39 @@ def account_design_request_create(
         phone_model=(body.phone_model or "").strip() or None,
     ))
     db.commit()
+
+    # Mağazaya bildirim — başarısızlık talebi düşürmez (panelde zaten görünür)
+    to = ((store.config or {}).get("contact_email") or "").strip()
+    if to:
+        try:
+            from xml.sax.saxutils import escape
+            from app.services import email_service
+
+            tenant = getattr(store, "tenant", None)
+            brand = email_service.brand_kwargs(tenant) if tenant else {}
+            who = escape(customer.name or customer.email)
+            detay = ""
+            if body.phone_model:
+                detay += f"<p>📱 Model: <b>{escape(body.phone_model.strip())}</b></p>"
+            if body.message:
+                detay += (f"<p style='white-space:pre-line'>"
+                          f"{escape(body.message.strip())}</p>")
+            html = email_service.render_email(
+                title="Yeni tasarım talebi 🎨",
+                body_html=(
+                    f"<p><b>{who}</b> "
+                    f"(<a href='mailto:{escape(customer.email)}'>{escape(customer.email)}</a>) "
+                    f"kendi tasarımıyla talep açtı.</p>{detay}"
+                    "<p>Görseli ve talebi panelden inceleyebilirsiniz: "
+                    "<b>Tasarım Talepleri</b> sayfası.</p>"
+                ),
+                preheader=f"{customer.name or customer.email} tasarım talebi açtı",
+                emoji="🎨",
+                **brand,
+            )
+            email_service.send_email(to, "Yeni tasarım talebi", html)
+        except Exception:  # noqa: BLE001 — bildirim best-effort
+            pass
     return {"ok": True, "message": "Tasarım talebiniz alındı — inceleyip döneceğiz 🎨"}
 
 

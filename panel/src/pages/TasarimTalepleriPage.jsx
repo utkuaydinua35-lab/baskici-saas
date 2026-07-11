@@ -37,7 +37,13 @@ export default function TasarimTalepleriPage() {
 
   const update = async (id, patch) => {
     setBusyId(id)
-    try { await api.patch(`/api/design-requests/${id}`, patch); await load() }
+    try {
+      const r = await api.patch(`/api/design-requests/${id}`, patch)
+      if (patch.notify_customer) {
+        setError(r.notified ? '' : 'Kaydedildi ama e-posta gönderilemedi (SMTP ayarlarını kontrol edin)')
+      }
+      await load()
+    }
     catch (e) { setError(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
     finally { setBusyId(null) }
   }
@@ -112,6 +118,12 @@ export default function TasarimTalepleriPage() {
                       onClick={() => update(r.id, { admin_note: draft })}
                       className="px-3 py-1.5 rounded-lg text-xs bg-emerald-100 text-emerald-700 disabled:opacity-40">
                       Notu Kaydet
+                    </button>
+                    <button disabled={busyId === r.id || (draft === (r.admin_note || '') && !draft)}
+                      onClick={() => update(r.id, { admin_note: draft, notify_customer: true })}
+                      title="Notu kaydet ve müşteriye durum+not e-postası gönder"
+                      className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 text-white disabled:opacity-40">
+                      📧 Kaydet + Bildir
                     </button>
                     <a href={r.image_url} download target="_blank" rel="noopener noreferrer"
                       className="px-3 py-1.5 rounded-lg text-xs border border-panel-border text-panel-muted hover:text-panel-ink">

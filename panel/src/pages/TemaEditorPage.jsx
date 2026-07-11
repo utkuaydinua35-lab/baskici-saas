@@ -28,6 +28,8 @@ export default function TemaEditorPage() {
   const [openSection, setOpenSection] = useState(null) // dolu ise tek-bölüm modu
   const [customCode, setCustomCode] = useState(null)
   const [presets, setPresets] = useState([])
+  const [dragIdx, setDragIdx] = useState(null)   // sürüklenen bölüm indeksi
+  const [overIdx, setOverIdx] = useState(null)   // üzerine gelinen indeks
   const initialRef = useRef('')
 
   const storefrontUrl = store?.config?.storefront_url
@@ -214,6 +216,16 @@ export default function TemaEditorPage() {
       const j = idx + dir
       if (j < 0 || j >= arr.length) return t
       ;[arr[idx], arr[j]] = [arr[j], arr[idx]]
+      return { ...t, sections: arr }
+    })
+  }
+  const dropSec = (from, to) => {
+    setDragIdx(null); setOverIdx(null)
+    if (from === null || to === null || from === to) return
+    setTheme(t => {
+      const arr = [...t.sections]
+      const [moved] = arr.splice(from, 1)
+      arr.splice(to, 0, moved)
       return { ...t, sections: arr }
     })
   }
@@ -473,8 +485,18 @@ export default function TemaEditorPage() {
                   {theme.sections.map((sec, i) => {
                     const meta = SECTION_TYPES[sec.type] || { label: sec.type, icon: '▫️' }
                     return (
-                      <div key={sec.id} className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-panel-border
-                        bg-panel-input/60 hover:border-panel-accent transition ${sec.hidden ? 'opacity-55' : ''}`}>
+                      <div key={sec.id} draggable
+                        onDragStart={e => { setDragIdx(i); e.dataTransfer.effectAllowed = 'move' }}
+                        onDragOver={e => { e.preventDefault(); if (overIdx !== i) setOverIdx(i) }}
+                        onDrop={() => dropSec(dragIdx, i)}
+                        onDragEnd={() => { setDragIdx(null); setOverIdx(null) }}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition
+                          bg-panel-input/60 hover:border-panel-accent ${sec.hidden ? 'opacity-55' : ''} ${
+                          dragIdx === i ? 'opacity-40 border-dashed border-panel-accent'
+                            : overIdx === i && dragIdx !== null ? 'border-panel-accent ring-1 ring-emerald-200'
+                              : 'border-panel-border'}`}>
+                        <span className="cursor-grab active:cursor-grabbing text-panel-muted select-none"
+                          title="Sürükleyerek sırala">⠿</span>
                         <button onClick={() => setOpenSection(sec.id)}
                           className="flex items-center gap-2 text-sm font-medium flex-1 text-left min-w-0">
                           <span>{meta.icon}</span>

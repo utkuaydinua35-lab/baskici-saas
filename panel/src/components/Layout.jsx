@@ -12,6 +12,7 @@ const NAV = [
   { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
   { to: '/musteriler', label: 'Müşteriler', icon: '👥' },
   { to: '/yorumlar', label: 'Yorumlar', icon: '⭐' },
+  { to: '/tasarim-talepleri', label: 'Tasarım Talepleri', icon: '🖌️' },
   { to: '/analitik', label: 'Analitik', icon: '📈' },
   { to: '/tema', label: 'Tema', icon: '🎨' },
   { to: '/sayfalar', label: 'Sayfalar', icon: '📄' },

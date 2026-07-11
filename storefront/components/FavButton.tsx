@@ -31,6 +31,12 @@ export function writeFavs(list: FavItem[]) {
   } catch {
     /* private mode */
   }
+  // Girişli müşteride hesaba da yaz (sessiz — misafirde 401 döner, önemsenmez)
+  fetch("/api/account?action=favorites", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favorites: list.slice(0, 100).map((f) => f.slug) }),
+  }).catch(() => {});
 }
 
 export default function FavButton({ item, floating = true }: { item: FavItem; floating?: boolean }) {

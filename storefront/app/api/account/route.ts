@@ -55,17 +55,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: res.status });
   }
 
+  if (action === "design-request") {
+    const token = jar.get(COOKIE)?.value;
+    if (!token) return NextResponse.json({ detail: "Oturum yok" }, { status: 401 });
+    const { res, data } = await backendFetch("/api/shop/account/design-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    return NextResponse.json(data, { status: res.status });
+  }
+
   return NextResponse.json({ detail: "Bilinmeyen işlem" }, { status: 400 });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return NextResponse.json({ detail: "Oturum yok" }, { status: 401 });
-  const { res, data } = await backendFetch("/api/shop/account/me", {
+  const action = req.nextUrl.searchParams.get("action");
+  const path = action === "favorites" ? "/api/shop/account/favorites"
+    : action === "design-requests" ? "/api/shop/account/design-requests"
+    : "/api/shop/account/me";
+  const { res, data } = await backendFetch(path, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (res.status === 401) jar.delete(COOKIE);
+  if (res.status === 401 && !action) jar.delete(COOKIE);
   return NextResponse.json(data, { status: res.status });
 }
 
@@ -80,6 +95,8 @@ export async function PUT(req: NextRequest) {
     ? "/api/shop/account/marketing"
     : action === "addresses"
     ? "/api/shop/account/addresses"
+    : action === "favorites"
+    ? "/api/shop/account/favorites"
     : "/api/shop/account/address";
   const { res, data } = await backendFetch(target, {
     method: "PUT",

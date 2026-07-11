@@ -1584,6 +1584,8 @@ class Customer(Base):
     default_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Adres defteri (Shopify address book) — ilk kayıt varsayılandır
     addresses: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Hesaba bağlı favoriler: ürün slug listesi (cihazlar arası senkron)
+    favorites: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     login_code_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     login_code_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     login_code_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
@@ -1649,6 +1651,35 @@ class BlogPost(Base):
         Boolean, default=False, server_default=text("false")
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DesignRequest(Base):
+    """Müşterinin kendi tasarım talebi — görsel yükler, açıklama yazar;
+    mağaza panelinden incelenir (müşteriyle bağ kurma kanalı)."""
+    __tablename__ = "design_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    customer_email: Mapped[str] = mapped_column(String(200))  # lowercase
+    customer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    image_url: Mapped[str] = mapped_column(String(500))
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[str] = mapped_column(  # acik | incelendi | teklif | tamam | red
+        String(20), default="acik", server_default=text("'acik'")
+    )
+    admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

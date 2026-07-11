@@ -19,6 +19,7 @@ const TemaPage = lazy(() => import('./pages/TemaPage'))
 const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
 const BlogPage = lazy(() => import('./pages/BlogPage'))
 const YorumlarPage = lazy(() => import('./pages/YorumlarPage'))
+const TasarimTalepleriPage = lazy(() => import('./pages/TasarimTalepleriPage'))
 const AyarlarPage = lazy(() => import('./pages/AyarlarPage'))
 
 function Loader() {
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/sayfalar" element={<SayfalarPage />} />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/yorumlar" element={<YorumlarPage />} />
+            <Route path="/tasarim-talepleri" element={<TasarimTalepleriPage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
           </Route>
         </Route>

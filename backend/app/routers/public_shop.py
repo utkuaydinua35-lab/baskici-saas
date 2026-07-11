@@ -1413,6 +1413,86 @@ def account_addresses(
     return {"ok": True, "addresses": cleaned}
 
 
+@router.get("/account/favorites")
+def account_favorites(request: Request, db: Session = Depends(get_db)):
+    customer, _store = _get_customer_from_token(request, db)
+    return {"favorites": customer.favorites or []}
+
+
+@router.put("/account/favorites")
+def account_favorites_put(
+    request: Request,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Favori slug listesini kaydet (cihazlar arası senkron; max 100)."""
+    customer, _store = _get_customer_from_token(request, db)
+    raw = body.get("favorites")
+    if not isinstance(raw, list):
+        raise HTTPException(422, "favorites listesi gerekli")
+    customer.favorites = [str(x)[:200] for x in raw[:100] if x]
+    db.commit()
+    return {"ok": True, "favorites": customer.favorites}
+
+
+class DesignRequestIn(BaseModel):
+    image_url: str = Field(..., min_length=5, max_length=500)
+    message: str | None = Field(None, max_length=2000)
+    phone_model: str | None = Field(None, max_length=120)
+
+
+@router.get("/account/design-requests")
+def account_design_requests(request: Request, db: Session = Depends(get_db)):
+    """Müşterinin tasarım talepleri (son 20)."""
+    from app.models import DesignRequest
+    customer, store = _get_customer_from_token(request, db)
+    rows = db.scalars(
+        select(DesignRequest).where(
+            DesignRequest.store_id == store.id,
+            DesignRequest.customer_email == customer.email,
+        ).order_by(DesignRequest.created_at.desc()).limit(20)
+    ).all()
+    STATUS_TR = {"acik": "İnceleme bekliyor", "incelendi": "İncelendi",
+                 "teklif": "Teklif hazırlandı", "tamam": "Tamamlandı", "red": "Uygun değil"}
+    return {"requests": [
+        {"id": str(r.id), "image_url": r.image_url, "message": r.message,
+         "phone_model": r.phone_model, "status": r.status,
+         "status_label": STATUS_TR.get(r.status, r.status),
+         "admin_note": r.admin_note,
+         "created_at": r.created_at.isoformat() if r.created_at else None}
+        for r in rows
+    ]}
+
+
+@router.post("/account/design-requests")
+def account_design_request_create(
+    request: Request,
+    body: DesignRequestIn,
+    db: Session = Depends(get_db),
+):
+    """Kendi tasarımını yükle + talep oluştur (hesap gerektirir)."""
+    from app.models import DesignRequest
+    customer, store = _get_customer_from_token(request, db)
+    open_count = db.scalar(select(func.count(DesignRequest.id)).where(
+        DesignRequest.store_id == store.id,
+        DesignRequest.customer_email == customer.email,
+        DesignRequest.status == "acik",
+    ))
+    if (open_count or 0) >= 5:
+        raise HTTPException(429, "En fazla 5 açık talebiniz olabilir — "
+                                 "mevcut taleplerinize dönüş bekleyin")
+    if not body.image_url.startswith("/storage/"):
+        raise HTTPException(422, "Geçersiz görsel — lütfen tasarımınızı yükleyin")
+    db.add(DesignRequest(
+        tenant_id=store.tenant_id, store_id=store.id,
+        customer_email=customer.email, customer_name=customer.name,
+        image_url=body.image_url, message=(body.message or "").strip() or None,
+        phone_model=(body.phone_model or "").strip() or None,
+    ))
+    db.commit()
+    return {"ok": True, "message": "Tasarım talebiniz alındı — inceleyip döneceğiz 🎨"}
+
+
 @router.put("/account/marketing")
 def account_marketing(
     request: Request,

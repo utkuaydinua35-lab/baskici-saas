@@ -1,6 +1,6 @@
 "use client";
 
-// Favoriler (istek listesi) — localStorage; cihazda kalır, sunucuya gitmez.
+// Favoriler (istek listesi) — localStorage; girişli müşteride hesapla senkron.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/format";
@@ -9,7 +9,40 @@ import { readFavs, writeFavs, type FavItem } from "@/components/FavButton";
 export default function FavoritesPage() {
   const [favs, setFavs] = useState<FavItem[] | null>(null);
 
-  useEffect(() => { setFavs(readFavs()); }, []);
+  useEffect(() => {
+    const local = readFavs();
+    setFavs(local);
+    // Girişli müşteride hesaptaki favorilerle birleştir (misafirde 401 → dokunma)
+    (async () => {
+      try {
+        const res = await fetch("/api/account?action=favorites");
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverSlugs: string[] = Array.isArray(data.favorites) ? data.favorites : [];
+        const missing = serverSlugs.filter((s) => !local.some((f) => f.slug === s));
+        let merged = local;
+        if (missing.length > 0) {
+          // Eksik ürünlerin kart verisini çek (silinen/yayından kalkan ürünler elenir)
+          const pr = await fetch(`/api/search?slugs=${encodeURIComponent(missing.join(","))}`);
+          const pd = pr.ok ? await pr.json() : { items: [] };
+          const fetched: FavItem[] = (pd.items || []).map(
+            (p: { slug: string; title: string; price: string; currency: string; cover_image: string | null }) => ({
+              slug: p.slug, title: p.title, price: p.price,
+              currency: p.currency, image: p.cover_image,
+            }),
+          );
+          merged = [...local, ...fetched];
+        }
+        // Cihazda olup hesapta olmayanlar da hesaba yazılsın
+        if (missing.length > 0 || merged.some((f) => !serverSlugs.includes(f.slug))) {
+          writeFavs(merged);
+        }
+        setFavs(merged);
+      } catch {
+        /* backend erişilemedi — yerel liste yeter */
+      }
+    })();
+  }, []);
 
   const remove = (slug: string) => {
     const next = (favs ?? []).filter((f) => f.slug !== slug);

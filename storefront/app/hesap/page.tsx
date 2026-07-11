@@ -210,6 +210,9 @@ function AccountView({ me, onLogout }: { me: Me; onLogout: () => void }) {
               ))}
             </div>
           )}
+
+          {/* Tasarım talepleri — müşteri kendi görselini yükleyip talep açar */}
+          <DesignRequests />
         </div>
 
         {/* Adres defteri + bülten */}
@@ -349,6 +352,162 @@ function AddressBook({ initial }: { initial: Record<string, string>[] }) {
               className="rounded-lg border border-zinc-300 px-3 text-sm">Vazgeç</button>
           </div>
         </form>
+      )}
+    </div>
+  );
+}
+
+// ── 🎨 Tasarım Taleplerim — görsel yükle + açıklama; mağaza inceleyip yanıtlar ──
+interface DesignReq {
+  id: string;
+  image_url: string;
+  message: string | null;
+  phone_model: string | null;
+  status: string;
+  status_label: string;
+  admin_note: string | null;
+  created_at: string | null;
+}
+
+const REQ_STATUS_COLOR: Record<string, string> = {
+  acik: "bg-amber-50 text-amber-700",
+  incelendi: "bg-sky-50 text-sky-700",
+  teklif: "bg-indigo-50 text-indigo-700",
+  tamam: "bg-emerald-50 text-emerald-700",
+  red: "bg-red-50 text-red-600",
+};
+
+function DesignRequests() {
+  const [reqs, setReqs] = useState<DesignReq[]>([]);
+  const [open, setOpen] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [phoneModel, setPhoneModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    fetch("/api/account?action=design-requests")
+      .then((r) => (r.ok ? r.json() : { requests: [] }))
+      .then((d) => setReqs(d.requests || []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const upload = async (file: File) => {
+    setBusy(true); setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Görsel yüklenemedi");
+      setImage(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Yükleme hatası");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!image) { setError("Önce tasarımınızı yükleyin"); return; }
+    setBusy(true); setError("");
+    try {
+      const res = await fetch("/api/account?action=design-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: image,
+          message: message.trim() || null,
+          phone_model: phoneModel.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(typeof data?.detail === "string" ? data.detail : "Talep gönderilemedi");
+      setImage(null); setMessage(""); setPhoneModel(""); setOpen(false);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Beklenmeyen hata");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-zinc-100 px-4 py-3">
+      <div className="flex items-center">
+        <div className="text-sm font-semibold">🎨 Tasarım Taleplerim{reqs.length > 0 ? ` (${reqs.length})` : ""}</div>
+        <button onClick={() => setOpen(!open)}
+          className="ml-auto text-xs underline text-zinc-600 hover:text-zinc-900">
+          {open ? "Vazgeç" : "+ Yeni Talep"}
+        </button>
+      </div>
+      <p className="text-[11px] text-zinc-400 mt-0.5">
+        Kendi tasarımınızı yükleyin — inceleyip size özel kılıf teklifi hazırlayalım.
+      </p>
+
+      {open && (
+        <form onSubmit={submit} className="mt-3 space-y-2 rounded-xl border border-zinc-200 p-3">
+          {image ? (
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={image} alt="Tasarım" className="h-20 w-20 object-cover rounded-lg border border-zinc-200" />
+              <button type="button" onClick={() => setImage(null)}
+                className="text-xs text-red-500 underline">Kaldır</button>
+            </div>
+          ) : (
+            <label className="flex items-center justify-center rounded-xl border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-500 cursor-pointer hover:border-zinc-500">
+              {busy ? "Yükleniyor…" : "📷 Tasarımınızı yükleyin"}
+              <input type="file" accept="image/*" className="hidden" disabled={busy}
+                onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+            </label>
+          )}
+          <input value={phoneModel} onChange={(e) => setPhoneModel(e.target.value)}
+            placeholder="Telefon modeliniz (örn. iPhone 15 Pro)" maxLength={120}
+            className="w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
+          <textarea value={message} onChange={(e) => setMessage(e.target.value)}
+            placeholder="Nasıl bir kılıf hayal ediyorsunuz? (isteğe bağlı)" rows={2} maxLength={2000}
+            className="w-full rounded-lg border border-zinc-300 px-2.5 py-2 text-sm" />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button disabled={busy || !image}
+            className="w-full rounded-xl text-white text-sm font-medium py-2.5 disabled:opacity-50 hover:opacity-90 transition"
+            style={{ background: "var(--c-primary)" }}>
+            {busy ? "Gönderiliyor…" : "Talebi Gönder"}
+          </button>
+        </form>
+      )}
+
+      {reqs.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {reqs.map((r) => (
+            <div key={r.id} className="flex gap-2.5 rounded-xl border border-zinc-200 p-2.5 text-xs">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={r.image_url} alt="" className="h-12 w-12 object-cover rounded-lg border border-zinc-100 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                    REQ_STATUS_COLOR[r.status] || "bg-zinc-100 text-zinc-600"}`}>
+                    {r.status_label}
+                  </span>
+                  {r.phone_model && <span className="text-zinc-400 truncate">{r.phone_model}</span>}
+                  {r.created_at && (
+                    <span className="ml-auto text-zinc-400 whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleDateString("tr-TR")}
+                    </span>
+                  )}
+                </div>
+                {r.message && <p className="mt-1 text-zinc-500 line-clamp-1">{r.message}</p>}
+                {r.admin_note && (
+                  <p className="mt-1 text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1">
+                    💬 {r.admin_note}
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -62,6 +62,7 @@ _SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url", "cta2_text",
 
 DEFAULT_THEME: dict = {
     "version": 2,
+    "name": "Mağaza Teması",   # panelde görünen tema adı (yayındayken de değişir)
     "colors": {
         "primary": "#18181b",   # buton/vurgu (zinc-900)
         "accent": "#f59e0b",    # ikincil vurgu (amber-500)
@@ -358,6 +359,8 @@ def validate_theme_patch(patch: dict) -> dict:
     for key in ("font", "logo_url", "favicon_url"):
         if key in patch:
             cleaned[key] = patch[key]
+    if "name" in patch:
+        cleaned["name"] = str(patch["name"] or "").strip()[:80] or "Mağaza Teması"
     if "logo_width" in patch:
         try:
             cleaned["logo_width"] = min(320, max(60, int(patch["logo_width"] or 120)))

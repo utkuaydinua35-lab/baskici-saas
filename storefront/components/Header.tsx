@@ -93,10 +93,19 @@ export default function Header({
         <nav className="hidden sm:flex items-center gap-4 text-sm text-zinc-600">
           {navLinks.length > 0 ? (
             navLinks.map((l) => (
-              <Link key={`${l.label}-${l.url}`} href={l.url}
-                className="hover:text-zinc-900 py-4">
-                {l.label}
-              </Link>
+              // Dış adresler (örn. sipariş takip alt alan adı) yeni sekmede açılır
+              l.url.startsWith("http") ? (
+                <a key={`${l.label}-${l.url}`} href={l.url}
+                  target="_blank" rel="noopener noreferrer"
+                  className="hover:text-zinc-900 py-4">
+                  {l.label}
+                </a>
+              ) : (
+                <Link key={`${l.label}-${l.url}`} href={l.url}
+                  className="hover:text-zinc-900 py-4">
+                  {l.label}
+                </Link>
+              )
             ))
           ) : (
           <Link href="/urunler" className="hover:text-zinc-900 py-4">Ürünler</Link>
@@ -179,10 +188,18 @@ export default function Header({
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
           {navLinks.map((l) => (
-            <Link key={`m-${l.label}-${l.url}`} href={l.url}
-              className="block px-5 py-2.5 text-sm font-medium">
-              {l.label}
-            </Link>
+            l.url.startsWith("http") ? (
+              <a key={`m-${l.label}-${l.url}`} href={l.url}
+                target="_blank" rel="noopener noreferrer"
+                className="block px-5 py-2.5 text-sm font-medium">
+                {l.label}
+              </a>
+            ) : (
+              <Link key={`m-${l.label}-${l.url}`} href={l.url}
+                className="block px-5 py-2.5 text-sm font-medium">
+                {l.label}
+              </Link>
+            )
           ))}
           {navLinks.length === 0 && (
             <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>

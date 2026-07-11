@@ -49,7 +49,15 @@ async function request(method, url, body) {
       setToken(null)
       if (!location.pathname.startsWith('/login')) location.href = '/login'
     }
-    const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`
+    let detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`
+    // FastAPI 422 doğrulama hataları liste döner — okunur metne çevir
+    // (yoksa her form "Kaydedilemedi" der, sebep görünmez)
+    if (Array.isArray(detail)) {
+      detail = detail.map(d => {
+        const alan = (d.loc || []).slice(1).join('.')
+        return alan ? `${alan}: ${d.msg}` : (d.msg || JSON.stringify(d))
+      }).join(' · ')
+    }
     throw new ApiError(res.status, detail)
   }
 

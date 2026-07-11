@@ -19,6 +19,9 @@ export default function SiparislerPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [draftOpen, setDraftOpen] = useState(false)
+  const [selected, setSelected] = useState(new Set())  // toplu işlem seçimi
+  const [showArchive, setShowArchive] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -53,11 +56,44 @@ export default function SiparislerPage() {
 
   const lastPage = Math.max(1, Math.ceil((data.total || 0) / (data.per_page || 50)))
 
+  // Arşiv görünümü: internal_lists'te 'arsiv' olanlar; normal görünüm gizler
+  const visible = (data.items || []).filter(o =>
+    (o.internal_lists || []).includes('arsiv') === showArchive)
+  const allChecked = visible.length > 0 && visible.every(o => selected.has(o.id))
+
+  const toggleAll = () => {
+    setSelected(allChecked ? new Set() : new Set(visible.map(o => o.id)))
+  }
+  const toggleOne = (id) => setSelected(s => {
+    const n = new Set(s)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    return n
+  })
+
+  // Toplu işlem — Baskıcı ile ortak /api/orders/_bulk ucu
+  const bulk = async (action, value = null, confirmText = null) => {
+    if (confirmText && !window.confirm(confirmText)) return
+    setBulkBusy(true); setError('')
+    try {
+      await api.post('/api/orders/_bulk', { ids: [...selected], action, value })
+      setSelected(new Set())
+      await load()
+    } catch (e) {
+      setError(typeof e?.detail === 'string' ? e.detail : 'Toplu işlem başarısız')
+    } finally { setBulkBusy(false) }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-semibold">Siparişler</h1>
         <span className="text-sm text-panel-muted">{data.total ?? 0} sipariş</span>
+        <button onClick={() => { setShowArchive(a => !a); setSelected(new Set()) }}
+          className={`px-2.5 py-1 rounded-full text-xs border transition ${showArchive
+            ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+            : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+          📦 Arşiv
+        </button>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
           placeholder="Sipariş no veya müşteri ara…" className="input !w-64 ml-auto" />
         <button onClick={exportCsv} className="btn-ghost text-xs">⬇ CSV</button>
@@ -68,10 +104,35 @@ export default function SiparislerPage() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {/* Toplu işlem çubuğu — seçim varken belirir (Shopify bulk bar) */}
+      {selected.size > 0 && (
+        <div className="card !py-2.5 flex items-center gap-2 flex-wrap toast-in">
+          <span className="text-sm font-medium">{selected.size} sipariş seçili</span>
+          {!showArchive ? (
+            <button disabled={bulkBusy} onClick={() => bulk('list_add', 'arsiv')}
+              className="btn-ghost !py-1.5 text-xs">📦 Arşivle</button>
+          ) : (
+            <button disabled={bulkBusy} onClick={() => bulk('list_remove', 'arsiv')}
+              className="btn-ghost !py-1.5 text-xs">↩ Arşivden Çıkar</button>
+          )}
+          <button disabled={bulkBusy}
+            onClick={() => bulk('delete', null,
+              `${selected.size} sipariş çöp kutusuna taşınacak (geri alınabilir). Emin misiniz?`)}
+            className="px-3 py-1.5 rounded-xl text-xs border border-red-200 text-red-700 bg-white hover:bg-red-50 disabled:opacity-50">
+            🗑 Sil
+          </button>
+          <button onClick={() => setSelected(new Set())}
+            className="ml-auto text-xs text-panel-muted hover:text-panel-ink">Seçimi bırak</button>
+        </div>
+      )}
+
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>
+              <th className="px-3 py-2.5 w-8">
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+              </th>
               <th className="text-left px-4 py-2.5">Sipariş</th>
               <th className="text-left px-4 py-2.5">Müşteri</th>
               <th className="text-right px-4 py-2.5">Tutar</th>
@@ -82,8 +143,13 @@ export default function SiparislerPage() {
             </tr>
           </thead>
           <tbody>
-            {(data.items || []).map(o => (
-              <tr key={o.id} className="border-t border-panel-border hover:bg-panel-input/50">
+            {visible.map(o => (
+              <tr key={o.id} className={`border-t border-panel-border hover:bg-panel-input/50 ${
+                selected.has(o.id) ? 'bg-emerald-50/50' : ''}`}>
+                <td className="px-3 py-2.5">
+                  <input type="checkbox" checked={selected.has(o.id)}
+                    onChange={() => toggleOne(o.id)} />
+                </td>
                 <td className="px-4 py-2.5">
                   <Link to={`/siparisler/${o.id}`} className="font-mono font-medium hover:underline">
                     {o.name || `#${o.order_number}`}
@@ -115,9 +181,10 @@ export default function SiparislerPage() {
           </tbody>
         </table>
         {loading && <div className="p-4 text-sm text-panel-muted">Yükleniyor…</div>}
-        {!loading && (data.items || []).length === 0 && (
+        {!loading && visible.length === 0 && (
           <div className="p-6 text-sm text-panel-muted text-center">
-            {search ? 'Sonuç bulunamadı.' : 'Henüz sipariş yok — ilk satışına az kaldı!'}
+            {showArchive ? 'Arşivde sipariş yok.'
+              : search ? 'Sonuç bulunamadı.' : 'Henüz sipariş yok — ilk satışına az kaldı!'}
           </div>
         )}
       </div>

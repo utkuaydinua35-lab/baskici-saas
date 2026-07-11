@@ -93,6 +93,7 @@ class OrderListItem(BaseModel):
     is_acil: bool = False
     kalip_haric: bool = False
     current_stage: int = 1
+    internal_lists: list = []   # iç etiketler (arsiv dahil) — panel filtreler
 
 
 class OrderDetail(OrderListItem):
@@ -724,7 +725,7 @@ def export_orders(
 # ═════════════════════════════════════════════════════════════════════
 
 # order_detail.VALID_LISTS ile aynı (iç etiketler)
-_BULK_VALID_LISTS = {"isaretlenenler", "bugun", "sonra", "kontrol", "export", "baski"}
+_BULK_VALID_LISTS = {"isaretlenenler", "bugun", "sonra", "kontrol", "export", "baski", "arsiv"}
 
 _BULK_ACTIONS = {"stage", "acil", "acil_kaldir", "list_add", "list_remove", "delete"}
 

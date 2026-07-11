@@ -140,16 +140,19 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     setForm(f => ({ ...f, [k]: v }))
   }
 
+  // "10,5" gibi virgüllü girişler Number()'da NaN olur → noktaya çevir
+  const num = (v) => Number(String(v).replace(',', '.'))
+
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true); setErr('')
     const payload = {
-      value: (form.kind === 'free_shipping' || form.kind === 'bxgy') ? 0 : Number(form.value),
-      min_subtotal: form.min_subtotal ? Number(form.min_subtotal) : null,
-      min_quantity: form.min_quantity ? Number(form.min_quantity) : null,
+      value: (form.kind === 'free_shipping' || form.kind === 'bxgy') ? 0 : num(form.value),
+      min_subtotal: form.min_subtotal ? num(form.min_subtotal) : null,
+      min_quantity: form.min_quantity ? num(form.min_quantity) : null,
       starts_at: form.starts_at ? `${form.starts_at}T00:00:00+03:00` : null,
       ends_at: form.ends_at ? `${form.ends_at}T23:59:59+03:00` : null,
-      usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
+      usage_limit: form.usage_limit ? num(form.usage_limit) : null,
       once_per_customer: form.once_per_customer,
       is_automatic: form.is_automatic,
       collection_id: form.collection_id || null,
@@ -256,6 +259,9 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
             <input className="input mt-1" type="date" value={form.ends_at} onChange={set('ends_at')} />
           </label>
         </div>
+        <p className="text-[11px] text-panel-muted -mt-1.5">
+          İki tarih de boş bırakılırsa indirim <b>süresiz</b> geçerli olur.
+        </p>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.once_per_customer} onChange={set('once_per_customer')} />
           Müşteri başına yalnızca 1 kez kullanılabilsin

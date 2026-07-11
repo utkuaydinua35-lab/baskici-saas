@@ -86,6 +86,28 @@ export default function SayfalarPage() {
       <SaveBar dirty={dirty} busy={busy} onSave={save} onDiscard={discard} />
       <h1 className="text-xl font-semibold">Sayfalar</h1>
 
+      {/* Sistem sayfaları — içerikleri Tema editöründen/ayarlardan yönetilir */}
+      <section className="card space-y-1.5">
+        <h2 className="text-sm font-semibold">🏗 Sistem Sayfaları</h2>
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Bu sayfalar mağazanın yapı taşlarıdır — silinip eklenmez, içerikleri
+          ilgili düzenleyicilerden yönetilir.
+        </p>
+        {[
+          ['🏠 Ana Sayfa', 'Bölümler, slaytlar ve tüm görünüm', '/tema/duzenle', 'Tema editöründe aç'],
+          ['🛒 Sepet', 'Kampanya mesajları (X Al Y Öde) tema editöründe; kargo eşiği Ayarlar → Kargo\'da', '/tema/duzenle', 'Tema editöründe aç'],
+          ['🧾 Sipariş Takip / Teşekkür', 'Ödeme sonrası müşteri takip sayfası — e-posta metinleri Ayarlar → E-posta sekmesinde', '/ayarlar', 'Ayarları aç'],
+        ].map(([title, desc, to, cta]) => (
+          <div key={title} className="flex items-center gap-3 border border-panel-border rounded-xl px-3 py-2.5">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium">{title}</div>
+              <div className="text-[11px] text-panel-muted">{desc}</div>
+            </div>
+            <a href={to} className="btn-ghost !py-1 text-xs whitespace-nowrap">{cta} →</a>
+          </div>
+        ))}
+      </section>
+
       <section className="card space-y-2">
         <h2 className="text-sm font-semibold">📄 Yasal Sayfalar</h2>
         <p className="text-[11px] text-panel-muted -mt-1">

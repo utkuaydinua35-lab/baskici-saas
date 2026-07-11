@@ -27,7 +27,8 @@ export default function TemaEditorPage() {
   const [device, setDevice] = useState('desktop')
   const [openSection, setOpenSection] = useState(null) // dolu ise tek-bölüm modu
   const [customCode, setCustomCode] = useState(null)
-  const [presets, setPresets] = useState([])
+  const [pages, setPages] = useState([])         // özel sayfalar (önizleme seçici)
+  const [previewPath, setPreviewPath] = useState('/')  // önizlenen vitrin sayfası
   const [dragIdx, setDragIdx] = useState(null)   // sürüklenen bölüm indeksi
   const [overIdx, setOverIdx] = useState(null)   // üzerine gelinen indeks
   const initialRef = useRef('')
@@ -72,8 +73,8 @@ export default function TemaEditorPage() {
       setCollections(c.filter(x => x.is_active))
       setProducts(pr)
       setCustomCode(cc)
-      api.get(`/api/store-settings/${storeId}/theme/presets`)
-        .then(setPresets).catch(() => {})
+      api.get(`/api/store-settings/${storeId}/pages`)
+        .then(r => setPages(r.pages || [])).catch(() => {})
 
       let t
       if (draftKey) {
@@ -99,10 +100,14 @@ export default function TemaEditorPage() {
 
   const save = async () => {
     setBusy(true)
+    // KRİTİK: bekleyen önizleme PUT'u iptal — yoksa Kaydet ile yarışıp
+    // eski temayı config'e geri yazabiliyor (kaydettim-ama-eski-haline-döndü bug'ı)
+    clearTimeout(previewTimer.current)
     try {
       if (draftKey) {
         await Promise.all([
-          api.put(`/api/store-settings/${storeId}/theme/drafts/${draftKey}`, { theme }),
+          api.put(`/api/store-settings/${storeId}/theme/drafts/${draftKey}`,
+            { name: draftName, theme }),
           customCode ? api.put(`/api/store-settings/${storeId}/custom-code`, customCode) : Promise.resolve(),
         ])
         initialRef.current = JSON.stringify([theme, customCode])
@@ -112,6 +117,7 @@ export default function TemaEditorPage() {
           api.put(`/api/store-settings/${storeId}/theme`, theme),
           customCode ? api.put(`/api/store-settings/${storeId}/custom-code`, customCode) : Promise.resolve(),
         ])
+        skipFirst.current = true   // setTheme(t) yeni önizleme PUT'u tetiklemesin
         setTheme(t)
         initialRef.current = JSON.stringify([t, customCode])
         api.del(`/api/store-settings/${storeId}/theme/preview`).catch(() => {})
@@ -154,21 +160,6 @@ export default function TemaEditorPage() {
     if (dirty && !window.confirm('Kaydedilmemiş değişiklikler var — çıkılsın mı?')) return
     if (draftKey) api.del(`/api/store-settings/${storeId}/theme/preview`).catch(() => {})
     navigate('/tema')
-  }
-
-  const applyPreset = (preset) => {
-    if (!window.confirm(`"${preset.label}" şablonu uygulanacak — renk, yazı tipi, duyuru ve `
-        + `anasayfa bölümleri değişir; logo, WhatsApp ve özel kodunuz korunur. Devam?`)) return
-    setTheme(t => ({
-      ...t,
-      colors: { ...preset.theme.colors },
-      font: preset.theme.font,
-      announcement: { ...preset.theme.announcement },
-      animations: { ...t.animations, ...preset.theme.animations },
-      sections: structuredClone(preset.theme.sections),
-    }))
-    setOpenSection(null)
-    toast.success(`${preset.label} yüklendi — beğendiyseniz Kaydet'e basın`)
   }
 
   const uploadAsset = async (kind, file, target) => {
@@ -260,9 +251,17 @@ export default function TemaEditorPage() {
       <header className="h-14 shrink-0 bg-white border-b border-panel-border flex items-center gap-3 px-4">
         <button onClick={goBack} className="btn-ghost !py-1.5 text-xs">← Temalar</button>
         <div className="min-w-0">
-          <div className="text-sm font-semibold truncate">
-            {draftKey ? draftName || 'Taslak' : 'Yayındaki Tema'}
-          </div>
+          {/* Tema adı — yayındayken de düzenlenebilir (Kaydet ile kalıcılaşır) */}
+          <input
+            className="text-sm font-semibold bg-transparent border-b border-transparent
+              hover:border-panel-border focus:border-panel-accent focus:outline-none
+              w-44 truncate transition-colors"
+            title="Tema adını düzenlemek için tıklayın"
+            maxLength={80}
+            value={draftKey ? draftName : (theme.name || 'Mağaza Teması')}
+            onChange={e => draftKey
+              ? setDraftName(e.target.value)
+              : set('name', e.target.value)} />
           <div className="text-[10px] leading-none">
             {draftKey ? (
               <span className="text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">Taslak — yayını etkilemez</span>
@@ -271,6 +270,42 @@ export default function TemaEditorPage() {
             )}
           </div>
         </div>
+
+        {/* Önizlenecek sayfa — kategorili seçim (Shopify üst menüsü) */}
+        <select value={previewPath}
+          onChange={e => setPreviewPath(e.target.value)}
+          className="input !w-auto !py-1.5 text-xs max-w-52">
+          <optgroup label="Genel">
+            <option value="/">🏠 Ana sayfa</option>
+            <option value="/urunler">🛍 Tüm ürünler</option>
+            <option value="/sepet">🛒 Sepet</option>
+            <option value="/favoriler">❤️ Favoriler</option>
+            <option value="/hesap">👤 Hesap</option>
+            <option value="/blog">✍️ Blog</option>
+          </optgroup>
+          {collections.length > 0 && (
+            <optgroup label="Koleksiyonlar">
+              {collections.map(c => (
+                <option key={c.slug} value={`/koleksiyon/${c.slug}`}>{c.title}</option>
+              ))}
+            </optgroup>
+          )}
+          {products.length > 0 && (
+            <optgroup label="Ürünler">
+              {products.slice(0, 30).map(p => (
+                <option key={p.slug} value={`/urun/${p.slug}`}>{p.title}</option>
+              ))}
+            </optgroup>
+          )}
+          {pages.length > 0 && (
+            <optgroup label="Sayfalar">
+              {pages.map(p => (
+                <option key={p.slug} value={`/sayfa/${p.slug}`}>{p.title}</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+
         <div className="flex gap-1 bg-panel-input rounded-lg p-0.5 ml-auto">
           {[['desktop', '🖥 Masaüstü'], ['mobile', '📱 Mobil']].map(([k, l]) => (
             <button key={k} onClick={() => setDevice(k)}
@@ -343,29 +378,8 @@ export default function TemaEditorPage() {
           ) : (
             /* ── Liste modu — genel ayarlar + bölüm listesi ── */
             <>
-              {presets.length > 0 && (
-                <Section title="Hazır Şablonlar" icon="🎁">
-                  <div className="space-y-2">
-                    {presets.map(pr => (
-                      <div key={pr.key} className="border border-panel-border rounded-xl p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="flex gap-1">
-                            {[pr.colors.primary, pr.colors.accent, pr.colors.bg].map((c2, i) => (
-                              <span key={i} className="w-4 h-4 rounded-full border border-panel-border"
-                                style={{ background: c2 }} />
-                            ))}
-                          </span>
-                          <span className="text-sm font-medium">{pr.label}</span>
-                          <button onClick={() => applyPreset(pr)}
-                            className="btn-ghost !py-1 text-xs ml-auto">Uygula</button>
-                        </div>
-                        <p className="text-[11px] text-panel-muted mt-1.5">{pr.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              )}
-
+              {/* Hazır şablonlar bilinçli olarak editörde YOK — şablondan
+                  başlamak Tema kütüphanesindeki "Yeni taslak oluştur"dan yapılır */}
               <Section title="Renkler" icon="🎨">
                 <div className="grid grid-cols-3 gap-3">
                   <ColorField label="Ana renk" value={theme.colors.primary} onChange={v => set('colors.primary', v)} />
@@ -586,8 +600,8 @@ export default function TemaEditorPage() {
         <div className="flex-1 min-w-0 flex flex-col p-3">
           <div className={`flex-1 min-h-0 ${device === 'mobile'
             ? 'flex justify-center bg-panel-input/50 rounded-2xl py-4' : ''}`}>
-            <iframe key={`${saveCount}-${device}`} ref={iframeRef}
-              src={`${storefrontUrl}/?onizleme=1`} title="Vitrin önizleme"
+            <iframe key={`${saveCount}-${device}-${previewPath}`} ref={iframeRef}
+              src={`${storefrontUrl}${previewPath}?onizleme=1`} title="Vitrin önizleme"
               className={device === 'mobile'
                 ? 'w-[390px] h-full rounded-[2rem] border-8 border-zinc-800 bg-white shadow-xl'
                 : 'w-full h-full rounded-2xl border border-panel-border bg-white'} />

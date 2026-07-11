@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/orders", tags=["order_detail"],
 
 VALID_LISTS = {
     "isaretlenenler", "bugun", "sonra", "kontrol", "export", "baski",
+    "arsiv",   # Shopify 'archive' karşılığı — vitrin paneli kullanır
 }
 
 

@@ -73,11 +73,18 @@ class SettingsPatch(BaseModel):
     config: dict = Field(default_factory=dict)
 
 
-def _get_store(db: Session, user: User, store_id: uuid.UUID) -> Store:
-    store = db.scalar(select(Store).where(
+def _get_store(db: Session, user: User, store_id: uuid.UUID,
+               *, for_update: bool = False) -> Store:
+    q = select(Store).where(
         Store.id == store_id, Store.tenant_id == user.tenant_id,
         Store.platform == "storefront",
-    ))
+    )
+    # config JSONB'yi yazan uçlar satır kilidi almalı — aksi halde eşzamanlı
+    # istekler (örn. tema Kaydet + canlı önizleme PUT'u) birbirinin
+    # değişikliğini ezer (oku-değiştir-yaz yarışı).
+    if for_update:
+        q = q.with_for_update()
+    store = db.scalar(q)
     if not store:
         raise HTTPException(404, "Vitrin mağazası bulunamadı")
     return store
@@ -106,7 +113,7 @@ def patch_settings(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
 
     if body.store_name:
         store.name = body.store_name.strip()
@@ -170,7 +177,7 @@ def put_theme(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     config["theme"] = validate_theme_patch(body or {})
     store.config = config
@@ -189,7 +196,7 @@ def put_theme_preview(
 ):
     """Canlı editör taslağı — vitrin ?onizleme=1 modunda bunu gösterir,
     gerçek tema değişmez. Kaydet'e basılınca normal PUT /theme çalışır."""
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     config["theme_preview"] = validate_theme_patch(body or {})
     store.config = config
@@ -204,7 +211,7 @@ def clear_theme_preview(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     if config.pop("theme_preview", None) is not None:
         store.config = config
@@ -249,7 +256,7 @@ def put_field_presets(
         fields = _clean_custom_fields(p_.get("fields") or [])
         if name and fields:
             presets.append({"name": name, "fields": fields})
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     config["custom_field_presets"] = presets
     store.config = config
@@ -292,7 +299,7 @@ def put_theme_draft(
 ):
     if not re.fullmatch(r"[a-z0-9-]{1,60}", draft_key):
         raise HTTPException(422, "Geçersiz taslak anahtarı")
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     drafts = dict(config.get("theme_drafts") or {})
     if draft_key not in drafts and len(drafts) >= MAX_THEME_DRAFTS:
@@ -320,7 +327,7 @@ def delete_theme_draft(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     drafts = dict(config.get("theme_drafts") or {})
     if drafts.pop(draft_key, None) is not None:
@@ -338,7 +345,7 @@ def publish_theme_draft(
     db: Session = Depends(get_db),
 ):
     """Taslağı yayına al — eski yayın, taslak olarak saklanır (geri dönülebilir)."""
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     drafts = dict(config.get("theme_drafts") or {})
     draft = drafts.pop(draft_key, None)
@@ -495,7 +502,7 @@ def put_pages(
     """Özel sayfalar: [{slug,title,content}] — düz metin (HTML render edilmez)."""
     from app.routers.catalog import slugify
 
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     cleaned, seen = [], set()
     for page in (body.get("pages") or [])[:MAX_PAGES]:
         if not isinstance(page, dict):
@@ -541,7 +548,7 @@ def put_custom_code(
 ):
     """Vitrine kod enjeksiyonu — YALNIZCA mağazanın kendi vitrininde çalışır
     (panel/backend'e dokunmaz). Panel açık uyarı gösterir."""
-    store = _get_store(db, user, store_id)
+    store = _get_store(db, user, store_id, for_update=True)
     code = {}
     for key in ("head_html", "css", "body_html"):
         value = str(body.get(key) or "")

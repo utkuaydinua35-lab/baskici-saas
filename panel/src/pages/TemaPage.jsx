@@ -101,7 +101,7 @@ export default function TemaPage() {
           <ThemeSwatch theme={live} size="lg" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-sm">Mağaza Teması</span>
+              <span className="font-medium text-sm">{live.name || 'Mağaza Teması'}</span>
               <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
                 ● Yayında
               </span>

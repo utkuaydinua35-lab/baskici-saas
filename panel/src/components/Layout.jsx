@@ -42,6 +42,10 @@ export default function Layout() {
   const { user, logout, refresh } = useAuth()
   const { stores, store, setStoreId } = useStore()
   const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)  // mobil çekmece
+
+  // Sayfa değişince mobil menü kapansın
+  useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : null)
@@ -49,10 +53,15 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Üst bar — koyu, Shopify tarzı */}
-      <header className="h-12 shrink-0 bg-slate-900 flex items-center gap-3 px-3 text-white sticky top-0 z-30">
+      <header className="h-12 shrink-0 bg-slate-900 flex items-center gap-3 px-3 text-white sticky top-0 z-40">
+        {/* Mobil menü düğmesi */}
+        <button onClick={() => setMenuOpen(o => !o)} aria-label="Menü"
+          className="lg:hidden w-8 h-8 rounded-lg border border-slate-700 flex items-center justify-center text-slate-300">
+          {menuOpen ? '✕' : '☰'}
+        </button>
         <div className="flex items-center gap-2 pr-2">
           <BrandMark />
-          <span className="text-[13px] tracking-tight">
+          <span className="text-[13px] tracking-tight hidden sm:inline">
             <span className="font-bold">BERNZ</span>
             <span className="text-emerald-300 font-light ml-1">Commerce</span>
           </span>
@@ -83,9 +92,16 @@ export default function Layout() {
       </header>
 
       <div className="flex-1 flex min-h-0">
-        {/* Sol menü — gruplu */}
-        <aside className="w-56 shrink-0 border-r border-panel-border bg-white flex flex-col
-          sticky top-12 h-[calc(100vh-3rem)]">
+        {/* Mobil çekmece örtüsü */}
+        {menuOpen && (
+          <div className="fixed inset-0 top-12 bg-black/40 z-20 lg:hidden"
+            onClick={() => setMenuOpen(false)} />
+        )}
+        {/* Sol menü — gruplu; mobilde soldan kayan çekmece */}
+        <aside className={`w-56 shrink-0 border-r border-panel-border bg-white flex flex-col
+          fixed lg:sticky top-12 h-[calc(100vh-3rem)] z-30
+          transition-transform duration-200 lg:translate-x-0
+          ${menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}`}>
           <nav className="flex-1 px-2 py-2 overflow-y-auto">
             {NAV_GROUPS.map((g, gi) => (
               <div key={gi}>
@@ -121,10 +137,26 @@ export default function Layout() {
   )
 }
 
-// ── Profil menüsü — hesap bilgileri + şifre değiştirme + çıkış ──
+// ── Profil menüsü — hesap bilgileri + güvenlik (2FA) + şifre + çıkış ──
+function Avatar({ user, size = 'w-7 h-7', ring = true }) {
+  const initial = (user?.full_name || user?.email || '?').slice(0, 1).toUpperCase()
+  if (user?.avatar_url) {
+    return <img src={user.avatar_url} alt="" className={`${size} rounded-full object-cover ${
+      ring ? 'ring-1 ring-slate-600 group-hover:ring-emerald-500' : ''} transition-all`} />
+  }
+  return (
+    <div className={`${size} rounded-full flex items-center justify-center text-[11px] font-semibold
+      bg-gradient-to-br from-slate-600 to-slate-700 ${ring
+        ? 'group-hover:from-emerald-600 group-hover:to-teal-700 ring-1 ring-slate-600 group-hover:ring-emerald-500'
+        : ''} transition-all duration-200 text-white`}>
+      {initial}
+    </div>
+  )
+}
+
 function ProfileMenu({ user, logout, refresh }) {
   const [open, setOpen] = useState(false)
-  const [modal, setModal] = useState(null)   // null | 'hesap' | 'sifre'
+  const [modal, setModal] = useState(null)   // null | 'hesap' | 'sifre' | 'guvenlik'
   const ref = useRef(null)
 
   useEffect(() => {
@@ -133,17 +165,18 @@ function ProfileMenu({ user, logout, refresh }) {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
-  const initial = (user?.full_name || user?.email || '?').slice(0, 1).toUpperCase()
+  const item = (icon, label, onClick, cls = '') => (
+    <button onClick={onClick}
+      className={`w-full text-left px-3 py-2 rounded-xl hover:bg-panel-input transition-colors flex items-center gap-2.5 ${cls}`}>
+      <span>{icon}</span> {label}
+    </button>
+  )
 
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)}
         className="flex items-center gap-2 pl-2 border-l border-slate-700 group">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold
-          bg-gradient-to-br from-slate-600 to-slate-700 group-hover:from-emerald-600 group-hover:to-teal-700
-          transition-all duration-200 ring-1 ring-slate-600 group-hover:ring-emerald-500">
-          {initial}
-        </div>
+        <Avatar user={user} />
         <span className="hidden sm:block text-[11px] font-medium truncate max-w-32 text-slate-300 group-hover:text-white transition-colors">
           {user?.full_name || user?.email}
         </span>
@@ -151,26 +184,23 @@ function ProfileMenu({ user, logout, refresh }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-60 bg-white text-panel-ink rounded-2xl
+        <div className="absolute right-0 top-full mt-2 w-64 bg-white text-panel-ink rounded-2xl
           border border-panel-border shadow-xl overflow-hidden toast-in z-50">
-          <div className="px-4 py-3 bg-panel-input/60 border-b border-panel-border">
-            <div className="text-sm font-semibold truncate">{user?.full_name || '—'}</div>
-            <div className="text-xs text-panel-muted truncate">{user?.email}</div>
+          <div className="px-4 py-3 bg-panel-input/60 border-b border-panel-border flex items-center gap-2.5">
+            <Avatar user={user} size="w-9 h-9" ring={false} />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">{user?.full_name || '—'}</div>
+              <div className="text-xs text-panel-muted truncate">{user?.email}</div>
+            </div>
           </div>
           <div className="p-1.5 text-sm">
-            <button onClick={() => { setModal('hesap'); setOpen(false) }}
-              className="w-full text-left px-3 py-2 rounded-xl hover:bg-panel-input transition-colors flex items-center gap-2.5">
-              <span>👤</span> Hesap bilgileri
-            </button>
-            <button onClick={() => { setModal('sifre'); setOpen(false) }}
-              className="w-full text-left px-3 py-2 rounded-xl hover:bg-panel-input transition-colors flex items-center gap-2.5">
-              <span>🔑</span> Şifre değiştir
-            </button>
+            {item('👤', 'Hesap bilgileri', () => { setModal('hesap'); setOpen(false) })}
+            {item('🛡️', <>Güvenlik (2FA) {user?.totp_enabled &&
+              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
+              () => { setModal('guvenlik'); setOpen(false) })}
+            {item('🔑', 'Şifre değiştir', () => { setModal('sifre'); setOpen(false) })}
             <div className="my-1 border-t border-panel-border" />
-            <button onClick={logout}
-              className="w-full text-left px-3 py-2 rounded-xl hover:bg-red-50 text-red-600 transition-colors flex items-center gap-2.5">
-              <span>🚪</span> Çıkış yap
-            </button>
+            {item('🚪', 'Çıkış yap', logout, 'text-red-600 hover:!bg-red-50')}
           </div>
         </div>
       )}
@@ -178,7 +208,10 @@ function ProfileMenu({ user, logout, refresh }) {
       {modal === 'hesap' && (
         <AccountModal user={user} refresh={refresh} onClose={() => setModal(null)} />
       )}
-      {modal === 'sifre' && <PasswordModal onClose={() => setModal(null)} />}
+      {modal === 'sifre' && <PasswordModal user={user} onClose={() => setModal(null)} />}
+      {modal === 'guvenlik' && (
+        <SecurityModal user={user} refresh={refresh} onClose={() => setModal(null)} />
+      )}
     </div>
   )
 }
@@ -216,8 +249,44 @@ function AccountModal({ user, refresh, onClose }) {
     } finally { setBusy(false) }
   }
 
+  const uploadAvatar = async (file) => {
+    if (!file) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      await api.postForm('/api/tenant/avatar', fd)
+      await refresh?.()
+      toast.success('Profil fotoğrafı güncellendi')
+    } catch (e2) {
+      toast.error(typeof e2?.detail === 'string' ? e2.detail : 'Fotoğraf yüklenemedi')
+    } finally { setBusy(false) }
+  }
+
+  const removeAvatar = async () => {
+    setBusy(true)
+    try { await api.del('/api/tenant/avatar'); await refresh?.() }
+    catch { toast.error('Kaldırılamadı') }
+    finally { setBusy(false) }
+  }
+
   return (
     <ModalShell title="👤 Hesap Bilgileri" onClose={onClose}>
+      {/* Profil fotoğrafı */}
+      <div className="flex items-center gap-3 mb-4">
+        <Avatar user={user} size="w-14 h-14" ring={false} />
+        <div className="space-y-1">
+          <label className="btn-ghost !py-1.5 text-xs cursor-pointer inline-block">
+            {busy ? 'Yükleniyor…' : '📷 Fotoğraf seç'}
+            <input type="file" accept="image/*" className="hidden" disabled={busy}
+              onChange={e => uploadAvatar(e.target.files?.[0])} />
+          </label>
+          {user?.avatar_url && (
+            <button onClick={removeAvatar} disabled={busy}
+              className="block text-xs text-red-500 hover:underline">Fotoğrafı kaldır</button>
+          )}
+        </div>
+      </div>
       <form onSubmit={save} className="space-y-3">
         <label className="block text-sm">
           <span className="text-panel-muted text-xs">Ad Soyad</span>
@@ -236,13 +305,133 @@ function AccountModal({ user, refresh, onClose }) {
   )
 }
 
-function PasswordModal({ onClose }) {
+// 2FA (authenticator) kurulum/kapatma — backend: /api/auth/2fa/*
+function SecurityModal({ user, refresh, onClose }) {
+  const toast = useToast()
+  const [setup, setSetup] = useState(null)     // {qr, secret} — kurulum adımı
+  const [code, setCode] = useState('')
+  const [backupCodes, setBackupCodes] = useState(null)
+  const [disablePw, setDisablePw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const start = async () => {
+    setBusy(true); setError('')
+    try { setSetup(await api.post('/api/auth/2fa/setup', {})) }
+    catch (e) { setError(typeof e?.detail === 'string' ? e.detail : 'Kurulum başlatılamadı') }
+    finally { setBusy(false) }
+  }
+
+  const enable = async (e) => {
+    e.preventDefault()
+    setBusy(true); setError('')
+    try {
+      const r = await api.post('/api/auth/2fa/enable', { code: code.trim() })
+      setBackupCodes(r.backup_codes || [])
+      await refresh?.()
+      toast.success('2FA aktif 🛡️')
+    } catch (e2) {
+      setError(typeof e2?.detail === 'string' ? e2.detail : 'Kod doğrulanamadı')
+    } finally { setBusy(false) }
+  }
+
+  const disable = async (e) => {
+    e.preventDefault()
+    setBusy(true); setError('')
+    try {
+      await api.post('/api/auth/2fa/disable', { password: disablePw })
+      await refresh?.()
+      toast.success('2FA kapatıldı')
+      onClose()
+    } catch (e2) {
+      setError(typeof e2?.detail === 'string' ? e2.detail : 'Kapatılamadı')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <ModalShell title="🛡️ Güvenlik" onClose={onClose}>
+      {backupCodes ? (
+        <div className="space-y-3">
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            Yedek kodlarınızı güvenli bir yere kaydedin — telefonunuza erişemezseniz
+            bu kodlarla giriş yaparsınız. <b>Bir daha gösterilmez.</b>
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 font-mono text-sm bg-panel-input rounded-xl p-3">
+            {backupCodes.map(c => <span key={c}>{c}</span>)}
+          </div>
+          <button onClick={() => { navigator.clipboard?.writeText(backupCodes.join('\n')); toast.success('Kopyalandı') }}
+            className="btn-ghost w-full !py-2 text-xs">📋 Kodları Kopyala</button>
+          <button onClick={onClose} className="btn-primary w-full">Tamam, kaydettim</button>
+        </div>
+      ) : user?.totp_enabled ? (
+        <form onSubmit={disable} className="space-y-3">
+          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+            ✓ İki adımlı doğrulama <b>aktif</b> — girişte authenticator kodu isteniyor.
+          </p>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Kapatmak için şifreniz</span>
+            <input className="input mt-1" type="password" value={disablePw} required
+              onChange={e => setDisablePw(e.target.value)} />
+          </label>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button disabled={busy} className="w-full px-4 py-2 rounded-xl text-sm font-medium
+            bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 disabled:opacity-50">
+            {busy ? '…' : '2FA\'yı Kapat'}
+          </button>
+        </form>
+      ) : setup ? (
+        <form onSubmit={enable} className="space-y-3">
+          <p className="text-xs text-panel-muted">
+            1. Google Authenticator / Authy ile QR'ı okutun. 2. Uygulamadaki 6 haneli kodu girin.
+          </p>
+          <img src={setup.qr} alt="2FA QR" className="w-40 h-40 mx-auto rounded-xl border border-panel-border" />
+          <p className="text-[10px] text-panel-muted text-center font-mono break-all">
+            Elle kurulum: {setup.secret}
+          </p>
+          <input className="input font-mono text-center tracking-widest" value={code}
+            required maxLength={6} placeholder="000000" autoFocus
+            onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button disabled={busy || code.length !== 6} className="btn-primary w-full">
+            {busy ? 'Doğrulanıyor…' : 'Doğrula ve Aktifleştir'}
+          </button>
+        </form>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-panel-muted">
+            İki adımlı doğrulama (2FA), şifreniz çalınsa bile hesabınızı korur —
+            girişte telefonunuzdaki authenticator uygulamasının kodu istenir.
+          </p>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button onClick={start} disabled={busy} className="btn-primary w-full">
+            {busy ? 'Hazırlanıyor…' : '🛡️ 2FA Kurulumunu Başlat'}
+          </button>
+        </div>
+      )}
+    </ModalShell>
+  )
+}
+
+function PasswordModal({ user, onClose }) {
   const toast = useToast()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [next2, setNext2] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [mailSent, setMailSent] = useState(false)
+
+  // Mevcut şifreyi hatırlamayanlar için: e-postaya sıfırlama bağlantısı
+  const sendResetMail = async () => {
+    setBusy(true); setError('')
+    try {
+      await api.post('/api/auth/forgot-password', { email: user?.email })
+      setMailSent(true)
+      toast.success('Sıfırlama bağlantısı e-postanıza gönderildi 📧')
+    } catch {
+      setError('E-posta gönderilemedi — SMTP ayarlarını kontrol edin')
+    } finally { setBusy(false) }
+  }
 
   const save = async (e) => {
     e.preventDefault()
@@ -280,6 +469,18 @@ function PasswordModal({ onClose }) {
         <button disabled={busy} className="btn-primary w-full">
           {busy ? 'Güncelleniyor…' : 'Şifreyi Güncelle'}
         </button>
+        <div className="text-center pt-1 border-t border-panel-border">
+          {mailSent ? (
+            <p className="text-xs text-emerald-700 pt-2">
+              📧 Bağlantı gönderildi — gelen kutunuzu kontrol edin (1 saat geçerli).
+            </p>
+          ) : (
+            <button type="button" onClick={sendResetMail} disabled={busy}
+              className="text-xs text-panel-muted hover:text-panel-ink underline pt-2">
+              Mevcut şifremi hatırlamıyorum — e-postama sıfırlama bağlantısı gönder
+            </button>
+          )}
+        </div>
       </form>
     </ModalShell>
   )

@@ -19,22 +19,22 @@ from app.models import Design
 logger = logging.getLogger("product_studio")
 
 NICHES = [
-    "Anime", "Nature", "Abstract", "Minimal", "Art", "Cars", "Sports", "Music",
-    "Cute", "Retro", "Luxury", "Quote", "Floral", "Landscape", "Other",
+    "Anime", "Doğa", "Soyut", "Minimal", "Sanat", "Araba", "Spor", "Müzik",
+    "Sevimli", "Retro", "Lüks", "Motto/Yazı", "Çiçek", "Manzara", "Diğer",
 ]
 
-_VISION_PROMPT = """This is a phone case PRINT design image. Analyze it and return ONLY valid JSON
-(no markdown/explanation). ALL text values MUST be in ENGLISH words:
+_VISION_PROMPT = """Bu bir telefon kılıfı BASKI tasarımı görseli. Analiz et ve SADECE geçerli bir JSON döndür (markdown/açıklama YOK):
 {{
-  "design_name": "<2-4 word CREATIVE, unique ENGLISH design name — e.g., Neon Samurai, Night Forest, Golden Waves>",
-  "niche": "<one of: {niches}>",
-  "collection": "<collection/series name, 1-2 ENGLISH words — e.g., Anime, Nature, Abstract>",
-  "keywords": ["<3-6 ENGLISH keywords>"],
-  "colors": ["<2-3 dominant colors in ENGLISH>"],
-  "style": "<one ENGLISH adjective: Elegant/Modern/Minimal/Artistic/Cute/Bold/Retro/Luxury/Playful/Sleek>",
-  "main_subject": "<what it depicts, 2-4 ENGLISH words>",
-  "mood": "<mood, 2-3 ENGLISH words>"
-}}"""
+  "design_name": "<2-4 kelimelik YARATICI, benzersiz İNGİLİZCE tasarım adı — örn: Neon Samurai, Night Forest, Golden Waves>",
+  "niche": "<şunlardan biri: {niches}>",
+  "collection": "<koleksiyon/seri adı, 1-2 kelime Türkçe — örn: Anime, Doğa, Soyut>",
+  "keywords": ["<3-6 Türkçe anahtar kelime>"],
+  "colors": ["<2-3 baskın renk, Türkçe>"],
+  "style": "<tek Türkçe sıfat: Şık/Modern/Minimal/Sanatsal/Sevimli/Cesur/Retro/Lüks/Eğlenceli/Zarif>",
+  "main_subject": "<ne betimliyor, 2-4 kelime Türkçe>",
+  "mood": "<ruh hali, 2-3 kelime Türkçe>"
+}}
+ÖNEMLİ: design_name MUTLAKA İngilizce kelimelerden oluşsun; diğer alanlar Türkçe."""
 
 
 def _parse_json(text: str) -> dict | None:
@@ -121,32 +121,34 @@ def ascii_fold(s: str | None) -> str:
 
 
 def seo_fields(title: str, analysis: dict | None = None) -> dict:
-    """SEO başlık (≤60) + açıklama (≤160) üret — İngilizce harf, düz metin."""
+    """SEO başlık (≤60) + açıklama (≤160) üret — düz metin (tasarım adı İngilizce,
+    gerisi Türkçe; başlıkla aynı dil)."""
     a = analysis or {}
-    dname = ascii_fold((a.get("design_name") or "").strip())
-    coll = ascii_fold((a.get("collection") or a.get("niche") or "").strip())
-    kw = [ascii_fold(k) for k in (a.get("keywords") or []) if k][:4]
-    seo_title = ascii_fold(title)[:60].strip()
-    desc = f"{dname} design phone case."
+    dname = (a.get("design_name") or "").strip()
+    coll = (a.get("collection") or a.get("niche") or "").strip()
+    kw = [k for k in (a.get("keywords") or []) if k][:4]
+    seo_title = (title or "")[:60].strip()
+    desc = f"{dname} tasarımlı özel telefon kılıfı."
     if coll:
-        desc += f" {coll} series."
+        desc += f" {coll} serisi."
     if kw:
         desc += " " + ", ".join(kw) + "."
-    desc += " High quality print, full protection."
-    seo_desc = ascii_fold(desc)[:160].strip()
+    desc += " Yüksek kaliteli baskı, tam koruma."
+    seo_desc = desc[:160].strip()
     return {"seo_title": seo_title, "seo_description": seo_desc}
 
 
 def build_content(analysis: dict, brand_name: str) -> dict:
     """Analizden Shopify başlığı (İngilizce harf) + (sabit) açıklama + etiketler + SEO."""
     a = analysis or {}
-    dname = ascii_fold((a.get("design_name") or "Custom Design").strip())
-    coll = ascii_fold((a.get("collection") or a.get("niche") or "Custom").strip())
+    dname = ascii_fold((a.get("design_name") or "Custom").strip())   # tasarım adı İngilizce
+    coll = (a.get("collection") or a.get("niche") or "Özel").strip()  # koleksiyon Türkçe kalır
     colors = a.get("colors") or []
     keywords = a.get("keywords") or []
     style = (a.get("style") or "").strip()
 
-    title = ascii_fold(f'{brand_name} "{dname}" Design Phone Case - {coll} Series')
+    # Şablon Türkçe (Türkçe karakterlerle); yalnız tasarım adı İngilizce
+    title = f'{brand_name} "{dname}" Tasarım Telefon Kılıfı - {coll} Serisi'
     body_html = description_html()
     tags = list(dict.fromkeys(
         [t for t in ([a.get("niche")] + keywords + colors + [style, coll]) if t]

@@ -8,6 +8,7 @@ import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
 import { trackInitiateCheckout } from "@/lib/track";
 import TrustBadges from "@/components/TrustBadges";
+import IlIlceSelect from "@/components/IlIlceSelect";
 
 interface CheckoutResponse {
   token: string;
@@ -28,6 +29,37 @@ export default function CheckoutPage() {
   const [giftWrapOn, setGiftWrapOn] = useState(false);   // mağaza ayarı açık mı
   const [giftWrap, setGiftWrap] = useState(false);       // müşteri istedi mi
   const [shipCfg, setShipCfg] = useState<{ fee: number; freeOver: number } | null>(null);
+  // Otomatik kampanya (örn. 3 al 2 öde) — sunucudan gerçek tutar (kupon girilirse kod kazanır)
+  const [autoQuote, setAutoQuote] = useState<{ discount: number; code: string | null; freeShipping: boolean } | null>(null);
+
+  useEffect(() => {
+    if (coupon || items.length === 0) { setAutoQuote(null); return; }
+    const t = setTimeout(() => {
+      fetch("/api/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            variant_id: i.variantId, quantity: i.quantity,
+            second_variant_id: i.secondVariantId || null,
+            custom: i.custom || null,
+          })),
+        }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.valid && (Number(d.discount_amount) > 0 || d.free_shipping)) {
+            setAutoQuote({
+              discount: Number(d.discount_amount),
+              code: d.discount_code,
+              freeShipping: !!d.free_shipping,
+            });
+          } else setAutoQuote(null);
+        })
+        .catch(() => setAutoQuote(null));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [items, coupon]);
 
   useEffect(() => {
     fetch("/api/shop-config")
@@ -43,9 +75,11 @@ export default function CheckoutPage() {
   }, []);
 
   // Tahmini kargo/toplam — kesin tutar yine sunucuda hesaplanır
-  const discountAmt = coupon && !coupon.freeShipping ? Number(coupon.discountAmount) : 0;
+  const discountAmt = coupon && !coupon.freeShipping
+    ? Number(coupon.discountAmount)
+    : autoQuote ? autoQuote.discount : 0;
   const estShipping = shipCfg == null ? null
-    : coupon?.freeShipping ? 0
+    : (coupon?.freeShipping || autoQuote?.freeShipping) ? 0
     : shipCfg.freeOver > 0 && subtotal >= shipCfg.freeOver ? 0
     : shipCfg.fee;
   const estTotal = estShipping == null ? null
@@ -190,8 +224,7 @@ export default function CheckoutPage() {
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Input name="city" label="İl" required autoComplete="address-level1" defaultValue={prefill.city} />
-            <Input name="province" label="İlçe" autoComplete="address-level2" defaultValue={prefill.province} />
+            <IlIlceSelect defaultIl={prefill.city} defaultIlce={prefill.province} />
             <Input name="zip" label="Posta Kodu" autoComplete="postal-code" defaultValue={prefill.zip} />
           </div>
           <Input name="note" label="Sipariş notu (isteğe bağlı)" />
@@ -259,6 +292,15 @@ export default function CheckoutPage() {
           )}
           {coupon?.freeShipping && (
             <div className="text-sm text-emerald-600">🎟️ Ücretsiz kargo uygulandı</div>
+          )}
+          {!coupon && autoQuote && autoQuote.discount > 0 && (
+            <div className="flex justify-between text-sm text-emerald-600">
+              <span>🎁 Kampanya{autoQuote.code ? ` (${autoQuote.code})` : ""}</span>
+              <span>−{formatPrice(autoQuote.discount)}</span>
+            </div>
+          )}
+          {!coupon && autoQuote?.freeShipping && (
+            <div className="text-sm text-emerald-600">🎁 Kampanya: kargo ücretsiz</div>
           )}
           {estShipping != null && (
             <div className="flex justify-between text-sm">

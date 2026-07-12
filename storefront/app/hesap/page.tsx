@@ -247,6 +247,14 @@ function AddressBook({ initial }: { initial: Record<string, string>[] }) {
   const [editing, setEditing] = useState<number | null>(null); // -1 = yeni
   const [form, setForm] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // İl/ilçe dropdown verisi — yüklenemezse metin girişine düşer
+  const [ilData, setIlData] = useState<Record<string, string[]> | null>(null);
+  useEffect(() => {
+    fetch("/api/il-ilce")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && Object.keys(d).length > 0) setIlData(d); })
+      .catch(() => {});
+  }, []);
 
   const persist = async (next: Record<string, string>[]) => {
     setBusy(true);
@@ -334,13 +342,34 @@ function AddressBook({ initial }: { initial: Record<string, string>[] }) {
         <form onSubmit={submit} className="rounded-xl border border-zinc-300 p-3 space-y-2">
           <div className="text-xs font-medium">{editing === -1 ? "Yeni Adres" : "Adresi Düzenle"}</div>
           <div className="grid grid-cols-2 gap-2">
-            {ADDR_FIELDS.map(([k, ph]) => (
-              <input key={k} value={form[k] || ""} placeholder={ph}
-                required={k === "address1" || k === "city"}
-                onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
-                className={`rounded-lg border border-zinc-300 px-2.5 py-2 text-sm ${
-                  k === "address1" ? "col-span-2" : ""}`} />
-            ))}
+            {ADDR_FIELDS.map(([k, ph]) => {
+              // İl/ilçe: liste yüklendiyse dropdown (elle yazım hatası biter)
+              if (ilData && (k === "city" || k === "province")) {
+                const iller = Object.keys(ilData);
+                const ilKey = iller.find((x) =>
+                  x.toLocaleLowerCase("tr") === (form.city || "").toLocaleLowerCase("tr")) || "";
+                const opts = k === "city" ? iller : (ilKey ? ilData[ilKey] : []);
+                return (
+                  <select key={k} value={form[k] || ""} required={k === "city"}
+                    disabled={k === "province" && !ilKey}
+                    onChange={(e) => setForm((f) => ({
+                      ...f, [k]: e.target.value,
+                      ...(k === "city" ? { province: "" } : {}),
+                    }))}
+                    className="rounded-lg border border-zinc-300 px-2.5 py-2 text-sm bg-white disabled:opacity-50">
+                    <option value="">{k === "city" ? "İl seçin…" : ilKey ? "İlçe seçin…" : "Önce il seçin"}</option>
+                    {opts.map((x) => <option key={x} value={x}>{x}</option>)}
+                  </select>
+                );
+              }
+              return (
+                <input key={k} value={form[k] || ""} placeholder={ph}
+                  required={k === "address1" || k === "city"}
+                  onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
+                  className={`rounded-lg border border-zinc-300 px-2.5 py-2 text-sm ${
+                    k === "address1" ? "col-span-2" : ""}`} />
+              );
+            })}
           </div>
           <div className="flex gap-2">
             <button disabled={busy}

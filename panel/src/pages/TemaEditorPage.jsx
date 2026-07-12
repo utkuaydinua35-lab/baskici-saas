@@ -420,10 +420,17 @@ export default function TemaEditorPage() {
                   Hedefi listeden seçin; dış site için "Özel bağlantı"yı kullanın.
                 </p>
                 {(theme.nav_links || []).map((l, i) => (
-                  <NavLinkRow key={i} link={l}
+                  <NavLinkRow key={i} link={l} index={i} count={theme.nav_links.length}
                     collections={collections} products={products} pages={pages}
                     onChange={patch => set('nav_links', theme.nav_links.map((x, j) =>
                       j === i ? { ...x, ...patch } : x))}
+                    onMove={dir => {
+                      const arr = [...theme.nav_links]
+                      const j = i + dir
+                      if (j < 0 || j >= arr.length) return
+                      ;[arr[i], arr[j]] = [arr[j], arr[i]]
+                      set('nav_links', arr)
+                    }}
                     onRemove={() => set('nav_links', theme.nav_links.filter((_, j) => j !== i))} />
                 ))}
                 {(theme.nav_links || []).length < 8 && (
@@ -611,14 +618,16 @@ export default function TemaEditorPage() {
 }
 
 // Menü linki satırı — hedef, hazır listeden seçilir (Shopify Navigation);
-// dış site için "Özel bağlantı" metin girişini açar.
+// dış site için "Özel bağlantı", açılır liste için "Koleksiyon menüsü".
+// ↑↓ ile menüdeki buton sırası değiştirilir.
 const CUSTOM = '__ozel'
+const COLMENU = '__koleksiyon_menu'
 const GENEL_LINKS = [
   ['/', '🏠 Ana Sayfa'], ['/urunler', '🛍 Tüm Ürünler'], ['/sepet', '🛒 Sepet'],
   ['/favoriler', '❤️ Favoriler'], ['/hesap', '👤 Hesabım'], ['/blog', '✍️ Blog'],
 ]
 
-function NavLinkRow({ link, collections, products, pages, onChange, onRemove }) {
+function NavLinkRow({ link, index, count, collections, products, pages, onChange, onMove, onRemove }) {
   const options = [
     { group: 'Genel', items: GENEL_LINKS },
     { group: 'Koleksiyonlar', items: collections.map(c => [`/koleksiyon/${c.slug}`, c.title]) },
@@ -627,36 +636,55 @@ function NavLinkRow({ link, collections, products, pages, onChange, onRemove }) 
   ].filter(g => g.items.length > 0)
 
   const known = new Set(options.flatMap(g => g.items.map(([u]) => u)))
+  const isColMenu = link.type === 'collections'
   // Boş url yeni satırdır → seçim yapılmamış görünsün; bilinmeyen dolu url = özel bağlantı
-  const isCustom = !!link.url && !known.has(link.url)
-  const selectValue = isCustom ? CUSTOM : link.url
+  const isCustom = !isColMenu && !!link.url && !known.has(link.url)
+  const selectValue = isColMenu ? COLMENU : isCustom ? CUSTOM : (link.url || '')
 
   const pick = (value) => {
-    if (value === CUSTOM) { onChange({ url: 'https://' }); return }
+    if (value === COLMENU) {
+      onChange({ type: 'collections', slugs: link.slugs || [], url: undefined,
+        ...(link.label ? {} : { label: 'Koleksiyonlar' }) })
+      return
+    }
+    if (value === CUSTOM) { onChange({ type: undefined, slugs: undefined, url: 'https://' }); return }
     const found = options.flatMap(g => g.items).find(([u]) => u === value)
-    // Etiket boşsa (veya önceki otomatik etiketse) seçilen sayfanın adını yaz
+    // Etiket boşsa seçilen sayfanın adını yaz
     const cleanTitle = found ? found[1].replace(/^[^\wÇĞİÖŞÜçğıöşü]+\s*/u, '') : ''
-    onChange({ url: value, ...(link.label ? {} : { label: cleanTitle.slice(0, 40) }) })
+    onChange({ type: undefined, slugs: undefined, url: value,
+      ...(link.label ? {} : { label: cleanTitle.slice(0, 40) }) })
+  }
+
+  const toggleSlug = (slug) => {
+    const cur = link.slugs || []
+    onChange({ slugs: cur.includes(slug) ? cur.filter(s => s !== slug) : [...cur, slug] })
   }
 
   return (
-    <div className="space-y-1">
-      <div className="flex gap-1.5">
-        <input className="input !py-1.5 text-xs !w-32" value={link.label} maxLength={40}
+    <div className="space-y-1 border border-panel-border rounded-xl p-2">
+      <div className="flex gap-1.5 items-center">
+        <input className="input !py-1.5 text-xs !w-28" value={link.label} maxLength={40}
           placeholder="Etiket"
           onChange={e => onChange({ label: e.target.value })} />
         <select className="input !py-1.5 text-xs flex-1" value={selectValue}
           onChange={e => pick(e.target.value)}>
-          {!link.url && <option value="">Hedef seçin…</option>}
+          {!link.url && !isColMenu && <option value="">Hedef seçin…</option>}
           {options.map(g => (
             <optgroup key={g.group} label={g.group}>
               {g.items.map(([u, t]) => <option key={u} value={u}>{t}</option>)}
             </optgroup>
           ))}
           <optgroup label="Diğer">
+            <option value={COLMENU}>📂 Koleksiyon menüsü (açılır liste)</option>
             <option value={CUSTOM}>🔗 Özel bağlantı / dış site…</option>
           </optgroup>
         </select>
+        <button onClick={() => onMove(-1)} disabled={index === 0}
+          title="Yukarı taşı (menüde sola)"
+          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
+        <button onClick={() => onMove(1)} disabled={index === count - 1}
+          title="Aşağı taşı (menüde sağa)"
+          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
         <button onClick={onRemove}
           className="text-red-400 hover:text-red-600 px-1">×</button>
       </div>
@@ -664,6 +692,29 @@ function NavLinkRow({ link, collections, products, pages, onChange, onRemove }) 
         <input className="input !py-1.5 text-xs font-mono" value={link.url} maxLength={300}
           placeholder="https://siparistakip.bernzcompany.com"
           onChange={e => onChange({ url: e.target.value })} />
+      )}
+      {isColMenu && (
+        <div className="pt-1">
+          <p className="text-[10px] text-panel-muted mb-1">
+            Menüde görünecek koleksiyonları seçin (seçim sırasıyla listelenir):
+          </p>
+          <div className="flex gap-1 flex-wrap">
+            {collections.map(c => {
+              const on = (link.slugs || []).includes(c.slug)
+              return (
+                <button key={c.slug} onClick={() => toggleSlug(c.slug)}
+                  className={`px-2 py-0.5 rounded-full text-[11px] border transition ${on
+                    ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+                    : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+                  {c.title}
+                </button>
+              )
+            })}
+            {collections.length === 0 && (
+              <span className="text-[11px] text-panel-muted">Önce koleksiyon oluşturun.</span>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

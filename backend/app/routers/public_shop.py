@@ -382,6 +382,56 @@ def validate_discount_code(
     }
 
 
+class QuoteRequest(BaseModel):
+    items: list[CheckoutItemIn] = Field(..., min_length=1, max_length=30)
+    email: str | None = Field(None, max_length=200)
+
+
+@router.post("/{store_slug}/checkout/quote")
+def checkout_quote(
+    store_slug: str,
+    body: QuoteRequest,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Sepet özeti teklifi — OTOMATİK indirim dahil (kayıt yaratmaz).
+
+    Sepet ve ödeme sayfaları gerçek tahsilat tutarını göstersin diye;
+    yoksa '3 al 2 öde uygulanıyor' yazar ama müşteri indirimi göremez."""
+    from decimal import Decimal
+
+    store = _resolve_store(db, store_slug)
+    try:
+        snapshot, items_total = checkout_svc.validate_and_snapshot(
+            db, store,
+            [i.model_dump(exclude_none=True) for i in body.items])
+    except checkout_svc.CheckoutError as e:
+        return {"valid": False, "message": str(e)}
+
+    shipping = checkout_svc._shipping_fee(store, items_total)
+    auto = checkout_svc.best_automatic_discount(
+        db, store, items_total, body.email, shipping,
+        sum(i.quantity for i in body.items), snapshot)
+    discount = Decimal("0")
+    code = None
+    free_shipping = False
+    if auto:
+        dc, discount, free_shipping = auto
+        code = dc.code
+    if free_shipping:
+        shipping = Decimal("0")
+    return {
+        "valid": True,
+        "items_total": str(items_total),
+        "discount_amount": str(discount),
+        "discount_code": code,
+        "free_shipping": free_shipping,
+        "shipping": str(shipping),
+        "total": str(items_total - discount + shipping),
+    }
+
+
 @router.post("/{store_slug}/checkout")
 def create_checkout(
     store_slug: str,
@@ -905,6 +955,14 @@ def get_store_theme(
             "iade": config.get("iade_text") or None,
         },
     }
+
+
+@router.get("/_il-ilce")
+def il_ilce_public(response: Response):
+    """TR il→ilçe listesi — adres formlarındaki dropdown'lar için (statik)."""
+    from app.services.tr_iller import IL_ILCE
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return IL_ILCE
 
 
 @router.get("/_resolve")

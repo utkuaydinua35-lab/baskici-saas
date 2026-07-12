@@ -13,6 +13,37 @@ interface NavCollection {
   title: string;
 }
 
+// Menüdeki açılır koleksiyon listesi — panelden elle seçilen koleksiyonlar.
+// Çok öğede mega-menü gibi çok sütuna yayılır.
+function CollectionsDropdown({ label, items }: { label: string; items: NavCollection[] }) {
+  if (items.length === 0) return null;
+  const cols = items.length > 12 ? 3 : items.length > 6 ? 2 : 1;
+  return (
+    <div className="relative group">
+      <button className="hover:text-zinc-900 py-2 flex items-center gap-1 whitespace-nowrap">
+        {label}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" className="group-hover:rotate-180 transition-transform">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1 opacity-0 -translate-y-1 pointer-events-none
+        group-hover:opacity-100 group-hover:!translate-y-0 group-hover:pointer-events-auto
+        transition-all duration-200 z-50">
+        <div className={`bg-white border border-zinc-200 rounded-2xl shadow-lg py-2 px-1 grid gap-x-2 ${
+          cols === 3 ? "grid-cols-3 w-[40rem]" : cols === 2 ? "grid-cols-2 w-[28rem]" : "w-56"}`}>
+          {items.map((c) => (
+            <Link key={c.slug} href={`/koleksiyon/${c.slug}`}
+              className="block px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 rounded-lg whitespace-nowrap">
+              {c.title}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Header({
   siteName,
   logoUrl,
@@ -26,7 +57,7 @@ export default function Header({
   logoWidth?: number;
   cartDrawer?: boolean;
   collections?: NavCollection[];
-  navLinks?: { label: string; url: string }[];
+  navLinks?: { label: string; url?: string; type?: string; slugs?: string[] }[];
 }) {
   const { count, setDrawerOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -89,26 +120,33 @@ export default function Header({
           )}
         </Link>
 
-        {/* Desktop nav — panelden özel menü tanımlıysa o kullanılır */}
-        <nav className="hidden sm:flex items-center gap-4 text-sm text-zinc-600">
+        {/* Desktop nav — panelden özel menü tanımlıysa o kullanılır.
+            flex-wrap + justify-center: sığmayan butonlar etiketi kırmak yerine
+            ORTALANMIŞ ikinci satıra iner (Shopify header davranışı). */}
+        <nav className="hidden sm:flex flex-1 flex-wrap items-center justify-center gap-x-4 gap-y-0 text-sm text-zinc-600 min-w-0">
           {navLinks.length > 0 ? (
-            navLinks.map((l) => (
-              // Dış adresler (örn. sipariş takip alt alan adı) yeni sekmede açılır
-              l.url.startsWith("http") ? (
+            navLinks.map((l, li) => (
+              l.type === "collections" ? (
+                <CollectionsDropdown key={`cm-${li}`} label={l.label}
+                  items={(l.slugs || [])
+                    .map((s) => collections.find((c) => c.slug === s))
+                    .filter((c): c is NavCollection => !!c)} />
+              ) : l.url?.startsWith("http") ? (
+                // Dış adresler (örn. sipariş takip alt alan adı) yeni sekmede açılır
                 <a key={`${l.label}-${l.url}`} href={l.url}
                   target="_blank" rel="noopener noreferrer"
-                  className="hover:text-zinc-900 py-4">
+                  className="hover:text-zinc-900 py-2 whitespace-nowrap">
                   {l.label}
                 </a>
               ) : (
-                <Link key={`${l.label}-${l.url}`} href={l.url}
-                  className="hover:text-zinc-900 py-4">
+                <Link key={`${l.label}-${l.url}`} href={l.url || "/"}
+                  className="hover:text-zinc-900 py-2 whitespace-nowrap">
                   {l.label}
                 </Link>
               )
             ))
           ) : (
-          <Link href="/urunler" className="hover:text-zinc-900 py-4">Ürünler</Link>
+          <Link href="/urunler" className="hover:text-zinc-900 py-2 whitespace-nowrap">Ürünler</Link>
           )}
           {navLinks.length === 0 && collections.length > 0 && (
             <div className="relative group">
@@ -187,15 +225,30 @@ export default function Header({
             className="text-zinc-400 hover:text-zinc-900 text-xl leading-none">×</button>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
-          {navLinks.map((l) => (
-            l.url.startsWith("http") ? (
+          {navLinks.map((l, li) => (
+            l.type === "collections" ? (
+              <div key={`m-cm-${li}`}>
+                <div className="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
+                  {l.label}
+                </div>
+                {(l.slugs || [])
+                  .map((s) => collections.find((c) => c.slug === s))
+                  .filter((c): c is NavCollection => !!c)
+                  .map((c) => (
+                    <Link key={`m-cm-${c.slug}`} href={`/koleksiyon/${c.slug}`}
+                      className="block px-5 py-2.5 text-sm text-zinc-600">
+                      {c.title}
+                    </Link>
+                  ))}
+              </div>
+            ) : l.url?.startsWith("http") ? (
               <a key={`m-${l.label}-${l.url}`} href={l.url}
                 target="_blank" rel="noopener noreferrer"
                 className="block px-5 py-2.5 text-sm font-medium">
                 {l.label}
               </a>
             ) : (
-              <Link key={`m-${l.label}-${l.url}`} href={l.url}
+              <Link key={`m-${l.label}-${l.url}`} href={l.url || "/"}
                 className="block px-5 py-2.5 text-sm font-medium">
                 {l.label}
               </Link>

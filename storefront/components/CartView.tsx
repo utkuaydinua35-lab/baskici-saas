@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/lib/cart";
@@ -106,6 +106,38 @@ function CartInner({
   const minAmount = Number(settings?.min_order_amount || 0);
   const belowMin = minAmount > 0 && subtotal < minAmount;
   const freeOver = Number(settings?.free_shipping_over || 0);
+
+  // Otomatik kampanya tutarı (örn. 3 al 2 öde) — sunucudan gerçek hesap;
+  // "uygulanıyor" der ama tutar görünmezse müşteri indirime inanmaz.
+  const [autoQuote, setAutoQuote] = useState<{ discount: number; code: string | null; freeShipping: boolean } | null>(null);
+  useEffect(() => {
+    if (coupon || items.length === 0) { setAutoQuote(null); return; }
+    const t = setTimeout(() => {
+      fetch("/api/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            variant_id: i.variantId, quantity: i.quantity,
+            second_variant_id: i.secondVariantId || null,
+            custom: i.custom || null,
+          })),
+        }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.valid && (Number(d.discount_amount) > 0 || d.free_shipping)) {
+            setAutoQuote({
+              discount: Number(d.discount_amount),
+              code: d.discount_code,
+              freeShipping: !!d.free_shipping,
+            });
+          } else setAutoQuote(null);
+        })
+        .catch(() => setAutoQuote(null));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [items, coupon]);
 
   if (items.length === 0) {
     return (
@@ -223,6 +255,21 @@ function CartInner({
             <span>İndirim ({coupon.code})</span>
             <span>−{formatPrice(coupon.discountAmount)}</span>
           </div>
+        )}
+        {!coupon && autoQuote && autoQuote.discount > 0 && (
+          <>
+            <div className="flex justify-between text-sm text-emerald-600 font-medium">
+              <span>🎁 Kampanya{autoQuote.code ? ` (${autoQuote.code})` : ""}</span>
+              <span>−{formatPrice(autoQuote.discount)}</span>
+            </div>
+            <div className="flex justify-between text-sm border-t border-zinc-100 pt-1.5">
+              <span className="text-zinc-500">Kampanyalı toplam</span>
+              <span className="font-semibold">{formatPrice(Math.max(0, subtotal - autoQuote.discount))}</span>
+            </div>
+          </>
+        )}
+        {!coupon && autoQuote?.freeShipping && (
+          <div className="text-sm text-emerald-600">🎁 Kampanya: kargo ücretsiz</div>
         )}
         <p className="text-xs text-zinc-400">
           Kargo ücreti ve toplam, ödeme adımında hesaplanır.

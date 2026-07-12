@@ -367,12 +367,20 @@ def validate_theme_patch(patch: dict) -> dict:
         except (TypeError, ValueError):
             cleaned["logo_width"] = 120
     if "nav_links" in patch:
-        cleaned["nav_links"] = [
-            {"label": str((l or {}).get("label") or "")[:40],
-             "url": str((l or {}).get("url") or "")[:300]}
-            for l in (patch.get("nav_links") or [])[:8]
-            if isinstance(l, dict) and (l.get("label") and l.get("url"))
-        ]
+        links = []
+        for l in (patch.get("nav_links") or [])[:8]:
+            if not isinstance(l, dict) or not str(l.get("label") or "").strip():
+                continue
+            label = str(l["label"]).strip()[:40]
+            if l.get("type") == "collections":
+                # Açılır koleksiyon menüsü — panelden ELLE seçilen koleksiyonlar
+                links.append({
+                    "label": label, "type": "collections",
+                    "slugs": [str(s)[:200] for s in (l.get("slugs") or [])[:24] if s],
+                })
+            elif l.get("url"):
+                links.append({"label": label, "url": str(l["url"])[:300]})
+        cleaned["nav_links"] = links
     cleaned["sections"] = _normalize_sections(patch.get("sections") or [])
     cleaned["version"] = 2
     return cleaned

@@ -64,6 +64,7 @@ export default function DesignsPage() {
     no_ikincil: false,
     no_ucuncu: false,
     cmyk_done: null,
+    baski_dosyasi_yok: false,
   })
 
   const [activeTab, setActiveTab] = useState('all')
@@ -119,6 +120,7 @@ export default function DesignsPage() {
       if (filters.no_ikincil) params.set('no_ikincil', 'true')
       if (filters.no_ucuncu) params.set('no_ucuncu', 'true')
       if (filters.cmyk_done !== null) params.set('cmyk_done', String(filters.cmyk_done))
+      if (filters.baski_dosyasi_yok) params.set('baski_dosyasi_yok', 'true')
       if (activeTab === 'kisiye') params.set('is_kisiye_ozel', 'true')
       else if (activeTab === 'all') params.set('is_kisiye_ozel', 'false')
 
@@ -244,6 +246,8 @@ export default function DesignsPage() {
                 active={filters.cmyk_done === false}
                 onClick={() => setFilters(f => ({ ...f, cmyk_done: f.cmyk_done === false ? null : false }))}
                 color="gray" label="◔ CMYK Yapılmamış" />
+              <FilterChip active={filters.baski_dosyasi_yok} onClick={() => toggleFilter('baski_dosyasi_yok')}
+                color="red" label="🖨️ Baskı Dosyası Yok" />
             </div>
           </div>
 
@@ -434,6 +438,12 @@ function DesignCard({ design, onEdit, onDelete, onCmyk }) {
         {design.is_kisiye_ozel && (
           <div className="absolute top-1 left-1 bg-pink-500/80 text-white text-[9px] px-1.5 py-0.5 rounded font-medium z-10">
             ÖZEL
+          </div>
+        )}
+
+        {design.baski_dosyasi_yok && (
+          <div className="absolute top-1 right-1 bg-red-500/85 text-white text-[9px] px-1.5 py-0.5 rounded font-medium z-10" title="Temiz baskı dosyası yok — kayıttaki görsel mockup">
+            BASKI YOK
           </div>
         )}
 
@@ -997,6 +1007,8 @@ function ProductPicker({ storeId, onSelect, onClose }) {
 // ═══════════════════════════════════════════════════════════
 
 function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
+  const toast = useToast()
+  const [uploadingPrint, setUploadingPrint] = useState(false)
   const [code, setCode] = useState(design.code || '')
   const [name, setName] = useState(design.name || '')
   const [kalipTipi, setKalipTipi] = useState(design.kalip_tipi || '')
@@ -1046,6 +1058,21 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
     }
   }
 
+  const uploadPrintFile = async (f) => {
+    if (!f) return
+    setUploadingPrint(true)
+    try {
+      const fd = new FormData(); fd.append('file', f)
+      await api.postForm(`/api/designs/${design.id}/print-file`, fd)
+      toast.success('Baskı dosyası eklendi (CMYK) — kalıba girebilir')
+      onSaved()
+    } catch (e) {
+      toast.error(e.detail || 'Yüklenemedi')
+    } finally {
+      setUploadingPrint(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!confirm(`"${design.code}" tasarımını silmek istediğinden emin misin?`)) return
     try {
@@ -1069,6 +1096,22 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
         </div>
 
         <div className="overflow-y-auto px-5 py-4 flex-1">
+          {/* Baskı dosyası yok — temiz baskı dosyası yükle (CMYK'ye çevrilir) */}
+          {design.baski_dosyasi_yok && (
+            <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+              <div className="text-sm font-medium text-red-200 mb-1">🖨️ Baskı dosyası yok</div>
+              <p className="text-[11px] text-gray-300 mb-2">
+                Kayıttaki görsel kılıflı mockup — baskıya bu haliyle giremez ve kalıba alınmaz.
+                <b> Temiz tasarımı</b> yükle; sistem CMYK PDF'e çevirir (beyaz koruma), mockup vitrin görseli olarak kalır.
+              </p>
+              <label className={`btn-primary !text-xs cursor-pointer inline-flex ${uploadingPrint ? 'opacity-50 pointer-events-none' : ''}`}>
+                {uploadingPrint ? 'Yükleniyor…' : '⬆ Baskı dosyası yükle (PNG/JPG/PDF)'}
+                <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden"
+                  disabled={uploadingPrint} onChange={e => uploadPrintFile(e.target.files?.[0])} />
+              </label>
+            </div>
+          )}
+
           {/* Tasarım önizlemesi */}
           {design.file_url && (
             <div className="bg-brand-input rounded-lg mb-4 overflow-hidden border border-brand-border">

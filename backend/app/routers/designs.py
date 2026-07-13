@@ -51,6 +51,7 @@ def _serialize(d: Design) -> dict:
         "ucuncu_renk": d.ucuncu_renk,
         "cmyk_hazirlanmis": d.cmyk_hazirlanmis,
         "is_kisiye_ozel": d.is_kisiye_ozel,
+        "baski_dosyasi_yok": d.baski_dosyasi_yok,
         "notes": d.notes,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,
@@ -78,6 +79,7 @@ def list_designs(
     no_ucuncu: bool = Query(False),
     cmyk_done: bool | None = Query(None),
     is_kisiye_ozel: bool | None = Query(None),
+    baski_dosyasi_yok: bool | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(60, ge=1, le=200),
     user: User = Depends(get_current_user),
@@ -115,6 +117,8 @@ def list_designs(
         q = q.where(Design.cmyk_hazirlanmis == cmyk_done)
     if is_kisiye_ozel is not None:
         q = q.where(Design.is_kisiye_ozel == is_kisiye_ozel)
+    if baski_dosyasi_yok is not None:
+        q = q.where(Design.baski_dosyasi_yok == baski_dosyasi_yok)
 
     total = db.scalar(select(sql_func.count()).select_from(q.subquery())) or 0
     q = q.order_by(desc(Design.created_at)).limit(per_page).offset((page - 1) * per_page)
@@ -232,6 +236,54 @@ def get_design(
     if not d:
         raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
     return _serialize(d)
+
+
+@router.post("/{design_id}/print-file", response_model=None)
+async def upload_print_file(
+    design_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bu tasarıma temiz baskı dosyası yükle. Görsel ise CMYK PDF'e çevrilir (beyaz koruma);
+    PDF ise doğrudan saklanır. Mockup/vitrin görseli (product_image_url) değişmez.
+    'baskı dosyası yok' işareti kalkar → kalıp/baskı akışına girebilir."""
+    import io as _io
+    design = db.scalar(select(Design).where(Design.id == design_id, Design.tenant_id == user.tenant_id))
+    if not design:
+        raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Boş dosya")
+    if len(raw) > 50 * 1024 * 1024:
+        raise HTTPException(413, "Dosya çok büyük (max 50 MB)")
+
+    from app.services import product_studio as ps
+    name = (file.filename or "").lower()
+    if name.endswith(".pdf") or raw[:5] == b"%PDF-":
+        pdf_bytes = raw   # zaten baskıya hazır PDF
+    else:
+        try:
+            from PIL import Image as _Img
+            img = _Img.open(_io.BytesIO(raw))
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "Görsel okunamadı")
+        store = db.scalar(select(Store).where(Store.id == design.store_id))
+        koff = int(((store.config or {}).get("cmyk_k_offset", 5) if store else 5) or 0)
+        pdf_bytes = ps.make_print_pdf(img, k_offset_pct=koff)
+
+    old = design.file_path
+    saved = storage.save_design_file(user.tenant_id, design.id, pdf_bytes, f"{design.id}.pdf")
+    # Eski designs/ dosyasını temizle; studio mockup'ı (aynı klasördeki baski.png) korunur
+    if old and old != saved["relative_path"] and "/designs/" in old:
+        storage.delete_design_file(old)
+    design.file_path = saved["relative_path"]
+    design.file_format = "pdf"
+    design.file_size_bytes = saved["size"]
+    design.baski_dosyasi_yok = False
+    db.commit()
+    db.refresh(design)
+    return _serialize(design)
 
 
 @router.post("", response_model=None, status_code=status.HTTP_201_CREATED)

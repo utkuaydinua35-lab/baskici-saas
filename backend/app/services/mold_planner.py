@@ -328,6 +328,9 @@ def plan_molds(
                     _m1, _m2 = extract_couple_models(li)
                     _m1 = _m1 or model
                     _m2 = _m2 or _m1   # 2. model yoksa 1. modele dus (geriye uyum)
+                if getattr(d1, "baski_dosyasi_yok", False) or getattr(d2, "baski_dosyasi_yok", False):
+                    add_eksik("baski_dosyasi_yok", li, order, model)
+                    continue
                 if not _m1:
                     add_eksik("model_belirsiz", li, order, model)
                     continue
@@ -403,6 +406,11 @@ def plan_molds(
                 if design is None:
                     add_eksik("urun_tasarima_baglanmamis", li, order, model)
                     continue
+
+            # Temiz baskı dosyası yok (hazır mockup/kılıflı görsel) -> kalıba girmesin
+            if design is not None and getattr(design, "baski_dosyasi_yok", False):
+                add_eksik("baski_dosyasi_yok", li, order, model)
+                continue
 
             if not model:
                 add_eksik("model_belirsiz", li, order, model)

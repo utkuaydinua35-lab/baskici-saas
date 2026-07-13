@@ -628,6 +628,8 @@ def publish(req: PublishIn, user: User = Depends(require_permission("tasarim")),
                 tenant_id=user.tenant_id, store_id=s.id, code=code,
                 name=it.title[:200], file_path=_rel, file_format=_fmt,
                 file_size_bytes=_sz,
+                # PDF yoksa (hazır mockup / kılıflı görsel) baskı dosyası yok -> kalıba girmesin
+                baski_dosyasi_yok=(_fmt != "pdf"),
             )
             db.add(design)
             db.flush()

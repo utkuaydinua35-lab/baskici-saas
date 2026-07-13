@@ -223,6 +223,9 @@ class Design(Base):
 
     cmyk_hazirlanmis: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_kisiye_ozel: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # True = tasarımın dosyası temiz baskı dosyası DEĞİL (ör. hazır mockup/kılıflı görsel).
+    # Kalıp/baskı akışına girmez; temiz baskı dosyası yüklenince False olur.
+    baski_dosyasi_yok: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

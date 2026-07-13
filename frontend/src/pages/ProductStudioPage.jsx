@@ -33,6 +33,7 @@ export default function ProductStudioPage() {
   const [publishing, setPublishing] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showCmyk, setShowCmyk] = useState(false)
+  const [showQueue, setShowQueue] = useState(false)
   const [mockupPct, setMockupPct] = useState(null)   // mockup yükleme %
   const [analyzePct, setAnalyzePct] = useState(null) // analiz yükleme %
   const [testing, setTesting] = useState(false)
@@ -133,6 +134,7 @@ export default function ProductStudioPage() {
             className="input !text-sm flex-1 min-w-[160px]">
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          <button onClick={() => setShowQueue(v => !v)} className={`btn-secondary !text-sm ${showQueue ? '!border-accent !text-accent' : ''}`}>📥 Baskı dosyaları</button>
           <button onClick={() => setShowCmyk(v => !v)} className={`btn-secondary !text-sm ${showCmyk ? '!border-accent !text-accent' : ''}`}>🖨️ CMYK Aracı</button>
           <button onClick={() => setShowSettings(v => !v)} className="btn-secondary !text-sm">⚙️ Ayarlar</button>
         </div>
@@ -148,6 +150,9 @@ export default function ProductStudioPage() {
         )}
         {showSettings && cfg && <StudioSettings cfg={cfg} storeId={storeId} onSaved={loadCfg} onMockup={uploadMockup} mockupPct={mockupPct} />}
       </div>
+
+      {/* Baskı dosyası bekleyen ürünler (hazır mockup) — toplu temiz dosya eşleme */}
+      {storeId && showQueue && <PrintFileQueue storeId={storeId} />}
 
       {/* CMYK baskı aracı — beyaz koruma + öncesi/sonrası karşılaştırma */}
       {storeId && showCmyk && <CmykTool storeId={storeId} defOffset={cfg?.cmyk_k_offset ?? 5} />}
@@ -504,6 +509,67 @@ function CmykTool({ storeId, defOffset }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Baskı dosyası bekleyen (hazır mockup) ürünler — her birine temiz baskı dosyası yükle
+function PrintFileQueue({ storeId }) {
+  const toast = useToast()
+  const [rows, setRows] = useState(null)   // null = yükleniyor
+  const [busyId, setBusyId] = useState(null)
+
+  const load = async () => {
+    setRows(null)
+    try {
+      const r = await api.get(`/api/designs?store_id=${storeId}&baski_dosyasi_yok=true&per_page=200`)
+      setRows(r.items || [])
+    } catch (e) { toast.error(e.detail || 'Liste alınamadı'); setRows([]) }
+  }
+  useEffect(() => { load() }, [storeId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (id, f) => {
+    if (!f) return
+    setBusyId(id)
+    try {
+      const fd = new FormData(); fd.append('file', f)
+      await api.postForm(`/api/designs/${id}/print-file`, fd)
+      setRows(arr => (arr || []).filter(x => x.id !== id))
+      toast.success('Baskı dosyası eklendi (CMYK) — kalıba girebilir')
+    } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
+    finally { setBusyId(null) }
+  }
+
+  return (
+    <div className="card mb-4 border-accent/30">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-sm font-medium text-gray-200">📥 Baskı dosyası bekleyen ürünler</div>
+        <button onClick={load} className="text-[11px] text-gray-400 hover:text-gray-200">↻ Yenile</button>
+      </div>
+      <p className="text-[11px] text-gray-500 mb-2">
+        Hazır mockup ile eklenmiş ürünlerin baskı dosyası yok (kayıttaki görsel kılıflı mockup). Her birine
+        <b> temiz tasarımı</b> yükle — sistem CMYK PDF'e çevirir, mockup vitrin görseli olarak kalır.
+      </p>
+      {rows === null && <div className="text-xs text-gray-500 py-3 text-center">Yükleniyor…</div>}
+      {rows !== null && rows.length === 0 && (
+        <div className="text-xs text-emerald-300/80 py-3 text-center">✓ Bekleyen ürün yok — hepsinin baskı dosyası hazır.</div>
+      )}
+      <div className="space-y-2">
+        {(rows || []).map(d => (
+          <div key={d.id} className="flex items-center gap-2 bg-brand-card/40 rounded-lg px-2 py-1.5">
+            <img src={d.product_image_url || d.thumbnail_url || d.file_url} alt="" className="w-12 h-12 rounded object-cover bg-brand-input shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-gray-200 truncate">{d.name || d.product_title || '—'}</div>
+              <div className="text-[10px] font-mono text-accent">{d.code} · {(d.file_format || '').toUpperCase()}</div>
+            </div>
+            <label className={`btn-primary !text-[11px] cursor-pointer ${busyId === d.id ? 'opacity-50 pointer-events-none' : ''}`}>
+              {busyId === d.id ? '…' : '⬆ Baskı dosyası'}
+              <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden"
+                disabled={busyId === d.id} onChange={e => upload(d.id, e.target.files?.[0])} />
+            </label>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

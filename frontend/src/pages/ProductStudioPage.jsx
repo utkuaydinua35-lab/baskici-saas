@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useToast } from '../components/Toast'
 
@@ -32,6 +32,7 @@ export default function ProductStudioPage() {
   const [skipped, setSkipped] = useState([])    // kenara alınan (aspect/hata)
   const [publishing, setPublishing] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showCmyk, setShowCmyk] = useState(false)
   const [mockupPct, setMockupPct] = useState(null)   // mockup yükleme %
   const [analyzePct, setAnalyzePct] = useState(null) // analiz yükleme %
   const [testing, setTesting] = useState(false)
@@ -132,6 +133,7 @@ export default function ProductStudioPage() {
             className="input !text-sm flex-1 min-w-[160px]">
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          <button onClick={() => setShowCmyk(v => !v)} className={`btn-secondary !text-sm ${showCmyk ? '!border-accent !text-accent' : ''}`}>🖨️ CMYK Aracı</button>
           <button onClick={() => setShowSettings(v => !v)} className="btn-secondary !text-sm">⚙️ Ayarlar</button>
         </div>
         {cfg && (
@@ -146,6 +148,9 @@ export default function ProductStudioPage() {
         )}
         {showSettings && cfg && <StudioSettings cfg={cfg} storeId={storeId} onSaved={loadCfg} onMockup={uploadMockup} mockupPct={mockupPct} />}
       </div>
+
+      {/* CMYK baskı aracı — beyaz koruma + öncesi/sonrası karşılaştırma */}
+      {storeId && showCmyk && <CmykTool storeId={storeId} defOffset={cfg?.cmyk_k_offset ?? 5} />}
 
       {/* Hazır mockup modu — mockup PSD olmadan da açılabilsin */}
       {storeId && (
@@ -381,6 +386,123 @@ function PreviewCard({ it, onChange, onRemove }) {
       </div>
       {open && (
         <textarea className="input w-full !text-xs mt-2 font-mono" rows={5} value={it.body_html} onChange={e => onChange({ body_html: e.target.value })} />
+      )}
+    </div>
+  )
+}
+
+// Öncesi/sonrası karşılaştırma — ortadaki çizgiyi sürükle (mouse + dokunmatik)
+function CmykCompare({ before, after, pos, setPos }) {
+  const ref = useRef(null)
+  const move = (clientX) => {
+    const el = ref.current; if (!el) return
+    const r = el.getBoundingClientRect()
+    setPos(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)))
+  }
+  const start = (e) => {
+    e.preventDefault()
+    const onMove = (ev) => move(ev.touches ? ev.touches[0].clientX : ev.clientX)
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp)
+    }
+    window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onMove, { passive: false }); window.addEventListener('touchend', onUp)
+    onMove(e)
+  }
+  return (
+    <div ref={ref} onMouseDown={start} onTouchStart={start}
+      className="relative select-none rounded-lg overflow-hidden bg-brand-input" style={{ cursor: 'ew-resize' }}>
+      <img src={before} alt="öncesi" draggable={false} className="block w-full" />
+      <img src={after} alt="sonrası" draggable={false}
+        className="absolute inset-0 w-full h-full object-cover" style={{ clipPath: `inset(0 0 0 ${pos}%)` }} />
+      <span className="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">Öncesi</span>
+      <span className="absolute top-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white pointer-events-none">Sonrası · CMYK</span>
+      <div className="absolute top-0 bottom-0 w-0.5 bg-white/90 pointer-events-none" style={{ left: `${pos}%` }} />
+      <div className="absolute w-7 h-7 -ml-3.5 rounded-full bg-white shadow flex items-center justify-center text-black text-xs pointer-events-none"
+        style={{ left: `${pos}%`, top: '50%', transform: 'translateY(-50%)' }}>⇔</div>
+    </div>
+  )
+}
+
+function CmykTool({ storeId, defOffset }) {
+  const toast = useToast()
+  const [file, setFile] = useState(null)
+  const [token, setToken] = useState(null)
+  const [offset, setOffset] = useState(defOffset ?? 5)
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState(null)   // {before_url, after_url, already_adjusted}
+  const [pos, setPos] = useState(50)
+  const [dl, setDl] = useState(null)     // {pdf_url, png_url, stem}
+
+  const run = async (useToken) => {
+    if (!file && !useToken) { toast.error('Görsel seç'); return }
+    setBusy(true)
+    try {
+      const fd = new FormData(); fd.append('store_id', storeId); fd.append('offset', String(offset))
+      if (useToken && token) fd.append('token', token); else fd.append('file', file)
+      const r = await api.postForm('/api/studio/cmyk-tool', fd)
+      setRes(r); setToken(r.token); setDl(null)
+      if (r.already_adjusted) toast.error('⚠ Bu görsel zaten CMYK ayarlı görünüyor')
+    } catch (e) { toast.error(e.detail || 'İşlem başarısız') }
+    finally { setBusy(false) }
+  }
+
+  // Offset değişince, oturum varsa otomatik yeniden üret (debounce)
+  useEffect(() => {
+    if (!token) return
+    const h = setTimeout(() => run(true), 350)
+    return () => clearTimeout(h)
+  }, [offset]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const apply = async () => {
+    if (!token) return
+    setBusy(true)
+    try {
+      const fd = new FormData(); fd.append('store_id', storeId); fd.append('token', token); fd.append('offset', String(offset))
+      const r = await api.postForm('/api/studio/cmyk-apply', fd)
+      setDl(r); toast.success('Baskı dosyaları hazır — indir')
+    } catch (e) { toast.error(e.detail || 'Üretilemedi') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card mb-4 border-accent/30">
+      <div className="text-sm font-medium text-gray-200 mb-1">🖨️ CMYK Baskı Aracı</div>
+      <p className="text-[11px] text-gray-500 mb-2">
+        Beyaz (K:0) alanlar baskı makinesinde basılmaz. Bu araç beyazlara K ekleyip görseli baskıya hazırlar.
+        Ortadaki çizgiyi sürükleyerek öncesi/sonrasını karşılaştır.
+      </p>
+      <label className="block border border-dashed border-brand-border rounded-lg p-4 text-center text-xs text-gray-400 cursor-pointer hover:border-accent">
+        {file ? `Seçildi: ${file.name} — değiştir` : '🖼 Görsel seç (PNG/JPG)'}
+        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+          onChange={e => { setFile(e.target.files?.[0] || null); setRes(null); setToken(null); setDl(null) }} />
+      </label>
+      <div className="flex items-center gap-2 flex-wrap mt-2 text-xs">
+        <span className="text-gray-300">Beyaz koruma K%:</span>
+        <input type="number" min="0" max="50" value={offset} onChange={e => setOffset(Number(e.target.value))}
+          className="input !text-sm !py-1 w-16" />
+        <span className="text-gray-500">en beyaz → 0,0,0,{offset}</span>
+        <button onClick={() => run(false)} disabled={busy || !file} className="btn-primary !text-xs ml-auto disabled:opacity-50">
+          {busy ? 'İşleniyor…' : '🔍 Karşılaştır'}
+        </button>
+      </div>
+      {res?.already_adjusted && (
+        <div className="mt-2 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1">
+          ⚠ Bu görsel zaten <b>CMYK ayarlı</b> görünüyor — tekrar işlersen beyazlar fazla grileşir.
+        </div>
+      )}
+      {res && (
+        <div className="mt-3">
+          <CmykCompare before={res.before_url} after={res.after_url} pos={pos} setPos={setPos} />
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <button onClick={apply} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50">💾 Baskı dosyası üret</button>
+            {dl && <>
+              <a href={dl.pdf_url} download={`${dl.stem}_cmyk.pdf`} className="text-emerald-300 hover:underline text-xs">⬇ CMYK.pdf (baskı)</a>
+              <a href={dl.png_url} download={`${dl.stem}_cmyk.png`} className="text-accent hover:underline text-xs">⬇ İşaretli.png</a>
+            </>}
+          </div>
+        </div>
       )}
     </div>
   )

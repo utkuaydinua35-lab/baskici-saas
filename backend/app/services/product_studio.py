@@ -185,11 +185,32 @@ def aspect_ok(w: int, h: int) -> bool:
     return RATIO_MIN <= (w / h) <= RATIO_MAX
 
 
-def make_print_pdf(image, dpi: int = 300, k_offset_pct: int = 5) -> bytes:
-    """Tasarımı baskı için CMYK PDF'e çevir (mold/üretim akışı PDF bekler).
-    k_offset_pct: K kanalına eklenen offset (%). +5 -> en beyaz renk 0,0,0,5 olur
-    (kullanıcı isteği). Negatif verilirse K azalır (koyular açılır).
-    Not: RIP/ICC profili olmadan naif RGB->CMYK; matbaa ICC profili istenirse eklenebilir."""
+# Baskı dosyalarına gömülen işaret — "bu görsel CMYK ayarından geçti".
+# is_cmyk_adjusted bunu arayıp aynı görselin iki kez işlenmesini engeller.
+CMYK_MARK = "BERNZ-CMYK-OK"
+
+
+def _apply_k(cmyk_img, pct: int):
+    """CMYK görselin K (siyah) kanalını düzenle.
+    pct > 0: BEYAZ KORUMA — K için 'taban' (floor). Baskı makinesi K=0 olan beyaz
+             alanları boş görüp basmadığı için, K'si düşük (beyaz/açık) alanlar pct'ye
+             yükseltilir; koyular DEĞİŞMEZ. En beyaz renk 0,0,0,pct olur.
+    pct < 0: koyuları açmak için K'den düş (eski davranış)."""
+    from PIL import Image as _Img
+    if not pct or cmyk_img.mode != "CMYK":
+        return cmyk_img
+    c, m, y, k = cmyk_img.split()
+    if pct > 0:
+        floor = round(float(pct) / 100.0 * 255.0)
+        k = k.point(lambda v: v if v >= floor else floor)
+    else:
+        off = round(float(pct) / 100.0 * 255.0)
+        k = k.point(lambda v: max(0, min(255, v + off)))
+    return _Img.merge("CMYK", (c, m, y, k))
+
+
+def _to_cmyk(image, k_offset_pct: int):
+    """RGB(A) görseli beyaz-korumalı CMYK'ye çevir (naif RGB->CMYK). ICC/RIP yok."""
     import io
     from PIL import Image as _Img
     img = image if hasattr(image, "convert") else _Img.open(io.BytesIO(image))
@@ -197,15 +218,69 @@ def make_print_pdf(image, dpi: int = 300, k_offset_pct: int = 5) -> bytes:
     try:
         out = rgb.convert("CMYK")
     except Exception:  # noqa: BLE001
-        out = rgb
-    if out.mode == "CMYK" and k_offset_pct:
-        off = round(float(k_offset_pct) / 100.0 * 255.0)   # % -> 0..255
-        c, m, y, k = out.split()
-        k = k.point(lambda v: max(0, min(255, v + off)))
-        out = _Img.merge("CMYK", (c, m, y, k))
+        return rgb
+    return _apply_k(out, int(k_offset_pct or 0))
+
+
+def make_print_pdf(image, dpi: int = 300, k_offset_pct: int = 5) -> bytes:
+    """Tasarımı baskı için CMYK PDF'e çevir (mold/üretim akışı PDF bekler).
+    k_offset_pct > 0: beyaz koruma (en beyaz renk 0,0,0,pct). < 0: koyuları aç.
+    Not: RIP/ICC profili olmadan naif RGB->CMYK; matbaa ICC profili istenirse eklenebilir."""
+    import io
+    out = _to_cmyk(image, k_offset_pct)
     buf = io.BytesIO()
-    out.save(buf, "PDF", resolution=float(dpi))
+    try:
+        out.save(buf, "PDF", resolution=float(dpi), producer=CMYK_MARK, title="CMYK")
+    except Exception:  # noqa: BLE001 — eski Pillow metadata kwarg'ı desteklemezse
+        buf = io.BytesIO()
+        out.save(buf, "PDF", resolution=float(dpi))
     return buf.getvalue()
+
+
+def cmyk_adjust_rgb(image, k_offset_pct: int = 5):
+    """Beyaz-korumalı CMYK'ye çevirip ekran/önizleme için RGB'ye geri döndür
+    (beyazlar hafif grileşir — baskıda ne olacağını gösterir)."""
+    return _to_cmyk(image, k_offset_pct).convert("RGB")
+
+
+def cmyk_png_marked(image, k_offset_pct: int = 5) -> bytes:
+    """CMYK-ayarlı görseli 'CMYK ayarlı' işaretiyle PNG olarak döndür
+    (tekrar tekrar işlenmesini engellemek için metadata gömer)."""
+    import io
+    from PIL import PngImagePlugin
+    rgb = cmyk_adjust_rgb(image, k_offset_pct)
+    meta = PngImagePlugin.PngInfo()
+    meta.add_text("Software", CMYK_MARK)
+    meta.add_text("cmyk_adjusted", str(int(k_offset_pct or 0)))
+    buf = io.BytesIO()
+    rgb.save(buf, "PNG", pnginfo=meta)
+    return buf.getvalue()
+
+
+def is_cmyk_adjusted(raw: bytes) -> bool:
+    """Görsel daha önce bu araçtan geçmiş mi? (PNG/JPEG metadata ya da PDF üreticisi)."""
+    if not raw:
+        return False
+    import io
+    from PIL import Image as _Img
+    try:
+        im = _Img.open(io.BytesIO(raw))
+        blobs = list((getattr(im, "info", {}) or {}).values())
+        txt = getattr(im, "text", None)
+        if isinstance(txt, dict):
+            blobs += list(txt.values())
+        for v in blobs:
+            s = v.decode("latin-1", "ignore") if isinstance(v, (bytes, bytearray)) else str(v)
+            if CMYK_MARK in s:
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    if raw[:5] == b"%PDF-":
+        head = raw[:500_000]
+        # PIL PDF metadata'yı UTF-16BE yazar; hem ASCII hem UTF-16BE ara
+        if CMYK_MARK.encode() in head or CMYK_MARK.encode("utf-16-be") in head:
+            return True
+    return False
 
 
 def default_prefix(brand_name: str) -> str:

@@ -304,6 +304,112 @@ async def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = F
         raise HTTPException(500, f"Mockup derlenemedi: {str(e)[:200]}")
 
 
+def _prune_dir(d: Path, max_age_sec: int = 86400) -> None:
+    """Geçici klasördeki eski dosyaları temizle (CMYK aracı ara dosyaları)."""
+    import time as _t
+    if not d.exists():
+        return
+    now = _t.time()
+    for p in d.iterdir():
+        try:
+            if p.is_file() and now - p.stat().st_mtime > max_age_sec:
+                p.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+@router.post("/cmyk-tool", response_model=dict)
+async def cmyk_tool(
+    store_id: uuid.UUID = Form(...),
+    file: UploadFile | None = File(None),
+    token: str | None = Form(None),
+    offset: int | None = Form(None),
+    user: User = Depends(require_permission("tasarim")),
+    db: Session = Depends(get_db),
+):
+    """CMYK beyaz-koruma önizlemesi (öncesi/sonrası karşılaştırma).
+    İlk çağrıda 'file' yollanır -> token döner; slider ile 'offset' değişince aynı
+    token + yeni offset yollanır (dosya tekrar yüklenmez). Ayrıca görselin daha önce
+    CMYK ayarından geçip geçmediğini bildirir (already_adjusted)."""
+    import time as _t
+    s = _get_store(db, store_id, user.tenant_id)
+    cdir = _studio_dir(user.tenant_id, store_id) / "_cmyk"
+    cdir.mkdir(parents=True, exist_ok=True)
+    _prune_dir(cdir)
+    default_off = int((s.config or {}).get("cmyk_k_offset", 5) or 0)
+    off = default_off if offset is None else max(-50, min(50, int(offset)))
+    if file is not None:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(400, "Boş dosya")
+        if len(raw) > 50 * 1024 * 1024:
+            raise HTTPException(413, "Dosya çok büyük (max 50 MB)")
+        token = uuid.uuid4().hex[:12]
+        (cdir / f"{token}.src").write_bytes(raw)
+        (cdir / f"{token}.name").write_text((file.filename or "tasarim")[:80])
+    elif token:
+        srcp = cdir / f"{token}.src"
+        if not srcp.exists():
+            raise HTTPException(404, "Oturum bulunamadı — görseli tekrar yükleyin")
+        raw = srcp.read_bytes()
+    else:
+        raise HTTPException(400, "Görsel gerekli")
+    already = ps.is_cmyk_adjusted(raw)
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Görsel okunamadı")
+    prev = img.copy()
+    prev.thumbnail((1400, 1400))
+    prev.save(str(cdir / f"{token}_before.png"), "PNG")
+    ps.cmyk_adjust_rgb(prev, off).save(str(cdir / f"{token}_after.png"), "PNG")
+    rel = f"tenants/{user.tenant_id}/studio/{store_id}/_cmyk"
+    t = int(_t.time())
+    return {
+        "ok": True, "token": token, "offset": off, "already_adjusted": already,
+        "width": img.width, "height": img.height,
+        "before_url": f"/storage/{rel}/{token}_before.png?t={t}",
+        "after_url": f"/storage/{rel}/{token}_after.png?t={t}",
+    }
+
+
+@router.post("/cmyk-apply", response_model=dict)
+async def cmyk_apply(
+    store_id: uuid.UUID = Form(...),
+    token: str = Form(...),
+    offset: int | None = Form(None),
+    user: User = Depends(require_permission("tasarim")),
+    db: Session = Depends(get_db),
+):
+    """Tam çözünürlükte baskı dosyalarını üret: CMYK PDF + işaretli PNG (indirilebilir)."""
+    import time as _t
+    s = _get_store(db, store_id, user.tenant_id)
+    cdir = _studio_dir(user.tenant_id, store_id) / "_cmyk"
+    srcp = cdir / f"{token}.src"
+    if not srcp.exists():
+        raise HTTPException(404, "Oturum bulunamadı — görseli tekrar yükleyin")
+    raw = srcp.read_bytes()
+    default_off = int((s.config or {}).get("cmyk_k_offset", 5) or 0)
+    off = default_off if offset is None else max(-50, min(50, int(offset)))
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Görsel okunamadı")
+    stem = "tasarim"
+    np_ = cdir / f"{token}.name"
+    if np_.exists():
+        stem = (np_.read_text().rsplit(".", 1)[0] or "tasarim")[:60]
+    (cdir / f"{token}_cmyk.pdf").write_bytes(ps.make_print_pdf(img, k_offset_pct=off))
+    (cdir / f"{token}_cmyk.png").write_bytes(ps.cmyk_png_marked(img, off))
+    rel = f"tenants/{user.tenant_id}/studio/{store_id}/_cmyk"
+    t = int(_t.time())
+    return {
+        "ok": True, "offset": off, "stem": stem,
+        "pdf_url": f"/storage/{rel}/{token}_cmyk.pdf?t={t}",
+        "png_url": f"/storage/{rel}/{token}_cmyk.png?t={t}",
+    }
+
+
 def _existing_studio_codes(tenant_id, store_id) -> set:
     d = _studio_dir(tenant_id, store_id)
     if not d.exists():

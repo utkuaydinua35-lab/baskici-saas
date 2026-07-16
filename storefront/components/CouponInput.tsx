@@ -92,14 +92,14 @@ export default function CouponInput({ email }: { email?: string }) {
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), apply())}
           placeholder="Kupon kodu"
-          className="flex-1 rounded-xl border border-zinc-300 px-3 py-2 text-sm font-mono uppercase bg-white"
+          className="flex-1 min-w-0 rounded-xl border border-zinc-300 px-3 py-2 text-sm font-mono uppercase bg-white"
           maxLength={40}
         />
         <button
           type="button"
           onClick={apply}
           disabled={busy || !code.trim()}
-          className="px-4 py-2 rounded-xl border border-zinc-900 text-sm font-medium disabled:opacity-40 hover:bg-zinc-900 hover:text-white transition"
+          className="shrink-0 whitespace-nowrap px-4 py-2 rounded-xl border border-zinc-900 text-sm font-medium disabled:opacity-40 hover:bg-zinc-900 hover:text-white transition"
         >
           {busy ? "…" : "Uygula"}
         </button>

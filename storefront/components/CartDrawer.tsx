@@ -6,11 +6,15 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+import { useAutoQuote } from "@/lib/useAutoQuote";
 
 export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: string | null }) {
-  const { items, subtotal, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
+  const { items, subtotal, coupon, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
   const freeOver = Number(freeShippingOver || 0);
   const remaining = freeOver > 0 ? Math.max(0, freeOver - subtotal) : 0;
+  // Otomatik kampanya (3 al 2 öde vb.) çekmecede de görünmeli —
+  // yoksa müşteri ödemeye kadar indirimi göremez, kafası karışır
+  const autoQuote = useAutoQuote(items, coupon);
 
   // Açıkken body scroll kilidi + ESC ile kapatma
   useEffect(() => {
@@ -109,6 +113,23 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
               <span className="text-zinc-500">Ara toplam</span>
               <span className="font-semibold">{formatPrice(subtotal)}</span>
             </div>
+            {autoQuote && autoQuote.discount > 0 && (
+              <>
+                <div className="flex justify-between text-sm text-emerald-600 font-medium">
+                  <span>🎁 Kampanya{autoQuote.code ? ` (${autoQuote.code})` : ""}</span>
+                  <span>−{formatPrice(autoQuote.discount)}</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-zinc-100 pt-1.5">
+                  <span className="text-zinc-500">Kampanyalı toplam</span>
+                  <span className="font-semibold">
+                    {formatPrice(Math.max(0, subtotal - autoQuote.discount))}
+                  </span>
+                </div>
+              </>
+            )}
+            {autoQuote?.freeShipping && (
+              <div className="text-xs text-emerald-600">🎁 Kampanya: kargo ücretsiz</div>
+            )}
             <Link href="/odeme" onClick={() => setDrawerOpen(false)}
               className="block text-center rounded-xl text-white font-medium py-3 transition hover:opacity-90"
               style={{ background: "var(--c-primary)" }}>

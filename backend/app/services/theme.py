@@ -89,6 +89,8 @@ DEFAULT_THEME: dict = {
     "whatsapp": {"enabled": False, "number": "", "message": "Merhaba, sipariş hakkında bilgi almak istiyorum."},
     # Ürün sayfası + checkout güven şeridi
     "trust_badges": {"enabled": True},
+    # Sipariş onayı (teşekkür) ekranı metinleri — ödeme sonrası sayfa
+    "thankyou": {"title": "", "message": ""},
     # Sepet kampanya mesajları — {kalan} {x} {y} yer tutucuları desteklenir
     "cart_messages": {
         "bxgy_progress": "🎁 {x} AL {y} ÖDE'den yararlanmak için sepetine {kalan} ürün daha ekle!",
@@ -351,7 +353,7 @@ def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
     for key in ("colors", "announcement", "animations", "footer", "whatsapp",
-                "trust_badges", "cart_messages"):
+                "trust_badges", "cart_messages", "thankyou"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]
         if isinstance(value, dict):

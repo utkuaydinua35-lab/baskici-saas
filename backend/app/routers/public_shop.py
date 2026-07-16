@@ -708,30 +708,64 @@ def restore_cart(
     return {"items": items}
 
 
-def _active_promotion(db: Session, store: Store) -> dict | None:
-    """Vitrine gösterilecek otomatik indirim etiketi (koşulsuz en cömerti).
-
-    Sepet tutarı bilinmediğinden yalnızca zaman penceresi + limit denetlenir;
-    kesin uygulama checkout'ta best_automatic_discount ile yapılır.
-    """
+def _eligible_automatics(db: Session, store: Store) -> list[DiscountCode]:
+    """Zaman penceresi + limit koşulunu sağlayan otomatik indirimler."""
     from datetime import datetime, timezone
-    from decimal import Decimal
 
     now = datetime.now(timezone.utc)
-    candidates = db.scalars(select(DiscountCode).where(
+    out = []
+    for dc in db.scalars(select(DiscountCode).where(
         DiscountCode.store_id == store.id,
         DiscountCode.is_automatic.is_(True),
         DiscountCode.is_active.is_(True),
-    )).all()
-    best = None
-    best_rank = Decimal("-1")
-    for dc in candidates:
+    )).all():
         if dc.starts_at and now < dc.starts_at:
             continue
         if dc.ends_at and now > dc.ends_at:
             continue
         if dc.usage_limit is not None and dc.usage_count >= dc.usage_limit:
             continue
+        out.append(dc)
+    return out
+
+
+def _promo_dict(dc: DiscountCode) -> dict:
+    from decimal import Decimal
+
+    if dc.kind == "percent":
+        label = f"%{Decimal(str(dc.value)):.0f} indirim"
+    elif dc.kind == "amount":
+        label = f"{Decimal(str(dc.value)):.0f} TL indirim"
+    elif dc.kind == "bxgy":
+        label = f"{dc.buy_x} Al {dc.pay_y} Öde"
+    else:
+        label = "Ücretsiz kargo"
+    if dc.min_subtotal:
+        label = f"{Decimal(str(dc.min_subtotal)):.0f} TL üzeri {label}"
+    if dc.min_quantity:
+        label = f"{dc.min_quantity}+ ürüne {label}"
+    return {
+        "label": f"{label} — sepette otomatik uygulanır",
+        "kind": dc.kind,
+        "min_subtotal": str(dc.min_subtotal) if dc.min_subtotal is not None else None,
+        "buy_x": dc.buy_x,
+        "pay_y": dc.pay_y,
+    }
+
+
+def _active_promotions(db: Session, store: Store) -> list[dict]:
+    """Vitrine gösterilecek TÜM otomatik kampanyalar — sepet aynı anda birden
+    çok hedefe yönlendirebilsin (2 üründe 3al2'ye, 4 üründe 5al3'e…)."""
+    return [_promo_dict(dc) for dc in _eligible_automatics(db, store)]
+
+
+def _active_promotion(db: Session, store: Store) -> dict | None:
+    """Duyuru şeridi için tek etiket (en cömert otomatik) — geriye uyum."""
+    from decimal import Decimal
+
+    best = None
+    best_rank = Decimal("-1")
+    for dc in _eligible_automatics(db, store):
         rank = (Decimal(str((dc.buy_x or 0) - (dc.pay_y or 0))) * 100
                 if dc.kind == "bxgy" else Decimal(str(dc.value or 0)))
         if rank > best_rank:
@@ -739,25 +773,7 @@ def _active_promotion(db: Session, store: Store) -> dict | None:
     if not best:
         return None
 
-    if best.kind == "percent":
-        label = f"%{Decimal(str(best.value)):.0f} indirim"
-    elif best.kind == "amount":
-        label = f"{Decimal(str(best.value)):.0f} TL indirim"
-    elif best.kind == "bxgy":
-        label = f"{best.buy_x} Al {best.pay_y} Öde"
-    else:
-        label = "Ücretsiz kargo"
-    if best.min_subtotal:
-        label = f"{Decimal(str(best.min_subtotal)):.0f} TL üzeri {label}"
-    if best.min_quantity:
-        label = f"{best.min_quantity}+ ürüne {label}"
-    return {
-        "label": f"{label} — sepette otomatik uygulanır",
-        "kind": best.kind,
-        "min_subtotal": str(best.min_subtotal) if best.min_subtotal is not None else None,
-        "buy_x": best.buy_x,
-        "pay_y": best.pay_y,
-    }
+    return _promo_dict(best)
 
 
 @router.get("/{store_slug}/blog")
@@ -946,6 +962,7 @@ def get_store_theme(
         ],
         "custom_code": config.get("custom_code") or None,
         "active_promotion": _active_promotion(db, store),
+        "active_promotions": _active_promotions(db, store),
         # Yayin oncesi kilit (Shopify password page) — sifrenin kendisi ASLA donmez
         "password_protected": bool((config.get("storefront_password") or "").strip()),
         "has_blog": _has_blog(db, store),

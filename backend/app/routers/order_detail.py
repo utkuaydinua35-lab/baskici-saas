@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
@@ -40,6 +41,22 @@ def _build_adapter(order):
     except Exception:
         pass
     return None
+
+
+def _address_editable(order, raw: dict | None = None) -> bool:
+    """Shopify'dan senkron gerçek sipariş DIŞINDAki her sipariş (bayii, manuel,
+    telafi, shopify olmayan mağaza) adresi elle güncellenebilir."""
+    raw = raw if raw is not None else (order.raw or {})
+    try:
+        plat = ((order.store.platform if order.store else "") or "").lower()
+    except Exception:  # noqa: BLE001
+        plat = ""
+    return (
+        bool(getattr(order, "is_telafi", False))
+        or raw.get("source") == "bayii"
+        or bool(raw.get("manual"))
+        or plat != "shopify"
+    )
 
 
 def _resolve_order(db: Session, order_ref: str, tenant_id, *, with_rels=True) -> Order:
@@ -342,6 +359,9 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
 
         "shipping_address": raw.get("shipping_address"),
         "billing_address": raw.get("billing_address"),
+        # Adres düzenlenebilir mi: Shopify'dan senkron GERÇEK sipariş hariç hepsi
+        # (bayii, manuel, telafi, shopify olmayan mağaza) elle güncellenebilir.
+        "address_editable": _address_editable(order, raw),
 
         # Bayii siparişi ise: geri-navigasyon + tutar dökümü (ürün + kargo)
         "dealer_id": raw.get("dealer_id"),
@@ -531,6 +551,46 @@ def update_flags(
 
 class CommentIn(BaseModel):
     message: str
+
+
+class AddressIn(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    address1: str | None = None
+    city: str | None = None
+    province: str | None = None
+    zip: str | None = None
+
+
+@router.patch("/{order_ref}/address", response_model=None)
+def update_address(
+    order_ref: str,
+    body: AddressIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Shopify harici siparişlerde (bayii / manuel / telafi) müşteri kargo adresini güncelle."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    if not _address_editable(order):
+        raise HTTPException(400, "Shopify siparişlerinin adresi Shopify tarafından düzenlenmeli.")
+    raw = dict(order.raw or {})
+    addr = dict(raw.get("shipping_address") or {})
+    for k in ("name", "phone", "address1", "city", "province", "zip"):
+        v = getattr(body, k)
+        if v is not None:
+            addr[k] = v.strip()
+    raw["shipping_address"] = addr
+    # İsim/telefon kolon + raw ile senkron (liste/kart bunları kullanıyor)
+    if body.name is not None and body.name.strip():
+        order.customer_name = body.name.strip()
+    if body.phone is not None:
+        raw["customer_phone"] = body.phone.strip()
+    order.raw = raw
+    flag_modified(order, "raw")
+    _log_history(db, order, user, "address_update", note="Kargo adresi güncellendi")
+    db.commit()
+    db.refresh(order)
+    return _serialize_detail(order, db)
 
 
 @router.post("/{order_ref}/comment", response_model=None)

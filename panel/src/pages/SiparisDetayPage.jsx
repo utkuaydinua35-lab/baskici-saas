@@ -58,6 +58,14 @@ export default function SiparisDetayPage() {
             {d.store_name && ` · ${d.store_name}`}
           </div>
         </div>
+        {/* Üst aksiyonlar (Shopify: Para iadesi yap sağ üstte) */}
+        {isStorefront && fin.payment_status === 'paid' && (
+          <button onClick={() => document.getElementById('iade-blok')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            className="ml-auto btn-ghost !py-1.5 text-xs">
+            ↩️ Para İadesi Yap
+          </button>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
@@ -486,7 +494,8 @@ function RefundBlock({ orderId, onDone }) {
   }
 
   return (
-    <div className="px-4 py-3 border-t border-panel-border bg-panel-input/40">
+    <div id="iade-blok" className="px-4 py-3 border-t border-panel-border bg-panel-input/40">
+      <div className="text-xs font-semibold mb-2">↩️ Para İadesi</div>
       {info.refunds.length > 0 && (
         <div className="space-y-1 mb-2">
           {info.refunds.map(r => (
@@ -534,7 +543,11 @@ function RefundBlock({ orderId, onDone }) {
           </div>
         )
       ) : (
-        <p className="text-[11px] text-panel-muted italic">Tutarın tamamı iade edildi.</p>
+        <p className="text-[11px] text-panel-muted italic">
+          {info.refunds.length > 0
+            ? 'Tutarın tamamı iade edildi.'
+            : 'İade edilebilir tutar yok — ödeme henüz tamamlanmamış olabilir.'}
+        </p>
       )}
     </div>
   )

@@ -8,6 +8,7 @@ import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
 import ProductCard from "@/components/ProductCard";
 import type { ProductCard as ProductCardType } from "@/lib/api";
+import { useAutoQuote } from "@/lib/useAutoQuote";
 
 // Hatırlatma e-postasındaki ?restore= linki — terk edilen sepeti geri yükler.
 function RestoreHandler() {
@@ -74,18 +75,20 @@ function fillTemplate(tpl: string, vars: Record<string, string | number>): strin
 export default function CartView({
   settings,
   promotion,
+  promotions,
   cartMessages,
   suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  promotions?: Promotion[] | null;
   cartMessages?: CartMessages | null;
   suggestions?: ProductCardType[];
 }) {
   return (
     <Suspense>
       <RestoreHandler />
-      <CartInner settings={settings} promotion={promotion}
+      <CartInner settings={settings} promotion={promotion} promotions={promotions}
         cartMessages={cartMessages} suggestions={suggestions} />
     </Suspense>
   );
@@ -94,11 +97,13 @@ export default function CartView({
 function CartInner({
   settings,
   promotion,
+  promotions,
   cartMessages,
   suggestions = [],
 }: {
   settings: StoreSettings;
   promotion?: Promotion | null;
+  promotions?: Promotion[] | null;
   cartMessages?: CartMessages | null;
   suggestions?: ProductCardType[];
 }) {
@@ -109,35 +114,7 @@ function CartInner({
 
   // Otomatik kampanya tutarı (örn. 3 al 2 öde) — sunucudan gerçek hesap;
   // "uygulanıyor" der ama tutar görünmezse müşteri indirime inanmaz.
-  const [autoQuote, setAutoQuote] = useState<{ discount: number; code: string | null; freeShipping: boolean } | null>(null);
-  useEffect(() => {
-    if (coupon || items.length === 0) { setAutoQuote(null); return; }
-    const t = setTimeout(() => {
-      fetch("/api/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            variant_id: i.variantId, quantity: i.quantity,
-            second_variant_id: i.secondVariantId || null,
-            custom: i.custom || null,
-          })),
-        }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (d?.valid && (Number(d.discount_amount) > 0 || d.free_shipping)) {
-            setAutoQuote({
-              discount: Number(d.discount_amount),
-              code: d.discount_code,
-              freeShipping: !!d.free_shipping,
-            });
-          } else setAutoQuote(null);
-        })
-        .catch(() => setAutoQuote(null));
-    }, 400);
-    return () => clearTimeout(t);
-  }, [items, coupon]);
+  const autoQuote = useAutoQuote(items, coupon);
 
   if (items.length === 0) {
     return (
@@ -221,28 +198,53 @@ function CartInner({
       </ul>
 
       <div className="mt-6 bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
-        {promotion && !coupon && promotion.kind !== "bxgy" && (
-          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-            ⚡ {promotion.label}
-          </p>
-        )}
-        {promotion?.kind === "bxgy" && !coupon && promotion.buy_x && promotion.pay_y && (() => {
+        {/* Çoklu kampanya hedefleri — müşteriyi aynı anda bir SONRAKİ hedefe de
+            yönlendirir: 2 üründe "3al2 için 1 ekle", 4 üründe "5al3 için 1 ekle" */}
+        {!coupon && (() => {
           const units = items.reduce((s, i) => s + i.quantity, 0);
-          const x = promotion.buy_x!; const y = promotion.pay_y!;
-          const kalan = x - (units % x || x) === 0 ? 0 : x - (units % x);
-          const reached = units >= x;
-          const tpl = reached && units % x === 0
-            ? (cartMessages?.bxgy_reached || "🎉 {x} AL {y} ÖDE kazandın!")
-            : reached
-            ? (cartMessages?.bxgy_progress || "🎁 {kalan} ürün daha ekle!")
-            : (cartMessages?.bxgy_progress || "🎁 {x} AL {y} ÖDE için {kalan} ürün daha ekle!");
+          const all = promotions ?? (promotion ? [promotion] : []);
+          const bxgy = all
+            .filter((p) => p.kind === "bxgy" && p.buy_x && p.pay_y)
+            .sort((a, b) => (a.buy_x || 0) - (b.buy_x || 0));
+          const others = all.filter((p) => p.kind !== "bxgy");
+
+          const msgs: { reached: boolean; x: number; y: number; kalan: number }[] = [];
+          // Ulaşılan en büyük hedef (tam katsa kutlama)
+          const achieved = [...bxgy].reverse().find((p) => units >= (p.buy_x || 0));
+          if (achieved && units % achieved.buy_x! === 0) {
+            msgs.push({ reached: true, x: achieved.buy_x!, y: achieved.pay_y!, kalan: 0 });
+          }
+          // Sıradaki hedef: sepetten büyük en küçük X (yoksa aynı hedefin sonraki katı)
+          const next = bxgy.find((p) => (p.buy_x || 0) > units);
+          if (next) {
+            msgs.push({ reached: false, x: next.buy_x!, y: next.pay_y!, kalan: next.buy_x! - units });
+          } else if (achieved && units % achieved.buy_x! !== 0) {
+            const x = achieved.buy_x!;
+            msgs.push({ reached: false, x, y: achieved.pay_y!, kalan: x - (units % x) });
+          }
+
           return (
-            <p className={`text-xs rounded-lg px-3 py-2 border font-medium ${
-              reached && units % x === 0
-                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                : "text-amber-800 bg-amber-50 border-amber-200"}`}>
-              {fillTemplate(tpl, { x, y, kalan })}
-            </p>
+            <>
+              {others.map((p) => (
+                <p key={p.label}
+                  className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  ⚡ {p.label}
+                </p>
+              ))}
+              {msgs.map((m, i) => (
+                <p key={i} className={`text-xs rounded-lg px-3 py-2 border font-medium ${
+                  m.reached
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                    : "text-amber-800 bg-amber-50 border-amber-200"}`}>
+                  {fillTemplate(
+                    m.reached
+                      ? (cartMessages?.bxgy_reached || "🎉 {x} AL {y} ÖDE kazandın!")
+                      : (cartMessages?.bxgy_progress || "🎁 {x} AL {y} ÖDE için sepetine {kalan} ürün daha ekle!"),
+                    { x: m.x, y: m.y, kalan: m.kalan },
+                  )}
+                </p>
+              ))}
+            </>
           );
         })()}
         <CouponInput />

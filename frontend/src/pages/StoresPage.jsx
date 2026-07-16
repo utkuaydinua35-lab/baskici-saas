@@ -522,8 +522,8 @@ function AddStoreDialog({ platforms, onClose, onSaved }) {
               <div className="text-[11px] text-gray-500 bg-brand-input/40 rounded-lg p-2 border border-brand-border/50">
                 <div className="text-amber-400 mb-1">⚠ Shopify Partner Dashboard'da yapılması gerekenler:</div>
                 <ul className="space-y-0.5 list-disc list-inside opacity-90">
-                  <li>App URL: <span className="font-mono">https://baskici.bernzcompany.com</span></li>
-                  <li>Allowed redirection URL: <span className="font-mono break-all">https://baskici.bernzcompany.com/api/stores/oauth/callback</span></li>
+                  <li>App URL: <span className="font-mono">https://studio.bernzcompany.com</span></li>
+                  <li>Allowed redirection URL: <span className="font-mono break-all">https://studio.bernzcompany.com/api/stores/oauth/callback</span></li>
                   <li>API access scopes: read/write_orders, read_products, read/write_fulfillments, read_customers</li>
                 </ul>
               </div>

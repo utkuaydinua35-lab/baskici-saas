@@ -32,6 +32,7 @@ export default function PackagingPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [labelPending, setLabelPending] = useState(null)  // {id, order_number, takip_no} — barkod otomatik açılamadı, elle yazdır
   const [manualAddr, setManualAddr] = useState(false)   // ilçe çözülemedi → il/ilçe seçici
   const [ilIlce, setIlIlce] = useState(null)            // { il: [ilçe, ...] }
   const [selIl, setSelIl] = useState('')
@@ -46,7 +47,7 @@ export default function PackagingPage() {
   filtersRef.current = { search, source, readyOnly }
 
   const loadIndex = useCallback(async (idx) => {
-    setLoading(true); setMsg(null); setManualAddr(false)
+    setLoading(true); setMsg(null); setManualAddr(false); setLabelPending(null)
     try {
       const f = filtersRef.current
       const params = new URLSearchParams({ index: String(idx) })
@@ -94,18 +95,39 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  // SVG kargo etiketi -> yeni sekmede ac + otomatik yazdir
+  // SVG kargo etiketi -> yeni sekmede ac + otomatik yazdir. Döner: pencere açıldı mı (false = popup engeli)
   const openLabelSvg = (svg, takipNo) => {
     try {
       const w = window.open('', '_blank')
-      if (!w) return
+      if (!w) return false
       w.document.write(
         `<!doctype html><html><head><title>Kargo Etiketi ${takipNo || ''}</title>` +
         `<style>@page{margin:0}body{margin:0;display:flex;justify-content:center;padding:8px}svg{max-width:100%;height:auto}</style>` +
         `</head><body>${svg}<scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr` + `ipt></body></html>`
       )
       w.document.close()
-    } catch { /* popup engellendi */ }
+      return true
+    } catch { return false }
+  }
+
+  // Basit Kargo etiket SVG'sini yeniden çek (kargo-gonder boş dönerse / re-print)
+  const fetchKargoSvg = async (orderId) => {
+    try {
+      const res = await fetch(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`,
+        { headers: { Authorization: `Bearer ${getToken()}` } })
+      return res.ok ? await res.text() : null
+    } catch { return null }
+  }
+
+  // Barkodu yazdır: svg verilmişse onu; yoksa kargo-label'dan kısa retry ile çek
+  // (Basit Kargo etiket üretimi yavaş olabiliyor). Döner: yazdırma penceresi açıldı mı.
+  const printKargoLabel = async (orderId, svg, takipNo) => {
+    let s = svg
+    for (let i = 0; !s && i < 3; i++) {
+      await new Promise(r => setTimeout(r, 1200))
+      s = await fetchKargoSvg(orderId)
+    }
+    return s ? openLabelSvg(s, takipNo) : false
   }
 
   const kargoGonder = async (opts = {}) => {
@@ -118,10 +140,18 @@ export default function PackagingPage() {
       const tn = r.takip_no || '—'
       const firma = r.handler_name || 'Kargo'
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
-      setMsg({ ok: true, text: `✅ ${firma} gönderi oluştu · Takip No: ${tn}${extra}` })
       setManualAddr(false)
-      if (r.label_svg) openLabelSvg(r.label_svg, tn)
-      setTimeout(() => loadIndex(index), 2500)
+      // Barkodu yazdır (svg boşsa kargo-label'dan retry ile çek). Sadece yazdırınca ilerle.
+      const printed = await printKargoLabel(order.id, r.label_svg, tn)
+      if (printed) {
+        setLabelPending(null)
+        setMsg({ ok: true, text: `✅ ${firma} gönderi oluştu · Takip No: ${tn}${extra}` })
+        setTimeout(() => loadIndex(index), 2500)
+      } else {
+        // Barkod açılamadı (boş etiket / popup engeli) — İLERLEME, elle yazdırılsın
+        setLabelPending({ id: order.id, order_number: order.order_number, takip_no: tn })
+        setMsg({ ok: false, text: `⚠ Gönderi oluştu (Takip: ${tn}) ama barkod otomatik açılamadı. Aşağıdaki "🖨 Barkodu Yazdır"a bas, sonra "Sonraki"ye geç.` })
+      }
     } catch (e) {
       const t = typeof e?.detail === 'string' ? e.detail : 'Kargo gönderimi başarısız'
       if (t.includes('İlçe belirlenemedi')) {
@@ -280,6 +310,21 @@ export default function PackagingPage() {
                 className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
                 {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 KARGOYA VER'}
               </button>
+
+              {labelPending && (
+                <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+                  <div className="text-xs text-amber-200">
+                    ⚠ #{labelPending.order_number} <b>gönderildi</b> (Takip: {labelPending.takip_no}) ama barkod otomatik açılmadı. Yazdır, sonra "Sonraki"ye geç.
+                  </div>
+                  <button onClick={async () => {
+                    const ok = await printKargoLabel(labelPending.id, null, labelPending.takip_no)
+                    if (ok) setLabelPending(null)
+                    else setMsg({ ok: false, text: 'Barkod hâlâ açılamadı — tarayıcının popup iznini ver ya da "🖨 KARGO ETİKETİ YAZDIR"ı dene.' })
+                  }} className="w-full !text-sm rounded-lg py-2 font-medium bg-amber-600 hover:bg-amber-500 text-white">
+                    🖨 Barkodu Yazdır
+                  </button>
+                </div>
+              )}
 
               {manualAddr && (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">

@@ -245,6 +245,16 @@ export default function TemaEditorPage() {
   const activeSec = openSection ? theme.sections.find(s => s.id === openSection) : null
   const activeIdx = activeSec ? theme.sections.findIndex(s => s.id === openSection) : -1
 
+  // BAĞLAMSAL PANEL: seçili önizleme sayfasına göre ilgili ayarlar gösterilir
+  // (Shopify: sepette sepet ayarları, onay ekranında onay metinleri...)
+  const pageScope = previewPath === '/' ? 'home'
+    : previewPath.startsWith('/sepet') ? 'sepet'
+    : previewPath.startsWith('/odeme/sonuc') ? 'tesekkur'
+    : 'genel'
+  const showHome = pageScope === 'home'          // anasayfa bölüm listesi
+  const showGeneral = pageScope !== 'tesekkur' && pageScope !== 'sepet'  // marka/menü/footer…
+  const showCart = pageScope === 'home' || pageScope === 'sepet'
+
   return (
     <div className="h-screen flex flex-col bg-panel-input/40">
       {/* Üst çubuk */}
@@ -279,6 +289,7 @@ export default function TemaEditorPage() {
             <option value="/">🏠 Ana sayfa</option>
             <option value="/urunler">🛍 Tüm ürünler</option>
             <option value="/sepet">🛒 Sepet</option>
+            <option value="/odeme/sonuc?demo=1">🧾 Sipariş Onayı (örnek)</option>
             <option value="/favoriler">❤️ Favoriler</option>
             <option value="/hesap">👤 Hesap</option>
             <option value="/blog">✍️ Blog</option>
@@ -380,6 +391,39 @@ export default function TemaEditorPage() {
             <>
               {/* Hazır şablonlar bilinçli olarak editörde YOK — şablondan
                   başlamak Tema kütüphanesindeki "Yeni taslak oluştur"dan yapılır */}
+              {pageScope !== 'home' && (
+                <p className="text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+                  {pageScope === 'sepet' ? '🛒 Sepet sayfası ayarları gösteriliyor.'
+                    : pageScope === 'tesekkur' ? '🧾 Sipariş onayı ekranı ayarları gösteriliyor.'
+                    : 'ℹ️ Bu sayfa genel tema ayarlarını (renk, menü, footer…) kullanır.'}
+                  {' '}Anasayfa bölümleri için üstten <b>Ana sayfa</b>yı seçin.
+                </p>
+              )}
+
+              {/* Sipariş onayı (teşekkür) metinleri — yalnız onay ekranında */}
+              {pageScope === 'tesekkur' && (
+                <Section title="Sipariş Onayı Ekranı" icon="🧾">
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs">Başlık</span>
+                    <input className="input mt-1" maxLength={120}
+                      value={theme.thankyou?.title || ''}
+                      onChange={e => set('thankyou.title', e.target.value)}
+                      placeholder="Siparişiniz alındı!" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs">Mesaj</span>
+                    <textarea className="input mt-1" rows={3} maxLength={1000}
+                      value={theme.thankyou?.message || ''}
+                      onChange={e => set('thankyou.message', e.target.value)}
+                      placeholder="Onay e-postası gönderildi. Siparişinizin durumunu istediğiniz an kontrol edebilirsiniz." />
+                  </label>
+                  <p className="text-[11px] text-panel-muted">
+                    Onay e-postasının metinleri Ayarlar → E-posta sekmesinden düzenlenir.
+                  </p>
+                </Section>
+              )}
+
+              {showGeneral && (<>
               <Section title="Renkler" icon="🎨">
                 <div className="grid grid-cols-3 gap-3">
                   <ColorField label="Ana renk" value={theme.colors.primary} onChange={v => set('colors.primary', v)} />
@@ -468,7 +512,9 @@ export default function TemaEditorPage() {
                   </>
                 )}
               </Section>
+              </>)}
 
+              {showCart && (
               <Section title="Sepet Kampanya Mesajları" icon="🛒">
                 <p className="text-[11px] text-panel-muted -mt-1">
                   X Al Y Öde kampanyası aktifken sepette görünen yazılar.
@@ -487,14 +533,18 @@ export default function TemaEditorPage() {
                     onChange={e => set('cart_messages.bxgy_reached', e.target.value)} />
                 </label>
               </Section>
+              )}
 
+              {(showGeneral || pageScope === 'sepet') && (
               <Section title="Güven Şeridi" icon="🛡️">
                 <Toggle checked={theme.trust_badges?.enabled !== false}
                   onChange={v => set('trust_badges.enabled', v)}
                   label="Ürün ve ödeme sayfasında güven rozetleri (SSL, iade, kargo) göster" />
               </Section>
+              )}
 
               {/* ── Bölüm listesi — tıklanan bölüm tek-bölüm modunda açılır ── */}
+              {showHome && (
               <Section title={`Anasayfa Bölümleri (${theme.sections.length})`} icon="🧱">
                 <div className="space-y-1.5">
                   {theme.sections.map((sec, i) => {
@@ -540,7 +590,9 @@ export default function TemaEditorPage() {
                   </div>
                 )}
               </Section>
+              )}
 
+              {showGeneral && (<>
               <Section title="Animasyonlar" icon="✨">
                 <Toggle checked={theme.animations.reveal}
                   onChange={v => set('animations.reveal', v)} label="Kaydırmada belirme + sayfa geçişleri" />
@@ -593,6 +645,7 @@ export default function TemaEditorPage() {
                   </>
                 )}
               </Section>
+              </>)}
             </>
           )}
         </div>
@@ -602,7 +655,8 @@ export default function TemaEditorPage() {
           <div className={`flex-1 min-h-0 ${device === 'mobile'
             ? 'flex justify-center bg-panel-input/50 rounded-2xl py-4' : ''}`}>
             <iframe key={`${saveCount}-${device}-${previewPath}`} ref={iframeRef}
-              src={`${storefrontUrl}${previewPath}?onizleme=1`} title="Vitrin önizleme"
+              src={`${storefrontUrl}${previewPath}${previewPath.includes('?') ? '&' : '?'}onizleme=1`}
+              title="Vitrin önizleme"
               className={device === 'mobile'
                 ? 'w-[390px] h-full rounded-[2rem] border-8 border-zinc-800 bg-white shadow-xl'
                 : 'w-full h-full rounded-2xl border border-panel-border bg-white'} />

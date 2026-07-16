@@ -117,6 +117,18 @@ export default function OrderDetailPage() {
     }
   }
 
+  const saveAddress = async (body) => {
+    try {
+      const d = await api.patch(`/api/orders/${orderId}/address`, body)
+      setDetail(d)
+      toast.success('Adres güncellendi')
+      return true
+    } catch (e) {
+      toast.error(errMsg(e, 'Adres güncellenemedi'))
+      return false
+    }
+  }
+
   // Bayii siparişine ürün ekle — önce bayi bilgisini (birim fiyat/mağaza) çek, dialog aç
   const openAddItems = async () => {
     if (!detail?.dealer_id) return
@@ -334,7 +346,7 @@ export default function OrderDetailPage() {
 
           {rightTab === 'musteri' && <MusteriTab detail={detail} onEmail={() => setEmailOpen(true)} />}
           {rightTab === 'finansal' && <FinansalTab f={f} cur={cur} bayii={detail.bayii_tutar} />}
-          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} onCancelKargo={cancelKargo} />}
+          {rightTab === 'kargo' && <KargoTab detail={detail} onPatchBarkod={v => patchFlags({ barkod_kodu: v })} onPatchDeadline={v => patchFlags({ kargo_deadline: v })} onCancelKargo={cancelKargo} onSaveAddress={saveAddress} />}
           {rightTab === 'onay' && <OnayTab orderId={orderId} />}
           {rightTab === 'diger' && <DigerTab detail={detail} />}
         </div>
@@ -815,6 +827,15 @@ function MusteriTab({ detail, onEmail }) {
   )
 }
 
+function AddrField({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="text-[10px] text-gray-500 block mb-0.5">{label}</label>
+      <input value={value} onChange={e => onChange(e.target.value)} className="input w-full !text-xs !py-1" />
+    </div>
+  )
+}
+
 function AddressBlock({ addr }) {
   return (
     <div className="text-xs text-gray-400 leading-relaxed">
@@ -877,15 +898,52 @@ function FinansalTab({ f, cur, bayii }) {
   )
 }
 
-function KargoTab({ detail, onPatchBarkod, onPatchDeadline, onCancelKargo }) {
+function KargoTab({ detail, onPatchBarkod, onPatchDeadline, onCancelKargo, onSaveAddress }) {
   const ship = detail.shipping_address || {}
+  const [editAddr, setEditAddr] = useState(false)
+  const [af, setAf] = useState({})
+  const [savingAddr, setSavingAddr] = useState(false)
+  const startEditAddr = () => {
+    setAf({ name: ship.name || '', phone: ship.phone || '', address1: ship.address1 || '',
+            province: ship.province || '', city: ship.city || '', zip: ship.zip || '' })
+    setEditAddr(true)
+  }
+  const submitAddr = async () => {
+    setSavingAddr(true)
+    const ok = await onSaveAddress(af)
+    setSavingAddr(false)
+    if (ok) setEditAddr(false)
+  }
   const [barkod, setBarkod] = useState(detail.barkod_kodu || '')
   const dlIso = detail.kargo_deadline ? new Date(detail.kargo_deadline).toISOString().slice(0, 10) : ''
   const [deadline, setDeadline] = useState(dlIso)
   return (
     <div className="space-y-3">
       <PanelCard title="Kargo Adresi" icon="🚚">
-        {(ship.address1 || ship.city) ? <AddressBlock addr={ship} /> : <p className="text-xs text-gray-500 italic">Adres bilgisi yok.</p>}
+        {!editAddr && (
+          <>
+            {(ship.address1 || ship.city) ? <AddressBlock addr={ship} /> : <p className="text-xs text-gray-500 italic">Adres bilgisi yok.</p>}
+            {detail.address_editable && (
+              <button onClick={startEditAddr} className="mt-2 text-xs text-accent hover:underline">✏️ Adresi düzenle</button>
+            )}
+          </>
+        )}
+        {editAddr && (
+          <div className="space-y-1.5">
+            <AddrField label="Ad Soyad" value={af.name} onChange={v => setAf(s => ({ ...s, name: v }))} />
+            <AddrField label="Telefon" value={af.phone} onChange={v => setAf(s => ({ ...s, phone: v }))} />
+            <AddrField label="Adres" value={af.address1} onChange={v => setAf(s => ({ ...s, address1: v }))} />
+            <div className="grid grid-cols-2 gap-1.5">
+              <AddrField label="İl" value={af.province} onChange={v => setAf(s => ({ ...s, province: v }))} />
+              <AddrField label="İlçe" value={af.city} onChange={v => setAf(s => ({ ...s, city: v }))} />
+            </div>
+            <AddrField label="Posta Kodu" value={af.zip} onChange={v => setAf(s => ({ ...s, zip: v }))} />
+            <div className="flex gap-2 pt-1">
+              <button onClick={submitAddr} disabled={savingAddr} className="btn-primary !text-xs flex-1 disabled:opacity-50">{savingAddr ? 'Kaydediliyor…' : 'Kaydet'}</button>
+              <button onClick={() => setEditAddr(false)} disabled={savingAddr} className="btn-secondary !text-xs">İptal</button>
+            </div>
+          </div>
+        )}
       </PanelCard>
       <PanelCard title="Kargo Sözü (SLA)" icon="⏰">
         {detail.kargo_deadline && (

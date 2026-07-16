@@ -840,6 +840,57 @@ CSV_COLUMNS = [
 IMPORT_ROW_LIMIT = 5000
 
 
+def _shopify_to_native_rows(reader) -> list[dict]:
+    """Shopify ürün export'unu bizim CSV satır formatımıza çevir.
+
+    Shopify yapısı: Handle başına ilk satır ürünü taşır (Title/Body/Tags…);
+    sonraki satırlar ya ek varyant (Option1 Value) ya da yalnız ek görseldir.
+    'Default Title' gerçek varyant değildir — ürün satırına katlanır.
+    Görseller (CDN URL'leri) aktarılmaz.
+    """
+    out: list[dict] = []
+    seen_product: set[str] = set()
+    for row in reader:
+        handle = (row.get("Handle") or "").strip()
+        if not handle:
+            continue
+        title = (row.get("Title") or "").strip()
+        opt1 = (row.get("Option1 Value") or "").strip()
+        is_variant = opt1 and opt1.lower() != "default title"
+
+        native: dict = {"urun_slug": handle}
+        if title and handle not in seen_product:
+            seen_product.add(handle)
+            status = (row.get("Status") or "").strip().lower()
+            if status not in ("active", "draft", "archived"):
+                status = "active" if (row.get("Published") or "").strip().lower() == "true" else "draft"
+            native.update({
+                "urun_adi": title,
+                "durum": status,
+                "fiyat": (row.get("Variant Price") or "").strip(),
+                "indirim_oncesi": (row.get("Variant Compare At Price") or "").strip(),
+                "aciklama": (row.get("Body (HTML)") or "").strip(),
+                "etiketler": (row.get("Tags") or "").strip(),
+                "seo_baslik": (row.get("SEO Title") or "").strip(),
+                "seo_aciklama": (row.get("SEO Description") or "").strip(),
+            })
+        elif not is_variant:
+            continue  # yalnız ek görsel satırı — aktarılmıyor
+
+        if is_variant:
+            native.update({
+                "model_adi": opt1,
+                "model_key": slugify(opt1),
+                "renk": (row.get("Option2 Value") or "").strip() or "",
+                "sku": (row.get("Variant SKU") or "").strip(),
+                "varyant_fiyat": (row.get("Variant Price") or "").strip(),
+                "stok": (row.get("Variant Inventory Qty") or "").strip(),
+                "varyant_aktif": "1",
+            })
+        out.append(native)
+    return out
+
+
 def publish_due_products(db: Session) -> int:
     """Yayın zamanı gelmiş taslakları aktifleştir (scheduler 10 dk'da bir çağırır)."""
     from datetime import datetime, timezone
@@ -1253,9 +1304,17 @@ async def import_csv(
 
     raw = (await file.read()).decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(raw))
-    if not reader.fieldnames or "urun_slug" not in reader.fieldnames:
+    shopify_note = None
+    if reader.fieldnames and "Handle" in reader.fieldnames and "Title" in reader.fieldnames:
+        # SHOPIFY ürün export'u algılandı — kendi formatımıza çevirip aynı
+        # upsert hattından geçir (görseller aktarılmaz; not düşülür).
+        reader = iter(_shopify_to_native_rows(reader))
+        shopify_note = ("Shopify formatı algılandı ve dönüştürüldü. Görseller "
+                        "aktarılmaz — ürün görsellerini panelden yükleyin.")
+    elif not reader.fieldnames or "urun_slug" not in reader.fieldnames:
         raise HTTPException(422, "Geçersiz CSV — başlık satırında 'urun_slug' bulunamadı "
-                                 "(önce Dışa Aktar ile şablon alın)")
+                                 "(şablon için Dışa Aktar'ı kullanın; Shopify ürün "
+                                 "export'u da desteklenir)")
 
     stats = {"products_created": 0, "products_updated": 0,
              "variants_created": 0, "variants_updated": 0, "errors": []}
@@ -1389,6 +1448,8 @@ async def import_csv(
     else:
         db.commit()
         stats["dry_run"] = False
+    if shopify_note:
+        stats["note"] = shopify_note
     return stats
 
 

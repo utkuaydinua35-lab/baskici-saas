@@ -62,6 +62,7 @@ export interface Theme {
   whatsapp?: { enabled: boolean; number: string; message: string };
   trust_badges?: { enabled: boolean };
   cart_messages?: { bxgy_progress: string; bxgy_reached: string };
+  thankyou?: { title?: string; message?: string };
 }
 
 export interface ThemePayload {
@@ -72,7 +73,10 @@ export interface ThemePayload {
   pixels?: { meta: string | null; ga4: string | null; tiktok: string | null };
   pages?: { slug: string; title: string }[];
   custom_code?: { head_html?: string; css?: string; body_html?: string } | null;
-  active_promotion?: { label: string; kind: string; min_subtotal: string | null } | null;
+  active_promotion?: { label: string; kind: string; min_subtotal: string | null;
+    buy_x?: number | null; pay_y?: number | null } | null;
+  active_promotions?: { label: string; kind: string; min_subtotal: string | null;
+    buy_x?: number | null; pay_y?: number | null }[] | null;
   has_blog?: boolean;
   password_protected?: boolean;
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };

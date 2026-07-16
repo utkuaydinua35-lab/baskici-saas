@@ -14,7 +14,7 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import CouponFromUrl from "@/components/CouponFromUrl";
 import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
 // Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
@@ -34,15 +34,28 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { store_name, theme } = await getThemePayload();
+  // metadataBase İSTEĞİN host'undan kurulur — favicon /storage yolu hangi
+  // domain'den girildiyse oraya çözülür (App Router manuel <head>'i attığı
+  // için favicon YALNIZCA metadata üzerinden basılabiliyor).
+  let base: URL;
+  try {
+    const host = (await headers()).get("host") || "";
+    const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+    base = host ? new URL(`${proto}://${host}`) : new URL(SITE_URL);
+  } catch {
+    base = new URL(SITE_URL);
+  }
   return {
-    metadataBase: new URL(SITE_URL),
+    metadataBase: base,
     title: {
       default: `${store_name} — Telefon Kılıfları`,
       template: `%s | ${store_name}`,
     },
     description:
       "Özel tasarım baskılı telefon kılıfları. Yüzlerce model için kişiye özel üretim, hızlı kargo.",
-    // favicon <head> içinde manuel link — metadataBase host farkına takılmasın
+    ...(theme.favicon_url
+      ? { icons: { icon: [{ url: theme.favicon_url }], apple: [{ url: theme.favicon_url }] } }
+      : {}),
   };
 }
 
@@ -88,14 +101,6 @@ export default async function RootLayout({
         } as React.CSSProperties
       }
     >
-      <head>
-        {theme.favicon_url && (
-          <>
-            <link rel="icon" href={theme.favicon_url} />
-            <link rel="apple-touch-icon" href={theme.favicon_url} />
-          </>
-        )}
-      </head>
       <body className="min-h-full flex flex-col text-zinc-900" style={{ background: "var(--c-bg)" }}>
         {custom_code?.css && <style dangerouslySetInnerHTML={{ __html: custom_code.css }} />}
         {custom_code?.head_html && <CustomCode html={custom_code.head_html} />}

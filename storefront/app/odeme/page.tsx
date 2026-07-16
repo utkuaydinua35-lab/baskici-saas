@@ -9,6 +9,7 @@ import CouponInput from "@/components/CouponInput";
 import { trackInitiateCheckout } from "@/lib/track";
 import TrustBadges from "@/components/TrustBadges";
 import IlIlceSelect from "@/components/IlIlceSelect";
+import { useAutoQuote } from "@/lib/useAutoQuote";
 
 interface CheckoutResponse {
   token: string;
@@ -30,36 +31,7 @@ export default function CheckoutPage() {
   const [giftWrap, setGiftWrap] = useState(false);       // müşteri istedi mi
   const [shipCfg, setShipCfg] = useState<{ fee: number; freeOver: number } | null>(null);
   // Otomatik kampanya (örn. 3 al 2 öde) — sunucudan gerçek tutar (kupon girilirse kod kazanır)
-  const [autoQuote, setAutoQuote] = useState<{ discount: number; code: string | null; freeShipping: boolean } | null>(null);
-
-  useEffect(() => {
-    if (coupon || items.length === 0) { setAutoQuote(null); return; }
-    const t = setTimeout(() => {
-      fetch("/api/quote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            variant_id: i.variantId, quantity: i.quantity,
-            second_variant_id: i.secondVariantId || null,
-            custom: i.custom || null,
-          })),
-        }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (d?.valid && (Number(d.discount_amount) > 0 || d.free_shipping)) {
-            setAutoQuote({
-              discount: Number(d.discount_amount),
-              code: d.discount_code,
-              freeShipping: !!d.free_shipping,
-            });
-          } else setAutoQuote(null);
-        })
-        .catch(() => setAutoQuote(null));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [items, coupon]);
+  const autoQuote = useAutoQuote(items, coupon);
 
   useEffect(() => {
     fetch("/api/shop-config")

@@ -3,6 +3,7 @@
 // Üst menü — koleksiyon dropdown'u (desktop, hover'da kayar), mobil hamburger
 // (soldan kayan menü), tema logosu + sepet (drawer/sayfa).
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
@@ -61,7 +62,9 @@ export default function Header({
 }) {
   const { count, setDrawerOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [bump, setBump] = useState(false);
+  useEffect(() => setMounted(true), []);
   const pathname = usePathname();
 
   // Sepete ürün eklenince rozet zıplasın
@@ -78,6 +81,15 @@ export default function Header({
     document.body.style.overflow = mobileOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
+
+  // Otomatik eklenen linkler menüde zaten varsa tekrarlanmasın (mükerrer
+  // "Favorilerim" şikâyeti) — mağaza sahibi menüsüne eklediyse otomatik gizlenir.
+  const hasLinkTo = (path: string) => navLinks.some((l) => l.url === path);
+  const hasCollectionsMenu = navLinks.some((l) => l.type === "collections");
+  // Otomatik koleksiyon listesi: menüde tek tek linki verilenler de elenir
+  const autoCollections = collections.filter(
+    (c) => !hasLinkTo(`/koleksiyon/${c.slug}`),
+  );
 
   const cartInner = (
     <>
@@ -207,20 +219,29 @@ export default function Header({
         </div>
       </div>
 
-      {/* Mobil menü — soldan kayar */}
+      {/* Mobil menü — soldan kayar. Portal ile body'ye basılır: header'ın
+          sticky z-40 stacking context'i içinde kalsa hero/sepet gibi
+          katmanların altında ezilirdi. */}
+      {mounted && createPortal(<>
       <div
         onClick={() => setMobileOpen(false)}
-        className={`sm:hidden fixed inset-0 z-50 bg-black/40 transition-opacity duration-300 ${
+        className={`sm:hidden fixed inset-0 z-[95] bg-black/40 transition-opacity duration-300 ${
           mobileOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       />
       <aside
-        className={`sm:hidden fixed top-0 left-0 z-50 h-full w-72 bg-white shadow-2xl flex flex-col
+        className={`sm:hidden fixed top-0 left-0 z-[96] h-full w-72 bg-white shadow-2xl flex flex-col
           transition-transform duration-300 ease-out ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
         aria-hidden={!mobileOpen}
       >
         <div className="flex items-center justify-between px-4 h-14 border-b border-zinc-200">
-          <span className="font-semibold">{siteName}</span>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt={siteName} style={{ width: Math.min(logoWidth, 140) }}
+              className="max-h-9 object-contain object-left" />
+          ) : (
+            <span className="font-semibold">{siteName}</span>
+          )}
           <button onClick={() => setMobileOpen(false)} aria-label="Kapat"
             className="text-zinc-400 hover:text-zinc-900 text-xl leading-none">×</button>
         </div>
@@ -257,14 +278,18 @@ export default function Header({
           {navLinks.length === 0 && (
             <Link href="/urunler" className="block px-5 py-2.5 text-sm font-medium">Tüm Ürünler</Link>
           )}
-          <Link href="/hesap" className="block px-5 py-2.5 text-sm font-medium">👤 Hesabım</Link>
-          <Link href="/favoriler" className="block px-5 py-2.5 text-sm font-medium">❤️ Favorilerim</Link>
-          {collections.length > 0 && (
+          {!hasLinkTo("/hesap") && (
+            <Link href="/hesap" className="block px-5 py-2.5 text-sm font-medium">👤 Hesabım</Link>
+          )}
+          {!hasLinkTo("/favoriler") && (
+            <Link href="/favoriler" className="block px-5 py-2.5 text-sm font-medium">❤️ Favorilerim</Link>
+          )}
+          {!hasCollectionsMenu && autoCollections.length > 0 && (
             <>
               <div className="px-5 pt-3 pb-1 text-[11px] uppercase tracking-wide text-zinc-400">
                 Koleksiyonlar
               </div>
-              {collections.map((c) => (
+              {autoCollections.map((c) => (
                 <Link key={c.slug} href={`/koleksiyon/${c.slug}`}
                   className="block px-5 py-2.5 text-sm text-zinc-600">
                   {c.title}
@@ -279,6 +304,7 @@ export default function Header({
           <Link href="/gizlilik" className="block px-5 py-2.5 text-sm text-zinc-600">Gizlilik ve KVKK</Link>
         </nav>
       </aside>
+      </>, document.body)}
     </header>
   );
 }

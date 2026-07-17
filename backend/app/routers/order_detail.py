@@ -586,6 +586,23 @@ def edit_order_items(
         raise HTTPException(422, "Değişiklik listesi boş")
 
     by_id = {li.id: li for li in order.line_items}
+    # db.delete edilen kalem, flush sonrası bile order.line_items koleksiyonunda
+    # kalabilir — toplamlar bu YEREL liste üzerinden hesaplanır.
+    current_items = list(order.line_items)
+    # Fiyatların kanonik kaynağı order.raw["line_items"] (id = external_id) —
+    # düzenlemeler bu listeyi de senkron tutar (export/dashboard tutarlılığı).
+    raw_lines: list[dict] = list(raw.get("line_items") or [])
+    raw_by_ext = {str(x.get("id")): x for x in raw_lines}
+
+    def _price_of(li) -> "Decimal":
+        p = (li.raw or {}).get("price")
+        if p in (None, ""):
+            p = (raw_by_ext.get(str(li.external_id)) or {}).get("price")
+        try:
+            return Decimal(str(p or 0))
+        except ArithmeticError:
+            return Decimal("0")
+
     notes: list[str] = []
 
     for ch in payload.changes:
@@ -599,13 +616,19 @@ def edit_order_items(
             if q != li.quantity:
                 notes.append(f"{li.title[:40]}: {li.quantity}→{q} adet")
                 li.quantity = q
+                rl = raw_by_ext.get(str(li.external_id))
+                if rl:
+                    rl["quantity"] = q
         elif ch.op == "remove":
             li = by_id.pop(ch.line_item_id, None)
             if not li:
                 raise HTTPException(404, "Kalem bulunamadı")
-            if len(order.line_items) <= 1:
+            if len(current_items) <= 1:
                 raise HTTPException(422, "Son kalem silinemez — siparişi iptal edin")
             notes.append(f"{li.title[:40]} çıkarıldı (×{li.quantity})")
+            raw_lines = [x for x in raw_lines if str(x.get("id")) != str(li.external_id)]
+            raw_by_ext.pop(str(li.external_id), None)
+            current_items.remove(li)
             db.delete(li)
         elif ch.op == "add":
             variant = db.scalar(select(CatalogVariant).where(
@@ -625,8 +648,8 @@ def edit_order_items(
                 product_id=str(product.id), variant_id=str(variant.id),
                 title=product.title, variant_title=vtitle,
                 quantity=q,
-                position=max((x.position or 0) for x in order.line_items) + 1
-                if order.line_items else 0,
+                position=max((x.position or 0) for x in current_items) + 1
+                if current_items else 0,
                 properties=[{"name": "Sonradan eklendi", "value": "sipariş düzenleme"}],
                 raw={"price": str(price)},
                 device_model_override=variant.model_display,
@@ -634,19 +657,27 @@ def edit_order_items(
             )
             db.add(li)
             order.line_items.append(li)
+            current_items.append(li)
+            new_raw_line = {
+                "id": li.external_id, "product_id": str(product.id),
+                "variant_id": str(variant.id), "title": product.title,
+                "variant_title": vtitle, "sku": None, "quantity": q,
+                "price": str(price),
+                "properties": [{"name": "Sonradan eklendi", "value": "sipariş düzenleme"}],
+            }
+            raw_lines.append(new_raw_line)
+            raw_by_ext[str(li.external_id)] = new_raw_line
             notes.append(f"+ {product.title[:40]} ({vtitle}) ×{q}")
         else:
             raise HTTPException(422, f"Bilinmeyen işlem: {ch.op}")
 
     db.flush()
+    raw["line_items"] = raw_lines
 
     # Toplamları yeniden hesapla (indirim ve kargo sabit kalır)
     items_total = Decimal("0")
-    for li in order.line_items:
-        try:
-            items_total += Decimal(str((li.raw or {}).get("price") or 0)) * li.quantity
-        except ArithmeticError:
-            pass
+    for li in current_items:
+        items_total += _price_of(li) * li.quantity
     shipping = Decimal(str((raw.get("payment") or {}).get("shipping_amount") or 0))
     discounts = Decimal(str(raw.get("total_discounts") or 0))
     new_total = items_total - discounts + shipping

@@ -9,6 +9,7 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 
 # Baskıcı paneli
 cd "$REPO/frontend"
+[ -d node_modules ] || { echo "[deploy_frontend] frontend npm install..."; npm install --no-audit --no-fund; }
 echo "[deploy_frontend] baskici frontend build..."
 npm run build
 echo "[deploy_frontend] kopyala -> /srv/baskici/frontend/dist"
@@ -18,6 +19,7 @@ rsync -a --delete "$REPO/frontend/dist/" /srv/baskici/frontend/dist/
 # buradan servis edilecek; şimdiden güncel tutulur.
 if [ -d "$REPO/panel" ]; then
   cd "$REPO/panel"
+  [ -d node_modules ] || { echo "[deploy_frontend] panel npm install..."; npm install --no-audit --no-fund; }
   echo "[deploy_frontend] magaza paneli build..."
   npm run build
   echo "[deploy_frontend] kopyala -> /srv/baskici/panel/dist"

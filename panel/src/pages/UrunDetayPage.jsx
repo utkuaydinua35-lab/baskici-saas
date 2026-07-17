@@ -260,7 +260,7 @@ export default function UrunDetayPage() {
         </Field>
       </section>
 
-      <ImagesSection product={p} onChanged={load} setMsg={setMsg} />
+      <ImagesSection product={p} onChanged={reloadMeta} setMsg={setMsg} />
 
       <section className="card space-y-3">
         <h2 className="text-sm font-semibold">SEO</h2>
@@ -302,7 +302,7 @@ export default function UrunDetayPage() {
               )
             })}
             <InlineCollectionCreate storeId={storeId} productId={p.id}
-              currentIds={p.collection_ids || []} onDone={load} setMsg={setMsg} />
+              currentIds={p.collection_ids || []} onDone={reloadMeta} setMsg={setMsg} />
           </div>
         </section>
 
@@ -320,7 +320,7 @@ export default function UrunDetayPage() {
           👫 Çift kılıf seti (couple) — müşteri <b>2 telefon modeli</b> seçer,
           üretime iki kalem düşer
         </label>
-        <CustomFieldsEditor product={p} onChanged={load} setMsg={setMsg} />
+        <CustomFieldsEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
 
       <section className="card space-y-3">
@@ -373,7 +373,7 @@ export default function UrunDetayPage() {
             Telefon modellerinden üret
           </button>
         </div>
-        <VariantTable product={p} basePrice={form.base_price} onChanged={load} setMsg={setMsg} />
+        <VariantTable product={p} basePrice={form.base_price} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
     </div>
   )

@@ -547,6 +547,123 @@ def update_flags(
     return _serialize_detail(order, db)
 
 
+# ─── Sipariş düzenleme (Shopify order editing) ──────────────
+# Yalnız VİTRİN siparişleri, kargolanmadan önce. Adet değiştir / kalem
+# çıkar / katalogdan kalem ekle; toplamlar yeniden hesaplanır ve tahsil
+# edilen tutarla FARK döner (eksi → iade önerilir, artı → ek tahsilat).
+
+class EditItemChange(BaseModel):
+    op: str                       # set_qty | remove | add
+    line_item_id: uuid.UUID | None = None
+    variant_id: uuid.UUID | None = None
+    quantity: int | None = None
+
+
+class EditItemsIn(BaseModel):
+    changes: list[EditItemChange]
+
+
+@router.post("/{order_ref}/edit-items", response_model=None)
+def edit_order_items(
+    order_ref: str,
+    payload: EditItemsIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from decimal import Decimal
+
+    from app.models import CatalogProduct, CatalogVariant, LineItem
+
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    raw = dict(order.raw or {})
+    if not raw.get("payment"):
+        raise HTTPException(400, "Yalnızca vitrin siparişleri düzenlenebilir")
+    if order.cancelled_at:
+        raise HTTPException(400, "İptal edilmiş sipariş düzenlenemez")
+    if (order.current_stage or 1) >= 8:
+        raise HTTPException(400, "Kargoya verilmiş sipariş düzenlenemez")
+    if not payload.changes:
+        raise HTTPException(422, "Değişiklik listesi boş")
+
+    by_id = {li.id: li for li in order.line_items}
+    notes: list[str] = []
+
+    for ch in payload.changes:
+        if ch.op == "set_qty":
+            li = by_id.get(ch.line_item_id)
+            if not li:
+                raise HTTPException(404, "Kalem bulunamadı")
+            q = int(ch.quantity or 0)
+            if not (1 <= q <= 20):
+                raise HTTPException(422, "Adet 1-20 arasında olmalı")
+            if q != li.quantity:
+                notes.append(f"{li.title[:40]}: {li.quantity}→{q} adet")
+                li.quantity = q
+        elif ch.op == "remove":
+            li = by_id.pop(ch.line_item_id, None)
+            if not li:
+                raise HTTPException(404, "Kalem bulunamadı")
+            if len(order.line_items) <= 1:
+                raise HTTPException(422, "Son kalem silinemez — siparişi iptal edin")
+            notes.append(f"{li.title[:40]} çıkarıldı (×{li.quantity})")
+            db.delete(li)
+        elif ch.op == "add":
+            variant = db.scalar(select(CatalogVariant).where(
+                CatalogVariant.id == ch.variant_id,
+                CatalogVariant.tenant_id == user.tenant_id))
+            if not variant:
+                raise HTTPException(404, "Varyant bulunamadı")
+            product = db.get(CatalogProduct, variant.product_id)
+            if not product or product.store_id != order.store_id:
+                raise HTTPException(422, "Varyant bu mağazaya ait değil")
+            q = max(1, min(20, int(ch.quantity or 1)))
+            price = variant.price_override if variant.price_override is not None else product.base_price
+            vtitle = variant.model_display + (f" / {variant.variation}" if variant.variation else "")
+            li = LineItem(
+                tenant_id=order.tenant_id, order_id=order.id,
+                external_id=f"ek-{uuid.uuid4().hex[:10]}",
+                product_id=str(product.id), variant_id=str(variant.id),
+                title=product.title, variant_title=vtitle,
+                quantity=q,
+                position=max((x.position or 0) for x in order.line_items) + 1
+                if order.line_items else 0,
+                properties=[{"name": "Sonradan eklendi", "value": "sipariş düzenleme"}],
+                raw={"price": str(price)},
+                device_model_override=variant.model_display,
+                kilif_varyasyon=variant.variation,
+            )
+            db.add(li)
+            order.line_items.append(li)
+            notes.append(f"+ {product.title[:40]} ({vtitle}) ×{q}")
+        else:
+            raise HTTPException(422, f"Bilinmeyen işlem: {ch.op}")
+
+    db.flush()
+
+    # Toplamları yeniden hesapla (indirim ve kargo sabit kalır)
+    items_total = Decimal("0")
+    for li in order.line_items:
+        try:
+            items_total += Decimal(str((li.raw or {}).get("price") or 0)) * li.quantity
+        except ArithmeticError:
+            pass
+    shipping = Decimal(str((raw.get("payment") or {}).get("shipping_amount") or 0))
+    discounts = Decimal(str(raw.get("total_discounts") or 0))
+    new_total = items_total - discounts + shipping
+    raw["subtotal_price"] = str(items_total)
+    raw["total_price"] = str(new_total)
+    order.raw = raw
+    flag_modified(order, "raw")
+
+    paid = Decimal(str((raw.get("payment") or {}).get("amount") or 0))
+    fark = new_total - paid
+    _log_history(db, order, user, action="duzenlendi",
+                 note="; ".join(notes)[:900] + (f" | fark: {fark:+.2f} TL" if fark else ""))
+    db.commit()
+    return {"ok": True, "yeni_toplam": str(new_total), "tahsil_edilen": str(paid),
+            "fark": str(fark)}
+
+
 # ─── Zaman akışı yorumu + etiketler (Shopify order detail paritesi) ──
 
 class CommentIn(BaseModel):

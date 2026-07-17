@@ -104,7 +104,7 @@ def add_customer_message(db: Session, store, order_info: dict, body: str, image_
             db, thread.tenant_id,
             f"Yeni destek mesajı — {thread.order_number or thread.shopify_order_id}",
             (body.strip()[:120] or "📷 Görsel"),
-            url="/destek", tag=f"support-{thread.id}",
+            url=f"/destek?thread={thread.id}", tag=f"support-{thread.id}",
         )
     except Exception:
         pass

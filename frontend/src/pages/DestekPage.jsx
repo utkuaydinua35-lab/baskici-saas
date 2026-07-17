@@ -25,9 +25,16 @@ const DEFAULT_TEMPLATES = [
   { name: 'Gecikme / özür', body: 'Merhaba {musteri}, yaşanan gecikme için özür dileriz. Siparişiniz ... nedeniyle ... . En kısa sürede çözüp size döneceğiz.' },
   { name: 'Kapanış / teşekkür', body: 'Rica ederiz, başka bir sorunuz olursa buradan yazabilirsiniz. İyi günler dileriz 🌸' },
 ]
-const TPL_KEY = 'destek_templates'
-function loadCustomTemplates() {
-  try { const a = JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
+const TPL_KEY = 'destek_templates_v2'
+function loadTemplates() {
+  try {
+    const a = JSON.parse(localStorage.getItem(TPL_KEY) || 'null')
+    if (Array.isArray(a)) return a
+  } catch { /* boş */ }
+  // İlk kez: varsayılanlar + eski özel şablonlar (v1'den taşı)
+  let old = []
+  try { const o = JSON.parse(localStorage.getItem('destek_templates') || '[]'); if (Array.isArray(o)) old = o } catch { /* boş */ }
+  return [...DEFAULT_TEMPLATES.map(t => ({ ...t })), ...old]
 }
 
 export default function DestekPage() {
@@ -44,7 +51,9 @@ export default function DestekPage() {
   const [aiNote, setAiNote] = useState('')
   const [okMsg, setOkMsg] = useState('')
   const [showTpl, setShowTpl] = useState(false)
-  const [customTpl, setCustomTpl] = useState(loadCustomTemplates())
+  const [templates, setTemplates] = useState(loadTemplates)
+  const [tplEdit, setTplEdit] = useState(false)
+  const saveTemplates = (next) => { setTemplates(next); try { localStorage.setItem(TPL_KEY, JSON.stringify(next)) } catch { /* boş */ } }
   const [editMsgId, setEditMsgId] = useState(null)
   const [editBody, setEditBody] = useState('')
 
@@ -74,13 +83,11 @@ export default function DestekPage() {
     if (!b) return
     const name = (prompt('Şablon adı:') || '').trim()
     if (!name) return
-    const next = [...customTpl, { name, body: b }]
-    setCustomTpl(next); localStorage.setItem(TPL_KEY, JSON.stringify(next))
+    saveTemplates([...templates, { name, body: b }])
   }
-  const deleteCustomTemplate = (i) => {
-    const next = customTpl.filter((_, j) => j !== i)
-    setCustomTpl(next); localStorage.setItem(TPL_KEY, JSON.stringify(next))
-  }
+  const updateTemplate = (i, patch) => saveTemplates(templates.map((t, j) => j === i ? { ...t, ...patch } : t))
+  const deleteTemplate = (i) => saveTemplates(templates.filter((_, j) => j !== i))
+  const addTemplate = () => saveTemplates([...templates, { name: 'Yeni şablon', body: '' }])
   const msgEndRef = useRef(null)
 
   const loadThreads = async () => {
@@ -407,23 +414,44 @@ export default function DestekPage() {
                           title="Hazır mesaj şablonu ekle">💬 Hazır mesaj</button>
                         {showTpl && (
                           <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowTpl(false)} />
-                            <div className="absolute bottom-6 left-0 z-50 w-64 max-h-72 overflow-y-auto bg-brand-card border border-brand-border rounded-lg shadow-2xl p-1">
-                              {DEFAULT_TEMPLATES.map((t, i) => (
-                                <button key={`d${i}`} onClick={() => applyTemplate(t.body)}
-                                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-gray-200">{t.name}</button>
-                              ))}
-                              {customTpl.length > 0 && <div className="border-t border-brand-border/50 my-1" />}
-                              {customTpl.map((t, i) => (
-                                <div key={`c${i}`} className="flex items-center group">
-                                  <button onClick={() => applyTemplate(t.body)}
-                                    className="flex-1 text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-gray-200 truncate">⭐ {t.name}</button>
-                                  <button onClick={() => deleteCustomTemplate(i)} className="text-gray-600 hover:text-red-400 px-1.5 text-xs">×</button>
+                            <div className="fixed inset-0 z-40" onClick={() => { setShowTpl(false); setTplEdit(false) }} />
+                            <div className="absolute bottom-6 left-0 z-50 w-72 max-h-80 overflow-y-auto bg-brand-card border border-brand-border rounded-lg shadow-2xl p-1.5">
+                              <div className="flex items-center justify-between px-1.5 pb-1 mb-1 border-b border-brand-border/50">
+                                <span className="text-[11px] text-gray-400">Hazır mesajlar</span>
+                                <button onClick={() => setTplEdit(v => !v)} className="text-[11px] text-accent hover:underline">
+                                  {tplEdit ? '✓ Bitti' : '✏️ Düzenle'}
+                                </button>
+                              </div>
+
+                              {!tplEdit && (
+                                <>
+                                  {templates.map((t, i) => (
+                                    <button key={i} onClick={() => applyTemplate(t.body)}
+                                      className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-gray-200 truncate">{t.name}</button>
+                                  ))}
+                                  <div className="border-t border-brand-border/50 my-1" />
+                                  <button onClick={saveCurrentAsTemplate} disabled={!reply.trim()}
+                                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-accent disabled:opacity-40">+ Mevcut cevabı şablon yap</button>
+                                </>
+                              )}
+
+                              {tplEdit && (
+                                <div className="space-y-2">
+                                  {templates.map((t, i) => (
+                                    <div key={i} className="rounded border border-brand-border/60 p-1.5 space-y-1">
+                                      <div className="flex items-center gap-1">
+                                        <input value={t.name} onChange={e => updateTemplate(i, { name: e.target.value })}
+                                          className="input w-full !text-xs !py-1" placeholder="Şablon adı" />
+                                        <button onClick={() => deleteTemplate(i)} className="text-gray-500 hover:text-red-400 px-1 text-sm shrink-0" title="Sil">🗑</button>
+                                      </div>
+                                      <textarea value={t.body} onChange={e => updateTemplate(i, { body: e.target.value })}
+                                        rows={2} className="input w-full !text-xs !py-1" placeholder="Mesaj metni — {siparis} {musteri} {takip}" />
+                                    </div>
+                                  ))}
+                                  <button onClick={addTemplate}
+                                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-accent">+ Yeni şablon</button>
                                 </div>
-                              ))}
-                              <div className="border-t border-brand-border/50 my-1" />
-                              <button onClick={saveCurrentAsTemplate} disabled={!reply.trim()}
-                                className="w-full text-left px-2.5 py-1.5 rounded hover:bg-brand-input text-xs text-accent disabled:opacity-40">+ Mevcut cevabı şablon yap</button>
+                              )}
                             </div>
                           </>
                         )}

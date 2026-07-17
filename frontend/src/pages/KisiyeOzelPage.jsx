@@ -73,6 +73,18 @@ export default function KisiyeOzelPage() {
   const [expanded, setExpanded] = useState(new Set())
   const [orderDetails, setOrderDetails] = useState({})
 
+  // Bildirimden gelince (?store=&order=): o mağazayı seç + siparişi ara
+  const navRef = useRef(null)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const st = p.get('store'); const ord = p.get('order')
+    if (st || ord) {
+      navRef.current = { store: st }
+      if (ord) { setSearch(ord); setSearchOpen(true) }
+      window.history.replaceState({}, '', '/kisiye-ozel')
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     api.get('/api/stores')
@@ -80,7 +92,8 @@ export default function KisiyeOzelPage() {
         if (cancelled) return
         const list = Array.isArray(s) ? s : []
         setStores(list)
-        if (list.length > 0) setSelectedStore(list[0].id)
+        const nav = navRef.current?.store
+        if (list.length > 0) setSelectedStore(nav && list.some(x => x.id === nav) ? nav : list[0].id)
       })
       .catch(e => !cancelled && setError(e.detail || 'Mağazalar yüklenemedi'))
       .finally(() => !cancelled && setStoresLoading(false))

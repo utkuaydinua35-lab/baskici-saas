@@ -15,6 +15,7 @@ const ACTION_LABELS = {
   iptal: 'iptal edildi', iptal_geri: 'iptal geri alındı', paketlendi: 'paketlendi',
   kargoya_verildi: 'kargoya verildi', teslim_edildi: 'teslim edildi',
   musteri_onay: 'müşteri onayı', iade: 'para iadesi yapıldı', not: 'not eklendi',
+  duzenlendi: 'sipariş düzenlendi',
 }
 
 export default function SiparisDetayPage() {
@@ -71,44 +72,8 @@ export default function SiparisDetayPage() {
       <div className="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
         {/* ── Sol kolon ── */}
         <div className="space-y-4 min-w-0">
-          {/* Ürünler */}
-          <div className="card !p-0 overflow-hidden">
-            <div className="px-4 py-3 border-b border-panel-border flex items-center">
-              <h2 className="text-sm font-semibold">
-                Ürünler <span className="text-panel-muted font-normal">({d.line_items?.length || 0})</span>
-              </h2>
-            </div>
-            <div className="divide-y divide-panel-border">
-              {(d.line_items || []).map(li => (
-                <div key={li.id} className="flex items-center gap-3 px-4 py-3">
-                  <div className="w-14 h-14 rounded-xl bg-panel-input overflow-hidden shrink-0 border border-panel-border">
-                    {li.image_url ? (
-                      <img src={li.image_url} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xl opacity-30">📱</div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{li.title}</div>
-                    {li.variant_title && (
-                      <div className="text-xs text-panel-muted">{li.variant_title}</div>
-                    )}
-                    {li.sku && <div className="text-[10px] text-panel-muted font-mono">{li.sku}</div>}
-                  </div>
-                  <div className="text-right text-sm whitespace-nowrap">
-                    {li.price ? (
-                      <>
-                        <div className="text-panel-muted text-xs">{fmt(li.price)} × {li.quantity}</div>
-                        <div className="font-medium">{fmt(Number(li.price) * li.quantity)}</div>
-                      </>
-                    ) : (
-                      <div className="text-panel-muted">×{li.quantity}</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Ürünler — vitrin siparişi kargolanmadıysa düzenlenebilir */}
+          <ItemsCard d={d} isStorefront={isStorefront} stage={stage} onChanged={load} />
 
           {/* Ödeme özeti */}
           <div className="card !p-0 overflow-hidden">
@@ -363,6 +328,202 @@ function Timeline({ detail }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+// Ürünler kartı — Shopify order editing: adet değiştir / çıkar / ekle.
+// Kaydedince backend toplamları yeniden hesaplar, tahsilatla FARKI döner.
+function ItemsCard({ d, isStorefront, stage, onChanged }) {
+  const [editing, setEditing] = useState(false)
+  const [edits, setEdits] = useState({})     // line_item_id -> {qty} | {remove:true}
+  const [added, setAdded] = useState([])     // {variant_id, label, qty, price}
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)       // {ok, text}
+  const [fark, setFark] = useState(null)
+
+  const canEdit = isStorefront && !d.cancelled_at && stage < 8
+  const items = d.line_items || []
+
+  const reset = () => { setEditing(false); setEdits({}); setAdded([]); setMsg(null) }
+
+  const save = async () => {
+    const changes = []
+    for (const [id, e] of Object.entries(edits)) {
+      if (e.remove) changes.push({ op: 'remove', line_item_id: id })
+      else if (e.qty != null) changes.push({ op: 'set_qty', line_item_id: id, quantity: e.qty })
+    }
+    for (const a of added) changes.push({ op: 'add', variant_id: a.variant_id, quantity: a.qty })
+    if (changes.length === 0) { reset(); return }
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post(`/api/orders/${d.id}/edit-items`, { changes })
+      setFark(Number(r.fark))
+      setMsg({ ok: true, text: `Sipariş güncellendi — yeni toplam ${fmt(r.yeni_toplam)}` })
+      setEditing(false); setEdits({}); setAdded([])
+      onChanged()
+    } catch (e) {
+      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi' })
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card !p-0 overflow-hidden">
+      <div className="px-4 py-3 border-b border-panel-border flex items-center gap-2">
+        <h2 className="text-sm font-semibold">
+          Ürünler <span className="text-panel-muted font-normal">({items.length})</span>
+        </h2>
+        {canEdit && !editing && (
+          <button onClick={() => setEditing(true)}
+            className="ml-auto btn-ghost !py-1 text-xs">✏️ Düzenle</button>
+        )}
+        {editing && (
+          <span className="ml-auto flex gap-1.5">
+            <button onClick={reset} className="btn-ghost !py-1 text-xs">Vazgeç</button>
+            <button onClick={save} disabled={busy}
+              className="btn-primary !py-1 !px-3 text-xs">
+              {busy ? '…' : 'Kaydet'}
+            </button>
+          </span>
+        )}
+      </div>
+      <div className="divide-y divide-panel-border">
+        {items.map(li => {
+          const e = edits[li.id] || {}
+          const qty = e.qty ?? li.quantity
+          if (e.remove) {
+            return (
+              <div key={li.id} className="flex items-center gap-3 px-4 py-2 opacity-50">
+                <span className="text-xs line-through flex-1 truncate">{li.title}</span>
+                <button onClick={() => setEdits(x => { const n = { ...x }; delete n[li.id]; return n })}
+                  className="text-xs underline text-panel-muted">geri al</button>
+              </div>
+            )
+          }
+          return (
+            <div key={li.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-14 h-14 rounded-xl bg-panel-input overflow-hidden shrink-0 border border-panel-border">
+                {li.image_url ? (
+                  <img src={li.image_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xl opacity-30">📱</div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{li.title}</div>
+                {li.variant_title && (
+                  <div className="text-xs text-panel-muted">{li.variant_title}</div>
+                )}
+                {li.sku && <div className="text-[10px] text-panel-muted font-mono">{li.sku}</div>}
+              </div>
+              {editing ? (
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setEdits(x => ({ ...x, [li.id]: { qty: Math.max(1, qty - 1) } }))}
+                    className="w-6 h-6 rounded-lg border border-panel-border text-xs">−</button>
+                  <span className="w-6 text-center text-sm tabular-nums">{qty}</span>
+                  <button onClick={() => setEdits(x => ({ ...x, [li.id]: { qty: Math.min(20, qty + 1) } }))}
+                    className="w-6 h-6 rounded-lg border border-panel-border text-xs">+</button>
+                  <button onClick={() => setEdits(x => ({ ...x, [li.id]: { remove: true } }))}
+                    title="Kalemi çıkar"
+                    className="w-6 h-6 rounded-lg text-xs text-red-400 hover:text-red-300">×</button>
+                </div>
+              ) : (
+                <div className="text-right text-sm whitespace-nowrap">
+                  {li.price ? (
+                    <>
+                      <div className="text-panel-muted text-xs">{fmt(li.price)} × {li.quantity}</div>
+                      <div className="font-medium">{fmt(Number(li.price) * li.quantity)}</div>
+                    </>
+                  ) : (
+                    <div className="text-panel-muted">×{li.quantity}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {added.map((a, i) => (
+          <div key={`add-${i}`} className="flex items-center gap-3 px-4 py-2 bg-emerald-500/10">
+            <span className="text-xs text-emerald-300 flex-1 truncate">+ {a.label} ×{a.qty}</span>
+            <span className="text-xs text-emerald-300">{fmt(a.price * a.qty)}</span>
+            <button onClick={() => setAdded(x => x.filter((_, j) => j !== i))}
+              className="text-xs text-red-400">×</button>
+          </div>
+        ))}
+      </div>
+      {editing && <AddItemRow storeId={d.store_id} onAdd={a => setAdded(x => [...x, a])} />}
+      {msg && (
+        <div className={`px-4 py-2.5 text-xs border-t border-panel-border ${
+          msg.ok ? 'text-emerald-300' : 'text-red-400'}`}>
+          {msg.text}
+          {msg.ok && fark != null && fark !== 0 && (
+            <span className="block mt-1 text-amber-300">
+              {fark < 0
+                ? `İade önerilir: ${fmt(Math.abs(fark))} — aşağıdaki Para İadesi bölümünü kullanın.`
+                : `Ek tahsilat gerekir: ${fmt(fark)} — Siparişler → "Sipariş Oluştur" ile fark için ödeme linki gönderin.`}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Düzenleme modunda katalogdan kalem ekleme satırı.
+function AddItemRow({ storeId, onAdd }) {
+  const [products, setProducts] = useState([])
+  const [productId, setProductId] = useState('')
+  const [detail, setDetail] = useState(null)
+  const [variantId, setVariantId] = useState('')
+  const [qty, setQty] = useState(1)
+
+  useEffect(() => {
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+      .then(setProducts).catch(() => {})
+  }, [storeId])
+  useEffect(() => {
+    if (!productId) { setDetail(null); return }
+    api.get(`/api/catalog/products/${productId}`).then(setDetail).catch(() => {})
+    setVariantId('')
+  }, [productId])
+
+  const add = () => {
+    const v = detail?.variants?.find(x => x.id === variantId)
+    if (!detail || !v) return
+    onAdd({
+      variant_id: v.id, qty,
+      label: `${detail.title} (${v.model_display}${v.variation ? ` / ${v.variation}` : ''})`,
+      price: Number(v.price_override ?? detail.base_price),
+    })
+    setProductId(''); setVariantId(''); setQty(1)
+  }
+
+  return (
+    <div className="px-4 py-2.5 border-t border-panel-border flex gap-1.5 items-center flex-wrap">
+      <select className="input !py-1.5 text-xs flex-1 min-w-40" value={productId}
+        onChange={e => setProductId(e.target.value)}>
+        <option value="">+ Ürün ekle…</option>
+        {products.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+      </select>
+      {detail && (
+        <select className="input !py-1.5 text-xs !w-44" value={variantId}
+          onChange={e => setVariantId(e.target.value)}>
+          <option value="">Model seçin…</option>
+          {(detail.variants || []).filter(v => v.is_active).map(v => (
+            <option key={v.id} value={v.id}>
+              {v.model_display}{v.variation ? ` / ${v.variation}` : ''}
+            </option>
+          ))}
+        </select>
+      )}
+      {variantId && (
+        <>
+          <input type="number" min="1" max="20" value={qty}
+            onChange={e => setQty(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+            className="input !py-1.5 text-xs !w-16" />
+          <button onClick={add} className="btn-ghost !py-1.5 text-xs">Ekle</button>
+        </>
+      )}
+    </div>
   )
 }
 

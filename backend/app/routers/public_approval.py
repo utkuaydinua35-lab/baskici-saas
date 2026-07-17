@@ -127,7 +127,7 @@ def post_decision(
         from app.services import push
         push.send_to_tenant(
             db, ap.tenant_id, notif_title, notif_body or "",
-            url="/kisiye-ozel", tag=f"approval-{ap.order_id}",
+            url=f"/kisiye-ozel?store={order.store_id}&order={order.order_number}", tag=f"approval-{ap.order_id}",
         )
     except Exception:
         pass

@@ -1538,6 +1538,9 @@ class DiscountCode(Base):
     is_automatic: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+    # Vitrinde (sepet/duyuru) gösterilecek özel kampanya mesajı — boşsa
+    # kural bilgilerinden otomatik üretilir ("3 Al 2 Öde — sepette otomatik…")
+    promo_message: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

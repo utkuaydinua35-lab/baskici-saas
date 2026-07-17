@@ -128,6 +128,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     usage_limit: coupon?.usage_limit || '',
     once_per_customer: coupon?.once_per_customer || false,
     is_automatic: coupon?.is_automatic || false,
+    promo_message: coupon?.promo_message || '',
     collection_id: coupon?.collection_id || '',
     buy_x: coupon?.buy_x || '',
     pay_y: coupon?.pay_y || '',
@@ -155,6 +156,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
       usage_limit: form.usage_limit ? num(form.usage_limit) : null,
       once_per_customer: form.once_per_customer,
       is_automatic: form.is_automatic,
+      promo_message: form.promo_message.trim() || null,
       collection_id: form.collection_id || null,
       buy_x: form.kind === 'bxgy' ? Number(form.buy_x) : null,
       pay_y: form.kind === 'bxgy' ? Number(form.pay_y) : null,
@@ -275,6 +277,16 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
             </span>
           </span>
         </label>
+        {form.is_automatic && (
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">
+              Sepette görünecek kampanya mesajı (boşsa kuraldan otomatik yazılır)
+            </span>
+            <input className="input mt-1" maxLength={200} value={form.promo_message}
+              onChange={set('promo_message')}
+              placeholder='örn. "3 kılıf al 2 öde — sepette otomatik!"' />
+          </label>
+        )}
         {err && <p className="text-sm text-red-400">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>

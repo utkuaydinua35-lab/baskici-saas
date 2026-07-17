@@ -42,6 +42,7 @@ class DiscountCreate(BaseModel):
     usage_limit: int | None = Field(None, ge=1)
     once_per_customer: bool = False
     is_automatic: bool = False
+    promo_message: str | None = Field(None, max_length=200)
     is_active: bool = True
 
     @field_validator("kind")
@@ -72,6 +73,7 @@ class DiscountUpdate(BaseModel):
     usage_limit: int | None = Field(None, ge=1)
     once_per_customer: bool | None = None
     is_automatic: bool | None = None
+    promo_message: str | None = Field(None, max_length=200)
     is_active: bool | None = None
 
 
@@ -93,6 +95,7 @@ def _serialize(dc: DiscountCode) -> dict:
         "usage_count": dc.usage_count,
         "once_per_customer": dc.once_per_customer,
         "is_automatic": dc.is_automatic,
+        "promo_message": dc.promo_message,
         "is_active": dc.is_active,
         "created_at": dc.created_at.isoformat() if dc.created_at else None,
     }

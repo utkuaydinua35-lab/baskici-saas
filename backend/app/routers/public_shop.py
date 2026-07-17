@@ -745,7 +745,8 @@ def _promo_dict(dc: DiscountCode) -> dict:
     if dc.min_quantity:
         label = f"{dc.min_quantity}+ ürüne {label}"
     return {
-        "label": f"{label} — sepette otomatik uygulanır",
+        # Panelde özel mesaj yazıldıysa o gösterilir; boşsa kuraldan üretilen
+        "label": dc.promo_message or f"{label} — sepette otomatik uygulanır",
         "kind": dc.kind,
         "min_subtotal": str(dc.min_subtotal) if dc.min_subtotal is not None else None,
         "buy_x": dc.buy_x,

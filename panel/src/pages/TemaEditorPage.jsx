@@ -388,7 +388,7 @@ export default function TemaEditorPage() {
               </div>
               <div className="space-y-2">
                 <SectionSettings sec={activeSec} collections={collections} products={products}
-                  patch={p => patchSection(activeSec.id, p)} uploadAsset={uploadAsset} />
+                  pages={pages} patch={p => patchSection(activeSec.id, p)} uploadAsset={uploadAsset} />
               </div>
             </>
           ) : (

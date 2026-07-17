@@ -43,7 +43,8 @@ export default async function HomePage() {
           case "rich_text":
             return <RichText key={section.id} title={s.title} body={s.body} />;
           case "banner":
-            return <Banner key={section.id} image={s.image} url={s.url} />;
+            return <Banner key={section.id} image={s.image} url={s.url}
+              radius_scope={s.radius_scope} radius_pct={s.radius_pct} />;
           case "image_with_text":
             return (
               <ImageWithText key={section.id} image={s.image} title={s.title}

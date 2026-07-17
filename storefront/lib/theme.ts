@@ -44,6 +44,8 @@ export interface ThemeSection {
     rows?: { feature: string; us: boolean; them: boolean }[];
     images?: string[];
     ends_at?: string;
+    radius_scope?: "both" | "mobile" | "desktop" | "none";
+    radius_pct?: number;
   };
 }
 

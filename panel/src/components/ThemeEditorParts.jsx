@@ -1,6 +1,7 @@
 // Tema editörünün ortak parçaları — bölüm tipleri, varsayılanlar ve ayar formları.
 // TemaEditorPage kullanır; TemaPage (kütüphane) yalnızca SECTION_TYPES'a bakar.
 /* eslint-disable react-refresh/only-export-components */
+import { useState } from 'react'
 
 export const FONTS = [
   { key: 'inter', label: 'Inter (modern, varsayılan)' },
@@ -33,7 +34,7 @@ export const SECTION_DEFAULTS = {
   products_grid: { title: 'Öne Çıkanlar', collection: null, limit: 8 },
   featured_products: { title: 'Öne Çıkan Ürünler', slugs: [] },
   rich_text: { title: '', body: '' },
-  banner: { image: null, url: '' },
+  banner: { image: null, url: '', radius_scope: 'both', radius_pct: 50 },
   image_with_text: { image: null, title: '', body: '', cta_text: '', cta_url: '', image_side: 'left' },
   faq: { title: 'Sıkça Sorulan Sorular', items: [] },
   newsletter: { title: 'Kampanyalardan haberdar olun', subtitle: 'İndirim ve yeni tasarımlar e-postanıza gelsin.' },
@@ -47,8 +48,39 @@ export const SECTION_DEFAULTS = {
     cta_text: 'Alışverişe Başla', cta_url: '/urunler' },
 }
 
+// CTA/link hedef seçici — koleksiyon, ürün, sayfa hazır listeden seçilir;
+// "Özel URL" ile serbest adres de girilebilir (Shopify link picker).
+export function UrlPicker({ value, onChange, collections = [], products = [], pages = [], placeholder = 'Hedef seçin' }) {
+  const presets = [
+    { url: '/urunler', label: '🛍️ Tüm Ürünler' },
+    ...collections.map(c => ({ url: `/koleksiyon/${c.slug}`, label: `🗂️ ${c.title}` })),
+    ...products.map(p => ({ url: `/urun/${p.slug}`, label: `📱 ${p.title}` })),
+    ...pages.map(p => ({ url: `/sayfa/${p.slug}`, label: `📄 ${p.title}` })),
+  ]
+  const isPreset = presets.some(p => p.url === value)
+  const [forceCustom, setForceCustom] = useState(false)
+  const custom = forceCustom || (!!value && !isPreset)
+  return (
+    <div className="space-y-1.5">
+      <select className="input" value={custom ? '__ozel' : (value || '')}
+        onChange={e => {
+          if (e.target.value === '__ozel') { setForceCustom(true); if (isPreset) onChange('') }
+          else { setForceCustom(false); onChange(e.target.value) }
+        }}>
+        <option value="">{placeholder}</option>
+        {presets.map(p => <option key={p.url} value={p.url}>{p.label}</option>)}
+        <option value="__ozel">✏️ Özel URL…</option>
+      </select>
+      {custom && (
+        <input className="input" value={value || ''}
+          onChange={e => onChange(e.target.value)} placeholder="/sayfa/hakkimizda veya https://…" />
+      )}
+    </div>
+  )
+}
+
 // Bölüm tipine özel ayar formu.
-export function SectionSettings({ sec, collections, products = [], patch, uploadAsset }) {
+export function SectionSettings({ sec, collections, products = [], pages = [], patch, uploadAsset }) {
   const s = sec.settings
 
   if (sec.type === 'hero_slider') {
@@ -73,13 +105,13 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
             <div className="grid grid-cols-2 gap-2">
               <input className="input" value={slide.cta_text || ''} maxLength={40}
                 onChange={e => patchSlide(i, { cta_text: e.target.value })} placeholder="Buton yazısı" />
-              <input className="input" value={slide.cta_url || ''}
-                onChange={e => patchSlide(i, { cta_url: e.target.value })} placeholder="/urunler" />
+              <UrlPicker value={slide.cta_url} collections={collections} products={products} pages={pages}
+                placeholder="Buton hedefi" onChange={url => patchSlide(i, { cta_url: url })} />
               <input className="input" value={slide.cta2_text || ''} maxLength={40}
                 onChange={e => patchSlide(i, { cta2_text: e.target.value })}
                 placeholder="2. buton yazısı (ops. — çerçeveli görünür)" />
-              <input className="input" value={slide.cta2_url || ''}
-                onChange={e => patchSlide(i, { cta2_url: e.target.value })} placeholder="2. buton adresi" />
+              <UrlPicker value={slide.cta2_url} collections={collections} products={products} pages={pages}
+                placeholder="2. buton hedefi" onChange={url => patchSlide(i, { cta2_url: url })} />
             </div>
           </div>
         ))}
@@ -230,8 +262,8 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
         <div className="grid grid-cols-2 gap-2">
           <input className="input" value={s.cta_text || ''} maxLength={40}
             onChange={e => patch({ cta_text: e.target.value })} placeholder="Buton yazısı (ops.)" />
-          <input className="input" value={s.cta_url || ''}
-            onChange={e => patch({ cta_url: e.target.value })} placeholder="Buton adresi" />
+          <UrlPicker value={s.cta_url} collections={collections} products={products} pages={pages}
+            placeholder="Buton hedefi" onChange={url => patch({ cta_url: url })} />
         </div>
         <div className="flex gap-2 text-xs items-center">
           <span className="text-panel-muted">Görsel tarafı:</span>
@@ -448,8 +480,8 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
         <div className="grid grid-cols-2 gap-2">
           <input className="input" value={s.cta_text || ''} maxLength={40}
             onChange={e => patch({ cta_text: e.target.value })} placeholder="Buton yazısı" />
-          <input className="input" value={s.cta_url || ''}
-            onChange={e => patch({ cta_url: e.target.value })} placeholder="/urunler" />
+          <UrlPicker value={s.cta_url} collections={collections} products={products} pages={pages}
+            placeholder="Buton hedefi" onChange={url => patch({ cta_url: url })} />
         </div>
         <p className="text-[11px] text-panel-muted">
           Süre dolunca bölüm vitrinde kendiliğinden kaybolur.
@@ -464,8 +496,28 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
         <AssetField label="Banner görseli" current={s.image}
           onUpload={f => uploadAsset('hero', f, url => patch({ image: url }))}
           onClear={() => patch({ image: null })} />
-        <input className="input" value={s.url || ''}
-          onChange={e => patch({ url: e.target.value })} placeholder="Tıklanınca gidilecek adres (ops.)" />
+        <UrlPicker value={s.url} collections={collections} products={products} pages={pages}
+          placeholder="Tıklanınca gidilecek hedef (ops.)" onChange={url => patch({ url })} />
+        <div className="space-y-1.5">
+          <span className="text-panel-muted text-xs">Köşe ovalleştirme</span>
+          <div className="flex gap-2 items-center">
+            <select className="input !w-auto" value={s.radius_scope || 'both'}
+              onChange={e => patch({ radius_scope: e.target.value })}>
+              <option value="both">Açık (her yerde)</option>
+              <option value="mobile">Yalnız mobil</option>
+              <option value="desktop">Yalnız masaüstü</option>
+              <option value="none">Kapalı (köşeli)</option>
+            </select>
+            {(s.radius_scope || 'both') !== 'none' && (
+              <label className="flex items-center gap-1.5 text-xs text-panel-muted">
+                <input className="input !w-20" type="number" min="0" max="100"
+                  value={s.radius_pct ?? 50}
+                  onChange={e => patch({ radius_pct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+                % ovallik
+              </label>
+            )}
+          </div>
+        </div>
       </>
     )
   }

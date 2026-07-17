@@ -1,0 +1,23 @@
+# BERNZ Commerce vitrini (Next.js sunucusu) — systemd birimi.
+# Kurulum (root):
+#   cp /home/baskici/baskici-saas/deploy/baskici-storefront.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now baskici-storefront
+[Unit]
+Description=BERNZ Commerce Vitrin (Next.js)
+After=network.target baskici-backend.service
+
+[Service]
+User=baskici
+WorkingDirectory=/home/baskici/baskici-saas/storefront
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=STORE_SLUG=bernz
+Environment=DEFAULT_HOSTS=magaza.bernzcompany.com,localhost,127.0.0.1
+Environment=NEXT_PUBLIC_SITE_URL=https://magaza.bernzcompany.com
+Environment=BACKEND_URL=http://127.0.0.1:8000
+ExecStart=/usr/bin/npm run start -- -p 3001
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

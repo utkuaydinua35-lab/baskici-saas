@@ -1,0 +1,26 @@
+# BERNZ Commerce — Caddyfile'a EKLENECEK bloklar.
+# Kurulum (root): bu blokları /etc/caddy/Caddyfile sonuna yapıştırın,
+# ardından: systemctl reload caddy
+# Ön koşul (DNS): iki A kaydı -> 91.132.49.107
+#   magaza.bernzcompany.com
+#   panel.magaza.bernzcompany.com
+
+# Vitrin (müşterilerin gördüğü mağaza) — Next.js sunucusuna proxy
+magaza.bernzcompany.com {
+	reverse_proxy 127.0.0.1:3001
+}
+
+# Mağaza yönetim paneli (BERNZ Commerce) — statik + API proxy
+panel.magaza.bernzcompany.com {
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /storage/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle {
+		root * /srv/baskici/panel/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

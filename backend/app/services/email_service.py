@@ -17,17 +17,49 @@ logger = logging.getLogger("email")
 
 def is_configured() -> bool:
     s = get_settings()
-    return bool(s.smtp_host and s.smtp_user and s.smtp_password)
+    return bool(s.resend_api_key) or bool(s.smtp_host and s.smtp_user and s.smtp_password)
+
+
+def _send_resend(s, to: str, subject: str, html: str, text: str | None,
+                 headers: dict | None) -> bool:
+    """HTTPS (443) üzerinden Resend API ile gönder — SMTP portları kapalı VPS için."""
+    import httpx
+    sender = s.resend_from or s.smtp_from or s.smtp_user
+    payload = {"from": sender, "to": [to], "subject": subject, "html": html}
+    if text:
+        payload["text"] = text
+    if headers:
+        payload["headers"] = {k: v for k, v in headers.items() if v}
+    try:
+        r = httpx.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers={"Authorization": f"Bearer {s.resend_api_key}"},
+            timeout=20,
+        )
+        if r.status_code in (200, 201):
+            logger.info(f"[email] gönderildi (resend) -> {to} ({subject})")
+            return True
+        logger.warning(f"[email] resend hata {r.status_code}: {r.text[:300]}")
+        return False
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[email] resend gönderim hatası: {e}")
+        return False
 
 
 def send_email(to: str, subject: str, html: str, text: str | None = None,
                headers: dict | None = None) -> bool:
-    """E-posta gönder. Başarılıysa True. SMTP ayarlı değilse / hata olursa False.
+    """E-posta gönder. Başarılıysa True. Ayarlı değilse / hata olursa False.
+    RESEND_API_KEY doluysa HTTPS API ile, değilse SMTP ile gönderir.
     headers: ek e-posta başlıkları (örn. List-Unsubscribe)."""
     s = get_settings()
     if not is_configured():
-        logger.warning("[email] SMTP yapılandırılmamış — gönderilmedi")
+        logger.warning("[email] mail yapılandırılmamış — gönderilmedi")
         return False
+
+    # SMTP portları kapalı VPS'lerde Resend (443) tercih edilir
+    if s.resend_api_key:
+        return _send_resend(s, to, subject, html, text, headers)
 
     sender = s.smtp_from or s.smtp_user
     msg = EmailMessage()

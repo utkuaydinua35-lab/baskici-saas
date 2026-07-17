@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     smtp_user: str = Field("", alias="SMTP_USER")
     smtp_password: str = Field("", alias="SMTP_PASSWORD")
     smtp_from: str = Field("", alias="SMTP_FROM")  # bos ise smtp_user kullanilir
+    # Resend (HTTPS API'li mail) — SMTP portlari kapali VPS'lerde 443 uzerinden gonderir.
+    # Doluysa SMTP yerine bu kullanilir. resend_from: dogrulanmis domain adresi (orn noreply@bernzcompany.com)
+    resend_api_key: str = Field("", alias="RESEND_API_KEY")
+    resend_from: str = Field("", alias="RESEND_FROM")
 
     # Sürat Kargo (eski — Basit Kargo ile değiştirildi; adres ayrıştırma helper'ları kalıyor)
     surat_kullanici_adi: str = Field("", alias="SURAT_KULLANICI_ADI")

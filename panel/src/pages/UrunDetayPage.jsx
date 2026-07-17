@@ -21,18 +21,37 @@ export default function UrunDetayPage() {
   const setMsg = (m) => m && (m.ok ? toast.success(m.text) : toast.error(m.text))
   const [variations, setVariations] = useState('')
 
+  const draftKey = `urun-taslak-${productId}`
+
   const load = useCallback(async () => {
     try {
       const prod = await api.get(`/api/catalog/products/${productId}`)
       setP(prod)
       api.get(`/api/catalog/variant-sets?store_id=${prod.store_id}`)
         .then(setVsets).catch(() => {})
-      setForm({
+      const base = {
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
         description: prod.description || '', tags: prod.tags || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
-      })
+      }
+      // Kaydedilmemiş taslak varsa GERİ YÜKLE — koleksiyon ekleme gibi ara
+      // işlemler ya da yanlışlıkla kapatma, yazılanları kaybettirmesin.
+      let restored = false
+      try {
+        const raw = localStorage.getItem(draftKey)
+        if (raw) {
+          const draft = JSON.parse(raw)
+          if (JSON.stringify(draft) !== JSON.stringify(base)) {
+            setForm(draft)
+            restored = true
+            toast.info('Kaydedilmemiş değişiklikleriniz geri yüklendi — Kaydet ile kalıcılaşır')
+          } else {
+            localStorage.removeItem(draftKey)
+          }
+        }
+      } catch { /* bozuk taslak yok sayılır */ }
+      if (!restored) setForm(base)
       if (storeId) {
         setCollections((await api.get(`/api/catalog/collections?store_id=${storeId}`))
           .filter(c => c.is_active))
@@ -40,8 +59,28 @@ export default function UrunDetayPage() {
     } catch (e) {
       setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Ürün yüklenemedi' })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId, storeId])
   useEffect(() => { load() }, [load])
+
+  // Form değiştikçe taslağı önbelleğe yaz (Kaydet'te temizlenir)
+  useEffect(() => {
+    if (!form) return
+    try { localStorage.setItem(draftKey, JSON.stringify(form)) } catch { /* dolu */ }
+  }, [form, draftKey])
+
+  // Koleksiyon/görsel gibi FORM DIŞI işlemler sonrası: ürünü tazele ama
+  // formdaki kaydedilmemiş değişikliklere DOKUNMA.
+  const reloadMeta = useCallback(async () => {
+    try {
+      const prod = await api.get(`/api/catalog/products/${productId}`)
+      setP(prod)
+      if (storeId) {
+        setCollections((await api.get(`/api/catalog/collections?store_id=${storeId}`))
+          .filter(c => c.is_active))
+      }
+    } catch { /* sessiz */ }
+  }, [productId, storeId])
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -55,6 +94,7 @@ export default function UrunDetayPage() {
         description: form.description || null, tags: form.tags || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
+      try { localStorage.removeItem(draftKey) } catch { /* yok */ }
       await load()
       setMsg({ ok: true, text: 'Kaydedildi ✓' })
     } catch (e) {
@@ -125,11 +165,11 @@ export default function UrunDetayPage() {
       </div>
 
       {p.status === 'draft' && (
-        <div className="card !py-2.5 flex items-center gap-3 text-sm border-indigo-200 bg-indigo-500/10/50">
+        <div className="card !py-2.5 flex items-center gap-3 text-sm border-indigo-500/30 bg-indigo-500/10">
           <span>⏰</span>
           {p.publish_at ? (
             <>
-              <span className="text-indigo-800">
+              <span className="text-indigo-300">
                 <b>{new Date(p.publish_at).toLocaleString('tr-TR', {
                   day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</b>'de
                 otomatik yayınlanacak
@@ -139,7 +179,7 @@ export default function UrunDetayPage() {
             </>
           ) : (
             <>
-              <span className="text-indigo-800">Yayın zamanı planla:</span>
+              <span className="text-indigo-300">Yayın zamanı planla:</span>
               <input type="datetime-local" className="input !w-56 !py-1.5"
                 min={new Date().toISOString().slice(0, 16)}
                 onChange={e => e.target.value && schedulePublish(e.target.value)} />

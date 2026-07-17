@@ -99,7 +99,7 @@ export default function EnvanterPage() {
               const changed = !!edits[row.variant_id]
               return (
                 <tr key={row.variant_id}
-                  className={`border-t border-panel-border ${changed ? 'bg-sky-500/10/60' : ''}`}>
+                  className={`border-t border-panel-border ${changed ? 'bg-sky-500/10' : ''}`}>
                   <td className="px-4 py-2">
                     <Link to={`/urunler/${row.product_id}`} className="font-medium hover:underline">
                       {row.product_title}

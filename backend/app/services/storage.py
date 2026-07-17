@@ -186,6 +186,29 @@ def get_thumbnail_url(file_path: str | None, file_format: str | None) -> str | N
     return None
 
 
+DEKONT_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "webp"}
+MAX_DEKONT_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+def save_dealer_dekont(tenant_id, tx_id, file_data: bytes, original_filename: str) -> str:
+    """Bayii ödeme dekontunu kaydet (PDF/görsel). Dönüş: relative_path."""
+    ext = get_extension(original_filename)
+    if ext not in DEKONT_EXTENSIONS:
+        raise ValueError(f"İzin verilen formatlar: {', '.join(sorted(DEKONT_EXTENSIONS))}. Yüklenen: .{ext}")
+    if len(file_data) > MAX_DEKONT_SIZE:
+        raise ValueError(f"Dosya çok büyük (max {MAX_DEKONT_SIZE // 1024 // 1024} MB)")
+    rel_dir = Path("tenants") / str(tenant_id) / "dekont"
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    # Eski uzantılı kopyalar kalmasın (aynı tx yeni format)
+    for e in DEKONT_EXTENSIONS:
+        (full_dir / f"{tx_id}.{e}").unlink(missing_ok=True)
+    fname = f"{tx_id}.{ext}"
+    with open(full_dir / fname, "wb") as f:
+        f.write(file_data)
+    return (rel_dir / fname).as_posix()
+
+
 def save_logo(tenant_id, kind: str, file_data: bytes, ext: str) -> str:
     """Logo/avatar kaydet. kind: 'brand' | 'avatar-<uuid>'. Donus: /storage/... URL."""
     import time

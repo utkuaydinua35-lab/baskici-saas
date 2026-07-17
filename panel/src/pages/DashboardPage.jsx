@@ -108,7 +108,7 @@ export default function DashboardPage() {
 
       {stok && (stok.low_stock > 0 || stok.out_of_stock > 0) && (
         <Link to="/envanter"
-          className="block card !py-3 border-amber-500/30 bg-amber-500/10/60 hover:bg-amber-500/10 transition">
+          className="block card !py-3 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/10 transition">
           <div className="flex items-center gap-2 text-sm">
             <span>⚠️</span>
             <span className="font-medium text-amber-300">

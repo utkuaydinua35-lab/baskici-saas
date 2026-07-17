@@ -39,7 +39,10 @@ export default function TemaEditorPage() {
   const previewTimer = useRef(null)
   const skipFirst = useRef(true)
 
-  // CANLI ÖNİZLEME: değişiklikten 800ms sonra taslağı gönder, iframe'i tazele
+  // CANLI ÖNİZLEME: değişiklikten 800ms sonra taslağı gönder, iframe'i tazele.
+  // DİKKAT: contentWindow.location.reload() CROSS-ORIGIN'de (panel ile vitrin
+  // farklı domain) SecurityError fırlatır ve önizleme HİÇ yenilenmez — bu
+  // yüzden iframe React key'i üzerinden remount edilir (origin bağımsız).
   useEffect(() => {
     if (!theme || !storeId) return
     if (skipFirst.current) { skipFirst.current = false; return }
@@ -47,7 +50,7 @@ export default function TemaEditorPage() {
     previewTimer.current = setTimeout(async () => {
       try {
         await api.put(`/api/store-settings/${storeId}/theme/preview`, theme)
-        iframeRef.current?.contentWindow?.location.reload()
+        setSaveCount(n => n + 1)   // iframe key değişir → önizleme tazelenir
       } catch { /* önizleme başarısız — kaydetmeyi engellemez */ }
     }, 800)
     return () => clearTimeout(previewTimer.current)
@@ -146,11 +149,13 @@ export default function TemaEditorPage() {
   const discard = () => {
     try {
       const [t, cc] = JSON.parse(initialRef.current)
+      skipFirst.current = true   // setTheme yeni önizleme PUT'u tetiklemesin
       setTheme(t); setCustomCode(cc)
       const after = draftKey
         ? api.put(`/api/store-settings/${storeId}/theme/preview`, t)
         : api.del(`/api/store-settings/${storeId}/theme/preview`)
-      after.then(() => iframeRef.current?.contentWindow?.location.reload()).catch(() => {})
+      // cross-origin reload çalışmaz — iframe remount ile tazele
+      after.then(() => setSaveCount(n => n + 1)).catch(() => {})
     } catch { /* ilk yükleme yoksa */ }
   }
   const dirty = !!theme && initialRef.current !== '' &&

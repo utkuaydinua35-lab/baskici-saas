@@ -174,6 +174,8 @@ export function CariDialog({ dealer, onClose, onChanged }) {
   const [amount, setAmount] = useState('')
   const [desc, setDesc] = useState('')
   const [busy, setBusy] = useState(false)
+  const [dekontFile, setDekontFile] = useState(null)     // ödemeyle birlikte yüklenecek dekont
+  const [dekontBusyId, setDekontBusyId] = useState(null) // sonradan dekont eklenen hareket
   const [bal, setBal] = useState(dealer.balance)
   const [balUsd, setBalUsd] = useState(dealer.balance_usd || 0)
   const [cur, setCur] = useState('TRY')
@@ -224,9 +226,26 @@ export function CariDialog({ dealer, onClose, onChanged }) {
         description: desc || (direction === 'payment' ? 'Ödeme alındı' : 'Borç eklendi'), direction,
         currency: cur,
       })
-      setBal(d.balance); setBalUsd(d.balance_usd || 0); setAmount(''); setDesc(''); load(); onChanged?.()
+      if (dekontFile && d.tx_id) {
+        try {
+          const fd = new FormData(); fd.append('file', dekontFile)
+          await api.postForm(`/api/dealers/${dealer.id}/transactions/${d.tx_id}/dekont`, fd)
+        } catch { toast.error('Ödeme işlendi ama dekont yüklenemedi') }
+      }
+      setBal(d.balance); setBalUsd(d.balance_usd || 0); setAmount(''); setDesc(''); setDekontFile(null); load(); onChanged?.()
       toast.success(direction === 'payment' ? 'Ödeme işlendi' : 'Borç eklendi')
     } catch (e) { toast.error('İşlenemedi') } finally { setBusy(false) }
+  }
+
+  const attachDekont = async (txId, file) => {
+    if (!file) return
+    setDekontBusyId(txId)
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      await api.postForm(`/api/dealers/${dealer.id}/transactions/${txId}/dekont`, fd)
+      toast.success('Dekont eklendi'); load()
+    } catch { toast.error('Dekont yüklenemedi') }
+    finally { setDekontBusyId(null) }
   }
 
   return (
@@ -265,6 +284,11 @@ export function CariDialog({ dealer, onClose, onChanged }) {
             <input className="input flex-1" type="number" inputMode="decimal" placeholder={cur === 'USD' ? 'Tutar $' : 'Tutar ₺'} value={amount} onChange={e => setAmount(e.target.value)} />
             <input className="input flex-1" placeholder="Açıklama (ops.)" value={desc} onChange={e => setDesc(e.target.value)} />
           </div>
+          <label className="flex items-center gap-2 text-xs text-gray-400 mb-2 cursor-pointer hover:text-gray-200">
+            📎 <span className="truncate">{dekontFile ? dekontFile.name : 'Dekont ekle (PDF/görsel, opsiyonel)'}</span>
+            {dekontFile && <button type="button" onClick={(e) => { e.preventDefault(); setDekontFile(null) }} className="text-gray-500 hover:text-red-400 ml-auto">×</button>}
+            <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => setDekontFile(e.target.files?.[0] || null)} />
+          </label>
           <div className="flex gap-2">
             <button onClick={() => pay('payment')} disabled={busy} className="flex-1 rounded-lg py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50">💰 Ödeme Al</button>
             <button onClick={() => pay('debt')} disabled={busy} className="flex-1 btn-secondary !text-sm">＋ Borç Ekle</button>
@@ -282,8 +306,18 @@ export function CariDialog({ dealer, onClose, onChanged }) {
                     <div className="text-gray-300 truncate">{t.description || t.kind}</div>
                     <div className="text-[10px] text-gray-600">{t.created_at ? new Date(t.created_at).toLocaleString('tr-TR') : ''}</div>
                   </div>
-                  <div className={`tabular-nums font-medium ${t.amount > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
-                    {t.amount > 0 ? '+' : ''}{fmtCur(t.amount, t.currency || 'TRY')}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {t.dekont_url ? (
+                      <a href={t.dekont_url} target="_blank" rel="noreferrer" className="text-accent hover:opacity-80" title="Dekontu aç">📎</a>
+                    ) : t.kind !== 'siparis' ? (
+                      <label className={`text-gray-600 hover:text-accent cursor-pointer ${dekontBusyId === t.id ? 'opacity-50 pointer-events-none' : ''}`} title="Dekont ekle">
+                        {dekontBusyId === t.id ? '⏳' : '📎﹢'}
+                        <input type="file" accept="application/pdf,image/*" className="hidden" onChange={e => attachDekont(t.id, e.target.files?.[0])} />
+                      </label>
+                    ) : null}
+                    <div className={`tabular-nums font-medium ${t.amount > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                      {t.amount > 0 ? '+' : ''}{fmtCur(t.amount, t.currency || 'TRY')}
+                    </div>
                   </div>
                 </div>
               ))}

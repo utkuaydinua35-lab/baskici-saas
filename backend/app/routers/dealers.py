@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func as sql_func, select
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Dealer, DealerTransaction, LineItem, Order, Store, User
+from app.services import storage
 
 router = APIRouter(prefix="/api/dealers", tags=["dealers"])
 
@@ -97,6 +98,7 @@ def _ser_tx(t: DealerTransaction) -> dict:
         "description": t.description, "balance_after": float(t.balance_after),
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "ref_order_id": str(t.ref_order_id) if t.ref_order_id else None,
+        "dekont_url": f"/storage/{t.dekont_path}" if getattr(t, "dekont_path", None) else None,
     }
 
 
@@ -298,8 +300,59 @@ def add_payment(dealer_id: uuid.UUID, req: PaymentIn, user: User = Depends(requi
         balance_after=new_balance, currency=cur,
     )
     db.add(tx)
-    db.commit(); db.refresh(d)
-    return _ser(d)
+    db.commit(); db.refresh(d); db.refresh(tx)
+    return {**_ser(d), "tx_id": str(tx.id)}
+
+
+@router.post("/{dealer_id}/transactions/{tx_id}/dekont", response_model=dict)
+async def upload_dekont(
+    dealer_id: uuid.UUID, tx_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Cari hareketine (ödeme) dekont dosyası ekle — PDF ya da görsel."""
+    tx = db.scalar(select(DealerTransaction).where(
+        DealerTransaction.id == tx_id,
+        DealerTransaction.dealer_id == dealer_id,
+        DealerTransaction.tenant_id == user.tenant_id,
+    ))
+    if not tx:
+        raise HTTPException(404, "Hareket bulunamadı")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Boş dosya")
+    try:
+        rel = storage.save_dealer_dekont(user.tenant_id, tx.id, data, file.filename or "dekont.pdf")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    tx.dekont_path = rel
+    db.commit(); db.refresh(tx)
+    return _ser_tx(tx)
+
+
+@router.delete("/{dealer_id}/transactions/{tx_id}/dekont", response_model=dict)
+def delete_dekont(
+    dealer_id: uuid.UUID, tx_id: uuid.UUID,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Dekontu kaldır."""
+    tx = db.scalar(select(DealerTransaction).where(
+        DealerTransaction.id == tx_id,
+        DealerTransaction.dealer_id == dealer_id,
+        DealerTransaction.tenant_id == user.tenant_id,
+    ))
+    if not tx:
+        raise HTTPException(404, "Hareket bulunamadı")
+    if tx.dekont_path:
+        try:
+            (storage.STORAGE_ROOT / tx.dekont_path).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        tx.dekont_path = None
+        db.commit(); db.refresh(tx)
+    return _ser_tx(tx)
 
 
 # ─── Bayii manuel siparisi (Parca 4c) ───

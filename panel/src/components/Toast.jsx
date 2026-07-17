@@ -5,7 +5,8 @@ import { createContext, useCallback, useContext, useRef, useState } from 'react'
 const ToastContext = createContext(null)
 
 const STYLES = {
-  success: 'bg-panel-ink text-white',
+  // Koyu temada okunurluk: success teal dolgu + koyu metin (btn-primary ile aynı dil)
+  success: 'bg-panel-accent text-[#04130d] font-medium',
   error: 'bg-red-600 text-white',
   info: 'bg-panel-card text-panel-ink border border-panel-border',
 }

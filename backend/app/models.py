@@ -1140,6 +1140,8 @@ class DealerTransaction(Base):
         UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
     )
     balance_after: Mapped[float] = mapped_column(Numeric(12, 2))
+    # Ödemenin dekontu (banka dekontu/makbuz) — PDF ya da görsel. Geriye dönük güvenli takip.
+    dekont_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

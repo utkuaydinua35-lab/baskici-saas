@@ -1453,6 +1453,134 @@ async def import_csv(
     return stats
 
 
+# ── Shopify görselleri — CDN'den arka planda indirip ürünlere bağlar ──
+# (Ürün import'unun eksik yarısı: Image Src sütunları CDN URL'idir.)
+
+_IMG_JOBS: dict[str, dict] = {}   # store_id -> ilerleme
+MAX_IMAGES_PER_PRODUCT = 5
+
+
+@router.post("/import/shopify-images", response_model=dict)
+async def import_shopify_images(
+    store_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Shopify export CSV'sindeki görselleri indirip ürünlere bağla.
+
+    Arka planda çalışır (714 ürün dakikalar sürer) — ilerleme:
+    GET /import/shopify-images/status. Görseli OLAN ürünler atlanır
+    (tekrar çalıştırmak güvenli)."""
+    import csv
+    import io
+    import threading
+
+    _get_storefront_store(db, user.tenant_id, store_id)
+    key = str(store_id)
+    if _IMG_JOBS.get(key, {}).get("running"):
+        raise HTTPException(409, "Görsel aktarımı zaten sürüyor — durumunu bekleyin")
+
+    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames or "Handle" not in reader.fieldnames \
+            or "Image Src" not in reader.fieldnames:
+        raise HTTPException(422, "Bu dosya Shopify ürün export'u değil "
+                                 "(Handle/Image Src sütunları yok)")
+
+    images: dict[str, list] = {}
+    for row in reader:
+        handle = (row.get("Handle") or "").strip()
+        src = (row.get("Image Src") or "").strip()
+        if not handle or not src.startswith("http"):
+            continue
+        try:
+            pos = int(row.get("Image Position") or 999)
+        except ValueError:
+            pos = 999
+        images.setdefault(handle, []).append((pos, src))
+
+    if not images:
+        raise HTTPException(422, "CSV'de indirilecek görsel bulunamadı")
+
+    _IMG_JOBS[key] = {"running": True, "total": len(images), "done": 0,
+                      "added": 0, "skipped": 0, "errors": []}
+    threading.Thread(
+        target=_run_image_import,
+        args=(key, str(user.tenant_id), images),
+        daemon=True,
+    ).start()
+    return {"ok": True, "products": len(images),
+            "message": "Görsel aktarımı arka planda başladı"}
+
+
+def _run_image_import(store_key: str, tenant_id: str, images: dict[str, list]) -> None:
+    import httpx
+
+    from app.database import SessionLocal
+
+    job = _IMG_JOBS[store_key]
+    db = SessionLocal()
+    client = httpx.Client(timeout=25, follow_redirects=True)
+    try:
+        for handle, urls in images.items():
+            slug = slugify(handle)
+            try:
+                product = db.scalar(
+                    select(CatalogProduct)
+                    .where(CatalogProduct.store_id == uuid.UUID(store_key),
+                           CatalogProduct.slug == slug)
+                    .options(selectinload(CatalogProduct.images)))
+                if not product:
+                    job["skipped"] += 1
+                    continue
+                if product.images:
+                    job["skipped"] += 1   # görseli var — idempotent atla
+                    continue
+                added_here = 0
+                for idx, (_pos, url) in enumerate(sorted(urls)[:MAX_IMAGES_PER_PRODUCT]):
+                    try:
+                        r = client.get(url)
+                        r.raise_for_status()
+                        fname = url.split("?")[0].rsplit("/", 1)[-1] or "gorsel.jpg"
+                        if "." not in fname:
+                            fname += ".jpg"
+                        image_id = uuid.uuid4()
+                        rel_path = storage_svc.save_catalog_image(
+                            uuid.UUID(tenant_id), image_id, r.content, fname)
+                        db.add(CatalogImage(
+                            id=image_id, tenant_id=uuid.UUID(tenant_id),
+                            product_id=product.id, file_path=rel_path,
+                            alt=None, position=idx,
+                        ))
+                        added_here += 1
+                    except Exception as e:  # noqa: BLE001 — tek görsel hatası ürünü durdurmaz
+                        if len(job["errors"]) < 30:
+                            job["errors"].append(
+                                {"urun": slug, "mesaj": f"{type(e).__name__}: {e}"[:200]})
+                db.commit()   # ürün başına commit — kısmi ilerleme korunur
+                job["added"] += added_here
+            except Exception as e:  # noqa: BLE001
+                db.rollback()
+                if len(job["errors"]) < 30:
+                    job["errors"].append({"urun": slug, "mesaj": str(e)[:200]})
+            finally:
+                job["done"] += 1
+    finally:
+        client.close()
+        db.close()
+        job["running"] = False
+
+
+@router.get("/import/shopify-images/status", response_model=dict)
+def shopify_images_status(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+):
+    return _IMG_JOBS.get(str(store_id)) or {"running": False, "total": 0, "done": 0,
+                                            "added": 0, "skipped": 0, "errors": []}
+
+
 # ─── Yorum moderasyonu ───────────────────────────────────────
 
 @router.get("/reviews", response_model=dict)

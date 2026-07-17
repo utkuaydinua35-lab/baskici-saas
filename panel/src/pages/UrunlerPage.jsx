@@ -317,6 +317,15 @@ function ImportModal({ storeId, onClose, onDone }) {
               {result.products_created} yeni + {result.products_updated} güncellenen ürün,{' '}
               {result.variants_created} yeni + {result.variants_updated} güncellenen varyant.
             </p>
+            {result.note && (
+              <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                {result.note}
+              </p>
+            )}
+            {/* Shopify CSV'siyse görselleri de CDN'den indirip bağlayabiliriz */}
+            {result.note && file && (
+              <ShopifyImageImport storeId={storeId} file={file} />
+            )}
             <button onClick={onDone} className="btn-primary">Tamam</button>
           </div>
         )}
@@ -324,6 +333,67 @@ function ImportModal({ storeId, onClose, onDone }) {
         {err && <p className="text-sm text-red-400">{err}</p>}
       </div>
     </Modal>
+  )
+}
+
+// Shopify görsellerini arka planda indirir — ilerleme çubuğuyla izlenir.
+function ShopifyImageImport({ storeId, file }) {
+  const [job, setJob] = useState(null)     // {running, total, done, added, skipped, errors}
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const start = async () => {
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      await api.postForm(`/api/catalog/import/shopify-images?store_id=${storeId}`, fd)
+      poll()
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Başlatılamadı')
+      setBusy(false)
+    }
+  }
+
+  const poll = async () => {
+    try {
+      const s = await api.get(`/api/catalog/import/shopify-images/status?store_id=${storeId}`)
+      setJob(s)
+      if (s.running) setTimeout(poll, 2000)
+      else setBusy(false)
+    } catch { setBusy(false) }
+  }
+
+  if (!job && !busy) {
+    return (
+      <div className="space-y-1.5">
+        <button onClick={start} className="btn-ghost w-full !py-2 text-xs">
+          📷 Görselleri de Aktar (Shopify CDN'den indirilir)
+        </button>
+        {err && <p className="text-xs text-red-400">{err}</p>}
+        <p className="text-[10px] text-panel-muted">
+          Arka planda çalışır; görseli olan ürünler atlanır, pencereyi kapatabilirsiniz.
+        </p>
+      </div>
+    )
+  }
+
+  const pct = job?.total ? Math.round((job.done / job.total) * 100) : 0
+  return (
+    <div className="space-y-1.5 text-left">
+      <div className="flex justify-between text-xs">
+        <span>{job?.running ? '📷 Görseller indiriliyor…' : '✅ Görsel aktarımı bitti'}</span>
+        <span className="tabular-nums">{job?.done ?? 0}/{job?.total ?? 0} ürün</span>
+      </div>
+      <div className="h-2 rounded-full bg-panel-input overflow-hidden">
+        <div className="h-full rounded-full bg-panel-accent transition-all duration-500"
+          style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-[11px] text-panel-muted">
+        {job?.added ?? 0} görsel eklendi · {job?.skipped ?? 0} ürün atlandı
+        {(job?.errors?.length ?? 0) > 0 && ` · ${job.errors.length} hata`}
+      </p>
+    </div>
   )
 }
 

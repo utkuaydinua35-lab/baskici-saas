@@ -945,6 +945,8 @@ def get_store_theme(
             "free_shipping_over": config.get("free_shipping_over"),
             "min_order_amount": config.get("min_order_amount"),
             "gift_wrap_enabled": bool(config.get("gift_wrap_enabled")),
+            # Güven rozeti aktif sağlayıcıyı göstersin (iyzico VEYA PayTR)
+            "payment_provider": config.get("payment_provider") or "iyzico",
         },
         "contact": {
             "email": config.get("contact_email"),

@@ -25,6 +25,7 @@ export default function ProductGallery({
   videoUrl?: string | null;
 }) {
   const [active, setActive] = useState(0);
+  const [lightbox, setLightbox] = useState(false);
   const hasVideo = !!videoUrl;
   const videoIndex = images.length;          // video, galerinin son karesi
   const showingVideo = hasVideo && active === videoIndex;
@@ -57,11 +58,26 @@ export default function ProductGallery({
           )
         ) : current ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={current.url} alt={current.alt || title} className="w-full h-full object-contain" />
+          <img src={current.url} alt={current.alt || title}
+            onClick={() => setLightbox(true)}
+            className="w-full h-full object-contain cursor-zoom-in" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-6xl text-zinc-200">📱</div>
         )}
       </div>
+      {/* Lightbox — görsele tıklayınca tam ekran büyür */}
+      {lightbox && current && (
+        <div onClick={() => setLightbox(false)}
+          className="fixed inset-0 z-[90] bg-black/85 flex items-center justify-center p-6 cursor-zoom-out">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={current.url} alt={current.alt || title}
+            className="max-w-full max-h-full object-contain rounded-xl" />
+          <button aria-label="Kapat"
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 text-white text-lg">
+            ×
+          </button>
+        </div>
+      )}
       {(images.length + (hasVideo ? 1 : 0)) > 1 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {images.map((im, i) => (

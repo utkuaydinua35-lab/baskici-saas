@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 
@@ -72,7 +72,7 @@ export default function UrunlerPage() {
           <button onClick={() => setShowSets(true)} className="btn-ghost text-xs">🧩 Varyant Setleri</button>
           <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
           <button onClick={() => setShowImport(true)} className="btn-ghost text-xs">⬆ İçe Aktar</button>
-          <button onClick={() => setShowCreate(true)} className="btn-primary">+ Yeni Ürün</button>
+          <Link to="/urunler/yeni" className="btn-primary">+ Yeni Ürün</Link>
         </div>
       </div>
 
@@ -132,7 +132,7 @@ export default function UrunlerPage() {
           <p className="mt-2 text-sm text-panel-muted">
             Henüz ürün yok — ilk ürününü ekleyerek satışa başla.
           </p>
-          <button onClick={() => setShowCreate(true)} className="btn-primary mt-4">+ Yeni Ürün</button>
+          <Link to="/urunler/yeni" className="btn-primary mt-4 inline-block">+ Yeni Ürün</Link>
         </div>
       )}
 

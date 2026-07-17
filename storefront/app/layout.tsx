@@ -14,6 +14,7 @@ import WhatsAppButton from "@/components/WhatsAppButton";
 import CouponFromUrl from "@/components/CouponFromUrl";
 import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
+import CopyGuard from "@/components/CopyGuard";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
@@ -107,6 +108,13 @@ export default async function RootLayout({
         <CartProvider>
           <Suspense><CouponFromUrl /></Suspense>
           <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
+          {payloadPixels?.meta && (
+            <noscript>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img height="1" width="1" style={{ display: "none" }} alt=""
+                src={`https://www.facebook.com/tr?id=${payloadPixels.meta.replace(/[^0-9]/g, "")}&ev=PageView&noscript=1`} />
+            </noscript>
+          )}
           {theme.announcement.enabled && (
             <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url} />
           )}
@@ -160,6 +168,7 @@ export default async function RootLayout({
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
+          <CopyGuard />
           {payload.is_preview && <PreviewBridge />}
         </CartProvider>
       </body>

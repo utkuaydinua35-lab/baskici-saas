@@ -9,6 +9,7 @@ const SiparislerPage = lazy(() => import('./pages/SiparislerPage'))
 const SiparisDetayPage = lazy(() => import('./pages/SiparisDetayPage'))
 const UrunlerPage = lazy(() => import('./pages/UrunlerPage'))
 const UrunDetayPage = lazy(() => import('./pages/UrunDetayPage'))
+const UrunYeniPage = lazy(() => import('./pages/UrunYeniPage'))
 const KoleksiyonlarPage = lazy(() => import('./pages/KoleksiyonlarPage'))
 const EnvanterPage = lazy(() => import('./pages/EnvanterPage'))
 const KuponlarPage = lazy(() => import('./pages/KuponlarPage'))
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="/siparisler" element={<SiparislerPage />} />
             <Route path="/siparisler/:orderId" element={<SiparisDetayPage />} />
             <Route path="/urunler" element={<UrunlerPage />} />
+            <Route path="/urunler/yeni" element={<UrunYeniPage />} />
             <Route path="/urunler/:productId" element={<UrunDetayPage />} />
             <Route path="/koleksiyonlar" element={<KoleksiyonlarPage />} />
             <Route path="/envanter" element={<EnvanterPage />} />

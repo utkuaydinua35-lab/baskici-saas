@@ -8,6 +8,13 @@ import { readFavs, writeFavs, type FavItem } from "@/components/FavButton";
 
 export default function FavoritesPage() {
   const [favs, setFavs] = useState<FavItem[] | null>(null);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/account")
+      .then((r) => setLoggedIn(r.ok))
+      .catch(() => setLoggedIn(false));
+  }, []);
 
   useEffect(() => {
     const local = readFavs();
@@ -61,11 +68,38 @@ export default function FavoritesPage() {
   }
 
   if (favs.length === 0) {
+    // Misafir: önce hesap avantajlarıyla davet — favoriler hesapla kalıcı olur
+    if (loggedIn === false) {
+      return (
+        <div className="mx-auto max-w-xl px-4 py-20 text-center">
+          <div className="text-5xl mb-3">💚</div>
+          <h1 className="text-xl font-semibold">Favorilerinizi kaybetmeyin</h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            Ücretsiz hesap oluşturun: beğendiğiniz tasarımlar her cihazınızda sizinle gelsin,
+            favorileriniz indirime girdiğinde ilk siz haberdar olun.
+          </p>
+          <div className="mt-6 flex gap-2 justify-center">
+            <Link href="/hesap"
+              className="rounded-xl text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition"
+              style={{ background: "var(--c-primary)" }}>
+              Hesap Oluştur / Giriş Yap
+            </Link>
+            <Link href="/urunler"
+              className="rounded-xl border border-zinc-300 px-5 py-2.5 text-sm font-medium hover:border-zinc-500 transition">
+              Ürünlere Göz At
+            </Link>
+          </div>
+          <p className="mt-3 text-[11px] text-zinc-400">
+            Şifre gerekmez — e-postanıza gelen tek kullanımlık kodla girersiniz.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-xl px-4 py-20 text-center">
         <div className="text-5xl mb-3">🤍</div>
         <h1 className="text-xl font-semibold">Favori listeniz boş</h1>
-        <p className="mt-2 text-sm text-zinc-500">Beğendiğiniz ürünlerin kalbine dokunun, burada birikssin.</p>
+        <p className="mt-2 text-sm text-zinc-500">Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.</p>
         <Link href="/urunler"
           className="mt-6 inline-block rounded-xl text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}>

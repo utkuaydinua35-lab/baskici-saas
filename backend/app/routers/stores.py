@@ -41,7 +41,7 @@ class StoreCreate(BaseModel):
     """Yeni mağaza ekleme."""
     name: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=2, max_length=50, pattern=r"^[a-z0-9-]+$")
-    platform: str = Field(..., pattern=r"^(shopify|ikas)$")
+    platform: str = Field(..., pattern=r"^(shopify|ikas|storefront)$")
     config: dict[str, Any] = Field(default_factory=dict)
     badge_color: str | None = None
 

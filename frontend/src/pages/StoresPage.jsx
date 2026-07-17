@@ -440,7 +440,7 @@ function AddStoreDialog({ platforms, onClose, onSaved }) {
             <input
               type="text"
               required
-              pattern="[a-z0-9-]+"
+              pattern="[a-z0-9\-]+"
               value={slug}
               onChange={e => setSlug(e.target.value.toLowerCase())}
               className="input w-full font-mono"

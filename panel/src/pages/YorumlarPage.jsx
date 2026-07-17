@@ -42,13 +42,13 @@ export default function YorumlarPage() {
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${tab === t.key
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {t.label}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="space-y-2">
         {items.map(r => (
@@ -57,7 +57,7 @@ export default function YorumlarPage() {
               <span className="text-amber-500">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
               <span className="font-medium">{r.author_name}</span>
               {r.verified && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">
                   ✓ doğrulanmış alıcı
                 </span>
               )}
@@ -70,13 +70,13 @@ export default function YorumlarPage() {
             <div className="flex gap-2 mt-3">
               {r.status !== 'approved' && (
                 <button onClick={() => moderate(r.id, 'approve')} disabled={busyId === r.id}
-                  className="px-3 py-1 rounded-lg text-xs bg-emerald-100 text-emerald-700 disabled:opacity-50">
+                  className="px-3 py-1 rounded-lg text-xs bg-emerald-500/15 text-emerald-300 disabled:opacity-50">
                   Onayla
                 </button>
               )}
               {r.status !== 'rejected' && (
                 <button onClick={() => moderate(r.id, 'reject')} disabled={busyId === r.id}
-                  className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50">
+                  className="px-3 py-1 rounded-lg text-xs bg-red-500/10 text-red-300 disabled:opacity-50">
                   Reddet
                 </button>
               )}

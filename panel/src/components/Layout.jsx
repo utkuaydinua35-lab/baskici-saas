@@ -98,7 +98,7 @@ export default function Layout() {
             onClick={() => setMenuOpen(false)} />
         )}
         {/* Sol menü — gruplu; mobilde soldan kayan çekmece */}
-        <aside className={`w-56 shrink-0 border-r border-panel-border bg-white flex flex-col
+        <aside className={`w-56 shrink-0 border-r border-panel-border bg-panel-card flex flex-col
           fixed lg:sticky top-12 h-[calc(100vh-3rem)] z-30
           transition-transform duration-200 lg:translate-x-0
           ${menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}`}>
@@ -184,7 +184,7 @@ function ProfileMenu({ user, logout, refresh }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 bg-white text-panel-ink rounded-2xl
+        <div className="absolute right-0 top-full mt-2 w-64 bg-panel-card text-panel-ink rounded-2xl
           border border-panel-border shadow-xl overflow-hidden toast-in z-50">
           <div className="px-4 py-3 bg-panel-input/60 border-b border-panel-border flex items-center gap-2.5">
             <Avatar user={user} size="w-9 h-9" ring={false} />
@@ -196,11 +196,11 @@ function ProfileMenu({ user, logout, refresh }) {
           <div className="p-1.5 text-sm">
             {item('👤', 'Hesap bilgileri', () => { setModal('hesap'); setOpen(false) })}
             {item('🛡️', <>Güvenlik (2FA) {user?.totp_enabled &&
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
+              <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
               () => { setModal('guvenlik'); setOpen(false) })}
             {item('🔑', 'Şifre değiştir', () => { setModal('sifre'); setOpen(false) })}
             <div className="my-1 border-t border-panel-border" />
-            {item('🚪', 'Çıkış yap', logout, 'text-red-600 hover:!bg-red-50')}
+            {item('🚪', 'Çıkış yap', logout, 'text-red-400 hover:!bg-red-500/10')}
           </div>
         </div>
       )}
@@ -220,7 +220,7 @@ function ModalShell({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white text-panel-ink rounded-2xl shadow-xl w-full max-w-sm p-5 toast-in">
+      <div className="bg-panel-card text-panel-ink rounded-2xl shadow-xl w-full max-w-sm p-5 toast-in">
         <div className="flex items-center mb-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button onClick={onClose} className="ml-auto text-panel-muted hover:text-panel-ink">✕</button>
@@ -352,7 +352,7 @@ function SecurityModal({ user, refresh, onClose }) {
     <ModalShell title="🛡️ Güvenlik" onClose={onClose}>
       {backupCodes ? (
         <div className="space-y-3">
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
             Yedek kodlarınızı güvenli bir yere kaydedin — telefonunuza erişemezseniz
             bu kodlarla giriş yaparsınız. <b>Bir daha gösterilmez.</b>
           </p>
@@ -365,7 +365,7 @@ function SecurityModal({ user, refresh, onClose }) {
         </div>
       ) : user?.totp_enabled ? (
         <form onSubmit={disable} className="space-y-3">
-          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+          <p className="text-sm text-emerald-300 bg-emerald-500/10 rounded-xl px-3 py-2">
             ✓ İki adımlı doğrulama <b>aktif</b> — girişte authenticator kodu isteniyor.
           </p>
           <label className="block text-sm">
@@ -373,9 +373,9 @@ function SecurityModal({ user, refresh, onClose }) {
             <input className="input mt-1" type="password" value={disablePw} required
               onChange={e => setDisablePw(e.target.value)} />
           </label>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <button disabled={busy} className="w-full px-4 py-2 rounded-xl text-sm font-medium
-            bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 disabled:opacity-50">
+            bg-red-500/10 text-red-300 border border-red-500/30 hover:bg-red-500/150/20 disabled:opacity-50">
             {busy ? '…' : '2FA\'yı Kapat'}
           </button>
         </form>
@@ -391,7 +391,7 @@ function SecurityModal({ user, refresh, onClose }) {
           <input className="input font-mono text-center tracking-widest" value={code}
             required maxLength={6} placeholder="000000" autoFocus
             onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <button disabled={busy || code.length !== 6} className="btn-primary w-full">
             {busy ? 'Doğrulanıyor…' : 'Doğrula ve Aktifleştir'}
           </button>
@@ -402,7 +402,7 @@ function SecurityModal({ user, refresh, onClose }) {
             İki adımlı doğrulama (2FA), şifreniz çalınsa bile hesabınızı korur —
             girişte telefonunuzdaki authenticator uygulamasının kodu istenir.
           </p>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <button onClick={start} disabled={busy} className="btn-primary w-full">
             {busy ? 'Hazırlanıyor…' : '🛡️ 2FA Kurulumunu Başlat'}
           </button>
@@ -465,13 +465,13 @@ function PasswordModal({ user, onClose }) {
           <input className="input mt-1" type="password" value={next2} required
             autoComplete="new-password" onChange={e => setNext2(e.target.value)} />
         </label>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-400">{error}</p>}
         <button disabled={busy} className="btn-primary w-full">
           {busy ? 'Güncelleniyor…' : 'Şifreyi Güncelle'}
         </button>
         <div className="text-center pt-1 border-t border-panel-border">
           {mailSent ? (
-            <p className="text-xs text-emerald-700 pt-2">
+            <p className="text-xs text-emerald-300 pt-2">
               📧 Bağlantı gönderildi — gelen kutunuzu kontrol edin (1 saat geçerli).
             </p>
           ) : (

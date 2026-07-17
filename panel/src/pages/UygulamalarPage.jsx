@@ -92,7 +92,7 @@ function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-start justify-center p-6 overflow-y-auto"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-5 my-6">
+      <div className="bg-panel-card rounded-2xl shadow-xl w-full max-w-2xl p-5 my-6">
         <div className="flex items-center mb-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button onClick={onClose} className="ml-auto text-panel-muted hover:text-panel-ink">✕</button>
@@ -189,7 +189,7 @@ function FieldsApp({ storeId, products, onClose }) {
               <button disabled={busy}
                 onClick={() => window.confirm(`"${p.name}" düzeni silinsin mi? (Ürünlerdeki alanlar etkilenmez)`)
                   && saveAll(presets.filter((_, j) => j !== i))}
-                className="text-xs text-red-400 hover:text-red-600">Sil</button>
+                className="text-xs text-red-400 hover:text-red-400">Sil</button>
             </span>
           </div>
         ))}
@@ -247,7 +247,7 @@ function PresetEditor({ value, busy, onSave, onCancel }) {
                 onChange={e => patchF(i, { required: e.target.checked })} /> zorunlu
             </label>
             <button onClick={() => setFields(fl => fl.filter((_, j) => j !== i))}
-              className="text-red-400 hover:text-red-600 px-1">×</button>
+              className="text-red-400 hover:text-red-400 px-1">×</button>
           </div>
           {f.type === 'color' && (
             <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}

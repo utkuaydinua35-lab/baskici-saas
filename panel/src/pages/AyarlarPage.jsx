@@ -82,7 +82,7 @@ export default function AyarlarPage() {
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-3.5 py-2 text-[13px] whitespace-nowrap rounded-t-xl border-b-2 transition-all duration-150 ${
               tab === t.key
-                ? 'border-panel-accent text-emerald-800 font-semibold bg-emerald-50/60'
+                ? 'border-panel-accent text-emerald-300 font-semibold bg-emerald-500/10'
                 : 'border-transparent text-panel-muted hover:text-panel-ink hover:bg-panel-input'}`}>
             <span className="mr-1.5">{t.icon}</span>{t.label}
           </button>
@@ -223,7 +223,7 @@ export default function AyarlarPage() {
               <summary className="text-sm font-medium cursor-pointer flex items-center gap-2">
                 {label}
                 {(t.subject || t.intro) && (
-                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">özel</span>
+                  <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">özel</span>
                 )}
               </summary>
               <div className="mt-2 space-y-2">
@@ -366,7 +366,7 @@ function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
           {busy ? 'Kontrol ediliyor…' : '🔍 DNS Doğrula'}
         </button>
         {result && (
-          <span className={`text-xs ${result.verified ? 'text-emerald-700' : 'text-amber-600'}`}>
+          <span className={`text-xs ${result.verified ? 'text-emerald-300' : 'text-amber-300'}`}>
             {result.message}
           </span>
         )}

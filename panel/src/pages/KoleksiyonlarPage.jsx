@@ -72,7 +72,7 @@ export default function KoleksiyonlarPage() {
           maxLength={200} placeholder="Yeni koleksiyon adı (örn: Retro, Minimal)" />
         <button disabled={busy || !title.trim()} className="btn-primary">Ekle</button>
       </form>
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-red-400">{err}</p>}
 
       <div className="card !p-0 divide-y divide-panel-border overflow-hidden">
         {collections.map(c => (
@@ -94,15 +94,15 @@ export default function KoleksiyonlarPage() {
             <div className="ml-auto flex items-center gap-2">
               <button onClick={() => toggle(c)}
                 className={`text-xs px-2 py-0.5 rounded-full ${c.is_active
-                  ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-500'}`}>
                 {c.is_active ? 'Aktif' : 'Pasif'}
               </button>
               {c.image_url && (
                 <button onClick={() => clearImage(c)}
-                  className="text-xs text-panel-muted hover:text-red-600">Görseli kaldır</button>
+                  className="text-xs text-panel-muted hover:text-red-400">Görseli kaldır</button>
               )}
               <button onClick={() => rename(c)} className="text-xs text-panel-muted hover:text-panel-ink">Adlandır</button>
-              <button onClick={() => remove(c)} className="text-xs text-red-400 hover:text-red-600">Sil</button>
+              <button onClick={() => remove(c)} className="text-xs text-red-400 hover:text-red-400">Sil</button>
             </div>
           </div>
         ))}

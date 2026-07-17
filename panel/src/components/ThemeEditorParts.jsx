@@ -61,7 +61,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium">Slayt {i + 1}</span>
               <button onClick={() => patch({ slides: slides.filter((_, j) => j !== i) })}
-                className="text-xs text-red-400 hover:text-red-600">Sil</button>
+                className="text-xs text-red-400 hover:text-red-400">Sil</button>
             </div>
             <AssetField label="Görsel" current={slide.image}
               onUpload={f => uploadAsset('hero', f, url => patchSlide(i, { image: url }))}
@@ -120,7 +120,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
                 <button key={c.slug}
                   onClick={() => patch({ slugs: active ? slugs.filter(x => x !== c.slug) : [...slugs, c.slug] })}
                   className={`px-3 py-1 rounded-full text-xs border transition ${active
-                    ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                    ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
                     : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                   {c.title}
                 </button>
@@ -160,7 +160,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
                 <button onClick={() => move(i, 1)} disabled={i === slugs.length - 1}
                   className="text-panel-muted hover:text-panel-ink disabled:opacity-30 px-0.5">↓</button>
                 <button onClick={() => patch({ slugs: slugs.filter(x => x !== slug) })}
-                  className="text-red-400 hover:text-red-600 px-0.5">×</button>
+                  className="text-red-400 hover:text-red-400 px-0.5">×</button>
               </div>
             ))}
           </div>
@@ -238,7 +238,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
           {[['left', 'Sol'], ['right', 'Sağ']].map(([v, l]) => (
             <button key={v} onClick={() => patch({ image_side: v })}
               className={`px-2.5 py-1 rounded-full border ${(s.image_side || 'left') === v
-                ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
                 : 'border-panel-border text-panel-muted'}`}>{l}</button>
           ))}
         </div>
@@ -261,7 +261,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
                 <input className="input !py-1.5 text-xs" value={it.q || ''} maxLength={300}
                   onChange={e => patchItem(i, { q: e.target.value })} placeholder="Soru" />
                 <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
-                  className="text-red-400 hover:text-red-600 px-1">×</button>
+                  className="text-red-400 hover:text-red-400 px-1">×</button>
               </div>
               <textarea className="input !py-1.5 text-xs" rows={2} maxLength={2000} value={it.a || ''}
                 onChange={e => patchItem(i, { a: e.target.value })} placeholder="Cevap" />
@@ -306,7 +306,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
                 onChange={e => patchItem(i, { text: e.target.value })} placeholder="Kısa açıklama (ops.)" />
             </div>
             <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
-              className="text-red-400 hover:text-red-600 px-1">×</button>
+              className="text-red-400 hover:text-red-400 px-1">×</button>
           </div>
         ))}
         {items.length < 6 && (
@@ -341,7 +341,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
               <input type="checkbox" checked={!!r.them} onChange={e => patchRow(i, { them: e.target.checked })} />✓
             </label>
             <button onClick={() => patch({ rows: rows.filter((_, j) => j !== i) })}
-              className="text-red-400 hover:text-red-600 px-1">×</button>
+              className="text-red-400 hover:text-red-400 px-1">×</button>
           </div>
         ))}
         {rows.length < 8 && (
@@ -369,7 +369,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
                 {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{'★'.repeat(n)}</option>)}
               </select>
               <button onClick={() => patch({ items: items.filter((_, j) => j !== i) })}
-                className="text-red-400 hover:text-red-600 px-1">×</button>
+                className="text-red-400 hover:text-red-400 px-1">×</button>
             </div>
             <textarea className="input !py-1.5 text-xs" rows={2} maxLength={600} value={it.text || ''}
               onChange={e => patchItem(i, { text: e.target.value })} placeholder="Yorum metni" />
@@ -397,7 +397,7 @@ export function SectionSettings({ sec, collections, products = [], patch, upload
             <div key={i} className="relative group">
               <img src={u} alt="" className="w-full aspect-square object-cover rounded-lg border border-panel-border" />
               <button onClick={() => patch({ images: images.filter((_, j) => j !== i) })}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500/100 text-white text-xs
                   opacity-0 group-hover:opacity-100 transition">×</button>
             </div>
           ))}
@@ -487,7 +487,7 @@ export function ColorField({ label, value, onChange }) {
       <span className="text-panel-muted text-xs">{label}</span>
       <div className="mt-1 flex items-center gap-1.5">
         <input type="color" value={value} onChange={e => onChange(e.target.value)}
-          className="w-9 h-9 rounded-lg border border-panel-border cursor-pointer p-0.5 bg-white" />
+          className="w-9 h-9 rounded-lg border border-panel-border cursor-pointer p-0.5 bg-panel-card" />
         <input className="input !px-2 font-mono text-xs" value={value}
           onChange={e => onChange(e.target.value)} maxLength={7} />
       </div>
@@ -511,8 +511,8 @@ export function AssetField({ label, current, onUpload, onClear }) {
       <div className="mt-1 flex items-center gap-2">
         {current ? (
           <>
-            <img src={current} alt={label} className="h-10 max-w-[120px] object-contain rounded-lg border border-panel-border bg-white p-1" />
-            <button onClick={onClear} className="text-xs text-red-400 hover:text-red-600">Kaldır</button>
+            <img src={current} alt={label} className="h-10 max-w-[120px] object-contain rounded-lg border border-panel-border bg-panel-card p-1" />
+            <button onClick={onClear} className="text-xs text-red-400 hover:text-red-400">Kaldır</button>
           </>
         ) : (
           <label className="btn-ghost !py-1.5 text-xs cursor-pointer">

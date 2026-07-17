@@ -5,11 +5,11 @@ import { useStore } from '../lib/store'
 // Müşterilerin vitrindeki hesaplarından yükledikleri tasarım talepleri —
 // incele, durum güncelle, not yaz (not müşterinin hesabında görünür).
 const STATUSES = [
-  { key: 'acik', label: 'Açık', cls: 'bg-amber-100 text-amber-700' },
-  { key: 'incelendi', label: 'İncelendi', cls: 'bg-sky-100 text-sky-700' },
-  { key: 'teklif', label: 'Teklif Verildi', cls: 'bg-indigo-100 text-indigo-700' },
-  { key: 'tamam', label: 'Tamamlandı', cls: 'bg-emerald-100 text-emerald-700' },
-  { key: 'red', label: 'Reddedildi', cls: 'bg-red-100 text-red-600' },
+  { key: 'acik', label: 'Açık', cls: 'bg-amber-500/15 text-amber-300' },
+  { key: 'incelendi', label: 'İncelendi', cls: 'bg-sky-500/15 text-sky-300' },
+  { key: 'teklif', label: 'Teklif Verildi', cls: 'bg-indigo-500/15 text-indigo-300' },
+  { key: 'tamam', label: 'Tamamlandı', cls: 'bg-emerald-500/15 text-emerald-300' },
+  { key: 'red', label: 'Reddedildi', cls: 'bg-red-500/15 text-red-400' },
 ]
 const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.key, s]))
 
@@ -54,14 +54,14 @@ export default function TasarimTalepleriPage() {
         <h1 className="text-xl font-semibold mr-2">🎨 Tasarım Talepleri</h1>
         <button onClick={() => setTab('')}
           className={`px-3 py-1.5 rounded-xl text-xs border transition ${tab === ''
-            ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+            ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
             : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
           Tümü
         </button>
         {STATUSES.map(s => (
           <button key={s.key} onClick={() => setTab(s.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${tab === s.key
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {s.label}
           </button>
@@ -71,7 +71,7 @@ export default function TasarimTalepleriPage() {
         Müşteriler vitrindeki hesaplarından kendi tasarımlarını yükleyip talep açar.
         Yazdığınız not müşterinin hesabında görünür — teklif ve yanıtları buradan iletin.
       </p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="space-y-3">
         {items.map(r => {
@@ -116,7 +116,7 @@ export default function TasarimTalepleriPage() {
                       className="input flex-1 !py-1.5 text-xs min-w-48" />
                     <button disabled={busyId === r.id || draft === (r.admin_note || '')}
                       onClick={() => update(r.id, { admin_note: draft })}
-                      className="px-3 py-1.5 rounded-lg text-xs bg-emerald-100 text-emerald-700 disabled:opacity-40">
+                      className="px-3 py-1.5 rounded-lg text-xs bg-emerald-500/15 text-emerald-300 disabled:opacity-40">
                       Notu Kaydet
                     </button>
                     <button disabled={busyId === r.id || (draft === (r.admin_note || '') && !draft)}

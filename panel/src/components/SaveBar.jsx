@@ -30,7 +30,7 @@ export default function SaveBar({ dirty, busy, onSave, onDiscard }) {
             Vazgeç
           </button>
           <button onClick={onSave} disabled={busy}
-            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-panel-accent hover:bg-emerald-500 disabled:opacity-50">
+            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-panel-accent hover:bg-emerald-500/100 disabled:opacity-50">
             {busy ? 'Kaydediliyor…' : 'Kaydet'}
           </button>
         </div>

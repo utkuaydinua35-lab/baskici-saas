@@ -97,12 +97,12 @@ export default function TemaPage() {
       {/* Yayındaki tema */}
       <section>
         <h2 className="text-sm font-semibold mb-2">Yayındaki tema</h2>
-        <div className="card !p-4 flex items-center gap-4 border-emerald-200">
+        <div className="card !p-4 flex items-center gap-4 border-emerald-500/30">
           <ThemeSwatch theme={live} size="lg" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium text-sm">{live.name || 'Mağaza Teması'}</span>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full font-medium">
                 ● Yayında
               </span>
             </div>
@@ -154,7 +154,7 @@ export default function TemaPage() {
                 🚀 Yayınla
               </button>
               <button onClick={() => remove(d)} disabled={busy}
-                className="text-red-400 hover:text-red-600 text-xs px-1">Sil</button>
+                className="text-red-400 hover:text-red-400 text-xs px-1">Sil</button>
             </div>
           ))}
           {drafts.length === 0 && (

@@ -7,7 +7,7 @@ const ToastContext = createContext(null)
 const STYLES = {
   success: 'bg-panel-ink text-white',
   error: 'bg-red-600 text-white',
-  info: 'bg-white text-panel-ink border border-panel-border',
+  info: 'bg-panel-card text-panel-ink border border-panel-border',
 }
 const ICONS = { success: '✓', error: '✕', info: 'ℹ' }
 

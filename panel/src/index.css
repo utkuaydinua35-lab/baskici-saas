@@ -2,34 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Baskıcı (studio) ile aynı koyu tema — Cryptix stili. Accent: teal. */
+:root {
+  --accent-rgb: 20 184 166; /* #14b8a6 */
+}
+
 body {
   @apply bg-panel-bg text-panel-ink antialiased;
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Üstten yumuşak yeşil ışıma (Baskıcı hero glow) */
+  background-image: radial-gradient(1100px 520px at 50% -180px, rgb(var(--accent-rgb) / 0.14), transparent 72%);
+  background-attachment: fixed;
 }
+
+h1, h2, h3 { letter-spacing: -0.02em; }
 
 /* Ortak kart/girdi sınıfları — sayfalar kısa yazsın */
 .card {
   @apply bg-panel-card border border-panel-border rounded-2xl p-4
-    shadow-[0_1px_2px_rgba(15,23,42,0.04)]
     transition-shadow duration-200;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
 }
-.card:hover { box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07); }
+.card:hover { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045), 0 8px 24px rgb(0 0 0 / 0.35); }
 
-.input { @apply w-full bg-white border border-panel-border rounded-xl px-3 py-2 text-sm
-         transition-colors duration-150
+.input { @apply w-full bg-panel-input border border-panel-border rounded-xl px-3 py-2 text-sm text-panel-ink
+         transition-colors duration-150 placeholder:text-gray-600
          focus:outline-none focus:ring-2 focus:ring-panel-accent/25 focus:border-panel-accent; }
+select.input option, .input option { @apply bg-panel-card text-panel-ink; }
 
 .btn-primary {
-  @apply px-4 py-2 rounded-xl text-white text-sm font-medium
+  @apply px-4 py-2 rounded-xl text-[#04130d] text-sm font-semibold
     transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
-  background-image: linear-gradient(135deg, #059669, #0d9488);
-  box-shadow: 0 1px 2px rgba(5, 150, 105, 0.35);
+  background-image: linear-gradient(135deg, #14b8a6, #10b981);
+  box-shadow: 0 8px 26px -8px rgb(var(--accent-rgb) / 0.55);
 }
-.btn-primary:not(:disabled):hover { filter: brightness(1.07); box-shadow: 0 3px 10px rgba(5, 150, 105, 0.35); }
+.btn-primary:not(:disabled):hover { filter: brightness(1.08); }
 .btn-primary:not(:disabled):active { transform: scale(0.98); }
 
 .btn-ghost { @apply px-3 py-2 rounded-xl border border-panel-border text-sm text-panel-muted
-             bg-white hover:text-panel-ink hover:border-slate-400 hover:shadow-sm
+             bg-panel-input/60 hover:text-panel-ink hover:bg-panel-input
              active:scale-[0.98] transition-all duration-150; }
 
 /* Sayfa geçişi — route değişince içerik yumuşakça belirir */
@@ -45,7 +56,7 @@ body {
     text-panel-muted transition-all duration-150;
 }
 .nav-item:hover { @apply bg-panel-input text-panel-ink; }
-.nav-item.active { @apply bg-emerald-50 text-emerald-800 font-semibold; }
+.nav-item.active { @apply bg-panel-accent/10 text-emerald-300 font-semibold; }
 .nav-item.active::before {
   content: '';
   @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full bg-panel-accent;
@@ -54,7 +65,7 @@ body {
 .nav-item:hover .nav-icon { transform: scale(1.15); }
 
 .nav-group-label {
-  @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 select-none;
+  @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-panel-muted/70 select-none;
 }
 
 /* Yükleme iskeleti */
@@ -64,7 +75,7 @@ body {
 }
 .skeleton {
   @apply rounded-lg;
-  background: linear-gradient(90deg, #eef2f6 25%, #f8fafc 50%, #eef2f6 75%);
+  background: linear-gradient(90deg, #16201b 25%, #1d2a24 50%, #16201b 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
@@ -85,6 +96,11 @@ body {
 
 /* İnce kaydırma çubukları (WebKit) */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
-*::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+*::-webkit-scrollbar-thumb { background: #2a3b33; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: #35493f; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+/* Tablolar — koyu temada ince işçilik */
+.card table { font-variant-numeric: tabular-nums; }
+.card tbody tr { transition: background-color 0.12s ease; }
+.card tbody tr:hover { background: rgb(255 255 255 / 0.025); }

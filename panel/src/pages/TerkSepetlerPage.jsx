@@ -40,9 +40,9 @@ export default function TerkSepetlerPage() {
 
   const lastPage = Math.max(1, Math.ceil(data.total / data.per_page))
   const STATUS = {
-    pending: ['Beklemede', 'text-amber-600'],
+    pending: ['Beklemede', 'text-amber-300'],
     expired: ['Süresi doldu', 'text-panel-muted'],
-    failed: ['Başarısız', 'text-red-600'],
+    failed: ['Başarısız', 'text-red-400'],
     draft: ['Taslak', 'text-sky-600'],
   }
 
@@ -59,12 +59,12 @@ export default function TerkSepetlerPage() {
         {[['abandoned', 'Terk Edilenler'], ['draft', '🧾 Taslak Siparişler']].map(([k, l]) => (
           <button key={k} onClick={() => { setTab(k); setPage(1) }}
             className={`px-3 py-1.5 rounded-lg transition ${tab === k
-              ? 'bg-white shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
+              ? 'bg-panel-card shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
             {l}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -90,7 +90,7 @@ export default function TerkSepetlerPage() {
                   <td className="px-4 py-2.5 text-right tabular-nums font-medium">
                     {fmt(s.amount)}
                     {s.discount_code && (
-                      <div className="text-[10px] text-emerald-700 font-mono">{s.discount_code}</div>
+                      <div className="text-[10px] text-emerald-300 font-mono">{s.discount_code}</div>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{s.item_count}</td>
@@ -103,11 +103,11 @@ export default function TerkSepetlerPage() {
                   <td className="px-4 py-2.5">
                     {s.status === 'draft' ? (
                       <div className="flex items-center gap-1.5">
-                        {s.reminder_sent_at && <span className="text-xs text-emerald-700" title="Ödeme linki e-postalandı">✉✓</span>}
+                        {s.reminder_sent_at && <span className="text-xs text-emerald-300" title="Ödeme linki e-postalandı">✉✓</span>}
                         <button onClick={() => copyLink(s)} className="btn-ghost !py-1 text-xs">🔗 Linki Kopyala</button>
                       </div>
                     ) : s.reminder_sent_at ? (
-                      <span className="text-xs text-emerald-700"
+                      <span className="text-xs text-emerald-300"
                         title={new Date(s.reminder_sent_at).toLocaleString('tr-TR')}>✓ Gönderildi</span>
                     ) : (
                       <button onClick={() => sendReminder(s)} disabled={busyId === s.id}

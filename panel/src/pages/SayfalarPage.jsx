@@ -124,7 +124,7 @@ export default function SayfalarPage() {
               </span>
             </button>
             {openLegal === l.key && (
-              <div className="p-3 bg-white">
+              <div className="p-3 bg-panel-card">
                 <textarea className="input" rows={8} maxLength={20000} value={legal[l.key]}
                   onChange={e => setLegal(v => ({ ...v, [l.key]: e.target.value }))}
                   placeholder="Boş = vitrindeki hazır şablon kullanılır" />
@@ -153,10 +153,10 @@ export default function SayfalarPage() {
                 <span className="text-panel-muted text-xs ml-2">/sayfa/{pg.slug || '…'}</span>
               </button>
               <button onClick={() => removePage(i)}
-                className="text-xs text-red-400 hover:text-red-600 px-1">Sil</button>
+                className="text-xs text-red-400 hover:text-red-400 px-1">Sil</button>
             </div>
             {openIdx === i && (
-              <div className="p-3 bg-white space-y-2">
+              <div className="p-3 bg-panel-card space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block text-sm">
                     <span className="text-panel-muted text-xs">Başlık</span>

@@ -62,7 +62,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4 max-w-5xl">
       <h1 className="text-xl font-semibold">Hoş geldin 👋</h1>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label="Bugünkü Satış" value={fmtTl(today?.tutar || 0)} hint={`${today?.adet || 0} sipariş`} />
@@ -84,7 +84,7 @@ export default function DashboardPage() {
               className="ml-auto text-xs text-panel-muted hover:text-panel-ink">Gizle</button>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-panel-input overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all"
+            <div className="h-full bg-emerald-500/100 transition-all"
               style={{ width: `${(guide.filter(g => g.done).length / guide.length) * 100}%` }} />
           </div>
           <ul className="mt-3 space-y-1.5">
@@ -92,7 +92,7 @@ export default function DashboardPage() {
               <li key={g.label}>
                 <Link to={g.to} className="flex items-center gap-2.5 text-sm group">
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0 ${
-                    g.done ? 'bg-emerald-500 text-white' : 'border-2 border-panel-border'}`}>
+                    g.done ? 'bg-emerald-500/100 text-white' : 'border-2 border-panel-border'}`}>
                     {g.done ? '✓' : ''}
                   </span>
                   <span className={g.done ? 'text-panel-muted line-through' : 'group-hover:underline'}>
@@ -108,15 +108,15 @@ export default function DashboardPage() {
 
       {stok && (stok.low_stock > 0 || stok.out_of_stock > 0) && (
         <Link to="/envanter"
-          className="block card !py-3 border-amber-200 bg-amber-50/60 hover:bg-amber-50 transition">
+          className="block card !py-3 border-amber-500/30 bg-amber-500/10/60 hover:bg-amber-500/10 transition">
           <div className="flex items-center gap-2 text-sm">
             <span>⚠️</span>
-            <span className="font-medium text-amber-800">
+            <span className="font-medium text-amber-300">
               {stok.out_of_stock > 0 && `${stok.out_of_stock} varyant stoksuz`}
               {stok.out_of_stock > 0 && stok.low_stock > 0 && ' · '}
               {stok.low_stock > 0 && `${stok.low_stock} varyantta az stok`}
             </span>
-            <span className="ml-auto text-xs text-amber-700">Envantere git →</span>
+            <span className="ml-auto text-xs text-amber-300">Envantere git →</span>
           </div>
         </Link>
       )}
@@ -212,9 +212,9 @@ function LiveCard({ live }) {
       <div className="flex items-center gap-2 mb-3">
         <span className="relative flex h-2.5 w-2.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500/100" />
         </span>
-        <span className="text-[11px] font-semibold tracking-wide text-emerald-700">CANLI</span>
+        <span className="text-[11px] font-semibold tracking-wide text-emerald-300">CANLI</span>
         <span className="text-[11px] text-panel-muted ml-auto">
           Son 15 dk: {live.last_15m.orders} sipariş · {fmtTl(live.last_15m.revenue)}
           {live.active_checkouts > 0 && ` · ${live.active_checkouts} kişi ödeme sayfasında`}

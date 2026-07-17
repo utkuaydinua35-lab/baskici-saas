@@ -53,13 +53,13 @@ export default function AnalitikPage() {
         {RANGES.map(r => (
           <button key={r.key} onClick={() => setRange(r.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${range === r.key
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {r.label}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {data && (
         <div className={`space-y-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
@@ -184,7 +184,7 @@ function FunnelCard({ funnel }) {
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] text-panel-muted uppercase tracking-wide">Checkout Hunisi</span>
         {funnel.abandoned_count > 0 && (
-          <span className="text-[11px] text-amber-600">
+          <span className="text-[11px] text-amber-300">
             terk edilen: {funnel.abandoned_count} sepet · {fmtTl(funnel.abandoned_amount)}
           </span>
         )}

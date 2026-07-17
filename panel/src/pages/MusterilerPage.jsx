@@ -71,14 +71,14 @@ export default function MusterilerPage() {
         {[['', 'Tümü'], ['vip', '💎 VIP (1000₺+)'], ['tekrar', '🔁 Tekrar alan'], ['tek', 'Tek sipariş']].map(([k, l]) => (
           <button key={k} onClick={() => { setSegment(k); setPage(1) }}
             className={`text-xs px-3 py-1.5 rounded-full border transition ${segment === k
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {l}
           </button>
         ))}
         <button onClick={() => { setSubscribed(v => !v); setPage(1) }}
           className={`text-xs px-3 py-1.5 rounded-full border transition ${subscribed
-            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 font-medium'
+            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-medium'
             : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
           📮 Bülten aboneleri
         </button>
@@ -86,7 +86,7 @@ export default function MusterilerPage() {
           <button onClick={exportSubscribers} className="btn-ghost text-xs">⬇ CSV indir</button>
         )}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -107,7 +107,7 @@ export default function MusterilerPage() {
                   <div className="font-medium">
                     {c.name || '—'}
                     {c.accepts_marketing && (
-                      <span className="ml-1.5 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full"
+                      <span className="ml-1.5 text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full"
                         title="Bülten abonesi">📮</span>
                     )}
                   </div>
@@ -115,7 +115,7 @@ export default function MusterilerPage() {
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {c.orders_count}
-                  {c.orders_count > 1 && <span className="ml-1 text-[10px] text-emerald-700">tekrar</span>}
+                  {c.orders_count > 1 && <span className="ml-1 text-[10px] text-emerald-300">tekrar</span>}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmt(c.total_spent)}</td>
                 <td className="px-4 py-2.5 text-xs text-panel-muted">
@@ -206,8 +206,8 @@ function CustomerDetail({ customer, onClose, onSaved }) {
                   {o.created_at ? new Date(o.created_at).toLocaleDateString('tr-TR') : '—'}
                 </td>
                 <td className="px-3 py-2">
-                  {o.is_iptal ? <span className="text-red-600">İptal</span>
-                    : o.is_telafi ? <span className="text-amber-600">Telafi</span>
+                  {o.is_iptal ? <span className="text-red-400">İptal</span>
+                    : o.is_telafi ? <span className="text-amber-300">Telafi</span>
                     : (STAGE_LABELS[o.current_stage] || '—')}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">

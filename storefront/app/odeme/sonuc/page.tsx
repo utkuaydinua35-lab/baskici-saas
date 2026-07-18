@@ -12,6 +12,9 @@ export default async function ResultPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [payload, sp] = await Promise.all([getThemePayload(), searchParams]);
-  const demo = sp.demo === "1" && payload.is_preview;
+  // onizleme=1 parametresi de kabul edilir: editör iframe'inin İLK isteğinde
+  // vitrin_onizleme çerezi henüz yazılmamış olur (middleware yanıtla yazar) —
+  // yalnız çereze bakılırsa ilk açılış "Geçersiz bağlantı"ya düşer.
+  const demo = sp.demo === "1" && (payload.is_preview || sp.onizleme === "1");
   return <ResultClient thankyou={payload.theme.thankyou ?? null} demo={demo} />;
 }

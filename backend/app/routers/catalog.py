@@ -1161,6 +1161,48 @@ def apply_variant_set(
     return {"applied": vs.name, **stats}
 
 
+class BulkApplySetRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    variant_set_id: uuid.UUID
+
+
+@router.post("/products/bulk-apply-variant-set", response_model=dict)
+def bulk_apply_variant_set(
+    body: BulkApplySetRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Seçili ürünlerin HEPSİNE varyant seti bağla (toplu varyant ekleme).
+
+    Her ürün için set senkronu çalışır: eksik modeller eklenir, mevcutların
+    stok bilgisi korunur, sette olmayan varyantlar silinir."""
+    from app.models import VariantSet
+
+    vs = db.scalar(select(VariantSet).where(
+        VariantSet.id == body.variant_set_id, VariantSet.tenant_id == user.tenant_id))
+    if not vs:
+        raise HTTPException(404, "Set bulunamadı")
+
+    products = db.scalars(
+        select(CatalogProduct).where(
+            CatalogProduct.id.in_(body.ids),
+            CatalogProduct.tenant_id == user.tenant_id,
+            CatalogProduct.store_id == vs.store_id,
+        )
+    ).all()
+    if not products:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    total = {"created": 0, "updated": 0, "deleted": 0}
+    for product in products:
+        product.variant_set_id = vs.id
+        stats = sync_set_to_product(db, product, vs.items or [])
+        for k in total:
+            total[k] += stats.get(k, 0)
+    db.commit()
+    return {"applied": vs.name, "products": len(products), **total}
+
+
 # ─── Envanter (Shopify Inventory ekranı) ─────────────────────
 
 @router.get("/inventory", response_model=dict)

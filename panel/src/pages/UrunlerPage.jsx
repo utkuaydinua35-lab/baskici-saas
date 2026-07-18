@@ -16,6 +16,7 @@ export default function UrunlerPage() {
   const [showImport, setShowImport] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   const [showSets, setShowSets] = useState(false)
+  const [showBulkSet, setShowBulkSet] = useState(false)
 
   const exportCsv = async () => {
     try {
@@ -90,6 +91,8 @@ export default function UrunlerPage() {
             className="px-3 py-1 rounded-lg text-xs bg-amber-500/15 text-amber-300 disabled:opacity-50">Arşivle</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkEdit(true)}
             className="px-3 py-1 rounded-lg text-xs bg-indigo-500/15 text-indigo-300 disabled:opacity-50">✏️ Toplu Düzenle</button>
+          <button disabled={bulkBusy} onClick={() => setShowBulkSet(true)}
+            className="px-3 py-1 rounded-lg text-xs bg-teal-500/15 text-teal-300 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
         </div>
       )}
@@ -100,6 +103,12 @@ export default function UrunlerPage() {
         <BulkEditModal ids={[...checked]} storeId={storeId}
           onClose={() => setShowBulkEdit(false)}
           onDone={() => { setShowBulkEdit(false); setChecked(new Set()); load() }} />
+      )}
+
+      {showBulkSet && (
+        <BulkApplySetModal ids={[...checked]} storeId={storeId}
+          onClose={() => setShowBulkSet(false)}
+          onDone={() => { setShowBulkSet(false); setChecked(new Set()); load() }} />
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -393,6 +402,87 @@ function ShopifyImageImport({ storeId, file }) {
         {job?.added ?? 0} görsel eklendi · {job?.skipped ?? 0} ürün atlandı
         {(job?.errors?.length ?? 0) > 0 && ` · ${job.errors.length} hata`}
       </p>
+    </div>
+  )
+}
+
+// Toplu varyant seti uygulama — seçili ürünlerin HEPSİNE aynı set bağlanır.
+function BulkApplySetModal({ ids, storeId, onClose, onDone }) {
+  const [sets, setSets] = useState(null)
+  const [setId, setSetId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    api.get(`/api/catalog/variant-sets?store_id=${storeId}`)
+      .then(setSets).catch(() => setSets([]))
+  }, [storeId])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!setId) { setErr('Bir set seçin'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await api.post('/api/catalog/products/bulk-apply-variant-set', {
+        ids, variant_set_id: setId,
+      })
+      setResult(r)
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Uygulanamadı')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <form onSubmit={submit} onClick={e => e.stopPropagation()}
+        className="card w-full max-w-md space-y-3">
+        <h2 className="font-semibold">🧩 Varyant Seti Uygula ({ids.length} ürün)</h2>
+        {result ? (
+          <>
+            <p className="text-sm">
+              ✅ <b>{result.applied}</b> seti {result.products} ürüne uygulandı —
+              {' '}{result.created} varyant eklendi, {result.updated} güncellendi
+              {result.deleted > 0 && <>, {result.deleted} sette olmayan varyant silindi</>}.
+            </p>
+            <div className="flex justify-end">
+              <button type="button" onClick={onDone} className="btn-primary">Tamam</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] text-panel-muted -mt-1">
+              Seçili ürünlerin tümü bu sete bağlanır: setteki modeller eklenir,
+              mevcut varyantların stok bilgisi korunur, sette olmayanlar silinir.
+              Sette ileride yapacağınız değişiklikler bağlı ürünlere de yansır.
+            </p>
+            {sets === null ? (
+              <p className="text-sm text-panel-muted">Setler yükleniyor…</p>
+            ) : sets.length === 0 ? (
+              <p className="text-sm text-panel-muted">
+                Henüz varyant seti yok — önce üstteki "🧩 Varyant Setleri" bölümünden oluşturun.
+              </p>
+            ) : (
+              <select className="input" value={setId} onChange={e => setSetId(e.target.value)}>
+                <option value="">Set seçin…</option>
+                {sets.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({(s.items || []).length} model)
+                  </option>
+                ))}
+              </select>
+            )}
+            {err && <p className="text-sm text-red-400">{err}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
+              <button disabled={busy || !setId} className="btn-primary">
+                {busy ? 'Uygulanıyor…' : 'Uygula'}
+              </button>
+            </div>
+          </>
+        )}
+      </form>
     </div>
   )
 }

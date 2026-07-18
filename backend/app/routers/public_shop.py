@@ -1729,6 +1729,22 @@ def support_order_status(
     return {"orders": out}
 
 
+# "s24 plus var mı" gibi cümlelerde modele ait olmayan dolgu kelimeleri
+_MODEL_STOPWORDS = {
+    "var", "mı", "mi", "mu", "mü", "midir", "kılıf", "kilif", "kılıfı", "kilifi",
+    "case", "uyumlu", "için", "icin", "telefon", "telefonum", "telefonuma",
+    "model", "modeli", "acaba", "merhaba", "selam", "ve", "ile", "bir",
+}
+
+
+def _norm_model(s: str) -> list[str]:
+    """Model adını karşılaştırma token'larına indirger: küçük harf,
+    +→plus, noktalama temizliği ('S24+' ile 's24 plus' eşleşir)."""
+    s = s.lower().replace("+", " plus ")
+    s = "".join(ch if ch.isalnum() else " " for ch in s)
+    return [t for t in s.split() if t and t not in _MODEL_STOPWORDS]
+
+
 @router.get("/{store_slug}/support/model-check")
 def support_model_check(
     store_slug: str,
@@ -1736,10 +1752,13 @@ def support_model_check(
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """'Telefonuma uygun kılıf var mı?' — model adına göre aktif varyant arar."""
+    """'Telefonuma uygun kılıf var mı?' — model adına göre aktif varyant arar.
+
+    Tam alt dize yerine token bazlı eşleşme: sorgudaki her anlamlı kelime
+    model adında geçmeli ("s24 plus var mı" → "Galaxy S24 Plus")."""
     store = _resolve_store(db, store_slug)
-    term = (q or "").strip()
-    if len(term) < 2:
+    q_tokens = _norm_model(q or "")
+    if not q_tokens:
         return {"models": []}
     rows = db.execute(
         select(CatalogVariant.model_display, CatalogProduct.title, CatalogProduct.slug)
@@ -1748,14 +1767,21 @@ def support_model_check(
             CatalogProduct.store_id == store.id,
             CatalogProduct.status == "active",
             CatalogVariant.is_active.is_(True),
-            CatalogVariant.model_display.ilike(f"%{term}%"),
-        ).limit(120)
+        )
     ).all()
     models: dict[str, dict] = {}
     for model_display, p_title, p_slug in rows:
+        m_tokens = _norm_model(model_display)
+        if not all(t in m_tokens for t in q_tokens):
+            continue
         m = models.setdefault(model_display, {
             "model": model_display, "product_count": 0,
             "sample_title": p_title, "sample_slug": p_slug,
+            # Az token farkı = daha isabetli eşleşme, üste gelsin
+            "_extra": len(m_tokens) - len(q_tokens),
         })
         m["product_count"] += 1
-    return {"models": list(models.values())[:10]}
+    ranked = sorted(models.values(), key=lambda m: m["_extra"])[:10]
+    for m in ranked:
+        m.pop("_extra", None)
+    return {"models": ranked}

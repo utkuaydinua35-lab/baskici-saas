@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
@@ -507,6 +507,8 @@ function ImagesSection({ product, onChanged, setMsg }) {
 // ── Varyant tablosu: inline fiyat + stok editi ──
 function VariantTable({ product, basePrice, onChanged, setMsg }) {
   const [edit, setEdit] = useState(null)   // {id, field, value}
+  const [collapsed, setCollapsed] = useState({})   // {marka: true} — kapalı gruplar
+  const [brandEdit, setBrandEdit] = useState(null) // {old, value} — marka adı düzenleme
 
   const commit = async () => {
     if (!edit) return
@@ -514,9 +516,24 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
     setEdit(null)
     const payload = field === 'price_override'
       ? { price_override: value === '' ? null : Number(value) }
-      : { quantity: Math.max(0, parseInt(value || '0', 10)) }
+      : field === 'model_display'
+        ? { model_display: String(value).trim() }
+        : { quantity: Math.max(0, parseInt(value || '0', 10)) }
+    if (field === 'model_display' && !payload.model_display) return
     try { await api.patch(`/api/catalog/variants/${id}`, payload); await onChanged() }
     catch { setMsg({ ok: false, text: 'Varyant güncellenemedi' }) }
+  }
+
+  const commitBrand = async () => {
+    if (!brandEdit) return
+    const { old, value } = brandEdit
+    setBrandEdit(null)
+    const next = String(value).trim()
+    if (!next || next === old) return
+    try {
+      await api.post(`/api/catalog/products/${product.id}/variants/rename-brand`, { old, new: next })
+      await onChanged()
+    } catch { setMsg({ ok: false, text: 'Marka adı güncellenemedi' }) }
   }
 
   const toggleActive = async (v) => {
@@ -531,22 +548,36 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
 
   const cell = (v, field, display) => {
     const editing = edit?.id === v.id && edit?.field === field
+    const isText = field === 'model_display'
     return editing ? (
-      <input autoFocus type="number" step={field === 'price_override' ? '0.01' : '1'} min="0"
-        className="input !py-0.5 !px-1.5 !w-24 text-right text-xs"
+      <input autoFocus type={isText ? 'text' : 'number'}
+        step={field === 'price_override' ? '0.01' : '1'} min="0"
+        className={`input !py-0.5 !px-1.5 text-xs ${isText ? '!w-full text-left' : '!w-24 text-right'}`}
         value={edit.value}
         onChange={e => setEdit({ ...edit, value: e.target.value })}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEdit(null) }} />
     ) : (
-      <button className="w-full text-right hover:bg-panel-input rounded px-1.5 py-0.5"
+      <button className={`w-full hover:bg-panel-input rounded px-1.5 py-0.5 ${isText ? 'text-left' : 'text-right'}`}
+        title={isText ? 'Adı düzenlemek için tıkla' : undefined}
         onClick={() => setEdit({
           id: v.id, field,
-          value: field === 'price_override' ? (v.price_override ?? '') : String(v.quantity),
+          value: field === 'price_override' ? (v.price_override ?? '')
+            : field === 'model_display' ? v.model_display
+            : String(v.quantity),
         })}>
         {display}
       </button>
     )
+  }
+
+  // Marka bazlı gruplar — başlık satırı tıklayınca grup kapanıp açılır
+  const groups = []
+  for (const v of product.variants) {
+    const key = v.brand || 'Diğer'
+    const g = groups.find(x => x.brand === key)
+    if (g) g.items.push(v)
+    else groups.push({ brand: key, items: [v] })
   }
 
   return (
@@ -554,7 +585,6 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
       <table className="w-full text-xs">
         <thead className="text-panel-muted bg-panel-input sticky top-0">
           <tr>
-            <th className="text-left px-3 py-2">Marka</th>
             <th className="text-left px-3 py-2">Model</th>
             <th className="text-left px-3 py-2">Renk</th>
             <th className="text-right px-3 py-2">Fiyat (₺)</th>
@@ -564,27 +594,53 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
           </tr>
         </thead>
         <tbody>
-          {product.variants.map(v => (
-            <tr key={v.id} className={`border-t border-panel-border ${!v.is_active ? 'opacity-50' : ''}`}>
-              <td className="px-3 py-1.5 text-panel-muted">{v.brand || '—'}</td>
-              <td className="px-3 py-1.5">{v.model_display}</td>
-              <td className="px-3 py-1.5">{v.variation || '—'}</td>
-              <td className="px-1 py-1 tabular-nums">
-                {cell(v, 'price_override',
-                  v.price_override != null
-                    ? Number(v.price_override).toFixed(2)
-                    : <span className="text-panel-muted">{Number(basePrice || 0).toFixed(2)}</span>)}
-              </td>
-              <td className="px-1 py-1 tabular-nums">
-                {cell(v, 'quantity', v.track_stock ? v.quantity : '∞')}
-              </td>
-              <td className="px-2 py-1.5 text-center">
-                <input type="checkbox" checked={v.is_active} onChange={() => toggleActive(v)} />
-              </td>
-              <td className="px-2 py-1.5 text-right">
-                <button onClick={() => remove(v)} className="text-red-400 hover:text-red-400">×</button>
-              </td>
-            </tr>
+          {groups.map(g => (
+            <Fragment key={g.brand}>
+              <tr className="border-t border-panel-border bg-panel-input/60">
+                <td colSpan={6} className="px-2 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setCollapsed(c => ({ ...c, [g.brand]: !c[g.brand] }))}
+                      className="flex items-center gap-1.5 font-medium hover:text-panel-accent"
+                      title={collapsed[g.brand] ? 'Grubu aç' : 'Grubu kısalt'}>
+                      <span className="inline-block w-3 text-center">{collapsed[g.brand] ? '▸' : '▾'}</span>
+                      {brandEdit?.old === g.brand ? null : g.brand}
+                      <span className="text-panel-muted font-normal">({g.items.length})</span>
+                    </button>
+                    {brandEdit?.old === g.brand ? (
+                      <input autoFocus className="input !py-0.5 !px-1.5 !w-40 text-xs"
+                        value={brandEdit.value}
+                        onChange={e => setBrandEdit({ ...brandEdit, value: e.target.value })}
+                        onBlur={commitBrand}
+                        onKeyDown={e => { if (e.key === 'Enter') commitBrand(); if (e.key === 'Escape') setBrandEdit(null) }} />
+                    ) : (
+                      <button onClick={() => setBrandEdit({ old: g.brand, value: g.brand })}
+                        className="text-panel-muted hover:text-panel-accent" title="Marka adını düzenle">✎</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+              {!collapsed[g.brand] && g.items.map(v => (
+                <tr key={v.id} className={`border-t border-panel-border ${!v.is_active ? 'opacity-50' : ''}`}>
+                  <td className="px-1 py-1 pl-5">{cell(v, 'model_display', v.model_display)}</td>
+                  <td className="px-3 py-1.5">{v.variation || '—'}</td>
+                  <td className="px-1 py-1 tabular-nums">
+                    {cell(v, 'price_override',
+                      v.price_override != null
+                        ? Number(v.price_override).toFixed(2)
+                        : <span className="text-panel-muted">{Number(basePrice || 0).toFixed(2)}</span>)}
+                  </td>
+                  <td className="px-1 py-1 tabular-nums">
+                    {cell(v, 'quantity', v.track_stock ? v.quantity : '∞')}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <input type="checkbox" checked={v.is_active} onChange={() => toggleActive(v)} />
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button onClick={() => remove(v)} className="text-red-400 hover:text-red-400">×</button>
+                  </td>
+                </tr>
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>

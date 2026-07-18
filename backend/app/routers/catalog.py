@@ -95,6 +95,7 @@ class VariantCreate(BaseModel):
 
 class VariantUpdate(BaseModel):
     brand: str | None = Field(None, max_length=40)
+    model_display: str | None = Field(None, min_length=1, max_length=120)
     variation: str | None = Field(None, max_length=30)
     sku: str | None = Field(None, max_length=100)
     price_override: Decimal | None = Field(None, ge=0)
@@ -444,6 +445,33 @@ def update_variant(
     db.commit()
     db.refresh(variant)
     return _serialize_variant(variant)
+
+
+class BrandRename(BaseModel):
+    old: str = Field(..., min_length=1, max_length=40)
+    new: str = Field(..., min_length=1, max_length=40)
+
+
+@router.post("/products/{product_id}/variants/rename-brand", response_model=dict)
+def rename_brand(
+    product_id: uuid.UUID,
+    body: BrandRename,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Üründeki bir markanın (ana varyant başlığı) adını toplu değiştirir."""
+    product = db.scalar(select(CatalogProduct).where(
+        CatalogProduct.id == product_id, CatalogProduct.tenant_id == user.tenant_id,
+    ))
+    if not product:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ürün bulunamadı")
+    count = 0
+    for v in product.variants:
+        if (v.brand or "") == body.old:
+            v.brand = body.new.strip()
+            count += 1
+    db.commit()
+    return {"updated": count}
 
 
 @router.delete("/variants/{variant_id}", status_code=status.HTTP_204_NO_CONTENT)

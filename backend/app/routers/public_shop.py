@@ -949,6 +949,15 @@ def get_store_theme(
             # Güven rozeti aktif sağlayıcıyı göstersin (iyzico VEYA PayTR)
             "payment_provider": config.get("payment_provider") or "iyzico",
         },
+        # BERNZ Support sohbet balonu — kurallı asistan ayarları
+        "support": {
+            "enabled": config.get("support_chat_enabled", True),
+            "faq": [
+                {"q": str(f.get("q") or "")[:200], "a": str(f.get("a") or "")[:2000]}
+                for f in (config.get("support_faq") or [])[:12]
+                if isinstance(f, dict) and f.get("q") and f.get("a")
+            ],
+        },
         "contact": {
             "email": config.get("contact_email"),
             "phone": config.get("contact_phone"),
@@ -1373,17 +1382,38 @@ def account_login_request(
     store = _resolve_store(db, store_slug)
     customer, code = generate_login_code(db, store, str(body.email))
 
+    # Mağazanın kendi markası (isim/logo/renk) — generic BERNZ yerine
+    _accent, _logo = "#111827", ""
+    try:
+        from app.services.theme import resolve_theme
+        _th = resolve_theme(store.config or {})
+        _accent = (_th.get("colors") or {}).get("primary") or _accent
+        _logo = _th.get("logo_url") or ""
+    except Exception:  # noqa: BLE001
+        pass
+
+    _code_box = (
+        "<div style=\"margin:24px 0;text-align:center;\">"
+        "<div style=\"display:inline-block;background:#f3f4f6;border:1px solid #e5e7eb;"
+        "border-radius:14px;padding:18px 32px;\">"
+        f"<span style=\"font-size:34px;font-weight:800;letter-spacing:10px;color:#111827;"
+        f"font-family:'SFMono-Regular',Menlo,Consolas,monospace;\">{code}</span>"
+        "</div></div>"
+    )
     html = email_service.render_email(
         title="Giriş Kodunuz",
         body_html=(
-            f"<p>Merhaba,</p><p><b>{store.name}</b> hesabınıza giriş kodunuz:</p>"
-            f"<p style='font-size:32px;font-weight:800;letter-spacing:8px;"
-            f"text-align:center;margin:16px 0'>{code}</p>"
-            f"<p style='color:#6b7280;font-size:13px'>Kod 10 dakika geçerlidir. "
-            f"Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>"
+            f"<p>Merhaba,</p><p><b>{store.name}</b> hesabınıza giriş için tek kullanımlık kodunuz:</p>"
+            f"{_code_box}"
+            "<p style='color:#6b7280;font-size:13px;text-align:center;margin-top:4px'>Kod <b>10 dakika</b> geçerlidir.</p>"
+            "<p style='color:#9ca3af;font-size:12px'>Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz.</p>"
         ),
-        preheader="Tek kullanımlık giriş kodunuz",
+        preheader=f"{store.name} giriş kodunuz: {code}",
         emoji="🔑",
+        brand=store.name,
+        accent=_accent,
+        logo_url=_logo,
+        footer=f"{store.name} · Bu otomatik bir e-postadır.",
     )
     sent = email_service.send_email(customer.email, f"{store.name} giriş kodunuz: {code}", html)
     if not sent:
@@ -1638,3 +1668,94 @@ def account_address(
         customer.phone = body.phone
     db.commit()
     return {"default_address": customer.default_address}
+
+
+# ─── BERNZ Support — kurallı 7/24 asistan uçları ─────────────
+# AI değildir: sistem verisiyle (sipariş, katalog, ayarlar) çalışan kurallı
+# yanıtlar. Vitrindeki sohbet balonu bu uçları çağırır.
+
+class SupportOrderStatusIn(BaseModel):
+    email: str = Field(..., min_length=5, max_length=200)
+    order_no: str | None = Field(None, max_length=40)
+
+
+@router.post("/{store_slug}/support/order-status")
+def support_order_status(
+    store_slug: str,
+    body: SupportOrderStatusIn,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """E-postayla son siparişlerin durumu (en çok 3). Enumeration koruması:
+    e-posta kayıtlı olmasa da 200 + boş liste döner."""
+    from sqlalchemy import func as sql_func
+
+    from app.models import Order
+    from app.stages import stage_label
+
+    store = _resolve_store(db, store_slug)
+    email = body.email.strip().lower()
+    orders = db.scalars(
+        select(Order).where(
+            Order.store_id == store.id,
+            sql_func.lower(Order.customer_email) == email,
+        ).order_by(Order.created_at_platform.desc().nulls_last()).limit(3)
+    ).all()
+    if body.order_no:
+        num = body.order_no.strip().lstrip("#")
+        matched = [o for o in orders
+                   if str(o.order_number or "") == num or (o.name or "").lstrip("#") == num]
+        orders = matched or orders
+
+    sessions = db.execute(
+        select(CheckoutSession.order_id, CheckoutSession.lookup_token).where(
+            CheckoutSession.order_id.in_([o.id for o in orders] or [uuid.uuid4()]))
+    ).all()
+    token_map = {r[0]: r[1] for r in sessions}
+
+    out = []
+    for o in orders:
+        kargo = o.kargo_info or {}
+        out.append({
+            "name": o.name or (f"#{o.order_number}" if o.order_number else "Sipariş"),
+            "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "durum": "İptal" if o.is_iptal else stage_label(o.current_stage or 1),
+            "kargo_firma": kargo.get("handler_name"),
+            "takip_no": kargo.get("takip_no"),
+            "takip_url": kargo.get("takip_url"),
+            "lookup_token": token_map.get(o.id),
+        })
+    return {"orders": out}
+
+
+@router.get("/{store_slug}/support/model-check")
+def support_model_check(
+    store_slug: str,
+    q: str = "",
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """'Telefonuma uygun kılıf var mı?' — model adına göre aktif varyant arar."""
+    store = _resolve_store(db, store_slug)
+    term = (q or "").strip()
+    if len(term) < 2:
+        return {"models": []}
+    rows = db.execute(
+        select(CatalogVariant.model_display, CatalogProduct.title, CatalogProduct.slug)
+        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+        .where(
+            CatalogProduct.store_id == store.id,
+            CatalogProduct.status == "active",
+            CatalogVariant.is_active.is_(True),
+            CatalogVariant.model_display.ilike(f"%{term}%"),
+        ).limit(120)
+    ).all()
+    models: dict[str, dict] = {}
+    for model_display, p_title, p_slug in rows:
+        m = models.setdefault(model_display, {
+            "model": model_display, "product_count": 0,
+            "sample_title": p_title, "sample_slug": p_slug,
+        })
+        m["product_count"] += 1
+    return {"models": list(models.values())[:10]}

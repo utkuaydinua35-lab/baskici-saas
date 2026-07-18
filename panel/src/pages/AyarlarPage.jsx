@@ -13,6 +13,7 @@ const TABS = [
   { key: 'odeme', label: 'Ödeme', icon: '💳' },
   { key: 'eposta', label: 'E-posta', icon: '🔔' },
   { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
+  { key: 'destek', label: 'Destek', icon: '🎧' },
   { key: 'yayin', label: 'Yayın & Domain', icon: '🌐' },
   { key: 'yasal', label: 'Yasal', icon: '📄' },
 ]
@@ -259,6 +260,52 @@ export default function AyarlarPage() {
               onChange={set('tiktok_pixel_id')} placeholder="XXXXXXXXXXXXXXXXXX" />
           </Field>
         </div>
+      </Section>
+      )}
+
+      {tab === 'destek' && (
+      <Section title="BERNZ Support — 7/24 Asistan" icon="🎧">
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Vitrinin sağ altındaki sohbet balonu. Yapay zekâ DEĞİLDİR — sistem
+          verisiyle çalışır: sipariş durumunu e-postayla bulur, model uygunluğunu
+          katalogdan kontrol eder, kargo/iade sorularını yanıtlar. Aşağıya
+          ekleyeceğiniz sorular asistanın bilgi tabanına eklenir.
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={cfg.support_chat_enabled !== false}
+            onChange={e => setCfg(c => ({ ...c, support_chat_enabled: e.target.checked }))} />
+          Vitrinde destek balonunu göster
+        </label>
+        <div className="space-y-2">
+          {(cfg.support_faq || []).map((f, i) => (
+            <div key={i} className="border border-panel-border rounded-xl p-2.5 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input className="input flex-1" maxLength={200} value={f.q}
+                  placeholder="Soru — örn. Kılıflar hangi malzemeden?"
+                  onChange={e => setCfg(c => ({ ...c,
+                    support_faq: c.support_faq.map((x, j) => j === i ? { ...x, q: e.target.value } : x) }))} />
+                <button onClick={() => setCfg(c => ({ ...c,
+                  support_faq: c.support_faq.filter((_, j) => j !== i) }))}
+                  className="text-red-400 hover:text-red-400 text-sm">×</button>
+              </div>
+              <textarea className="input" rows={2} maxLength={2000} value={f.a}
+                placeholder="Asistanın vereceği yanıt"
+                onChange={e => setCfg(c => ({ ...c,
+                  support_faq: c.support_faq.map((x, j) => j === i ? { ...x, a: e.target.value } : x) }))} />
+            </div>
+          ))}
+          {(cfg.support_faq || []).length < 12 && (
+            <button onClick={() => setCfg(c => ({ ...c,
+              support_faq: [...(c.support_faq || []), { q: '', a: '' }] }))}
+              className="btn-ghost !py-1.5 text-xs w-full">+ Soru Ekle</button>
+          )}
+        </div>
+        <p className="text-[11px] text-panel-muted">
+          💡 Önerilen sorular: kılıf malzemesi/baskı kalitesi, kişiye özel tasarım
+          süreci, kapıda ödeme olup olmadığı, üretim süresi. Müşterileriniz sıkça
+          ne soruyorsa buraya ekleyin — asistan yazılan mesajı anahtar
+          kelimelerle bu listeden eşleştirir.
+        </p>
       </Section>
       )}
 

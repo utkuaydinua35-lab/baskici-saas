@@ -15,6 +15,7 @@ import CouponFromUrl from "@/components/CouponFromUrl";
 import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
 import CopyGuard from "@/components/CopyGuard";
+import SupportChat from "@/components/SupportChat";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
@@ -166,6 +167,10 @@ export default async function RootLayout({
           </footer>
           {theme.whatsapp?.enabled && theme.whatsapp.number && (
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
+          )}
+          {payload.support?.enabled !== false && (
+            <SupportChat faq={payload.support?.faq ?? []}
+              whatsappVisible={!!(theme.whatsapp?.enabled && theme.whatsapp.number)} />
           )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
           <CopyGuard />

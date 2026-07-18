@@ -42,10 +42,27 @@ _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
 }
-_BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled"}
+_BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled",
+              "support_chat_enabled"}
 # E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
 _EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok"}
-ALLOWED_KEYS = _MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS | {"email_texts"}
+ALLOWED_KEYS = (_MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
+                | {"email_texts", "support_faq"})
+
+
+def _sanitize_support_faq(value) -> list:
+    """Destek asistanı SSS listesi: [{q, a}] en fazla 12 madde."""
+    if not isinstance(value, list):
+        raise HTTPException(422, "support_faq liste olmalı")
+    out = []
+    for item in value[:12]:
+        if not isinstance(item, dict):
+            continue
+        q = str(item.get("q") or "").strip()[:200]
+        a = str(item.get("a") or "").strip()[:2000]
+        if q and a:
+            out.append({"q": q, "a": a})
+    return out
 
 
 def _sanitize_email_texts(value) -> dict:
@@ -130,12 +147,18 @@ def patch_settings(
                 value = str(Decimal(str(value)).quantize(Decimal("0.01")))
             except (InvalidOperation, ValueError):
                 raise HTTPException(422, f"Geçersiz tutar: {key}")
-        if key in _BOOL_KEYS:
+        # None "dokunulmadı" demektir — bool(None)=False'a zorlanırsa
+        # varsayılanı açık olan özellikler (destek balonu) istem dışı kapanır
+        if key in _BOOL_KEYS and value is not None:
             value = bool(value)
         if key == "email_texts" and value not in (None, ""):
             value = _sanitize_email_texts(value)
             if not value:
                 value = None  # tümü boşsa anahtarı sil
+        if key == "support_faq" and value not in (None, ""):
+            value = _sanitize_support_faq(value)
+            if not value:
+                value = None
         if value in (None, ""):
             config.pop(key, None)
         else:

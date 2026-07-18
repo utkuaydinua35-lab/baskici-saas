@@ -96,6 +96,18 @@ DEFAULT_THEME: dict = {
         "bxgy_progress": "🎁 {x} AL {y} ÖDE'den yararlanmak için sepetine {kalan} ürün daha ekle!",
         "bxgy_reached": "🎉 {x} AL {y} ÖDE kazandın — en ucuz ürünler bedava!",
     },
+    # Vitrin metin sözlüğü — sabit arayüz yazıları marka diliyle özelleştirilir
+    "texts": {
+        "add_to_cart": "Sepete Ekle",
+        "cart_empty": "Sepetiniz boş.",
+        "checkout_cta": "Ödemeye Geç",
+        "newsletter_title": "📮 Kampanyalardan haberdar olun",
+        "trust_ssl": "256-bit SSL güvenli ödeme",
+        "trust_shipping": "1-3 iş gününde kargo",
+        "trust_return": "Kolay iade ve değişim",
+        "fav_empty_title": "Favori listeniz boş",
+        "fav_empty_sub": "Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.",
+    },
 }
 
 FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
@@ -353,7 +365,7 @@ def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
     for key in ("colors", "announcement", "animations", "footer", "whatsapp",
-                "trust_badges", "cart_messages", "thankyou"):
+                "trust_badges", "cart_messages", "thankyou", "texts"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]
         if isinstance(value, dict):

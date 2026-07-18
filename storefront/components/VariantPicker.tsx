@@ -7,11 +7,13 @@ import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import type { ProductDetail } from "@/lib/api";
 import { trackAddToCart } from "@/lib/track";
+import { useTexts } from "@/lib/texts";
 
 const OTHER = "Diğer";
 
 export default function VariantPicker({ product }: { product: ProductDetail }) {
   const { addItem, setDrawerOpen } = useCart();
+  const t = useTexts();
   const [brand, setBrand] = useState<string>("");
   const [modelKey, setModelKey] = useState<string>("");
   const [variation, setVariation] = useState<string | null>(null);
@@ -309,7 +311,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
           className="flex-1 rounded-xl text-white font-medium py-3 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}
         >
-          {added ? "Sepete eklendi ✓" : "Sepete Ekle"}
+          {added ? "Sepete eklendi ✓" : t.add_to_cart}
         </button>
       </div>
       {!activeBrand && (

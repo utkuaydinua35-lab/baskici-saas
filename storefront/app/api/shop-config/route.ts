@@ -5,7 +5,7 @@ import { getThemePayload } from "@/lib/theme";
 export async function GET() {
   const payload = await getThemePayload();
   return NextResponse.json(
-    { settings: payload.settings ?? {} },
+    { settings: payload.settings ?? {}, texts: payload.theme?.texts ?? {} },
     { headers: { "Cache-Control": "public, max-age=60" } },
   );
 }

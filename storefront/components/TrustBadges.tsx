@@ -1,8 +1,10 @@
 "use client";
 
 // Güven şeridi — ürün sayfası ve ödeme sayfasında güvenlik/hizmet vurguları.
-// Ödeme rozeti mağazanın AKTİF sağlayıcısını gösterir (iyzico VEYA PayTR).
+// Ödeme rozeti mağazanın AKTİF sağlayıcısını gösterir (iyzico VEYA PayTR);
+// metinler panel Tema > Vitrin Metinleri'nden özelleştirilir.
 import { useEffect, useState } from "react";
+import { useTexts } from "@/lib/texts";
 
 function useProvider(): string {
   const [provider, setProvider] = useState("iyzico");
@@ -20,11 +22,12 @@ function useProvider(): string {
 
 export default function TrustBadges({ compact = false }: { compact?: boolean }) {
   const provider = useProvider();
+  const t = useTexts();
   const items = [
-    { icon: "🔒", text: "256-bit SSL güvenli ödeme" },
+    { icon: "🔒", text: t.trust_ssl },
     { icon: "💳", text: `${provider === "paytr" ? "PayTR" : "iyzico"} güvencesi` },
-    { icon: "🚚", text: "1-3 iş gününde kargo" },
-    { icon: "↩️", text: "Kolay iade ve değişim" },
+    { icon: "🚚", text: t.trust_shipping },
+    { icon: "↩️", text: t.trust_return },
   ];
   if (compact) {
     return (

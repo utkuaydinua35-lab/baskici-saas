@@ -548,6 +548,34 @@ export default function TemaEditorPage() {
               </Section>
               )}
 
+              {showGeneral && (
+              <Section title="Vitrin Metinleri" icon="📝">
+                <p className="text-[11px] text-panel-muted -mt-1">
+                  Sabit arayüz yazılarını marka dilinize göre düzenleyin — boş
+                  bırakılan alanda varsayılan metin kullanılır.
+                </p>
+                {[
+                  ['add_to_cart', 'Sepete Ekle butonu', 'Sepete Ekle'],
+                  ['checkout_cta', 'Ödemeye Geç butonu', 'Ödemeye Geç'],
+                  ['cart_empty', 'Boş sepet yazısı', 'Sepetiniz boş.'],
+                  ['newsletter_title', 'Bülten başlığı (footer)', '📮 Kampanyalardan haberdar olun'],
+                  ['trust_ssl', 'Güven rozeti: SSL', '256-bit SSL güvenli ödeme'],
+                  ['trust_shipping', 'Güven rozeti: kargo', '1-3 iş gününde kargo'],
+                  ['trust_return', 'Güven rozeti: iade', 'Kolay iade ve değişim'],
+                  ['fav_empty_title', 'Favoriler boş — başlık', 'Favori listeniz boş'],
+                  ['fav_empty_sub', 'Favoriler boş — açıklama', 'Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.'],
+                ].map(([key, label, ph]) => (
+                  <label key={key} className="block text-sm">
+                    <span className="text-panel-muted text-xs">{label}</span>
+                    <input className="input mt-1" maxLength={200}
+                      value={theme.texts?.[key] ?? ''}
+                      onChange={e => set(`texts.${key}`, e.target.value)}
+                      placeholder={ph} />
+                  </label>
+                ))}
+              </Section>
+              )}
+
               {/* ── Bölüm listesi — tıklanan bölüm tek-bölüm modunda açılır ── */}
               {showHome && (
               <Section title={`Anasayfa Bölümleri (${theme.sections.length})`} icon="🧱">

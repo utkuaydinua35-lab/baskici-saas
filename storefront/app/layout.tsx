@@ -134,7 +134,7 @@ export default async function RootLayout({
             <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-zinc-500 space-y-4">
               <div className="max-w-sm">
                 <div className="text-xs font-semibold text-zinc-700 mb-1.5">
-                  📮 Kampanyalardan haberdar olun
+                  {theme.texts?.newsletter_title || "📮 Kampanyalardan haberdar olun"}
                 </div>
                 <NewsletterForm />
               </div>

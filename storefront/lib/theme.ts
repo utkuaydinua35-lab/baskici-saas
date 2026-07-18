@@ -59,6 +59,7 @@ export interface Theme {
   announcement: { enabled: boolean; text: string; url: string };
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
+  texts?: Record<string, string>;
   footer: { about: string; instagram: string };
   nav_links?: { label: string; url?: string; type?: string; slugs?: string[] }[];
   whatsapp?: { enabled: boolean; number: string; message: string };

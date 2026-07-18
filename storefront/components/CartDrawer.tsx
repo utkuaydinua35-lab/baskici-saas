@@ -7,9 +7,11 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import { useAutoQuote } from "@/lib/useAutoQuote";
+import { useTexts } from "@/lib/texts";
 
 export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: string | null }) {
   const { items, subtotal, coupon, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
+  const t = useTexts();
   const freeOver = Number(freeShippingOver || 0);
   const remaining = freeOver > 0 ? Math.max(0, freeOver - subtotal) : 0;
   // Otomatik kampanya (3 al 2 öde vb.) çekmecede de görünmeli —
@@ -52,7 +54,7 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {items.length === 0 && (
-            <p className="text-sm text-zinc-500 text-center py-10">Sepetiniz boş.</p>
+            <p className="text-sm text-zinc-500 text-center py-10">{t.cart_empty}</p>
           )}
           {items.map((item) => (
             <div key={item.lineId ?? item.variantId} className="flex gap-3">
@@ -133,7 +135,7 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
             <Link href="/odeme" onClick={() => setDrawerOpen(false)}
               className="block text-center rounded-xl text-white font-medium py-3 transition hover:opacity-90"
               style={{ background: "var(--c-primary)" }}>
-              Ödemeye Geç
+              {t.checkout_cta}
             </Link>
             <Link href="/sepet" onClick={() => setDrawerOpen(false)}
               className="block text-center text-xs text-zinc-500 hover:underline">

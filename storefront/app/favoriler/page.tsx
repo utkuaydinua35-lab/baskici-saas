@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/format";
 import { readFavs, writeFavs, type FavItem } from "@/components/FavButton";
+import { useTexts } from "@/lib/texts";
 
 export default function FavoritesPage() {
   const [favs, setFavs] = useState<FavItem[] | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const t = useTexts();
 
   useEffect(() => {
     fetch("/api/account")
@@ -98,8 +100,8 @@ export default function FavoritesPage() {
     return (
       <div className="mx-auto max-w-xl px-4 py-20 text-center">
         <div className="text-5xl mb-3">🤍</div>
-        <h1 className="text-xl font-semibold">Favori listeniz boş</h1>
-        <p className="mt-2 text-sm text-zinc-500">Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.</p>
+        <h1 className="text-xl font-semibold">{t.fav_empty_title}</h1>
+        <p className="mt-2 text-sm text-zinc-500">{t.fav_empty_sub}</p>
         <Link href="/urunler"
           className="mt-6 inline-block rounded-xl text-white px-5 py-2.5 text-sm font-medium hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}>

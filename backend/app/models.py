@@ -1148,6 +1148,26 @@ class DealerTransaction(Base):
     dealer: Mapped["Dealer"] = relationship(back_populates="transactions")
 
 
+class WebAuthnCredential(Base):
+    """Kullanıcının geçiş anahtarı (passkey / WebAuthn). Parolasız giriş için."""
+    __tablename__ = "webauthn_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    credential_id: Mapped[str] = mapped_column(String(400), unique=True, index=True)  # base64url
+    public_key: Mapped[str] = mapped_column(Text)      # base64url COSE public key
+    sign_count: Mapped[int] = mapped_column(BigInteger, default=0)
+    transports: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Note(Base):
     """Siparis notlari (Apple Notes tarzi). Her magaza/bayii + tip (acik/gonderilmis) bir not.
     auto_content: siparislerden otomatik uretilir. manual_content: kullanici elle ekler (korunur).

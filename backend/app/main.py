@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.auth.router import router as auth_router
+from app.routers.passkey import router as passkey_router
 from app.config import get_settings
 from app.routers.designs import router as designs_router
 from app.routers.studio import router as studio_router
@@ -85,6 +86,7 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────
 app.include_router(auth_router)
+app.include_router(passkey_router)
 app.include_router(stores_router)
 app.include_router(orders_router)
 app.include_router(order_detail_router)

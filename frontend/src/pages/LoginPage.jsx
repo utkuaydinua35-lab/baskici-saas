@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { passkeySupported } from '../lib/webauthn'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 
@@ -54,7 +55,7 @@ function AuthShell({ children }) {
 const CARD_CLS = "rounded-2xl border border-white/10 bg-brand-card/70 backdrop-blur-xl p-6 shadow-2xl"
 
 export default function LoginPage() {
-  const { login, verifyTwoFactor } = useAuth()
+  const { login, loginWithPasskey, verifyTwoFactor } = useAuth()
   const navigate = useNavigate()
 
   const [email, setEmail] = useState('')
@@ -88,6 +89,18 @@ export default function LoginPage() {
       navigate('/profil-sec', { replace: true })
     } catch (err) {
       setError(err.detail || 'Kod doğrulanamadı')
+    } finally { setLoading(false) }
+  }
+
+  const handlePasskey = async () => {
+    setError(''); setLoading(true)
+    try {
+      await loginWithPasskey()
+      navigate('/profil-sec', { replace: true })
+    } catch (err) {
+      const m = err?.detail || err?.message || ''
+      if (/aborterror|notallowed|cancel/i.test(m)) setError('')  // kullanıcı vazgeçti
+      else setError(m || 'Geçiş anahtarı ile giriş başarısız')
     } finally { setLoading(false) }
   }
 
@@ -170,6 +183,13 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 relative overflow-hidden">
           {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
         </button>
+
+        {passkeySupported() && (
+          <button type="button" onClick={handlePasskey} disabled={loading}
+            className="btn-secondary w-full !py-2.5 flex items-center justify-center gap-2">
+            🔑 Geçiş anahtarı ile giriş
+          </button>
+        )}
 
         <div className="text-center">
           <Link to="/sifre-unuttum" className="text-xs text-gray-500 hover:text-accent transition-colors">

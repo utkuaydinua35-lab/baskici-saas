@@ -175,6 +175,7 @@ function AccountTab() {
   const { user, refresh } = useAuth()
   const [showPw, setShowPw] = useState(false)
   const [show2fa, setShow2fa] = useState(false)
+  const [showPasskey, setShowPasskey] = useState(false)
   const twoFaOn = !!user?.totp_enabled
   return (
     <div className="space-y-4 animate-fadein">
@@ -195,11 +196,13 @@ function AccountTab() {
               {twoFaOn ? 'Açık' : 'Kapalı'}
             </span>
           </button>
+          <button onClick={() => setShowPasskey(true)} className="btn-secondary !text-sm">🔑 Geçiş Anahtarları</button>
         </div>
       </div>
       <NotificationsCard />
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
       {show2fa && <TwoFactorModal enabled={twoFaOn} onClose={() => setShow2fa(false)} onChanged={refresh} />}
+      {showPasskey && <PasskeyModal onClose={() => setShowPasskey(false)} />}
     </div>
   )
 }
@@ -331,6 +334,59 @@ function ChangePasswordModal({ onClose }) {
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Geçiş anahtarları (passkey / WebAuthn) — listele, ekle, sil
+function PasskeyModal({ onClose }) {
+  const [list, setList] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const load = async () => {
+    try { setList(await api.get('/api/auth/passkey')) } catch (e) { setErr(e.detail || 'Yüklenemedi'); setList([]) }
+  }
+  useEffect(() => { load() }, [])
+  const add = async () => {
+    setErr(''); setBusy(true)
+    try {
+      const name = (prompt('Bu cihaz için bir ad (örn. "MacBook Touch ID"):') || 'Passkey').trim()
+      const { registerPasskey } = await import('../lib/webauthn')
+      await registerPasskey(name || 'Passkey')
+      load()
+    } catch (e) {
+      const m = e?.detail || e?.message || ''
+      if (!/aborterror|notallowed|cancel/i.test(m)) setErr(m || 'Passkey eklenemedi')
+    } finally { setBusy(false) }
+  }
+  const del = async (id) => {
+    if (!confirm('Bu geçiş anahtarı silinsin mi?')) return
+    try { await api.del(`/api/auth/passkey/${id}`); load() } catch (e) { setErr(e.detail || 'Silinemedi') }
+  }
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-md p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-semibold text-gray-100">🔑 Geçiş Anahtarları</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">Parolasız giriş için cihaz biyometrini (Touch ID / Windows Hello / telefon) kullan. Giriş ekranında “🔑 Geçiş anahtarı ile giriş” ile açılır.</p>
+        {err && <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-3">{err}</div>}
+        <div className="space-y-1.5 mb-3">
+          {list === null ? <div className="text-sm text-gray-500 py-3 text-center">Yükleniyor…</div>
+            : list.length === 0 ? <div className="text-sm text-gray-600 py-3 text-center">Henüz geçiş anahtarı yok.</div>
+            : list.map(p => (
+              <div key={p.id} className="flex items-center justify-between bg-brand-input/40 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm text-gray-200 truncate">{p.name}</div>
+                  <div className="text-[10px] text-gray-600">Eklendi: {p.created_at ? new Date(p.created_at).toLocaleDateString('tr-TR') : '—'}{p.last_used_at ? ` · Son giriş: ${new Date(p.last_used_at).toLocaleDateString('tr-TR')}` : ''}</div>
+                </div>
+                <button onClick={() => del(p.id)} className="text-gray-500 hover:text-red-400 text-sm shrink-0 ml-2">Sil</button>
+              </div>
+            ))}
+        </div>
+        <button onClick={add} disabled={busy} className="btn-primary w-full !text-sm disabled:opacity-50">{busy ? 'Bekleniyor…' : '＋ Geçiş anahtarı ekle'}</button>
       </div>
     </div>
   )

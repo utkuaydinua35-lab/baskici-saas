@@ -73,6 +73,18 @@ export function AuthProvider({ children }) {
     return me
   }
 
+  // Geçiş anahtarı (passkey) ile parolasız giriş → JWT
+  const loginWithPasskey = async () => {
+    setError('')
+    const { loginPasskey } = await import('./webauthn')
+    const data = await loginPasskey()
+    setToken(data.access_token)
+    const me = await api.get('/api/auth/me')
+    setUser(me.user)
+    setTenant(me.tenant)
+    return me
+  }
+
   // Login'in 2. adımı: mfa_token + authenticator kodu (veya yedek kod) → JWT
   const verifyTwoFactor = async (mfaToken, code) => {
     const data = await api.post('/api/auth/2fa/verify-login', { mfa_token: mfaToken, code })
@@ -130,7 +142,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, verifyTwoFactor, register, logout, refresh, selectProfile }}>
+    <AuthContext.Provider value={{ user, tenant, loading, error, setError, login, loginWithPasskey, verifyTwoFactor, register, logout, refresh, selectProfile }}>
       {children}
     </AuthContext.Provider>
   )

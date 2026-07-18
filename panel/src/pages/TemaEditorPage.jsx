@@ -186,7 +186,10 @@ export default function TemaEditorPage() {
       const next = structuredClone(t)
       const keys = path.split('.')
       let obj = next
-      for (const k of keys.slice(0, -1)) obj = obj[k]
+      for (const k of keys.slice(0, -1)) {
+        if (obj[k] == null || typeof obj[k] !== 'object') obj[k] = {}
+        obj = obj[k]
+      }
       obj[keys[keys.length - 1]] = value
       return next
     })
@@ -255,10 +258,15 @@ export default function TemaEditorPage() {
   const pageScope = previewPath === '/' ? 'home'
     : previewPath.startsWith('/sepet') ? 'sepet'
     : previewPath.startsWith('/odeme/sonuc') ? 'tesekkur'
+    : previewPath.startsWith('/koleksiyon/') ? 'koleksiyon'
     : 'genel'
   const showHome = pageScope === 'home'          // anasayfa bölüm listesi
   const showGeneral = pageScope !== 'tesekkur' && pageScope !== 'sepet'  // marka/menü/footer…
   const showCart = pageScope === 'home' || pageScope === 'sepet'
+  // Önizlenen koleksiyonun slug'ı — sayfa bazlı içerik bloğu bu anahtarla saklanır
+  const collectionSlug = pageScope === 'koleksiyon'
+    ? previewPath.replace('/koleksiyon/', '').split('?')[0] : null
+  const collectionBlock = collectionSlug ? (theme.collection_pages?.[collectionSlug] || {}) : {}
 
   return (
     <div className="h-screen flex flex-col bg-panel-input/40">
@@ -425,6 +433,37 @@ export default function TemaEditorPage() {
                   <p className="text-[11px] text-panel-muted">
                     Onay e-postasının metinleri Ayarlar → E-posta sekmesinden düzenlenir.
                   </p>
+                </Section>
+              )}
+
+              {pageScope === 'koleksiyon' && collectionSlug && (
+                <Section title="Bu Koleksiyon Sayfası" icon="📄">
+                  <p className="text-[11px] text-panel-muted -mt-1">
+                    Yalnızca <b>{collectionSlug}</b> sayfasında görünen içerik bloğu —
+                    örn. kılıf takma rehberi görseli. Kapak görseli ve açıklama
+                    Koleksiyonlar sayfasından düzenlenir.
+                  </p>
+                  <AssetField label="Blok görseli (ops.)" current={collectionBlock.image}
+                    onUpload={f => uploadAsset('hero', f,
+                      url => set(`collection_pages.${collectionSlug}.image`, url))}
+                    onClear={() => set(`collection_pages.${collectionSlug}.image`, null)} />
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs">Blok metni (ops.)</span>
+                    <textarea className="input mt-1" rows={4} maxLength={4000}
+                      value={collectionBlock.body || ''}
+                      onChange={e => set(`collection_pages.${collectionSlug}.body`, e.target.value)}
+                      placeholder="Bu koleksiyona özel tanıtım / kullanım rehberi metni…" />
+                  </label>
+                  <div className="flex gap-2 text-xs items-center">
+                    <span className="text-panel-muted">Konum:</span>
+                    {[['ust', 'Ürünlerin üstünde'], ['alt', 'Ürünlerin altında']].map(([v, l]) => (
+                      <button key={v}
+                        onClick={() => set(`collection_pages.${collectionSlug}.position`, v)}
+                        className={`px-2.5 py-1 rounded-full border ${(collectionBlock.position || 'ust') === v
+                          ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
+                          : 'border-panel-border text-panel-muted'}`}>{l}</button>
+                    ))}
+                  </div>
                 </Section>
               )}
 

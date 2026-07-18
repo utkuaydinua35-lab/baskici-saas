@@ -96,6 +96,9 @@ DEFAULT_THEME: dict = {
         "bxgy_progress": "🎁 {x} AL {y} ÖDE'den yararlanmak için sepetine {kalan} ürün daha ekle!",
         "bxgy_reached": "🎉 {x} AL {y} ÖDE kazandın — en ucuz ürünler bedava!",
     },
+    # Sayfa bazlı içerik — koleksiyon sayfalarına özel blok (tutorial görseli
+    # + metin; ürün listesinin üstünde ya da altında). {slug: {image, body, position}}
+    "collection_pages": {},
     # Vitrin metin sözlüğü — sabit arayüz yazıları marka diliyle özelleştirilir
     "texts": {
         "add_to_cart": "Sepete Ekle",
@@ -370,6 +373,23 @@ def validate_theme_patch(patch: dict) -> dict:
         default = DEFAULT_THEME[key]
         if isinstance(value, dict):
             cleaned[key] = {k: v for k, v in value.items() if k in default}
+    # Sayfa bazlı koleksiyon blokları — anahtar slug olduğundan genel
+    # döngüdeki "bilinen anahtar" filtresine giremez, ayrı temizlenir
+    if isinstance(patch.get("collection_pages"), dict):
+        pages = {}
+        for slug, blk in list(patch["collection_pages"].items())[:50]:
+            if not isinstance(blk, dict):
+                continue
+            body = str(blk.get("body") or "").strip()[:4000]
+            image = blk.get("image")
+            if not body and not image:
+                continue   # boş blok saklanmaz
+            pages[str(slug)[:200]] = {
+                "image": str(image)[:500] if image else None,
+                "body": body,
+                "position": "alt" if blk.get("position") == "alt" else "ust",
+            }
+        cleaned["collection_pages"] = pages
     for key in ("font", "logo_url", "favicon_url"):
         if key in patch:
             cleaned[key] = patch[key]

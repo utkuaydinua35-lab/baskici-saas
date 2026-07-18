@@ -60,6 +60,7 @@ export interface Theme {
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   texts?: Record<string, string>;
+  collection_pages?: Record<string, { image?: string | null; body?: string; position?: string }>;
   footer: { about: string; instagram: string };
   nav_links?: { label: string; url?: string; type?: string; slugs?: string[] }[];
   whatsapp?: { enabled: boolean; number: string; message: string };
@@ -82,6 +83,7 @@ export interface ThemePayload {
     buy_x?: number | null; pay_y?: number | null }[] | null;
   has_blog?: boolean;
   password_protected?: boolean;
+  support?: { enabled: boolean; faq: { q: string; a: string }[] } | null;
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };
 }
 

@@ -3,8 +3,28 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCollections, getProducts } from "@/lib/api";
+import { getThemePayload } from "@/lib/theme";
 import ProductCard from "@/components/ProductCard";
 import FilterBar from "@/components/FilterBar";
+
+// Sayfaya özel içerik bloğu — panel Tema editöründen koleksiyon başına
+// tanımlanır (tutorial görseli + metin; listenin üstünde veya altında).
+function PageBlock({ block, title }: {
+  block: { image?: string | null; body?: string; position?: string };
+  title: string;
+}) {
+  return (
+    <div className="my-6 space-y-3">
+      {block.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={block.image} alt={title} className="w-full rounded-2xl border border-zinc-200" />
+      )}
+      {block.body && (
+        <p className="text-sm text-zinc-600 whitespace-pre-line max-w-3xl">{block.body}</p>
+      )}
+    </div>
+  );
+}
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
 
@@ -27,13 +47,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function CollectionPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { sirala, marka, min, max } = (await searchParams) ?? {};
-  const [collections, data] = await Promise.all([
+  const [collections, data, { theme }] = await Promise.all([
     getCollections(),
     getProducts({ collection: slug, sort: sirala, brand: marka, minPrice: min, maxPrice: max }),
+    getThemePayload(),
   ]);
   const collection = collections.find((c) => c.slug === slug);
   if (!collection) notFound();
   const items = data?.items ?? [];
+  const pageBlock = theme.collection_pages?.[slug];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -64,6 +86,10 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         </>
       )}
 
+      {pageBlock && pageBlock.position !== "alt" && (
+        <PageBlock block={pageBlock} title={collection.title} />
+      )}
+
       <div className="mt-5">
         <Suspense>
           <FilterBar brands={data?.facets?.brands ?? []} basePath={`/koleksiyon/${slug}`} />
@@ -80,6 +106,10 @@ export default async function CollectionPage({ params, searchParams }: Props) {
             <ProductCard key={p.slug} product={p} />
           ))}
         </div>
+      )}
+
+      {pageBlock && pageBlock.position === "alt" && (
+        <PageBlock block={pageBlock} title={collection.title} />
       )}
     </div>
   );

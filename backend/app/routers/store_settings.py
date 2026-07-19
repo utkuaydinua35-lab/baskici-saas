@@ -442,11 +442,14 @@ async def upload_asset(
 @router.post("/{store_id}/verify-domain", response_model=dict)
 def verify_domain(
     store_id: uuid.UUID,
+    body: dict | None = None,
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
     """custom_domain'in DNS A kaydını sunucu IP'siyle karşılaştır.
 
+    Panel forma yazılan (henüz kaydedilmemiş) domaini body.domain ile
+    gönderir — kullanıcı Kaydet'e basmadan da doğrulayabilsin.
     DNS yayılımı saatler sürebilir — başarısızlık 'yanlış kayıt' anlamına
     gelmeyebilir; mesaj bunu dürüstçe söyler.
     """
@@ -456,9 +459,10 @@ def verify_domain(
     from app.config import get_settings
 
     store = _get_store(db, user, store_id)
-    domain = ((store.config or {}).get("custom_domain") or "").strip().lower()
+    domain = (str((body or {}).get("domain") or "")
+              or (store.config or {}).get("custom_domain") or "").strip().lower()
     if not domain:
-        raise HTTPException(422, "Önce Ayarlar'dan özel alan adını kaydedin")
+        raise HTTPException(422, "Önce yukarıya alan adınızı yazın")
 
     expected_ip = (get_settings().server_ip or "").strip()
     try:
@@ -541,6 +545,9 @@ def put_pages(
             "slug": slug,
             "title": title,
             "content": str(page.get("content") or "")[:20_000],
+            # Sayfaya özel görseller (tutorial vb.) — içeriğin üstünde gösterilir
+            "images": [str(u)[:500] for u in (page.get("images") or [])[:4]
+                       if isinstance(u, str) and u.startswith("/storage/")],
         })
 
     config = dict(store.config or {})

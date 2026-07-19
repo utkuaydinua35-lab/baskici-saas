@@ -29,7 +29,7 @@ export const SECTION_TYPES = {
 }
 
 export const SECTION_DEFAULTS = {
-  hero_slider: { slides: [], autoplay_sec: 5 },
+  hero_slider: { slides: [], autoplay_sec: 5, radius_scope: 'both', radius_pct: 50 },
   featured_collections: { title: 'Koleksiyonlar', slugs: [] },
   products_grid: { title: 'Öne Çıkanlar', collection: null, limit: 8 },
   featured_products: { title: 'Öne Çıkan Ürünler', slugs: [] },
@@ -75,6 +75,32 @@ export function UrlPicker({ value, onChange, collections = [], products = [], pa
         <input className="input" value={value || ''}
           onChange={e => onChange(e.target.value)} placeholder="/sayfa/hakkimizda veya https://…" />
       )}
+    </div>
+  )
+}
+
+// Köşe ovalleştirme paneli — hero ve banner çerçeveleri için ortak.
+function RadiusControl({ s, patch }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-panel-muted text-xs">Köşe ovalleştirme</span>
+      <div className="flex gap-2 items-center">
+        <select className="input !w-auto" value={s.radius_scope || 'both'}
+          onChange={e => patch({ radius_scope: e.target.value })}>
+          <option value="both">Açık (her yerde)</option>
+          <option value="mobile">Yalnız mobil</option>
+          <option value="desktop">Yalnız masaüstü</option>
+          <option value="none">Kapalı (köşeli)</option>
+        </select>
+        {(s.radius_scope || 'both') !== 'none' && (
+          <label className="flex items-center gap-1.5 text-xs text-panel-muted">
+            <input className="input !w-20" type="number" min="0" max="100"
+              value={s.radius_pct ?? 50}
+              onChange={e => patch({ radius_pct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+            % ovallik
+          </label>
+        )}
+      </div>
     </div>
   )
 }
@@ -132,6 +158,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             Slayt eklemezseniz sade bir karşılama metni gösterilir.
           </p>
         )}
+        <RadiusControl s={s} patch={patch} />
       </>
     )
   }
@@ -498,26 +525,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           onClear={() => patch({ image: null })} />
         <UrlPicker value={s.url} collections={collections} products={products} pages={pages}
           placeholder="Tıklanınca gidilecek hedef (ops.)" onChange={url => patch({ url })} />
-        <div className="space-y-1.5">
-          <span className="text-panel-muted text-xs">Köşe ovalleştirme</span>
-          <div className="flex gap-2 items-center">
-            <select className="input !w-auto" value={s.radius_scope || 'both'}
-              onChange={e => patch({ radius_scope: e.target.value })}>
-              <option value="both">Açık (her yerde)</option>
-              <option value="mobile">Yalnız mobil</option>
-              <option value="desktop">Yalnız masaüstü</option>
-              <option value="none">Kapalı (köşeli)</option>
-            </select>
-            {(s.radius_scope || 'both') !== 'none' && (
-              <label className="flex items-center gap-1.5 text-xs text-panel-muted">
-                <input className="input !w-20" type="number" min="0" max="100"
-                  value={s.radius_pct ?? 50}
-                  onChange={e => patch({ radius_pct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
-                % ovallik
-              </label>
-            )}
-          </div>
-        </div>
+        <RadiusControl s={s} patch={patch} />
       </>
     )
   }

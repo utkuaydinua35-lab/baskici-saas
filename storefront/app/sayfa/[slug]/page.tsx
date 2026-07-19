@@ -9,6 +9,7 @@ interface CustomPage {
   slug: string;
   title: string;
   content: string;
+  images?: string[];
 }
 
 async function getPage(pageSlug: string): Promise<CustomPage | null> {
@@ -43,6 +44,16 @@ export default async function CustomPageView({ params }: Props) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-2xl font-bold">{page.title}</h1>
+      {/* Sayfaya özel görseller (panelden yüklenir — örn. tutorial) */}
+      {(page.images ?? []).length > 0 && (
+        <div className="mt-6 space-y-4">
+          {page.images!.map((url) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={url} src={url} alt={page.title}
+              className="w-full rounded-2xl border border-zinc-200" />
+          ))}
+        </div>
+      )}
       <div className="mt-6 text-sm text-zinc-700 leading-relaxed whitespace-pre-line">
         {page.content}
       </div>

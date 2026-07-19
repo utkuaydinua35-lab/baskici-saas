@@ -111,30 +111,54 @@ export default function UrunlerPage() {
           onDone={() => { setShowBulkSet(false); setChecked(new Set()); load() }} />
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map(p => (
-          <div key={p.id} onClick={() => navigate(`/urunler/${p.id}`)}
-            className="relative text-left card !p-0 overflow-hidden hover:shadow-md hover:border-panel-accent/40 transition cursor-pointer">
-            <input type="checkbox" checked={checked.has(p.id)}
-              onClick={e => toggleCheck(p.id, e)} onChange={() => {}}
-              className="absolute top-2 left-2 z-10 w-4 h-4 accent-emerald-600 bg-panel-card rounded" />
-            <div className="aspect-square bg-panel-input flex items-center justify-center">
-              {p.cover_image
-                ? <img src={p.cover_image} alt={p.title} className="w-full h-full object-cover" />
-                : <span className="text-3xl opacity-30">🖼️</span>}
-            </div>
-            <div className="p-3">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm truncate">{p.title}</span>
-                <StatusBadge status={p.status} />
-              </div>
-              <div className="text-xs text-panel-muted mt-1">
-                {fmtPrice(p.base_price)} · {p.variant_count} varyant
-              </div>
-            </div>
-          </div>
-        ))}
+      {/* Shopify tarzı liste görünümü — satır tıklanınca detaya gider */}
+      {products.length > 0 && (
+      <div className="card !p-0 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="text-panel-muted bg-panel-input text-xs">
+            <tr>
+              <th className="w-10 px-3 py-2.5">
+                <input type="checkbox" aria-label="Tümünü seç"
+                  checked={checked.size === products.length && products.length > 0}
+                  onChange={() => setChecked(
+                    checked.size === products.length
+                      ? new Set() : new Set(products.map(p => p.id)))}
+                  className="w-4 h-4 accent-emerald-600 align-middle" />
+              </th>
+              <th className="text-left px-2 py-2.5 font-medium">Ürün</th>
+              <th className="text-left px-3 py-2.5 font-medium">Durum</th>
+              <th className="text-right px-3 py-2.5 font-medium">Fiyat</th>
+              <th className="text-right px-3 py-2.5 font-medium">Varyant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map(p => (
+              <tr key={p.id} onClick={() => navigate(`/urunler/${p.id}`)}
+                className="border-t border-panel-border hover:bg-panel-input/50 transition cursor-pointer">
+                <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={checked.has(p.id)}
+                    onClick={e => toggleCheck(p.id, e)} onChange={() => {}}
+                    className="w-4 h-4 accent-emerald-600 align-middle" />
+                </td>
+                <td className="px-2 py-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-lg bg-panel-input overflow-hidden shrink-0 flex items-center justify-center">
+                      {p.cover_image
+                        ? <img src={p.cover_image} alt={p.title} className="w-full h-full object-cover" />
+                        : <span className="opacity-30">🖼️</span>}
+                    </div>
+                    <span className="font-medium truncate">{p.title}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2"><StatusBadge status={p.status} /></td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtPrice(p.base_price)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-panel-muted">{p.variant_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      )}
       {!loading && products.length === 0 && (
         <div className="card text-center !p-10">
           <div className="text-3xl">🛍️</div>
@@ -651,11 +675,23 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
   const [newBrand, setNewBrand] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [collapsed, setCollapsed] = useState({})    // {marka: true} — kısaltılmış gruplar
+  const [brandEdit, setBrandEdit] = useState(null)  // {old, value} — ana varyant adı düzenleme
 
   // Ana varyant (marka) → alt varyantlar (modeller) gruplaması
   const brands = [...new Set(items.map(r => r.brand || 'Diğer'))]
 
   const patchRow = (i, p) => setItems(rows => rows.map((r, j) => j === i ? { ...r, ...p } : r))
+
+  const commitBrandRename = () => {
+    if (!brandEdit) return
+    const { old, value } = brandEdit
+    setBrandEdit(null)
+    const next = value.trim()
+    if (!next || next === old) return
+    setItems(rows => rows.map(r => (r.brand || 'Diğer') === old ? { ...r, brand: next } : r))
+    setCollapsed(c => { const n = { ...c }; if (old in n) { n[next] = n[old]; delete n[old] } return n })
+  }
 
   const addBrand = () => {
     const b = newBrand.trim()
@@ -721,7 +757,25 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
             return (
               <div key={brand} className="space-y-1.5">
                 <div className="flex items-center gap-2 text-xs font-semibold text-panel-muted uppercase tracking-wide">
-                  📱 {brand}
+                  <button type="button" onClick={() => setCollapsed(c => ({ ...c, [brand]: !c[brand] }))}
+                    className="flex items-center gap-1.5 hover:text-panel-ink"
+                    title={collapsed[brand] ? 'Grubu aç' : 'Grubu kısalt'}>
+                    <span className="inline-block w-3 text-center">{collapsed[brand] ? '▸' : '▾'}</span>
+                    📱 {brandEdit?.old === brand ? null : brand}
+                  </button>
+                  {brandEdit?.old === brand ? (
+                    <input autoFocus className="input !py-0.5 !px-1.5 !w-36 text-xs normal-case font-normal"
+                      value={brandEdit.value}
+                      onChange={e => setBrandEdit({ ...brandEdit, value: e.target.value })}
+                      onBlur={commitBrandRename}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitBrandRename() }
+                        if (e.key === 'Escape') setBrandEdit(null)
+                      }} />
+                  ) : (
+                    <button type="button" onClick={() => setBrandEdit({ old: brand, value: brand === 'Diğer' ? '' : brand })}
+                      className="normal-case font-normal hover:text-panel-accent" title="Ana varyant adını düzenle">✎</button>
+                  )}
                   <span className="font-normal normal-case">({groupRows.length} model)</span>
                   <button type="button" onClick={() => addModelTo(brand)}
                     className="ml-auto text-emerald-300 normal-case font-normal hover:underline">+ model</button>
@@ -729,7 +783,7 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
                     onClick={() => setItems(rows => rows.filter(r => (r.brand || 'Diğer') !== brand))}
                     className="text-red-400 hover:text-red-400 normal-case font-normal">markayı sil</button>
                 </div>
-                {groupRows.map(([r, i]) => (
+                {!collapsed[brand] && groupRows.map(([r, i]) => (
                   <div key={i} className="flex gap-1.5 pl-3">
                     <input className="input !py-1.5 text-xs flex-1" value={r.model_display || ''}
                       onChange={e => patchRow(i, { model_display: e.target.value, model_key: trSlug(e.target.value) })}

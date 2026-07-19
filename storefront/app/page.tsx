@@ -25,7 +25,8 @@ export default async function HomePage() {
           case "hero_slider":
             return (
               <HeroSlider key={section.id} slides={s.slides ?? []}
-                autoplaySec={s.autoplay_sec ?? 5} />
+                autoplaySec={s.autoplay_sec ?? 5}
+                radius_scope={s.radius_scope} radius_pct={s.radius_pct} />
             );
           case "featured_collections":
             return (

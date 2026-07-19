@@ -114,7 +114,10 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     const slug = await getStoreSlug();
     let preview = false;
     try {
-      preview = (await cookies()).get("vitrin_onizleme")?.value === "1";
+      // Çerez VEYA middleware'in eklediği header (ilk istekte çerez yoktur)
+      const { headers } = await import("next/headers");
+      preview = (await cookies()).get("vitrin_onizleme")?.value === "1"
+        || (await headers()).get("x-vitrin-onizleme") === "1";
     } catch { /* statik render */ }
     const res = await fetch(
       `${BACKEND_URL}/api/shop/${slug}/theme${preview ? "?preview=1" : ""}`,

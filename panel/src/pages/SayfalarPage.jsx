@@ -70,8 +70,23 @@ export default function SayfalarPage() {
     JSON.stringify([legal, pages]) !== initialRef.current
 
   const addPage = () => {
-    setPages(p => [...p, { slug: '', title: 'Yeni Sayfa', content: '' }])
+    setPages(p => [...p, { slug: '', title: 'Yeni Sayfa', content: '', images: [] }])
     setOpenIdx(pages.length)
+  }
+
+  // Sayfaya özel görsel (tutorial vb.) — tema asset deposuna yüklenir
+  const uploadPageImage = async (i, file) => {
+    if (!file) return
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'page')
+      const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
+      setPages(p => p.map((pg, j) => j === i
+        ? { ...pg, images: [...(pg.images || []), r.url].slice(0, 4) } : pg))
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Görsel yüklenemedi')
+    }
   }
   const patchPage = (i, patch) =>
     setPages(p => p.map((pg, j) => j === i ? { ...pg, ...patch } : pg))
@@ -169,6 +184,29 @@ export default function SayfalarPage() {
                       onChange={e => patchPage(i, { slug: e.target.value })}
                       placeholder="hakkimizda" />
                   </label>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-panel-muted text-xs">
+                    Sayfa görselleri (en fazla 4 — içeriğin üstünde gösterilir; örn. tutorial)
+                  </span>
+                  <div className="flex gap-2 flex-wrap">
+                    {(pg.images || []).map((url, gi) => (
+                      <div key={url} className="relative">
+                        <img src={url} alt="" className="h-20 rounded-lg border border-panel-border object-cover" />
+                        <button onClick={() => patchPage(i, {
+                          images: pg.images.filter((_, k) => k !== gi) })}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs leading-none">×</button>
+                      </div>
+                    ))}
+                    {(pg.images || []).length < 4 && (
+                      <label className="h-20 w-20 border border-dashed border-panel-border rounded-lg
+                        flex items-center justify-center text-xl text-panel-muted cursor-pointer hover:border-panel-accent">
+                        +
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={e => { uploadPageImage(i, e.target.files?.[0]); e.target.value = '' }} />
+                      </label>
+                    )}
+                  </div>
                 </div>
                 <textarea className="input" rows={8} maxLength={20000} value={pg.content}
                   onChange={e => patchPage(i, { content: e.target.value })}

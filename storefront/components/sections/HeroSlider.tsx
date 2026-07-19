@@ -9,10 +9,21 @@ import type { HeroSlide } from "@/lib/theme";
 export default function HeroSlider({
   slides,
   autoplaySec = 5,
+  radius_scope = "both",
+  radius_pct = 50,
 }: {
   slides: HeroSlide[];
   autoplaySec?: number;
+  radius_scope?: "both" | "mobile" | "desktop" | "none";
+  radius_pct?: number;
 }) {
+  // Çerçeve köşe ovalliği panelden ayarlanır (%0-100 → 0-48px; kapalı = köşeli)
+  const radiusPx = Math.round(Math.max(0, Math.min(100, radius_pct)) * 0.48);
+  const roundCls =
+    radius_scope === "none" || radiusPx === 0 ? "rounded-none"
+    : radius_scope === "mobile" ? "rounded-[var(--hero-r)] sm:rounded-none"
+    : radius_scope === "desktop" ? "rounded-none sm:rounded-[var(--hero-r)]"
+    : "rounded-[var(--hero-r)]";
   const [index, setIndex] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const count = slides.length;
@@ -51,7 +62,8 @@ export default function HeroSlider({
   }
 
   return (
-    <section className="relative overflow-hidden rounded-3xl mx-auto max-w-6xl mt-4">
+    <section className={`relative overflow-hidden mx-auto max-w-6xl mt-4 ${roundCls}`}
+      style={{ "--hero-r": `${radiusPx}px` } as React.CSSProperties}>
       {/* Slayt şeridi — yatay kaydırma animasyonu */}
       <div
         className="flex transition-transform duration-700 ease-out"

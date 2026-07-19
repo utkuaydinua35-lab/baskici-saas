@@ -145,16 +145,8 @@ export default async function ProductPage({ params }: Props) {
               </div>
             )
           )}
-          {product.tags && (
-            <div className="mt-5 flex gap-1.5 flex-wrap">
-              {product.tags.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 8).map((t) => (
-                <Link key={t} href={`/urunler?etiket=${encodeURIComponent(t)}`}
-                  className="text-[11px] px-2.5 py-1 rounded-full border border-zinc-300 text-zinc-600 hover:border-zinc-500">
-                  🏷 {t}
-                </Link>
-              ))}
-            </div>
-          )}
+          {/* Etiket rozetleri kaldırıldı (istek üzerine) — etiketler yalnız
+              filtre/arama için kullanılır, müşteriye gösterilmez */}
           <div className="mt-5">
             <ShareButtons title={product.title} />
           </div>

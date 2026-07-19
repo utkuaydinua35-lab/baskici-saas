@@ -178,7 +178,15 @@ def list_products(
     else:
         query = query.order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
     if q:
-        query = query.where(CatalogProduct.title.ilike(f"%{q}%"))
+        # Başlık VEYA varyant modeli eşleşsin — müşteri "iPhone 13" yazınca
+        # o modele sahip tüm ürünler listelenir (başlıkta geçmese bile)
+        variant_match = select(CatalogVariant.id).where(
+            CatalogVariant.product_id == CatalogProduct.id,
+            CatalogVariant.is_active.is_(True),
+            CatalogVariant.model_display.ilike(f"%{q}%"),
+        ).exists()
+        query = query.where(
+            CatalogProduct.title.ilike(f"%{q}%") | variant_match)
     if min_price is not None:
         query = query.where(CatalogProduct.base_price >= min_price)
     if max_price is not None:

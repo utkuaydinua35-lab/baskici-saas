@@ -386,7 +386,10 @@ function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
 
   const verify = async () => {
     setBusy(true); setResult(null)
-    try { setResult(await api.post(`/api/store-settings/${storeId}/verify-domain`, {})) }
+    try {
+      setResult(await api.post(`/api/store-settings/${storeId}/verify-domain`,
+        { domain: (customDomain || '').trim() }))
+    }
     catch (e) {
       setResult({ verified: false, message: typeof e?.detail === 'string' ? e.detail : 'Doğrulama başarısız' })
     } finally { setBusy(false) }

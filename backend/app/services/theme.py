@@ -25,12 +25,15 @@ SECTION_DEFAULTS: dict[str, dict] = {
     "hero_slider": {
         "slides": [],   # [{image,title,subtitle,cta_text,cta_url}]
         "autoplay_sec": 5,
+        # Çerçeve köşe ovalliği: both|mobile|desktop|none + %0-100
+        "radius_scope": "both",
+        "radius_pct": 50,
     },
     "featured_collections": {"title": "Koleksiyonlar", "slugs": []},
     "products_grid": {"title": "Öne Çıkanlar", "collection": None, "limit": 8},
     "featured_products": {"title": "Öne Çıkan Ürünler", "slugs": []},
     "rich_text": {"title": "", "body": ""},
-    "banner": {"image": None, "url": ""},
+    "banner": {"image": None, "url": "", "radius_scope": "both", "radius_pct": 50},
     # Görsel + metin (Shopify "Image with text")
     "image_with_text": {"image": None, "title": "", "body": "",
                         "cta_text": "", "cta_url": "", "image_side": "left"},

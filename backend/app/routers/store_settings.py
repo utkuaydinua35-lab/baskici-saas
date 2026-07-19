@@ -193,6 +193,21 @@ def get_theme(
     return resolve_theme(store.config)
 
 
+def _revalidate_storefront(store: Store) -> None:
+    """Vitrine tema cache'ini düşürme sinyali (best-effort, hatalar yutulur).
+
+    Yoksa "Kaydet ve Yayınla"dan sonra vitrin 60 sn eski temayı gösterir —
+    favicon/tema değişiminde "tema karıştı" izlenimi veriyordu."""
+    base = ((store.config or {}).get("storefront_url") or "").strip().rstrip("/")
+    if not base:
+        return
+    try:
+        import httpx
+        httpx.post(f"{base}/api/revalidate-theme", timeout=3)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @router.put("/{store_id}/theme", response_model=dict)
 def put_theme(
     store_id: uuid.UUID,
@@ -207,6 +222,7 @@ def put_theme(
     flag_modified(store, "config")
     db.commit()
     db.refresh(store)
+    _revalidate_storefront(store)
     return resolve_theme(store.config)
 
 
@@ -394,6 +410,7 @@ def publish_theme_draft(
     flag_modified(store, "config")
     db.commit()
     db.refresh(store)
+    _revalidate_storefront(store)
     return resolve_theme(store.config)
 
 

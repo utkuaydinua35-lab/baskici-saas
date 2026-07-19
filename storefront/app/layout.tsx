@@ -109,12 +109,29 @@ export default async function RootLayout({
         <CartProvider>
           <Suspense><CouponFromUrl /></Suspense>
           <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
+          {/* Meta Pixel temel kodu SSR ile basılır — Meta'nın "piksel saptandı"
+              denetleyicisi JS çalıştırmadan kaynak HTML'e bakar; client-side
+              enjeksiyonu göremez. init+PageView burada, route değişimleri Pixels'ta. */}
           {payloadPixels?.meta && (
-            <noscript>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img height="1" width="1" style={{ display: "none" }} alt=""
-                src={`https://www.facebook.com/tr?id=${payloadPixels.meta.replace(/[^0-9]/g, "")}&ev=PageView&noscript=1`} />
-            </noscript>
+            <>
+              <script dangerouslySetInnerHTML={{ __html: `
+                !function(f,b,e,v,n,t,s)
+                {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                n.queue=[];t=b.createElement(e);t.async=!0;
+                t.src=v;s=b.getElementsByTagName(e)[0];
+                s.parentNode.insertBefore(t,s)}(window, document,'script',
+                'https://connect.facebook.net/en_US/fbevents.js');
+                fbq('init', '${payloadPixels.meta.replace(/[^0-9]/g, "")}');
+                fbq('track', 'PageView');
+              ` }} />
+              <noscript>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img height="1" width="1" style={{ display: "none" }} alt=""
+                  src={`https://www.facebook.com/tr?id=${payloadPixels.meta.replace(/[^0-9]/g, "")}&ev=PageView&noscript=1`} />
+              </noscript>
+            </>
           )}
           {theme.announcement.enabled && (
             <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url} />

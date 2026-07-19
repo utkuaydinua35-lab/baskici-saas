@@ -121,7 +121,9 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     } catch { /* statik render */ }
     const res = await fetch(
       `${BACKEND_URL}/api/shop/${slug}/theme${preview ? "?preview=1" : ""}`,
-      preview ? { cache: "no-store" } : { next: { revalidate: 60 } },
+      // tags: panel "Kaydet ve Yayınla" sonrası /api/revalidate-theme bu
+      // cache'i anında düşürür — 60 sn eski tema görünmesin
+      preview ? { cache: "no-store" } : { next: { revalidate: 60, tags: ["theme"] } },
     );
     if (!res.ok) return DEFAULT_PAYLOAD;
     const payload = (await res.json()) as ThemePayload;

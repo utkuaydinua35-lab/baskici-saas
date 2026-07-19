@@ -37,16 +37,8 @@ export default function Pixels({ meta, ga4, tiktok }: Props) {
     if (loaded.current) return;
     loaded.current = true;
 
-    if (meta) {
-      inject("px-meta", "", `
-        !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-        document,'script','https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init', '${meta.replace(/[^0-9]/g, "")}');
-      `);
-    }
+    // Meta Pixel temel kodu layout'ta SSR ile basılıyor (Meta'nın denetleyicisi
+    // kaynak HTML'e bakar) — burada yalnız GA4/TikTok enjekte edilir.
     if (ga4) {
       const gid = ga4.replace(/[^A-Za-z0-9-]/g, "");
       inject("px-ga4", `https://www.googletagmanager.com/gtag/js?id=${gid}`, `
@@ -68,9 +60,15 @@ export default function Pixels({ meta, ga4, tiktok }: Props) {
     }
   }, [meta, ga4, tiktok]);
 
-  // Her route değişiminde PageView
+  // Her route değişiminde PageView. İLK yüklemede Meta PageView'ı SSR
+  // script'i zaten attı — burada atlanır, yoksa çift sayılır.
+  const firstMetaPv = useRef(true);
   useEffect(() => {
-    window.fbq?.("track", "PageView");
+    if (firstMetaPv.current) {
+      firstMetaPv.current = false;
+    } else {
+      window.fbq?.("track", "PageView");
+    }
     window.gtag?.("event", "page_view", { page_path: pathname });
     // @ts-expect-error ttq.page pixel API'sinde mevcut
     window.ttq?.page?.();

@@ -468,9 +468,14 @@ def create_checkout(
     except checkout_svc.CheckoutError as e:
         raise HTTPException(422, str(e))
     except ValueError as e:
-        # Sağlayıcı config/başlatma hatası — müşteriye genel mesaj, log'a detay
+        # Sağlayıcı config/başlatma hatası — müşteriye genel mesaj, log'a detay.
+        # DİKKAT: 502/503/504 KULLANMA — Cloudflare bu kodlarda origin gövdesini
+        # kendi HTML hata sayfasıyla ezer, müşteri "Unexpected token <!DOCTYPE"
+        # görür; 500 ise JSON detail'iyle aynen iletilir.
         print(f"[checkout] baslatma hatasi store={store.slug}: {e}")
-        raise HTTPException(502, "Ödeme başlatılamadı. Lütfen daha sonra tekrar deneyin.")
+        raise HTTPException(
+            500, "Ödeme sistemi şu an hizmet veremiyor. Lütfen daha sonra tekrar deneyin "
+                 "ya da WhatsApp üzerinden bize ulaşın.")
 
     return {
         "token": session.token,
@@ -1225,7 +1230,8 @@ def contact_message(
     store = _resolve_store(db, store_slug)
     to = ((store.config or {}).get("contact_email") or "").strip()
     if not to:
-        raise HTTPException(503, "İletişim formu şu an kullanılamıyor")
+        # 502/503 değil — Cloudflare o kodlarda gövdeyi kendi HTML'iyle ezer
+        raise HTTPException(500, "İletişim formu şu an kullanılamıyor")
 
     tenant = getattr(store, "tenant", None)
     brand = email_service.brand_kwargs(tenant) if tenant else {}
@@ -1242,7 +1248,7 @@ def contact_message(
     )
     ok = email_service.send_email(to, f"Vitrin iletişim: {body.name.strip()}", html)
     if not ok:
-        raise HTTPException(502, "Mesaj gönderilemedi — lütfen daha sonra tekrar deneyin")
+        raise HTTPException(500, "Mesaj gönderilemedi — lütfen daha sonra tekrar deneyin")
     return {"ok": True, "message": "Mesajınız iletildi — en kısa sürede dönüş yapacağız"}
 
 

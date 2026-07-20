@@ -145,12 +145,18 @@ export default function StoresPage({ embedded = false }) {
                   </div>
                   <div className="text-xs text-gray-500 font-mono">{store.slug}</div>
 
-                  {/* Config preview (maskelenmiş) — kendi editörü olanlar hariç */}
+                  {/* Config preview (maskelenmiş) — kendi editörü olanlar hariç.
+                      Nesne/dizi değerler ham gösterilmez ([object Object] yerine
+                      özet); vitrin mağazasının bu alanları mağaza panelinden yönetilir. */}
                   <div className="mt-3 space-y-1">
                     {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days' && k !== 'kargo_handler').map(([k, v]) => (
                       <div key={k} className="text-xs flex gap-2">
                         <span className="text-gray-500 w-32 shrink-0">{k}:</span>
-                        <span className="text-gray-300 font-mono truncate">{String(v)}</span>
+                        <span className="text-gray-300 font-mono truncate">
+                          {Array.isArray(v) ? `[${v.length} kayıt]`
+                            : (v !== null && typeof v === 'object') ? `{${Object.keys(v).length} alan}`
+                            : String(v)}
+                        </span>
                       </div>
                     ))}
                   </div>

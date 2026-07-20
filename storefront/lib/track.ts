@@ -79,6 +79,19 @@ export function trackInitiateCheckout(data: EventData) {
   window.ttq?.track("InitiateCheckout", { value: data.value, currency });
 }
 
+// Kart bilgisi aşaması — barındırmalı ödemede (iyzico/PayTR sayfası) kartın
+// girildiği an bizde olmadığından, ödeme sağlayıcısına yönlenme anında atılır.
+export function trackAddPaymentInfo(data: EventData) {
+  const currency = data.currency || "TRY";
+  window.fbq?.("track", "AddPaymentInfo", {
+    value: data.value, currency, contents: contents(data.items),
+  });
+  window.gtag?.("event", "add_payment_info", {
+    currency, value: data.value, items: ga4Items(data.items),
+  });
+  window.ttq?.track("AddPaymentInfo", { value: data.value, currency });
+}
+
 // Satın alma — token başına TEK SEFER gönderilir (sayfa yenilense de).
 export function trackPurchaseOnce(token: string, data: EventData) {
   const key = `purchase_tracked_${token}`;

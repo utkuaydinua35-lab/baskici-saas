@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
-import { trackInitiateCheckout } from "@/lib/track";
+import { trackAddPaymentInfo, trackInitiateCheckout } from "@/lib/track";
 import TrustBadges from "@/components/TrustBadges";
 import IlIlceSelect from "@/components/IlIlceSelect";
 import { useAutoQuote } from "@/lib/useAutoQuote";
@@ -163,6 +163,13 @@ export default function CheckoutPage() {
         throw new Error(detail);
       }
       const out = data as CheckoutResponse;
+      // Kart bilgisi aşaması — ödeme sağlayıcısının sayfasına geçiş anı
+      trackAddPaymentInfo({
+        value: Number(out.amount || 0),
+        items: items.map((i) => ({
+          id: i.variantId, name: i.title, price: Number(i.price), quantity: i.quantity,
+        })),
+      });
       if (out.mode === "redirect") {
         window.location.href = out.url; // iyzico barındırmalı ödeme sayfası
       } else {

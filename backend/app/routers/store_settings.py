@@ -565,6 +565,9 @@ def put_pages(
             # Sayfaya özel görseller (tutorial vb.) — içeriğin üstünde gösterilir
             "images": [str(u)[:500] for u in (page.get("images") or [])[:4]
                        if isinstance(u, str) and u.startswith("/storage/")],
+            # Yönlendirme butonu (ops.) — "Tüm Ürünler" / koleksiyon hedefi
+            "cta_text": str(page.get("cta_text") or "").strip()[:60],
+            "cta_url": str(page.get("cta_url") or "").strip()[:300],
         })
 
     config = dict(store.config or {})

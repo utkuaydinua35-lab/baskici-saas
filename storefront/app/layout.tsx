@@ -16,6 +16,7 @@ import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
 import CopyGuard from "@/components/CopyGuard";
 import SupportChat from "@/components/SupportChat";
+import Presence from "@/components/Presence";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
@@ -191,6 +192,8 @@ export default async function RootLayout({
           )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}
           <CopyGuard />
+          {/* Canlı görünüm ping'i — panel anlık ziyaretçi/sepet sayar */}
+          {!payload.is_preview && <Presence />}
           {payload.is_preview && <PreviewBridge />}
         </CartProvider>
       </body>

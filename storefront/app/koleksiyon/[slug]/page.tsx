@@ -10,7 +10,8 @@ import FilterBar from "@/components/FilterBar";
 // Sayfaya özel içerik bloğu — panel Tema editöründen koleksiyon başına
 // tanımlanır (tutorial görseli + metin; listenin üstünde veya altında).
 function PageBlock({ block, title }: {
-  block: { image?: string | null; body?: string; position?: string };
+  block: { image?: string | null; body?: string; position?: string;
+    cta_text?: string; cta_url?: string };
   title: string;
 }) {
   return (
@@ -21,6 +22,13 @@ function PageBlock({ block, title }: {
       )}
       {block.body && (
         <p className="text-sm text-zinc-600 whitespace-pre-line max-w-3xl">{block.body}</p>
+      )}
+      {block.cta_text && block.cta_url && (
+        <Link href={block.cta_url}
+          className="inline-block rounded-xl text-white px-6 py-3 text-sm font-medium hover:opacity-90 transition"
+          style={{ background: "var(--c-primary)" }}>
+          {block.cta_text}
+        </Link>
       )}
     </div>
   );

@@ -10,6 +10,8 @@ interface CustomPage {
   title: string;
   content: string;
   images?: string[];
+  cta_text?: string;
+  cta_url?: string;
 }
 
 async function getPage(pageSlug: string): Promise<CustomPage | null> {
@@ -57,6 +59,14 @@ export default async function CustomPageView({ params }: Props) {
       <div className="mt-6 text-sm text-zinc-700 leading-relaxed whitespace-pre-line">
         {page.content}
       </div>
+      {/* Yönlendirme butonu — panelden hedef seçilir (koleksiyon/ürünler/sayfa) */}
+      {page.cta_text && page.cta_url && (
+        <a href={page.cta_url}
+          className="mt-8 inline-block rounded-xl text-white px-6 py-3 text-sm font-medium hover:opacity-90 transition"
+          style={{ background: "var(--c-primary)" }}>
+          {page.cta_text}
+        </a>
+      )}
     </div>
   );
 }

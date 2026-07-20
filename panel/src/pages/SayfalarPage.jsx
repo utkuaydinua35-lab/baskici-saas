@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
+import { UrlPicker } from '../components/ThemeEditorParts'
 
 // Sayfalar — yasal metinler (vitrindeki hazır şablonları özelleştirir) +
 // özel sayfalar (/sayfa/adres olarak yayınlanır, footer'a link düşer).
@@ -16,6 +17,7 @@ export default function SayfalarPage() {
   const { storeId } = useStore()
   const [legal, setLegal] = useState({})
   const [pages, setPages] = useState([])
+  const [collections, setCollections] = useState([])   // buton hedef seçici için
   const [openIdx, setOpenIdx] = useState(null)   // açık özel sayfa
   const [openLegal, setOpenLegal] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -35,6 +37,8 @@ export default function SayfalarPage() {
         iade_text: settings.config.iade_text || '',
       })
       setPages(pg.pages || [])
+      api.get(`/api/catalog/collections?store_id=${storeId}`)
+        .then(c => setCollections(c.filter(x => x.is_active))).catch(() => {})
       initialRef.current = JSON.stringify([{
         kvkk_text: settings.config.kvkk_text || '',
         mesafeli_satis_text: settings.config.mesafeli_satis_text || '',
@@ -211,6 +215,23 @@ export default function SayfalarPage() {
                 <textarea className="input" rows={8} maxLength={20000} value={pg.content}
                   onChange={e => patchPage(i, { content: e.target.value })}
                   placeholder="Sayfa içeriği (satır sonları korunur)" />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs">Yönlendirme butonu yazısı (ops.)</span>
+                    <input className="input mt-1" maxLength={60} value={pg.cta_text || ''}
+                      onChange={e => patchPage(i, { cta_text: e.target.value })}
+                      placeholder="Tüm Ürünler" />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs">Buton hedefi</span>
+                    <div className="mt-1">
+                      <UrlPicker value={pg.cta_url} collections={collections}
+                        pages={pages.filter((_, j) => j !== i)}
+                        placeholder="Koleksiyon / sayfa seçin"
+                        onChange={url => patchPage(i, { cta_url: url })} />
+                    </div>
+                  </label>
+                </div>
               </div>
             )}
           </div>

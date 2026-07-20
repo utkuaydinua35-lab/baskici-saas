@@ -5,7 +5,7 @@ import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import {
   FONTS, SECTION_TYPES, SECTION_DEFAULTS,
-  SectionSettings, Section, ColorField, Toggle, AssetField,
+  SectionSettings, Section, ColorField, Toggle, AssetField, UrlPicker,
 } from '../components/ThemeEditorParts'
 
 // Tam ekran tema editörü (Shopify tarzı) — sol ayar paneli + sağ canlı önizleme.
@@ -463,6 +463,24 @@ export default function TemaEditorPage() {
                           ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
                           : 'border-panel-border text-panel-muted'}`}>{l}</button>
                     ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-sm">
+                      <span className="text-panel-muted text-xs">Buton yazısı (ops.)</span>
+                      <input className="input mt-1" maxLength={60}
+                        value={collectionBlock.cta_text || ''}
+                        onChange={e => set(`collection_pages.${collectionSlug}.cta_text`, e.target.value)}
+                        placeholder="Tüm Ürünler" />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="text-panel-muted text-xs">Buton hedefi</span>
+                      <div className="mt-1">
+                        <UrlPicker value={collectionBlock.cta_url}
+                          collections={collections} products={products} pages={pages}
+                          placeholder="Hedef seçin"
+                          onChange={url => set(`collection_pages.${collectionSlug}.cta_url`, url)} />
+                      </div>
+                    </label>
                   </div>
                 </Section>
               )}

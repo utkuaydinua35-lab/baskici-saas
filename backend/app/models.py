@@ -1511,6 +1511,27 @@ class CheckoutSession(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class StorefrontPresence(Base):
+    """Vitrin canlı görünüm ping'i — ziyaretçi oturumu başına tek satır.
+
+    Vitrin istemcisi ~20 sn'de bir path + sepet adedini POST'lar; panel
+    "Canlı Görünüm" kartı bu tablodan anlık ziyaretçi/sepet sayar. Kişisel
+    veri tutulmaz (yalnızca rastgele oturum anahtarı)."""
+    __tablename__ = "storefront_presence"
+    __table_args__ = (
+        UniqueConstraint("store_id", "session_key", name="uq_presence_store_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    session_key: Mapped[str] = mapped_column(String(64))
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cart_items: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+
 class DiscountCode(Base):
     """Vitrin indirim kuponu. kind: percent (%1-100) | amount (TL) | free_shipping.
 

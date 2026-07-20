@@ -1684,6 +1684,52 @@ def account_address(
     return {"default_address": customer.default_address}
 
 
+# ─── Canlı görünüm (live view) presence ping'i ───────────────
+
+class PresenceIn(BaseModel):
+    key: str = Field(..., min_length=8, max_length=64)
+    path: str | None = Field(None, max_length=300)
+    cart_items: int = Field(0, ge=0, le=200)
+
+
+presence_rate_limit = make_rate_limiter(max_hits=12, window=60.0)
+
+
+@router.post("/{store_slug}/presence")
+def presence_ping(
+    store_slug: str,
+    body: PresenceIn,
+    request: Request,
+    _rl: None = Depends(presence_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Ziyaretçi ping'i (~20 sn'de bir) — panel Canlı Görünüm kartını besler.
+
+    Kişisel veri yok: yalnız istemcinin ürettiği rastgele oturum anahtarı."""
+    from datetime import datetime, timezone
+
+    from app.models import StorefrontPresence
+
+    store = _resolve_store(db, store_slug)
+    now = datetime.now(timezone.utc)
+    key = body.key.strip()[:64]
+    row = db.scalar(select(StorefrontPresence).where(
+        StorefrontPresence.store_id == store.id,
+        StorefrontPresence.session_key == key,
+    ))
+    if row is None:
+        row = StorefrontPresence(
+            tenant_id=store.tenant_id, store_id=store.id,
+            session_key=key, first_seen=now,
+        )
+        db.add(row)
+    row.last_seen = now
+    row.last_path = (body.path or "")[:300] or None
+    row.cart_items = body.cart_items
+    db.commit()
+    return {"ok": True}
+
+
 # ─── BERNZ Support — kurallı 7/24 asistan uçları ─────────────
 # AI değildir: sistem verisiyle (sipariş, katalog, ayarlar) çalışan kurallı
 # yanıtlar. Vitrindeki sohbet balonu bu uçları çağırır.

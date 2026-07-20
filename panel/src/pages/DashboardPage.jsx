@@ -43,16 +43,18 @@ export default function DashboardPage() {
     })
   }, [storeId])
 
-  // Canlı veri — 30 sn'de bir; sekme gizliyken durur
+  // Canlı veri — 10 sn'de bir (Shopify live view); sekme gizliyken durur
+  const [liveView, setLiveView] = useState(null)
   useEffect(() => {
     if (!storeId) return
     let timer
     const pull = () => {
       if (document.visibilityState !== 'visible') return
       api.get(`/api/analytics/live?store_id=${storeId}`).then(setLive).catch(() => {})
+      api.get(`/api/orders/live-view?store_id=${storeId}`).then(setLiveView).catch(() => {})
     }
     pull()
-    timer = setInterval(pull, 30000)
+    timer = setInterval(pull, 10000)
     document.addEventListener('visibilitychange', pull)
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', pull) }
   }, [storeId])
@@ -121,7 +123,7 @@ export default function DashboardPage() {
         </Link>
       )}
 
-      {live && <LiveCard live={live} />}
+      {live && <LiveCard live={live} lv={liveView} />}
 
       {data && <MiniChart daily={data.daily} />}
 
@@ -194,7 +196,7 @@ function QuickCard({ to, icon, title, desc }) {
 }
 
 // Canlı görünüm — 30 sn'de bir yenilenen aktivite akışı.
-function LiveCard({ live }) {
+function LiveCard({ live, lv }) {
   const ago = (iso) => {
     if (!iso) return ''
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -217,9 +219,27 @@ function LiveCard({ live }) {
         <span className="text-[11px] font-semibold tracking-wide text-emerald-300">CANLI</span>
         <span className="text-[11px] text-panel-muted ml-auto">
           Son 15 dk: {live.last_15m.orders} sipariş · {fmtTl(live.last_15m.revenue)}
-          {live.active_checkouts > 0 && ` · ${live.active_checkouts} kişi ödeme sayfasında`}
         </span>
       </div>
+      {/* Shopify live view metrikleri — 10 sn'de bir tazelenir */}
+      {lv && (
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+          {[
+            ['👁', 'Şu an sitede', lv.current_visitors],
+            ['📅', 'Bugün oturum', lv.today_sessions],
+            ['🛒', 'Aktif sepet', lv.active_carts],
+            ['💳', 'Ödeme yapıyor', lv.checking_out],
+            ['✅', 'Az önce aldı', lv.purchased_recent],
+            ['🛍️', 'Bugün satış', `${lv.today_orders} · ${fmtTl(Number(lv.today_revenue || 0))}`],
+          ].map(([icon, label, val]) => (
+            <div key={label} className="rounded-xl bg-panel-input/70 px-2.5 py-2 text-center">
+              <div className="text-base leading-none">{icon}</div>
+              <div className="text-sm font-semibold tabular-nums mt-1">{val}</div>
+              <div className="text-[10px] text-panel-muted leading-tight">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {live.activity.length === 0 ? (
         <p className="text-xs text-panel-muted">Henüz aktivite yok — ilk ziyaretçiler yolda.</p>
       ) : (

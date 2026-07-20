@@ -385,12 +385,17 @@ def validate_theme_patch(patch: dict) -> dict:
                 continue
             body = str(blk.get("body") or "").strip()[:4000]
             image = blk.get("image")
-            if not body and not image:
+            cta_text = str(blk.get("cta_text") or "").strip()[:60]
+            cta_url = str(blk.get("cta_url") or "").strip()[:300]
+            if not body and not image and not (cta_text and cta_url):
                 continue   # boş blok saklanmaz
             pages[str(slug)[:200]] = {
                 "image": str(image)[:500] if image else None,
                 "body": body,
                 "position": "alt" if blk.get("position") == "alt" else "ust",
+                # Yönlendirme butonu (ops.) — koleksiyon/ürün/sayfa hedefi
+                "cta_text": cta_text,
+                "cta_url": cta_url,
             }
         cleaned["collection_pages"] = pages
     for key in ("font", "logo_url", "favicon_url"):

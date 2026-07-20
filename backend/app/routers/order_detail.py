@@ -383,6 +383,14 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
             "payment_status": order.financial_status,
         },
 
+        # Vitrin siparişi işaretleri — panel raw.payment varlığına bakarak
+        # iade/düzenleme butonlarını gösterir. Tüm raw AĞIR olduğundan yalnız
+        # ihtiyaç duyulan özet döner (bu alan yanıtta yoktu → buton hiç çıkmıyordu).
+        "raw": ({
+            "payment": raw.get("payment"),
+            "discount": raw.get("discount"),
+        } if raw.get("payment") else None),
+
         # Kurumsal fatura bilgisi (vitrin checkout'unda opsiyonel alan)
         "invoice": raw.get("invoice") or None,
 

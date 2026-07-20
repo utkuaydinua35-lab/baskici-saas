@@ -382,7 +382,11 @@ def create_session(
 def build_callback_url(store: Store, session: CheckoutSession) -> str:
     """Sağlayıcının callback POST'layacağı backend URL'i."""
     from app.config import get_settings
-    base = (get_settings().backend_url or "http://127.0.0.1:8000").rstrip("/")
+    # .split()[0]: .env'de değere boşlukla başka bir şey yapışırsa
+    # (örn "https://... env=production") iyzico müşteriyi çözülemeyen bir
+    # adrese yönlendirir — URL'in yalnız ilk parçası kullanılır.
+    raw = (get_settings().backend_url or "http://127.0.0.1:8000").strip()
+    base = (raw.split()[0] if raw.split() else "http://127.0.0.1:8000").rstrip("/")
     if session.provider == "paytr":
         # PayTR bildirim URL'i panelden tanımlanır (tek global webhook);
         # merchant_ok/fail_url ise müşteri dönüş sayfasıdır.

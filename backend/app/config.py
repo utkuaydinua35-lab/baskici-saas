@@ -4,7 +4,7 @@ Uygulama yapılandırması. Env değişkenlerini Pydantic ile tip güvenli okur.
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = Field("http://localhost:5173", alias="FRONTEND_URL")
     backend_url: str = Field("http://localhost:8000", alias="BACKEND_URL")
+
+    @field_validator("frontend_url", "backend_url", mode="after")
+    @classmethod
+    def _url_tek_parca(cls, v: str) -> str:
+        """.env'de değere boşlukla fazlalık yapışırsa (örn
+        "https://... env=production") yalnız ilk parça alınır — bozuk taban
+        URL iyzico dönüşü gibi dış yönlendirmeleri kırıyordu."""
+        parts = str(v or "").strip().split()
+        return parts[0] if parts else v
     # Vitrin ozel domain dogrulamasi: musterinin A kaydinin isaret etmesi gereken IP
     server_ip: str = Field("", alias="SERVER_IP")
 

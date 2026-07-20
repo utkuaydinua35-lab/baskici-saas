@@ -1,15 +1,18 @@
 """webauthn credentials (passkey / geçiş anahtarı)
 
-Revision ID: y6t7u8v9w0x1
-Revises: x5s6t7u8v9w0
+Revision ID: z7u8v9w0x1y2
+Revises: y6t7u8v9w0x1
 Create Date: 2026-07-18
+
+Not: id çakışmasından ötürü yeniden numaralandırıldı (promo_message ile aynı
+y6t7u8v9w0x1 id'sini kullanıyordu) — artık onun ardına zincirleniyor.
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-revision = "y6t7u8v9w0x1"
-down_revision = "x5s6t7u8v9w0"
+revision = "z7u8v9w0x1y2"
+down_revision = "y6t7u8v9w0x1"
 branch_labels = None
 depends_on = None
 

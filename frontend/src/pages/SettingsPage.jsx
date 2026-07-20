@@ -356,8 +356,15 @@ function PasskeyModal({ onClose }) {
       await registerPasskey(name || 'Passkey')
       load()
     } catch (e) {
+      const name = e?.name || ''
       const m = e?.detail || e?.message || ''
-      if (!/aborterror|notallowed|cancel/i.test(m)) setErr(m || 'Passkey eklenemedi')
+      if (name === 'InvalidStateError') {
+        setErr('Bu cihazda bu hesap için zaten bir geçiş anahtarı var (iCloud/Google ile senkronlanmış olabilir). Tekrar eklemene gerek yok — çıkış yapıp “🔑 Geçiş anahtarı ile giriş” ile deneyebilirsin.')
+      } else if (name === 'NotAllowedError' || /aborterror|notallowed|cancel/i.test(m)) {
+        /* kullanıcı vazgeçti — sessiz geç */
+      } else {
+        setErr(m || 'Passkey eklenemedi')
+      }
     } finally { setBusy(false) }
   }
   const del = async (id) => {

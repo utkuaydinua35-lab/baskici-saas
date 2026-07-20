@@ -341,7 +341,12 @@ def plan_molds(
                 _liv2 = (getattr(li, "kilif_varyasyon_2", None) or "").strip()
                 for (_cd, _cm, _sv) in ((d1, _m1, _liv1), (d2, _m2, _liv2)):
                     # Slot'a özel seçilen kılıf varyasyonu (ŞEFFAF vb.) > tasarımın kalip_tipi
-                    _var = pr.normalize_variation(_sv) if _sv else pr.normalize_variation(_cd.kalip_tipi)
+                    _ckt = ((_cd.kalip_tipi or "").strip() if _cd else "")
+                    _var = pr.normalize_variation(_sv) if _sv else (pr.normalize_variation(_ckt) if _ckt else None)
+                    if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
+                        add_eksik("varyasyon_eksik", li, order, _cm)
+                        _ok = False
+                        break
                     _var = pr.effective_variation(pr.get_model_group(_cm), _var)
                     _kod = pr.resolve_kalip_kodu(_cm, _var, k)
                     if not _kod:
@@ -422,12 +427,18 @@ def plan_molds(
             # 3) Müşteri property'den varyasyon seçtiyse o
             # 4) Tasarımın kalip_tipi'si (varsayılan)
             _liv = (getattr(li, "kilif_varyasyon", None) or "").strip()
+            _dkt = ((design.kalip_tipi or "").strip() if design else "")
             if locals().get("_matched_variant"):
-                variation = pr.normalize_variation(design.kalip_tipi)
+                variation = pr.normalize_variation(_dkt) if _dkt else None
             elif _liv:
                 variation = pr.normalize_variation(_liv)
             else:
-                variation = variation_from_props(li) or pr.normalize_variation(design.kalip_tipi)
+                variation = variation_from_props(li) or (pr.normalize_variation(_dkt) if _dkt else None)
+            # Hiçbir kaynakta varyasyon yoksa SESSİZCE SİYAH'a düşme — eksik olarak işaretle
+            # (yanlış varyasyonla kalıba girip hatalı üretim olmasın).
+            if not variation:
+                add_eksik("varyasyon_eksik", li, order, model)
+                continue
             variation = pr.effective_variation(pr.get_model_group(model), variation)
             kod = pr.resolve_kalip_kodu(model, variation, k)
             if not kod:

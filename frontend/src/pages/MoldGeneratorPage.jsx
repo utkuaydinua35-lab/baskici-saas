@@ -19,6 +19,7 @@ const REASON_LABELS = {
   model_belirsiz: 'Telefon modeli belirsiz',
   model_taninmadi: 'Model tanınmadı',
   baski_dosyasi_yok: 'Baskı dosyası yüklenmemiş (hazır mockup)',
+  varyasyon_eksik: 'Varyasyon eksik — kalıp oluşturmadan önce tamamlanmalı',
 }
 
 export default function MoldGeneratorPage() {

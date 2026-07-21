@@ -156,11 +156,13 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
     _store = db.get(Store, store_id)
     _sla_days = _store_sla_days(_store)
 
+    # include_deleted: çöpe atılmış (soft-delete) sipariş de bulunmalı — yoksa sync onu
+    # göremeyip aynı (mağaza, external_id) ile INSERT deneyip UniqueViolation ile patlıyor.
     existing = db.scalar(
         select(Order).where(
             Order.store_id == store_id,
             Order.external_id == external_id,
-        )
+        ).execution_options(include_deleted=True)
     )
 
     customer = raw.get("customer") or {}

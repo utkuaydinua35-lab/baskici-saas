@@ -402,10 +402,17 @@ async def create_design(
 
     # Line item bağlanıyorsa (couple 2. kılıf için slot=2)
     if line_item:
+        _var = _none_if_empty(kalip_tipi)   # yüklerken seçilen varyasyon
         if slot == 2:
             line_item.assigned_design_id_2 = design.id
+            # Seçilen varyasyonu line item'ın kılıf varyasyonuna da yaz (dropdown "otomatik"
+            # kalmasın + kalıp planlamasında bu öncelikli kullanılsın)
+            if _var:
+                line_item.kilif_varyasyon_2 = _var
         else:
             line_item.assigned_design_id = design.id
+            if _var:
+                line_item.kilif_varyasyon = _var
 
     db.commit()
     db.refresh(design)

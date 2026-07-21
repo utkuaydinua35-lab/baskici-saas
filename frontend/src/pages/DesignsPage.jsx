@@ -1009,6 +1009,7 @@ function ProductPicker({ storeId, onSelect, onClose }) {
 function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
   const toast = useToast()
   const [uploadingPrint, setUploadingPrint] = useState(false)
+  const [printDone, setPrintDone] = useState(false)   // baskı dosyası bu oturumda yüklendi
   const [code, setCode] = useState(design.code || '')
   const [name, setName] = useState(design.name || '')
   const [kalipTipi, setKalipTipi] = useState(design.kalip_tipi || '')
@@ -1028,6 +1029,11 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
   const onSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    // Baskı dosyası yeni yüklendiyse ya da tasarım eksik işaretliyse varyasyon ZORUNLU
+    if ((printDone || design.baski_dosyasi_yok) && !kalipTipi) {
+      setError('Varyasyon (Kalıp Tipi) seçilmeli — bu tasarım kalıba girebilmesi için varyasyon gerekiyor.')
+      return
+    }
     setSaving(true)
     try {
       const fd = new FormData()
@@ -1064,8 +1070,8 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
     try {
       const fd = new FormData(); fd.append('file', f)
       await api.postForm(`/api/designs/${design.id}/print-file`, fd)
-      toast.success('Baskı dosyası eklendi (CMYK) — kalıba girebilir')
-      onSaved()
+      setPrintDone(true)   // modalı KAPATMA — varyasyon seçimi için açık kalsın
+      toast.success('Baskı dosyası eklendi (CMYK). Şimdi varyasyonu seçip kaydet.')
     } catch (e) {
       toast.error(e.detail || 'Yüklenemedi')
     } finally {
@@ -1097,7 +1103,7 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
 
         <div className="overflow-y-auto px-5 py-4 flex-1">
           {/* Baskı dosyası yok — temiz baskı dosyası yükle (CMYK'ye çevrilir) */}
-          {design.baski_dosyasi_yok && (
+          {design.baski_dosyasi_yok && !printDone && (
             <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3">
               <div className="text-sm font-medium text-red-200 mb-1">🖨️ Baskı dosyası yok</div>
               <p className="text-[11px] text-gray-300 mb-2">
@@ -1109,6 +1115,16 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
                 <input type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden"
                   disabled={uploadingPrint} onChange={e => uploadPrintFile(e.target.files?.[0])} />
               </label>
+            </div>
+          )}
+          {printDone && (
+            <div className="mb-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3">
+              <div className="text-sm font-medium text-emerald-200 mb-1">✓ Baskı dosyası yüklendi (CMYK)</div>
+              <p className="text-[11px] text-gray-300">
+                {kalipTipi
+                  ? 'Kaydet ile tamamla.'
+                  : '⚠ Şimdi aşağıdan Varyasyon (Kalıp Tipi) seçip Kaydet\'e bas — varyasyon olmadan kalıba giremez.'}
+              </p>
             </div>
           )}
 
@@ -1152,8 +1168,11 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
             </div>
 
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Kalıp Tipi</label>
-              <select value={kalipTipi} onChange={e => setKalipTipi(e.target.value)} className="input w-full">
+              <label className="text-xs text-gray-400 block mb-1">
+                Kalıp Tipi (Varyasyon){(printDone || design.baski_dosyasi_yok) && <span className="text-red-400"> *</span>}
+              </label>
+              <select value={kalipTipi} onChange={e => setKalipTipi(e.target.value)}
+                className={`input w-full ${((printDone || design.baski_dosyasi_yok) && !kalipTipi) ? '!border-red-500/60' : ''}`}>
                 {KALIP_TIPLERI.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>

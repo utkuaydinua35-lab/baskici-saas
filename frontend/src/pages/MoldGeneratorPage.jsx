@@ -5,6 +5,9 @@ import { useToast } from '../components/Toast'
 import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
+import KalipSlotLabels from '../components/KalipSlotLabels'
+import KalipAyarlari from '../components/KalipAyarlari'
+import { loadLabelSettings } from '../lib/kalipLabel'
 
 const VAR_COLORS = {
   'SİYAH': 'bg-gray-700 text-gray-100 border-gray-600',
@@ -97,6 +100,8 @@ export default function MoldGeneratorPage() {
   }
 
   const [recovering, setRecovering] = useState(false)
+  const [labelSettings, setLabelSettings] = useState(loadLabelSettings)
+  const [showLabelCfg, setShowLabelCfg] = useState(false)
   const handleRecover = async () => {
     setRecovering(true)
     try {
@@ -161,6 +166,7 @@ export default function MoldGeneratorPage() {
             </optgroup>
           </select>
           <button onClick={handleRecover} disabled={recovering} className="btn-secondary !text-sm whitespace-nowrap disabled:opacity-50" title="Kalıptan çıkarılıp plana dönmeyen kayıp siparişleri tara ve geri döndür">{recovering ? '…' : '🔧 Kayıp siparişleri tara'}</button>
+          <button onClick={() => setShowLabelCfg(true)} className="btn-secondary !text-sm whitespace-nowrap" title="Etiket yazı boyutu + renkleri">⚙️ Kalıp Ayarları</button>
           <button onClick={handleCreateEmpty} className="btn-secondary !text-sm whitespace-nowrap" title="Boş kalıp oluştur, + ile doldur">➕ Boş Kalıp</button>
         </div>
       </div>
@@ -259,7 +265,7 @@ export default function MoldGeneratorPage() {
               {plan.molds.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="text-sm font-medium text-gray-300">Kalıp Önizlemesi ({plan.mold_count})</h2>
-                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview harfler={harfler} />)}
+                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview harfler={harfler} labelSettings={labelSettings} />)}
                 </div>
               )}
 
@@ -338,6 +344,8 @@ export default function MoldGeneratorPage() {
         onDeleted={() => { setDeleteTarget(null); loadExisting(); loadPlan() }}
       />
 
+      {showLabelCfg && <KalipAyarlari onClose={() => setShowLabelCfg(false)} onChange={setLabelSettings} />}
+
       <SlotAssignDialog
         open={!!assignTarget}
         mold={assignMoldObj}
@@ -377,7 +385,7 @@ function MoldRow({ mold, onClick, onDelete }) {
   )
 }
 
-function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot, harfler }) {
+function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot, harfler, labelSettings }) {
   const vc = VAR_COLORS[mold.variation] || 'bg-gray-700 text-gray-200 border-gray-600'
   return (
     <div className={`card ${onClick ? 'cursor-pointer hover:border-accent/40 transition-colors' : ''}`} onClick={onClick}>
@@ -408,7 +416,7 @@ function MoldCard({ mold, preview, status, kod, onClick, onDelete, onAssignSlot,
           {mold.count}/27 kılıf · {mold.rows_used} satır · kodlar: {kisaKodlar(mold.kodlar, harfler).join(', ')}
         </div>
       </div>
-      <MoldGrid items={mold.items} onAssignSlot={onAssignSlot} harfler={harfler} />
+      <MoldGrid items={mold.items} onAssignSlot={onAssignSlot} harfler={harfler} labelSettings={labelSettings} />
     </div>
   )
 }
@@ -485,7 +493,7 @@ function _kodPriority(kod) {
   return _GROUP_PRIORITY[grp] != null ? _GROUP_PRIORITY[grp] : 999
 }
 
-function MoldGrid({ items, onAssignSlot, harfler }) {
+function MoldGrid({ items, onAssignSlot, harfler, labelSettings }) {
   // slot_index varsa onu kullan (kaydedilmis kalip); yoksa (plan onizleme) priority'ye gore diz.
   const hasSlots = items.some(it => typeof it.slot_index === 'number')
   const bySlot = {}
@@ -543,6 +551,7 @@ function MoldGrid({ items, onAssignSlot, harfler }) {
                 item={cell}
                 no={slotNo}
                 harfler={harfler}
+                labelSettings={labelSettings}
                 onAssign={canAssign ? (e) => { e.stopPropagation(); onAssignSlot(rowKod) } : null}
                 assignKod={canAssign ? rowKod : null}
               />
@@ -555,7 +564,7 @@ function MoldGrid({ items, onAssignSlot, harfler }) {
   )
 }
 
-function Slot({ item, no, onAssign, assignKod, harfler }) {
+function Slot({ item, no, onAssign, assignKod, harfler, labelSettings }) {
   if (!item) {
     if (onAssign) {
       return (
@@ -589,12 +598,7 @@ function Slot({ item, no, onAssign, assignKod, harfler }) {
       {item.is_telafi && (
         <div className="absolute bottom-1 left-1 z-20 text-[7px] font-bold text-amber-200 bg-amber-600/80 rounded px-1 leading-tight">TELAFİ</div>
       )}
-      <div className="relative z-10 h-full flex flex-col justify-end p-1 text-center gap-0.5">
-        <div className="text-[9px] font-semibold text-white leading-none truncate drop-shadow">{item.design_code || ''}</div>
-        <div className="text-[8px] text-gray-200 leading-none drop-shadow">{shortModel(item.model)}</div>
-        <div className="text-[7px] text-amber-200 leading-none drop-shadow truncate">{kilifLabel(item)}</div>
-        <div className="text-[7px] text-gray-400 leading-none">#{no}</div>
-      </div>
+      <KalipSlotLabels item={item} no={no} settings={labelSettings} />
     </div>
   )
 }

@@ -4,6 +4,9 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
+import KalipSlotLabels from '../components/KalipSlotLabels'
+import KalipAyarlari from '../components/KalipAyarlari'
+import { loadLabelSettings } from '../lib/kalipLabel'
 
 const STAGE_ICONS = { edit: '✏️', check: '✓', send: '📤', printer: '🖨', 'check-circle': '✅', circle: '○' }
 const VAR_COLORS = {
@@ -31,6 +34,8 @@ export default function MoldDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [printView, setPrintView] = useState(false)
+  const [labelSettings, setLabelSettings] = useState(loadLabelSettings)
+  const [showLabelCfg, setShowLabelCfg] = useState(false)
 
   const load = async () => {
     try {
@@ -158,6 +163,7 @@ export default function MoldDetailPage() {
           <button onClick={() => setPrintView(v => !v)} className="btn-secondary !text-sm">
             {printView ? '↙ Normal Görünüm' : '↗ Baskı Görünümü'}
           </button>
+          <button onClick={() => setShowLabelCfg(true)} className="btn-secondary !text-sm" title="Etiket yazı boyutu + renkleri">⚙️ Kalıp Ayarları</button>
           <StageDropdown stages={stages} current={mold.current_stage} onSelect={patchStage} />
           <button onClick={() => patchStage({ is_hatali: !mold.is_hatali })}
             className={`!text-sm px-3 py-1.5 rounded-lg border ${mold.is_hatali ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-red-500/10 text-red-300 border-red-500/30 hover:bg-red-500/20'}`}>
@@ -179,6 +185,7 @@ export default function MoldDetailPage() {
         onDeleted={() => { setShowDelete(false); geriDon() }}
       />
 
+      {showLabelCfg && <KalipAyarlari onClose={() => setShowLabelCfg(false)} onChange={setLabelSettings} />}
       <SlotAssignDialog
         open={!!assignTarget}
         mold={mold}
@@ -217,7 +224,7 @@ export default function MoldDetailPage() {
         <div className="card">
           <h2 className="text-sm font-medium text-gray-300 mb-1">Baskı Görünümü</h2>
           <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · boş slot ➜ + ile ata</p>
-          <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget}
+          <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget} labelSettings={labelSettings}
             onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} big />
         </div>
       ) : (
@@ -303,7 +310,7 @@ export default function MoldDetailPage() {
             ) : (
               <>
                 <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · slota tıkla → hazır işaretle · boş + → ata</p>
-                <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget}
+                <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget} labelSettings={labelSettings}
                   onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} />
               </>
             )}
@@ -406,7 +413,7 @@ function StageDropdown({ stages, current, onSelect }) {
   )
 }
 
-function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
+function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings }) {
   // Backend'in atadigi slot_index'e gore yerlestir (1=alt-sag, 27=ust-sol).
   // slot_index 0-tabanli (0..26) -> slot_no = slot_index + 1.
   const bySlot = {}
@@ -443,6 +450,7 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
                 onAssign={canAssign ? () => onAssign(rowKod) : null}
                 assignKod={canAssign ? rowKod : null}
                 big={big}
+                labelSettings={labelSettings}
               />
             })}
           </div>
@@ -453,7 +461,7 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big }) {
   )
 }
 
-function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big }) {
+function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big, labelSettings }) {
   if (!item) {
     if (onAssign) {
       return (
@@ -484,12 +492,7 @@ function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big }) {
       <div className={`absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${item.is_hazir ? 'bg-emerald-500 text-white' : 'bg-black/40 text-gray-400 border border-gray-500'}`}>✓</div>
       <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{item.kalip_kodu}</div>
       <span onClick={(e) => { e.stopPropagation(); onRemove && onRemove(item) }} title="Kalıptan çıkar" className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-red-500/80 hover:bg-red-500 text-white text-[9px] flex items-center justify-center z-20">×</span>
-      <div className="relative z-10 h-full flex flex-col justify-end p-1 text-center gap-0.5">
-        <div className="text-[9px] font-semibold text-white leading-none truncate drop-shadow">{item.design_code || ''}</div>
-        <div className="text-[8px] text-gray-200 leading-none drop-shadow">{shortModel(item.model)}</div>
-        <div className="text-[7px] text-amber-200 leading-none drop-shadow truncate">{kilifLabel(item)}</div>
-        <div className="text-[7px] text-gray-400 leading-none">#{no}</div>
-      </div>
+      <KalipSlotLabels item={item} no={no} settings={labelSettings} />
     </button>
   )
 }

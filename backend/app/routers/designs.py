@@ -402,17 +402,21 @@ async def create_design(
 
     # Line item bağlanıyorsa (couple 2. kılıf için slot=2)
     if line_item:
-        _var = _none_if_empty(kalip_tipi)   # yüklerken seçilen varyasyon
+        _var = _none_if_empty(kalip_tipi)   # yüklerken seçilen varyasyon (örn 'parlak')
+        # Dropdown değerleriyle (SİYAH/BEYAZ/ŞEFFAF/PARLAK/MAGSAFE) birebir eşleşsin diye
+        # normalize et — yoksa 'parlak' != 'PARLAK' olup dropdown "otomatik" kalıyordu.
+        _norm = None
+        if _var:
+            from app.services import placement_rules as _pr
+            _norm = _pr.normalize_variation(_var)
         if slot == 2:
             line_item.assigned_design_id_2 = design.id
-            # Seçilen varyasyonu line item'ın kılıf varyasyonuna da yaz (dropdown "otomatik"
-            # kalmasın + kalıp planlamasında bu öncelikli kullanılsın)
-            if _var:
-                line_item.kilif_varyasyon_2 = _var
+            if _norm:
+                line_item.kilif_varyasyon_2 = _norm
         else:
             line_item.assigned_design_id = design.id
-            if _var:
-                line_item.kilif_varyasyon = _var
+            if _norm:
+                line_item.kilif_varyasyon = _norm
 
     db.commit()
     db.refresh(design)

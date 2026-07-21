@@ -248,15 +248,19 @@ def _get_mold(db, mold_id, tenant_id):
     return mo
 
 
-def _replan_mold_item(db: Session, tenant_id, mi) -> None:
-    """Kalip slot'unu plana geri dondur: kaynak line item'in is_kaliba_eklendi=False yap.
-    line_item_id varsa onu; YOKSA (cogu MoldItem'da None) order_number + design_code ile esle.
-    Aksi halde item kalici olarak planlamadan dislanir (uretilemez)."""
+def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> None:
+    """Kalip slot'unu plana geri dondur (cancel=False) YA DA 'geri dönmesin' diye kalıcı
+    hariç işaretle (cancel=True -> is_hazir=True; planlayıcı ve resync bunu atlar).
+    line_item_id varsa onu; YOKSA order_number + design_code/model ile esle."""
+    def _apply(li):
+        if cancel:
+            li.is_hazir = True   # kalıcı hariç: planlayıcı atlar, 'kayıp tara' dokunmaz
+        li.is_kaliba_eklendi = False
     # 1) line_item_id ile dogrudan (gecerliyse)
     if mi.line_item_id:
         li = db.scalar(select(LineItem).where(LineItem.id == mi.line_item_id))
         if li:
-            li.is_kaliba_eklendi = False
+            _apply(li)
             return
         # li yok (sync sildi/yeniden olusturdu) -> asagidaki fallback ile yeniden bul
     # 2) Fallback: order_number ile o siparisin KALIBA EKLENMIS line item'lari
@@ -289,7 +293,7 @@ def _replan_mold_item(db: Session, tenant_id, mi) -> None:
             pick = _dm
     # En az BIR kalem her zaman geri planlanir (kayip onlenir). Plandaki cift-planlama
     # korumasi zaten hala kalipta olan kardesi tekrar eklemez.
-    pick[0].is_kaliba_eklendi = False
+    _apply(pick[0])
 
 
 def _serialize_mold_detail(mo, db):
@@ -465,7 +469,8 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
     lis = db.scalars(
         select(LineItem)
         .join(Order, LineItem.order_id == Order.id)
-        .where(Order.tenant_id == tid, LineItem.is_kaliba_eklendi == True)  # noqa: E712
+        .where(Order.tenant_id == tid, LineItem.is_kaliba_eklendi == True,  # noqa: E712
+               LineItem.is_hazir == False)  # noqa: E712  'geri dönmesin' işaretlileri koru
         .options(selectinload(LineItem.order), selectinload(LineItem.assigned_design))
     ).all()
     fixed = 0
@@ -506,7 +511,9 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
         _replan_mold_item(db, user.tenant_id, it)
         _log_mold(db, mo, user, action="item_replan", note=note)
     elif payload.action == "cancel":
-        # line item kalıba eklendi kalır ama plana dönmez (iptal)
+        # Kalıptan çıkar ve plana DÖNMESİN — kalemi kalıcı 'hazır/hariç' işaretle
+        # (yoksa "🔧 Kayıp siparişleri tara" bunları yanlışlıkla geri planlıyordu).
+        _replan_mold_item(db, user.tenant_id, it, cancel=True)
         _log_mold(db, mo, user, action="item_cancel", note=note)
     else:
         raise HTTPException(status_code=400, detail="Geçersiz işlem")

@@ -13,6 +13,7 @@ interface StatusResponse {
   order_number?: string;
   lookup_token?: string;
   amount?: string;
+  items?: { id: string; name?: string; quantity: number; price?: string }[];
 }
 
 const POLL_MS = 2500;
@@ -49,6 +50,11 @@ function ResultInner({ thankyou }: { thankyou?: ThankyouText | null }) {
             trackPurchaseOnce(token, {
               value: Number(data.amount || 0),
               orderId: data.order_number,
+              // Katalog eşleşmesi: id = ürün slug'ı (Meta feed g:id ile aynı)
+              items: (data.items || []).filter((i) => i.id).map((i) => ({
+                id: i.id, name: i.name || "", price: Number(i.price || 0),
+                quantity: i.quantity || 1,
+              })),
             });
             clear(); // ödeme kesinleşti — sepeti boşalt
           }

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
@@ -501,6 +502,25 @@ def checkout_status(
     if session.status == "paid":
         out["lookup_token"] = session.lookup_token
         out["amount"] = str(session.amount)
+        # Piksel Purchase olayı katalog eşleşmesi için satın alınan ürünler
+        # (id = ürün slug'ı — Meta feed'indeki g:id ile aynı anahtar)
+        snap = session.cart_snapshot or []
+        slug_map: dict[str, str] = {}
+        missing = [i["product_id"] for i in snap
+                   if not i.get("product_slug") and i.get("product_id")]
+        if missing:
+            rows = db.execute(select(CatalogProduct.id, CatalogProduct.slug)
+                              .where(CatalogProduct.id.in_(missing))).all()
+            slug_map = {str(r[0]): r[1] for r in rows}
+        out["items"] = [
+            {
+                "id": i.get("product_slug") or slug_map.get(str(i.get("product_id")), ""),
+                "name": i.get("title"),
+                "quantity": i.get("quantity", 1),
+                "price": i.get("unit_price"),
+            }
+            for i in snap
+        ]
         if session.order_id:
             from app.models import Order
             order = db.get(Order, session.order_id)
@@ -847,6 +867,78 @@ def get_blog_post(
         "seo_description": post.seo_description,
         "published_at": post.published_at.isoformat() if post.published_at else None,
     }
+
+
+@router.get("/{store_slug}/feed/meta.xml")
+def meta_catalog_feed(
+    store_slug: str,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Meta (Facebook/Instagram) katalog feed'i — ÜRÜN bazlı tek item.
+
+    g:id = ürün slug'ı: pikselin ViewContent/AddToCart/Purchase content_ids'i
+    ile birebir aynı anahtar → dynamic ads (Advantage+ catalog) eşleşmesi.
+    Google feed'i varyant bazlıdır (233 model = 233 satır) — Meta reklamında
+    aynı ürünün yüzlerce kopyası anlamsız olacağından ayrı uç gerekir.
+    Commerce Manager → Veri Kaynakları → Veri Akışı'na bu URL verilir.
+    """
+    from xml.sax.saxutils import escape
+
+    store = _resolve_store(db, store_slug)
+    config = store.config or {}
+    site = (config.get("storefront_url")
+            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+
+    products = db.scalars(
+        select(CatalogProduct)
+        .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active")
+        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+        .order_by(CatalogProduct.position)
+    ).all()
+
+    items_xml = []
+    for p in products:
+        active = [v for v in p.variants if v.is_active]
+        in_stock = any((not v.track_stock) or v.quantity > 0 for v in active) if active else False
+        desc = re.sub(r"<[^>]*>", " ", p.seo_description or p.description or p.title or "")
+        desc = re.sub(r"\s+", " ", desc).strip()[:5000] or p.title
+        image = f"{site}/storage/{p.images[0].file_path}" if p.images else ""
+        extra_images = [f"{site}/storage/{im.file_path}" for im in p.images[1:11]]
+        sale = (p.compare_at_price is not None
+                and Decimal(str(p.compare_at_price)) > Decimal(str(p.base_price)))
+        items_xml.append(
+            "<item>"
+            f"<g:id>{escape(p.slug[:100])}</g:id>"
+            f"<title>{escape((p.title or '')[:150])}</title>"
+            f"<description>{escape(desc)}</description>"
+            f"<link>{escape(f'{site}/urun/{p.slug}')}</link>"
+            + (f"<g:image_link>{escape(image)}</g:image_link>" if image else "")
+            + "".join(f"<g:additional_image_link>{escape(u)}</g:additional_image_link>"
+                      for u in extra_images)
+            # İndirimliyse: price = üstü çizili, sale_price = gerçek satış fiyatı
+            + (f"<g:price>{p.compare_at_price} TRY</g:price>"
+               f"<g:sale_price>{p.base_price} TRY</g:sale_price>" if sale
+               else f"<g:price>{p.base_price} TRY</g:price>")
+            + f"<g:availability>{'in stock' if in_stock else 'out of stock'}</g:availability>"
+            "<g:condition>new</g:condition>"
+            f"<g:brand>{escape(store.name)}</g:brand>"
+            "<g:google_product_category>Electronics &gt; Communications &gt; "
+            "Telephony &gt; Mobile Phone Accessories &gt; Mobile Phone Cases</g:google_product_category>"
+            "</item>"
+        )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">'
+        f"<channel><title>{escape(store.name)}</title>"
+        f"<link>{escape(site)}</link>"
+        f"<description>{escape(store.name)} Meta katalog feed'i</description>"
+        + "".join(items_xml)
+        + "</channel></rss>"
+    )
+    return Response(content=xml, media_type="application/xml",
+                    headers={"Cache-Control": "public, max-age=900"})
 
 
 @router.get("/{store_slug}/feed/google.xml")

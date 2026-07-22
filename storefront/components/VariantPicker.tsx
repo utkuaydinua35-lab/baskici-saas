@@ -107,7 +107,9 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       custom: Object.keys(custom).length > 0 ? custom : null,
     }, qty);
     trackAddToCart({
-      id: selected.id,
+      // id = ürün slug'ı: Meta feed g:id ve ViewContent ile aynı anahtar
+      // (varyant id'si katalogla eşleşmez → dynamic ads çalışmazdı)
+      id: product.slug,
       name: `${product.title} — ${selected.model_display}`,
       price: Number(selected.price),
       quantity: qty,

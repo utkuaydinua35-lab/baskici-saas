@@ -71,6 +71,8 @@ export function trackInitiateCheckout(data: EventData) {
   const currency = data.currency || "TRY";
   window.fbq?.("track", "InitiateCheckout", {
     value: data.value, currency, contents: contents(data.items),
+    content_ids: (data.items || []).map((i) => i.id),
+    content_type: "product",
     num_items: (data.items || []).reduce((s, i) => s + i.quantity, 0),
   });
   window.gtag?.("event", "begin_checkout", {
@@ -104,6 +106,8 @@ export function trackPurchaseOnce(token: string, data: EventData) {
   const currency = data.currency || "TRY";
   window.fbq?.("track", "Purchase", {
     value: data.value, currency, contents: contents(data.items),
+    content_ids: (data.items || []).map((i) => i.id),
+    content_type: "product",
   });
   window.gtag?.("event", "purchase", {
     transaction_id: data.orderId, currency, value: data.value,

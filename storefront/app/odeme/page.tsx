@@ -82,8 +82,9 @@ export default function CheckoutPage() {
     if (items.length === 0) return;
     trackInitiateCheckout({
       value: subtotal,
+      // id = ürün slug'ı — Meta katalog (g:id) ile aynı anahtar
       items: items.map((i) => ({
-        id: i.variantId, name: i.title, price: Number(i.price), quantity: i.quantity,
+        id: i.productSlug, name: i.title, price: Number(i.price), quantity: i.quantity,
       })),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,7 +168,7 @@ export default function CheckoutPage() {
       trackAddPaymentInfo({
         value: Number(out.amount || 0),
         items: items.map((i) => ({
-          id: i.variantId, name: i.title, price: Number(i.price), quantity: i.quantity,
+          id: i.productSlug, name: i.title, price: Number(i.price), quantity: i.quantity,
         })),
       });
       if (out.mode === "redirect") {

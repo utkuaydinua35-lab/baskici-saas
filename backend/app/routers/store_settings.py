@@ -176,6 +176,113 @@ def patch_settings(
     }
 
 
+# ─── E-posta şablon önizleme + test gönderimi ────────────────
+# Panel E-posta sekmesi: formdaki (henüz kaydedilmemiş) konu+giriş metniyle
+# örnek veri üzerinden gerçek şablonu render eder / test maili yollar.
+
+_EMAIL_PREVIEW_SAMPLES = {
+    "siparis_onay": {
+        "default_subject": "Siparişiniz alındı — #1042",
+        "emoji": "✅",
+        "title": "Siparişiniz alındı!",
+        "body": (
+            "<p>Merhaba <b>Ayşe</b>,</p>"
+            "<table width='100%' cellpadding='6' style='border-collapse:collapse;font-size:14px'>"
+            "<tr style='border-bottom:1px solid #eee'><td>Mystic Blade Soul Kılıf — iPhone 15 Pro ×1</td>"
+            "<td align='right'>349,99 ₺</td></tr>"
+            "<tr style='border-bottom:1px solid #eee'><td>Kargo</td><td align='right'>94,90 ₺</td></tr>"
+            "<tr><td><b>Toplam</b></td><td align='right'><b>444,89 ₺</b></td></tr></table>"
+        ),
+        "button": ("Siparişimi Takip Et", "#"),
+    },
+    "kargo": {
+        "default_subject": "Siparişiniz kargoya verildi 📦",
+        "emoji": "🚚",
+        "title": "Kargonuz yola çıktı!",
+        "body": ("<p>Merhaba <b>Ayşe</b>,</p><p>#1042 numaralı siparişiniz kargoya verildi."
+                 "<br>Takip No: <b>72900312455</b></p>"),
+        "button": ("Kargomu Takip Et", "#"),
+    },
+    "terk_sepet": {
+        "default_subject": "Sepetinizdeki ürünler sizi bekliyor 🛒",
+        "emoji": "🛒",
+        "title": "Sepetinizi unutmayın",
+        "body": ("<p>Merhaba <b>Ayşe</b>,</p><p>Sepetinizde <b>Mystic Blade Soul Kılıf</b> "
+                 "sizi bekliyor — tek tıkla kaldığınız yerden devam edin.</p>"),
+        "button": ("Sepetime Dön", "#"),
+    },
+    "odeme_linki": {
+        "default_subject": "Siparişiniz için ödeme bağlantınız 🧾",
+        "emoji": "🧾",
+        "title": "Ödeme bağlantınız hazır",
+        "body": ("<p>Merhaba <b>Ayşe</b>,</p><p>Sizin için hazırladığımız siparişin tutarı "
+                 "<b>444,89 ₺</b>. Aşağıdaki bağlantıyla güvenle ödeyebilirsiniz.</p>"),
+        "button": ("Güvenli Ödeme", "#"),
+    },
+    "stok": {
+        "default_subject": "Beklediğiniz ürün yeniden stokta 🔔",
+        "emoji": "🔔",
+        "title": "Yeniden stokta!",
+        "body": ("<p>Merhaba,</p><p><b>Mystic Blade Soul Kılıf (iPhone 15 Pro)</b> "
+                 "yeniden stokta — tükenmeden alın.</p>"),
+        "button": ("Ürüne Git", "#"),
+    },
+}
+
+
+def _render_email_preview(store: Store, body: dict) -> tuple[str, str]:
+    """(konu, html) — formdaki taslak konu/giriş uygulanmış örnek şablon."""
+    from app.services import email_service
+
+    etype = str(body.get("type") or "")
+    sample = _EMAIL_PREVIEW_SAMPLES.get(etype)
+    if not sample:
+        raise HTTPException(422, "Bilinmeyen şablon türü")
+    subject = str(body.get("subject") or "").strip() or sample["default_subject"]
+    intro = str(body.get("intro") or "").strip()
+    tenant = getattr(store, "tenant", None)
+    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    html = email_service.render_email(
+        title=sample["title"],
+        body_html=(f"<p>{intro}</p>" if intro else "") + sample["body"],
+        button_text=sample["button"][0], button_url=sample["button"][1],
+        preheader=subject, emoji=sample["emoji"], **brand,
+    )
+    return subject, html
+
+
+@router.post("/{store_id}/email-preview", response_model=dict)
+def email_preview(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    subject, html = _render_email_preview(store, body)
+    return {"subject": subject, "html": html}
+
+
+@router.post("/{store_id}/email-test", response_model=dict)
+def email_test(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Örnek şablonu mağaza sahibinin kendi adresine gönderir."""
+    from app.services import email_service
+
+    store = _get_store(db, user, store_id)
+    to = ((store.config or {}).get("contact_email") or "").strip() or (user.email or "")
+    if not to:
+        raise HTTPException(422, "Önce Ayarlar → Genel'e iletişim e-postası girin")
+    subject, html = _render_email_preview(store, body)
+    if not email_service.send_email(to, f"[TEST] {subject}", html):
+        raise HTTPException(500, "Gönderilemedi — e-posta servisi ayarlı değil (RESEND/SMTP)")
+    return {"ok": True, "to": to}
+
+
 # ─── Tema ────────────────────────────────────────────────────
 
 from fastapi import File, Form, UploadFile  # noqa: E402

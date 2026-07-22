@@ -133,6 +133,7 @@ def validate_and_snapshot(
         snapshot.append({
             "variant_id": str(variant.id),
             "product_id": str(product.id),
+            "product_slug": product.slug,   # piksel Purchase contents eşleşmesi
             "title": product.title,
             "model_key": variant.model_key,
             "model_display": variant.model_display,

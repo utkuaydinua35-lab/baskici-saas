@@ -16,7 +16,6 @@ Gizli ölçü modülü yalnızca burada okunur; ölçüler API'den dışa verilm
 from __future__ import annotations
 
 import io
-import re
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -106,13 +105,12 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
             f"{x0+rr:.3f} {pt:.3f} l {x0+rr-k:.3f} {pt:.3f} {x0:.3f} {pt-rr+k:.3f} {x0:.3f} {pt-rr:.3f} c "
             f"{x0:.3f} {pb+rr:.3f} l {x0:.3f} {pb+rr-k:.3f} {x0+rr-k:.3f} {pb:.3f} {x0+rr:.3f} {pb:.3f} c h W n "
         )
+        # Clip'i içerik akışının BAŞINA koy: baştaki "W n" sonraki tüm çizimi kapsar.
+        # (Eskiden regex ile aranıp araya sokuluyordu; desen tutmazsa yuvarlatma
+        # SESSİZCE atlanıp köşeler keskin kalıyordu.)
         xref = pg.get_contents()[0]
         c = tmp.xref_stream(xref).decode("latin-1")
-        m = re.search(r" q /fzFrm\d+ Do Q", c)
-        if m:
-            ins = m.start() + len(" q ")
-            c = c[:ins] + ops + c[ins:]
-            tmp.update_stream(xref, c.encode("latin-1"))
+        tmp.update_stream(xref, (ops + c).encode("latin-1"))
 
     out = tmp.tobytes(garbage=4, deflate=True)  # clip KALICI
     tmp.close()
@@ -140,14 +138,11 @@ def _make_clipped_image(src_path, w_pt, h_pt, radius):
             f"{x0+rr:.3f} {pt:.3f} l {x0+rr-k:.3f} {pt:.3f} {x0:.3f} {pt-rr+k:.3f} {x0:.3f} {pt-rr:.3f} c "
             f"{x0:.3f} {pb+rr:.3f} l {x0:.3f} {pb+rr-k:.3f} {x0+rr-k:.3f} {pb:.3f} {x0+rr:.3f} {pb:.3f} c h W n "
         )
+        # Clip akışın BAŞINA — görselde akış çoğu zaman boşluksuz "q" ile başladığı
+        # için eski " q" regex'i tutmuyor, yuvarlatma sessizce atlanıyordu.
         xref = pg.get_contents()[0]
         c = tmp.xref_stream(xref).decode("latin-1")
-        # Gorsel icin operator: " q ... /Im0 Do Q" — image XObject Do'dan once clip ekle
-        m = re.search(r" q\b", c)
-        if m:
-            ins = m.start() + len(" q")
-            c = c[:ins] + " " + ops + c[ins:]
-            tmp.update_stream(xref, c.encode("latin-1"))
+        tmp.update_stream(xref, (ops + c).encode("latin-1"))
 
     out = tmp.tobytes(garbage=4, deflate=True)
     tmp.close()

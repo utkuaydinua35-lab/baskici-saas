@@ -154,6 +154,9 @@ export default function CheckoutPage() {
           },
           kvkk_accept: fd.get("kvkk_accept") === "on",
           discount_code: coupon?.code || null,
+          // Meta CAPI eşleşme sinyalleri — piksel çerezleri (varsa)
+          fbp: document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/)?.[1] || null,
+          fbc: document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/)?.[1] || null,
         }),
       });
       const data = await res.json();

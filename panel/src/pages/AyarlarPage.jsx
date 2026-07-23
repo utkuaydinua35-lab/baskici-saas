@@ -68,6 +68,28 @@ export default function AyarlarPage() {
     setStoreName(name)
     setCfg(config)
   }
+
+  // E-posta şablonu: formdaki taslak konu/girişle önizleme + test gönderimi
+  const [emailPreview, setEmailPreview] = useState(null)   // {subject, html}
+  const [testBusy, setTestBusy] = useState(false)
+  const previewEmail = async (type, t) => {
+    try {
+      setEmailPreview(await api.post(`/api/store-settings/${storeId}/email-preview`,
+        { type, subject: t.subject || '', intro: t.intro || '' }))
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Önizleme alınamadı')
+    }
+  }
+  const testEmail = async (type, t) => {
+    setTestBusy(true)
+    try {
+      const r = await api.post(`/api/store-settings/${storeId}/email-test`,
+        { type, subject: t.subject || '', intro: t.intro || '' })
+      toast.success(`Test maili gönderildi → ${r.to}`)
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Gönderilemedi')
+    } finally { setTestBusy(false) }
+  }
   const dirty = loaded && snapshot(storeName, cfg) !== initialRef.current
 
   if (!loaded) return <p className="text-sm text-panel-muted">Yükleniyor…</p>
@@ -233,11 +255,36 @@ export default function AyarlarPage() {
                 <textarea className="input" rows={2} maxLength={1000} value={t.intro || ''}
                   onChange={setT('intro')}
                   placeholder="Giriş paragrafı — 'Merhaba {ad}' satırından hemen sonra eklenir (ops.)" />
+                <div className="flex gap-2">
+                  <button type="button" className="btn-ghost !py-1 text-xs"
+                    onClick={() => previewEmail(key, t)}>👁 Önizle</button>
+                  <button type="button" className="btn-ghost !py-1 text-xs" disabled={testBusy}
+                    onClick={() => testEmail(key, t)}>
+                    {testBusy ? 'Gönderiliyor…' : '✉️ Test maili gönder'}
+                  </button>
+                </div>
               </div>
             </details>
           )
         })}
       </Section>
+      )}
+
+      {/* E-posta önizleme modalı — formdaki taslak değerlerle render edilir */}
+      {emailPreview && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setEmailPreview(null)}>
+          <div className="bg-panel-card border border-panel-border rounded-2xl w-full max-w-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-2.5 flex items-center gap-2 border-b border-panel-border">
+              <span className="text-sm font-medium truncate">📧 {emailPreview.subject}</span>
+              <button onClick={() => setEmailPreview(null)}
+                className="ml-auto text-panel-muted hover:text-panel-ink">×</button>
+            </div>
+            <iframe title="E-posta önizleme" srcDoc={emailPreview.html}
+              className="w-full bg-white" style={{ height: 'min(70vh, 640px)' }} />
+          </div>
+        </div>
       )}
 
       {tab === 'pazarlama' && (
@@ -259,6 +306,27 @@ export default function AyarlarPage() {
             <input className="input mt-1 font-mono text-xs" value={cfg.tiktok_pixel_id || ''}
               onChange={set('tiktok_pixel_id')} placeholder="XXXXXXXXXXXXXXXXXX" />
           </Field>
+        </div>
+        <div className="border-t border-panel-border pt-3 mt-1 space-y-2">
+          <div className="text-sm font-medium">🛡 Meta Conversions API (sunucu taraflı)</div>
+          <p className="text-[11px] text-panel-muted -mt-1">
+            Reklam engelleyici / iOS kısıtları tarayıcı pikselini susturur — satın alma
+            olayı sunucudan da gönderilir, Meta ikisini tekilleştirir (çift sayım olmaz).
+            Jeton: Olay Yöneticisi → pikseliniz → Ayarlar → Conversions API →
+            "Erişim anahtarı oluştur".
+          </p>
+          <Field label="CAPI erişim jetonu">
+            <input className="input mt-1 font-mono text-xs" value={cfg.meta_capi_token || ''}
+              onChange={set('meta_capi_token')} placeholder="EAAG..." />
+          </Field>
+          <Field label="Test olay kodu (ops. — yalnız test ederken doldurun)">
+            <input className="input mt-1 font-mono text-xs !w-52" value={cfg.meta_test_event_code || ''}
+              onChange={set('meta_test_event_code')} placeholder="TEST12345" />
+          </Field>
+          <p className="text-[11px] text-panel-muted">
+            ⚠️ Test kodu doluyken olaylar yalnız "Olayları Test Et" ekranına düşer —
+            doğrulama bitince bu alanı boşaltıp kaydedin.
+          </p>
         </div>
       </Section>
       )}

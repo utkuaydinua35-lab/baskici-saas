@@ -104,11 +104,12 @@ export function trackPurchaseOnce(token: string, data: EventData) {
     /* private mode — yine de gönder */
   }
   const currency = data.currency || "TRY";
+  // eventID sunucudaki CAPI Purchase ile AYNI — Meta iki kaynağı tekilleştirir
   window.fbq?.("track", "Purchase", {
     value: data.value, currency, contents: contents(data.items),
     content_ids: (data.items || []).map((i) => i.id),
     content_type: "product",
-  });
+  }, { eventID: `purchase_${token}` });
   window.gtag?.("event", "purchase", {
     transaction_id: data.orderId, currency, value: data.value,
     items: ga4Items(data.items),

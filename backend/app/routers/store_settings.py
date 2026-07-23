@@ -36,11 +36,13 @@ _TEXT_KEYS = {
     "kvkk_text", "mesafeli_satis_text", "iade_text", "sla_days",
     "iyzico_base_url", "paytr_test_mode",
     "meta_pixel_id", "ga4_id", "tiktok_pixel_id",
+    "meta_test_event_code",
     "storefront_password",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
+    "meta_capi_token",
 }
 _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled",
               "support_chat_enabled"}

@@ -349,6 +349,10 @@ class CheckoutRequest(BaseModel):
     customer: CheckoutCustomerIn
     kvkk_accept: bool
     discount_code: str | None = Field(None, max_length=40)
+    # Meta CAPI eşleşme sinyalleri (ops.) — _fbp/_fbc çerezleri; sunucu
+    # taraflı Purchase'ın müşteriyle eşleşme kalitesini yükseltir
+    fbp: str | None = Field(None, max_length=100)
+    fbc: str | None = Field(None, max_length=200)
 
 
 class ValidateCodeRequest(BaseModel):
@@ -462,7 +466,18 @@ def create_checkout(
                 "second_variant_id": str(i.second_variant_id) if i.second_variant_id else None,
                 "custom": i.custom or None,
             } for i in body.items],
-            customer=body.customer.model_dump(),
+            customer={
+                **body.customer.model_dump(),
+                # CAPI eşleşme sinyalleri — KVKK sweep'i customer'ı sildiğinde
+                # bunlar da birlikte temizlenir
+                "_meta": {
+                    "ip": client_ip(request),
+                    "ua": (request.headers.get("x-client-user-agent")
+                           or request.headers.get("user-agent") or "")[:300],
+                    "fbp": body.fbp,
+                    "fbc": body.fbc,
+                },
+            },
             client_ip=client_ip(request),
             discount_code=body.discount_code,
         )

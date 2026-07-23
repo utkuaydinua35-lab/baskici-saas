@@ -450,6 +450,16 @@ def finalize_paid_session(db: Session, session: CheckoutSession) -> None:
     from app.services.storefront_order import create_order_from_session
     create_order_from_session(db, session)
 
+    # Meta CAPI Purchase — arka planda, best-effort (token tanımlıysa).
+    # Tarayıcı pikseliyle aynı event_id sayesinde Meta çift saymaz.
+    try:
+        from app.services.meta_capi import send_purchase_async
+        store = db.get(Store, session.store_id)
+        if store:
+            send_purchase_async(store, session)
+    except Exception:  # noqa: BLE001 — analitik, sipariş akışını asla bozmaz
+        pass
+
 
 # ─── Bakım: süresi dolan oturumlar + KVKK veri temizliği ─────
 

@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "X-Forwarded-For": clientIp,
+        // CAPI user_data.client_user_agent — müşterinin gerçek tarayıcısı
+        "X-Client-User-Agent": req.headers.get("user-agent") || "",
       },
       body: JSON.stringify(body),
       cache: "no-store",

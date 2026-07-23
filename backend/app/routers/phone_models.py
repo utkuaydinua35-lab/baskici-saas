@@ -37,9 +37,11 @@ router = APIRouter(prefix="/api/phone-models", tags=["phone-models"])
 class PhoneModelCreate(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=120)
     brand: str | None = Field(None, max_length=40)
-    width_cm: float = Field(..., gt=0, lt=40)
-    height_cm: float = Field(..., gt=0, lt=40)
-    radius_cm: float = Field(0, ge=0, lt=10)
+    # Ölçüler OPSİYONEL: boş bırakılırsa ve model baseline'da tanınıyorsa oradan
+    # (gizli kalarak) alınır — sadece mockup eklemek için ölçü bilmeye gerek yok.
+    width_cm: float | None = Field(None, gt=0, lt=40)
+    height_cm: float | None = Field(None, gt=0, lt=40)
+    radius_cm: float | None = Field(None, ge=0, lt=10)
     spec_key: str | None = Field(None, max_length=60)  # boşsa display_name'den türetilir
     notes: str | None = None
 
@@ -167,14 +169,29 @@ def create_model(
             f"Bu model anahtarı zaten var: '{key}'. Düzenlemek için mevcut kaydı kullan.",
         )
 
+    # Ölçü girilmediyse baseline'dan (gizli) al — böylece tanınan modele sadece
+    # mockup eklemek için ölçü bilmeye gerek kalmaz.
+    w, h, r = body.width_cm, body.height_cm, body.radius_cm
+    if w is None or h is None:
+        spec = cd.get_spec(body.spec_key or body.display_name)
+        if spec:
+            w = w if w is not None else spec[0]
+            h = h if h is not None else spec[1]
+            r = r if r is not None else spec[2]
+        else:
+            raise HTTPException(
+                400,
+                "Bu model baseline kataloğunda tanınmıyor — genişlik ve yükseklik (cm) girmelisin.",
+            )
+
     m = PhoneModel(
         tenant_id=user.tenant_id,
         spec_key=key,
         display_name=body.display_name.strip(),
         brand=(body.brand or "").strip() or None,
-        width_cm=body.width_cm,
-        height_cm=body.height_cm,
-        radius_cm=body.radius_cm,
+        width_cm=w,
+        height_cm=h,
+        radius_cm=r or 0,
         notes=body.notes,
         is_active=True,
     )

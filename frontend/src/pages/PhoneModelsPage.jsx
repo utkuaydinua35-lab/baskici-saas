@@ -68,13 +68,13 @@ export default function PhoneModelsPage() {
     const payload = {
       display_name: form.display_name.trim(),
       brand: form.brand.trim() || null,
-      width_cm: parseFloat(form.width_cm),
-      height_cm: parseFloat(form.height_cm),
-      radius_cm: form.radius_cm === '' ? 0 : parseFloat(form.radius_cm),
+      width_cm: form.width_cm === '' ? null : parseFloat(form.width_cm),
+      height_cm: form.height_cm === '' ? null : parseFloat(form.height_cm),
+      radius_cm: form.radius_cm === '' ? null : parseFloat(form.radius_cm),
       notes: form.notes.trim() || null,
     }
-    if (!payload.display_name || isNaN(payload.width_cm) || isNaN(payload.height_cm)) {
-      setMsg({ ok: false, text: 'Model adı, genişlik ve yükseklik zorunlu.' })
+    if (!payload.display_name) {
+      setMsg({ ok: false, text: 'Model adı zorunlu.' })
       setSaving(false); return
     }
     try {
@@ -216,12 +216,14 @@ export default function PhoneModelsPage() {
                      placeholder="Apple / Samsung..."
                      onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} />
             </Field>
-            <Field label="Genişlik (cm) *">
+            <Field label="Genişlik (cm)">
               <input type="number" step="0.01" className="input w-full !text-xs !py-1.5" value={form.width_cm}
+                     placeholder="boş = tanınan ölçü"
                      onChange={e => setForm(f => ({ ...f, width_cm: e.target.value }))} />
             </Field>
-            <Field label="Yükseklik (cm) *">
+            <Field label="Yükseklik (cm)">
               <input type="number" step="0.01" className="input w-full !text-xs !py-1.5" value={form.height_cm}
+                     placeholder="boş = tanınan ölçü"
                      onChange={e => setForm(f => ({ ...f, height_cm: e.target.value }))} />
             </Field>
             <Field label="Köşe yarıçapı (cm)">

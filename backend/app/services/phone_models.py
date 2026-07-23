@@ -38,13 +38,19 @@ def normalize_key(model: str) -> str:
 
 
 def _db_lookup(db: Session, tenant_id: uuid.UUID, key: str) -> PhoneModel | None:
-    """Önce tenant'a özel, yoksa global (tenant_id IS NULL) aktif kayıt."""
+    """Önce tenant'a özel, yoksa global (tenant_id IS NULL) aktif kayıt.
+    Kayıt çıplak Apple alias'ı ('16-PROMAX') ya da kanonik ('IPHONE-16-PROMAX')
+    olarak saklanmış olabilir — ikisini de dene (eşleşme kaçmasın)."""
     if not key:
         return None
+    k = key.upper()
+    variants = {k, canonical_key(k)}
+    if k.startswith("IPHONE-"):
+        variants.add(k[len("IPHONE-"):])   # kanonik -> çıplak alias ikizi
     row = db.scalar(
         select(PhoneModel).where(
             PhoneModel.tenant_id == tenant_id,
-            PhoneModel.spec_key == key,
+            PhoneModel.spec_key.in_(variants),
             PhoneModel.is_active.is_(True),
         )
     )
@@ -53,7 +59,7 @@ def _db_lookup(db: Session, tenant_id: uuid.UUID, key: str) -> PhoneModel | None
     return db.scalar(
         select(PhoneModel).where(
             PhoneModel.tenant_id.is_(None),
-            PhoneModel.spec_key == key,
+            PhoneModel.spec_key.in_(variants),
             PhoneModel.is_active.is_(True),
         )
     )

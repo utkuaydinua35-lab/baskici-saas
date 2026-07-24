@@ -248,6 +248,27 @@ export function CariDialog({ dealer, onClose, onChanged }) {
     finally { setDekontBusyId(null) }
   }
 
+  const applyDealer = (d) => { if (!d) return; setBal(d.balance); setBalUsd(d.balance_usd || 0); load(); onChanged?.() }
+  const editDesc = async (t) => {
+    const v = prompt('Açıklama:', t.description || '')
+    if (v === null) return
+    try { applyDealer(await api.patch(`/api/dealers/${dealer.id}/transactions/${t.id}`, { description: v })) }
+    catch (e) { toast.error(e.detail || 'Güncellenemedi') }
+  }
+  const editAmount = async (t) => {
+    const v = prompt('Yeni tutar (yön korunur):', String(Math.abs(t.amount)))
+    if (v === null) return
+    const n = parseFloat(v)
+    if (!n || n <= 0) { toast.error('Geçerli tutar gir'); return }
+    try { applyDealer(await api.patch(`/api/dealers/${dealer.id}/transactions/${t.id}`, { amount: n })); toast.success('Tutar güncellendi') }
+    catch (e) { toast.error(e.detail || 'Güncellenemedi') }
+  }
+  const deleteTx = async (t) => {
+    if (!confirm('Bu hareket geri alınsın (silinsin)? Bayi bakiyesi yeniden hesaplanır.')) return
+    try { applyDealer(await api.del(`/api/dealers/${dealer.id}/transactions/${t.id}`)); toast.success('Hareket geri alındı') }
+    catch (e) { toast.error(e.detail || 'Silinemedi') }
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 overflow-y-auto" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-lg p-5 my-8 animate-popin">
@@ -306,7 +327,10 @@ export function CariDialog({ dealer, onClose, onChanged }) {
                     <div className="text-gray-300 truncate">{t.description || t.kind}</div>
                     <div className="text-[10px] text-gray-600">{t.created_at ? new Date(t.created_at).toLocaleString('tr-TR') : ''}</div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => editDesc(t)} className="text-gray-600 hover:text-accent text-xs px-0.5" title="Açıklama düzenle">✎</button>
+                    {t.manual && <button onClick={() => editAmount(t)} className="text-gray-600 hover:text-accent text-xs px-0.5" title="Tutarı düzenle">₺</button>}
+                    {t.manual && <button onClick={() => deleteTx(t)} className="text-red-400/70 hover:text-red-300 text-xs px-0.5" title="Geri al (sil)">🗑</button>}
                     {t.dekont_url ? (
                       <a href={t.dekont_url} target="_blank" rel="noreferrer" className="text-accent hover:opacity-80" title="Dekontu aç">📎</a>
                     ) : t.kind !== 'siparis' ? (

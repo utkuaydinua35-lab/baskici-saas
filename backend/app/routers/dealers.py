@@ -92,6 +92,11 @@ def _ser(d: Dealer) -> dict:
     }
 
 
+def _is_manual_tx(t: DealerTransaction) -> bool:
+    """Kullanıcının elle eklediği hareket mi (sipariş kaynaklı DEĞİL)."""
+    return t.kind != "siparis" and not t.ref_order_id
+
+
 def _ser_tx(t: DealerTransaction) -> dict:
     return {
         "id": str(t.id), "amount": float(t.amount), "kind": t.kind, "currency": getattr(t, "currency", "TRY") or "TRY",
@@ -99,7 +104,29 @@ def _ser_tx(t: DealerTransaction) -> dict:
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "ref_order_id": str(t.ref_order_id) if t.ref_order_id else None,
         "dekont_url": f"/storage/{t.dekont_path}" if getattr(t, "dekont_path", None) else None,
+        # Sipariş kaynaklı hareketler düzenlenmez/silinmez (siparişle senkron kalır);
+        # elle eklenenlerde tutar düzenlenebilir + geri alınabilir.
+        "manual": _is_manual_tx(t),
     }
+
+
+def _recompute_dealer_balances(db: Session, dealer: Dealer) -> None:
+    """Bir bayinin TÜM hareketlerini kronolojik sırayla yeniden hesapla:
+    her hareketin balance_after'ını ve bayinin güncel bakiyelerini (TRY+USD) tazele.
+    Herhangi bir tutar düzenleme / silme sonrası çağrılır — tutarlılık garanti."""
+    txs = db.scalars(
+        select(DealerTransaction).where(DealerTransaction.dealer_id == dealer.id)
+        .order_by(DealerTransaction.created_at.asc(), DealerTransaction.id.asc())
+    ).all()
+    run = {"TRY": Decimal("0"), "USD": Decimal("0")}
+    for t in txs:
+        cur = (t.currency or "TRY").upper()
+        if cur not in run:
+            cur = "TRY"
+        run[cur] += Decimal(str(t.amount))
+        t.balance_after = run[cur]
+    dealer.balance = run["TRY"]
+    dealer.balance_usd = run["USD"]
 
 
 @router.get("", response_model=list[dict])
@@ -353,6 +380,66 @@ def delete_dekont(
         tx.dekont_path = None
         db.commit(); db.refresh(tx)
     return _ser_tx(tx)
+
+
+class TxEditIn(BaseModel):
+    description: str | None = None
+    amount: float | None = Field(None, gt=0)   # yeni tutar (BÜYÜKLÜK); yön korunur
+
+
+@router.patch("/{dealer_id}/transactions/{tx_id}", response_model=dict)
+def edit_transaction(dealer_id: uuid.UUID, tx_id: uuid.UUID, body: TxEditIn,
+                     user: User = Depends(require_permission("bayii")), db: Session = Depends(get_db)):
+    """Cari harekete sonradan açıklama ekle/düzenle; elle eklenen harekette tutarı düzenle
+    (yön korunur, bakiye yeniden hesaplanır)."""
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    tx = db.scalar(select(DealerTransaction).where(
+        DealerTransaction.id == tx_id, DealerTransaction.dealer_id == dealer_id,
+        DealerTransaction.tenant_id == user.tenant_id))
+    if not tx:
+        raise HTTPException(404, "Hareket bulunamadı")
+
+    if body.description is not None:
+        tx.description = body.description.strip()[:300] or None
+
+    if body.amount is not None:
+        if not _is_manual_tx(tx):
+            raise HTTPException(400, "Sipariş kaynaklı hareketin tutarı düzenlenemez (siparişten yönetilir).")
+        sign = -1 if Decimal(str(tx.amount)) < 0 else 1
+        tx.amount = sign * abs(Decimal(str(body.amount)))
+        _recompute_dealer_balances(db, d)
+
+    db.commit(); db.refresh(d)
+    return {"ok": True, **_ser(d)}
+
+
+@router.delete("/{dealer_id}/transactions/{tx_id}", response_model=dict)
+def delete_transaction(dealer_id: uuid.UUID, tx_id: uuid.UUID,
+                       user: User = Depends(require_permission("bayii")), db: Session = Depends(get_db)):
+    """Elle eklenen cari hareketi geri al (sil) — bakiye yeniden hesaplanır.
+    Sipariş kaynaklı hareketler silinemez (sipariş iptaliyle yönetilir)."""
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    tx = db.scalar(select(DealerTransaction).where(
+        DealerTransaction.id == tx_id, DealerTransaction.dealer_id == dealer_id,
+        DealerTransaction.tenant_id == user.tenant_id))
+    if not tx:
+        raise HTTPException(404, "Hareket bulunamadı")
+    if not _is_manual_tx(tx):
+        raise HTTPException(400, "Sipariş kaynaklı hareket silinemez (siparişten yönetilir).")
+    if tx.dekont_path:
+        try:
+            (storage.STORAGE_ROOT / tx.dekont_path).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+    db.delete(tx)
+    db.flush()
+    _recompute_dealer_balances(db, d)
+    db.commit(); db.refresh(d)
+    return {"ok": True, **_ser(d)}
 
 
 # ─── Bayii manuel siparisi (Parca 4c) ───

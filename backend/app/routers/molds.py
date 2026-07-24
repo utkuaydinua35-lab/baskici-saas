@@ -447,57 +447,92 @@ def mold_history(mold_id: uuid.UUID, user: User = Depends(get_current_user), db:
 
 @router.post("/_resync-flags", response_model=None)
 def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Bakim: hicbir aktif kalipta OLMAYAN ama is_kaliba_eklendi=True isaretli line item'lari
-    sifirla (plana geri dondur). Gecmiste line_item_id'siz MoldItem silinince takili kalanlari kurtarir."""
+    """Kalıp bayraklarını gerçek kalıp kayıtlarıyla İKİ YÖNLÜ eşitle.
+
+    İlke: bir siparişin kalıptaki slot sayısı kadar kalemi kalıptadır — SADECE FAZLASI
+    kayıptır. Her slot YALNIZCA BİR kalemi kapsar (greedy: tasarım kodu > model > kalan).
+      - kalıpta olduğu halde bayrağı kapalı  -> bayrak açılır (restored)
+      - bayrağı açık ama karşılık slot yok   -> plana döndürülür (fixed)
+    'is_hazir' (geri dönmesin) işaretli kalemlere DOKUNULMAZ.
+    """
     tid = user.tenant_id
-    # Aktif kaliplardaki line item kimlikleri (id + order_number/design_code cifti)
     mis = db.scalars(
         select(MoldItem).join(Mold, Mold.id == MoldItem.mold_id).where(Mold.tenant_id == tid)
     ).all()
-    from collections import Counter
     from app.services.phone_models import normalize_key as _nk
-    in_mold_ids = {mi.line_item_id for mi in mis if mi.line_item_id}
-    # KÜME DEĞİL SAYAÇ: bir kalıp slotu YALNIZCA BİR kalemi kapsar. (Eskiden küme idi;
-    # aynı siparişte aynı modelden kardeş kalemler tek slot tarafından "kapsanmış"
-    # sayılıp kayıp kalemler hiç bulunamıyordu.)
-    pairs_count = Counter(
-        (str(mi.order_number), str(mi.design_code))
-        for mi in mis if not mi.line_item_id and mi.order_number and mi.design_code
-    )
-    # Model eşleşmesi SADECE design_code'u olmayan slotlar için (aksi halde tasarımı
-    # belli bir slot, farklı tasarımlı kardeşi de yanlışlıkla kapsıyordu).
-    models_count = Counter(
-        (str(mi.order_number), _nk(mi.model))
-        for mi in mis
-        if not mi.line_item_id and mi.order_number and mi.model and not mi.design_code
-    )
-    # is_kaliba_eklendi=True olan tum line item'lar
+
+    direct_ids = {mi.line_item_id for mi in mis if mi.line_item_id}
+    slots_by_order: dict[str, list] = {}
+    for mi in mis:
+        if mi.line_item_id or not mi.order_number:
+            continue
+        slots_by_order.setdefault(str(mi.order_number), []).append(mi)
+
+    # İlgili kalemler: bayraklı olanlar + slotu olan siparişlerin kalemleri + doğrudan bağlılar
+    conds = [LineItem.is_kaliba_eklendi == True]  # noqa: E712
+    if direct_ids:
+        conds.append(LineItem.id.in_(direct_ids))
+    if slots_by_order:
+        conds.append(Order.order_number.in_(list(slots_by_order.keys())))
     lis = db.scalars(
-        select(LineItem)
-        .join(Order, LineItem.order_id == Order.id)
-        .where(Order.tenant_id == tid, LineItem.is_kaliba_eklendi == True,  # noqa: E712
-               LineItem.is_hazir == False)  # noqa: E712  'geri dönmesin' işaretlileri koru
+        select(LineItem).join(Order, LineItem.order_id == Order.id)
+        .where(Order.tenant_id == tid, sa_or(*conds))
         .options(selectinload(LineItem.order), selectinload(LineItem.assigned_design))
     ).all()
-    fixed = 0
+
+    fixed = 0      # plana döndürülen (kayıp)
+    restored = 0   # kalıpta olduğu halde bayrağı kapalıyken geri işaretlenen
+
+    def _onum(li):
+        return str(li.order.order_number) if (li.order and li.order.order_number is not None) else None
+
+    # 1) line_item_id ile DOĞRUDAN bağlı olanlar kesin kalıpta
     for li in lis:
-        if li.id in in_mold_ids:
+        if li.id in direct_ids and not li.is_kaliba_eklendi and not li.is_hazir:
+            li.is_kaliba_eklendi = True
+            restored += 1
+
+    # 2) line_item_id'siz slotlar: sipariş bazında greedy eşleştirme (her slot bir kalem)
+    by_order: dict[str, list] = {}
+    for li in lis:
+        if li.id in direct_ids or li.is_hazir:
             continue
+        o = _onum(li)
+        if o:
+            by_order.setdefault(o, []).append(li)
+
+    def _pick(li, slots, used):
         code = li.assigned_design.code if li.assigned_design else None
-        onum = str(li.order.order_number) if (li.order and li.order.order_number is not None) else None
-        # Slotu "tüket": aynı slot ikinci bir kalemi kapsayamaz.
-        _pk = (onum, str(code)) if (code and onum) else None
-        if _pk and pairs_count.get(_pk, 0) > 0:
-            pairs_count[_pk] -= 1
-            continue
-        _mk = (onum, _nk(mold_planner.extract_phone_model(li) or "")) if onum else None
-        if _mk and _mk[1] and models_count.get(_mk, 0) > 0:
-            models_count[_mk] -= 1
-            continue
-        li.is_kaliba_eklendi = False
-        fixed += 1
+        mkey = _nk(mold_planner.extract_phone_model(li) or "")
+        if code:                                   # 1) tasarım kodu (en kesin)
+            for i, mi in enumerate(slots):
+                if i not in used and mi.design_code and str(mi.design_code) == str(code):
+                    return i
+        if mkey:                                   # 2) model
+            for i, mi in enumerate(slots):
+                if i not in used and mi.model and _nk(mi.model) == mkey:
+                    return i
+        for i in range(len(slots)):                # 3) kalan slot (aşırı serbest bırakmayı önler)
+            if i not in used:
+                return i
+        return None
+
+    for onum, cands in by_order.items():
+        slots = slots_by_order.get(onum, [])
+        used: set[int] = set()
+        for li in cands:
+            i = _pick(li, slots, used) if slots else None
+            if i is not None:
+                used.add(i)
+                if not li.is_kaliba_eklendi:
+                    li.is_kaliba_eklendi = True
+                    restored += 1
+            elif li.is_kaliba_eklendi:
+                li.is_kaliba_eklendi = False
+                fixed += 1
+
     db.commit()
-    return {"ok": True, "fixed": fixed}
+    return {"ok": True, "fixed": fixed, "restored": restored}
 
 
 class RemoveItemRequest(BaseModel):

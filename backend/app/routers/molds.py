@@ -454,17 +454,23 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
     mis = db.scalars(
         select(MoldItem).join(Mold, Mold.id == MoldItem.mold_id).where(Mold.tenant_id == tid)
     ).all()
+    from collections import Counter
     from app.services.phone_models import normalize_key as _nk
     in_mold_ids = {mi.line_item_id for mi in mis if mi.line_item_id}
-    in_mold_pairs = {
+    # KÜME DEĞİL SAYAÇ: bir kalıp slotu YALNIZCA BİR kalemi kapsar. (Eskiden küme idi;
+    # aynı siparişte aynı modelden kardeş kalemler tek slot tarafından "kapsanmış"
+    # sayılıp kayıp kalemler hiç bulunamıyordu.)
+    pairs_count = Counter(
         (str(mi.order_number), str(mi.design_code))
         for mi in mis if not mi.line_item_id and mi.order_number and mi.design_code
-    }
-    # Model bazli da eslestir (design_code'suz MoldItem'lari yanlislikla plana dondurmemek icin)
-    in_mold_models = {
+    )
+    # Model eşleşmesi SADECE design_code'u olmayan slotlar için (aksi halde tasarımı
+    # belli bir slot, farklı tasarımlı kardeşi de yanlışlıkla kapsıyordu).
+    models_count = Counter(
         (str(mi.order_number), _nk(mi.model))
-        for mi in mis if not mi.line_item_id and mi.order_number and mi.model
-    }
+        for mi in mis
+        if not mi.line_item_id and mi.order_number and mi.model and not mi.design_code
+    )
     # is_kaliba_eklendi=True olan tum line item'lar
     lis = db.scalars(
         select(LineItem)
@@ -478,10 +484,15 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
         if li.id in in_mold_ids:
             continue
         code = li.assigned_design.code if li.assigned_design else None
-        onum = li.order.order_number if li.order else None
-        if code and onum and (str(onum), str(code)) in in_mold_pairs:
+        onum = str(li.order.order_number) if (li.order and li.order.order_number is not None) else None
+        # Slotu "tüket": aynı slot ikinci bir kalemi kapsayamaz.
+        _pk = (onum, str(code)) if (code and onum) else None
+        if _pk and pairs_count.get(_pk, 0) > 0:
+            pairs_count[_pk] -= 1
             continue
-        if onum and (str(onum), _nk(mold_planner.extract_phone_model(li) or "")) in in_mold_models:
+        _mk = (onum, _nk(mold_planner.extract_phone_model(li) or "")) if onum else None
+        if _mk and _mk[1] and models_count.get(_mk, 0) > 0:
+            models_count[_mk] -= 1
             continue
         li.is_kaliba_eklendi = False
         fixed += 1

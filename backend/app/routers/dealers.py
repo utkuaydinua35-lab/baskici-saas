@@ -172,7 +172,16 @@ def dealer_dashboard(dealer_id: uuid.UUID, user: User = Depends(require_permissi
     ).all()
     total = len(orders)
     ay_orders = [o for o in orders if o.created_at_platform and o.created_at_platform >= month_start]
-    acik = sum(1 for o in orders if (o.fulfillment_status or "") != "fulfilled" and o.cancelled_at is None and not o.is_iptal)
+    # Açık (gönderilmemiş): bayii siparişi Shopify fulfillment kullanmaz — gönderim
+    # current_stage >= 8 (kargoya verildi) ile takip edilir. İkisinden biri gönderilmiş
+    # sayılır (frontend rozetiyle aynı mantık); iptal/kapalı hariç.
+    acik = sum(
+        1 for o in orders
+        if (o.fulfillment_status or "") != "fulfilled"
+        and (o.current_stage or 0) < 8
+        and o.cancelled_at is None
+        and not o.is_iptal
+    )
 
     def _qty(olist):
         if not olist:

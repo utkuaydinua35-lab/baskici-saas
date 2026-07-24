@@ -735,8 +735,11 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
               ✓ Hazır (kalıp gerekmiyor)
             </span>
           ) : item.is_kaliba_eklendi ? (
-            <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
-              ✓ Kalıba eklendi
+            // Bayrak "kalıba eklendi" diyor ama HİÇBİR kalıp kaydı yok = kayıp kalem.
+            // Planlayıcı bunu atlar (üretime girmez) — yeşil onay yerine UYARI göster.
+            <span title="Bu kalem kalıba eklenmiş görünüyor ama hiçbir kalıpta değil — üretime girmez. Kalıp Oluşturucu'da '🔧 Kayıp siparişleri tara' ile plana geri döndür."
+              className="text-[11px] bg-amber-500/15 text-amber-300 border border-amber-500/40 px-2 py-1 rounded flex items-center gap-1">
+              ⚠ Kalıpta yok (kayıp)
             </span>
           ) : (
             <span className="text-[11px] border border-brand-border text-gray-500 px-2 py-1 rounded flex items-center gap-1">

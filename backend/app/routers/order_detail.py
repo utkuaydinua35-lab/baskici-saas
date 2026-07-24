@@ -169,30 +169,61 @@ def _molds_by_line_item(db, order) -> dict:
     ).all()
     if not rows:
         return {}
+    # Her kalıp slotu YALNIZCA BİR kaleme yazılır ve kalem kapasitesi (adet) kadar
+    # slot alır. (Eskiden "aynı modeldeki İLK kalem" seçiliyordu; bu yüzden aynı
+    # modelden kardeş kalemlerde tüm kalıplar ilk ürüne yazılıp diğeri "kayıp" görünüyordu.)
     li_by_id = {li.id: li for li in line_items}
-    li_by_code: dict = {}
-    li_by_model: dict = {}
-    for li in line_items:
-        code = li.assigned_design.code if getattr(li, "assigned_design", None) else None
-        if code:
-            li_by_code.setdefault(code, []).append(li)
-        mk = _nk_model(extract_phone_model(li))
-        if mk:
-            li_by_model.setdefault(mk, []).append(li)
+    cap = {li.id: max(1, int(getattr(li, "quantity", 1) or 1)) for li in line_items}
+    used = {li.id: 0 for li in line_items}
     out: dict = {}
-    for mi, mid, kod in rows:
-        target = None
-        if mi.line_item_id and mi.line_item_id in li_by_id:
-            target = li_by_id[mi.line_item_id]
-        elif mi.design_code and li_by_code.get(mi.design_code):
-            target = li_by_code[mi.design_code][0]
-        elif mi.model and li_by_model.get(_nk_model(mi.model)):
-            target = li_by_model[_nk_model(mi.model)][0]
-        if not target:
-            continue
-        lst = out.setdefault(target.id, [])
+
+    def _assign(li, mid, kod):
+        lst = out.setdefault(li.id, [])
         if not any(x["id"] == str(mid) for x in lst):
             lst.append({"id": str(mid), "kod": kod})
+        used[li.id] += 1
+
+    def _free(pred):
+        for li in line_items:
+            if used[li.id] < cap[li.id] and pred(li):
+                return li
+        return None
+
+    def _code_of(li):
+        return li.assigned_design.code if getattr(li, "assigned_design", None) else None
+
+    # A) line_item_id ile doğrudan bağlı olanlar (en kesin)
+    pending = []
+    for mi, mid, kod in rows:
+        if mi.line_item_id and mi.line_item_id in li_by_id:
+            _assign(li_by_id[mi.line_item_id], mid, kod)
+        else:
+            pending.append((mi, mid, kod))
+
+    # B) tasarım kodu eşleşmesi (kapasitesi kalan kaleme)
+    rest = []
+    for mi, mid, kod in pending:
+        li = _free(lambda x, c=mi.design_code: c and _code_of(x) == c) if mi.design_code else None
+        if li:
+            _assign(li, mid, kod)
+        else:
+            rest.append((mi, mid, kod))
+
+    # C) model eşleşmesi
+    rest2 = []
+    for mi, mid, kod in rest:
+        mk = _nk_model(mi.model) if mi.model else None
+        li = _free(lambda x, k=mk: k and _nk_model(extract_phone_model(x)) == k) if mk else None
+        if li:
+            _assign(li, mid, kod)
+        else:
+            rest2.append((mi, mid, kod))
+
+    # D) kalanlar: kapasitesi olan herhangi bir kalem (kalıp bilgisi kaybolmasın)
+    for mi, mid, kod in rest2:
+        li = _free(lambda x: True)
+        if li:
+            _assign(li, mid, kod)
     return out
 
 

@@ -85,6 +85,17 @@ def variation_from_props(line_item) -> str | None:
     return other
 
 
+def variation_from_title(line_item) -> str | None:
+    """Ürün/varyant ADINDAKİ kılıf varyasyonu — örn "... BERNZ Special PARLAK Telefon Kılıfı".
+    Müşterinin satın aldığı ürünün adı, tasarımın varsayılan kalip_tipi'sinden DAHA
+    belirleyicidir: property'de varyasyon yoksa buraya bakılır (yoksa yanlış kalıba girer)."""
+    for t in (getattr(line_item, "variant_title", None), getattr(line_item, "title", None)):
+        v = _match_variation(t or "")
+        if v:
+            return v
+    return None
+
+
 def _li_property_values(line_item) -> list[str]:
     """Line item property DEĞERLERİ (casefold), internal (_) hariç."""
     out = []
@@ -342,7 +353,10 @@ def plan_molds(
                 for (_cd, _cm, _sv) in ((d1, _m1, _liv1), (d2, _m2, _liv2)):
                     # Slot'a özel seçilen kılıf varyasyonu (ŞEFFAF vb.) > tasarımın kalip_tipi
                     _ckt = ((_cd.kalip_tipi or "").strip() if _cd else "")
-                    _var = pr.normalize_variation(_sv) if _sv else (pr.normalize_variation(_ckt) if _ckt else None)
+                    _var = (
+                        pr.normalize_variation(_sv) if _sv
+                        else (variation_from_title(li) or (pr.normalize_variation(_ckt) if _ckt else None))
+                    )
                     if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
                         add_eksik("varyasyon_eksik", li, order, _cm)
                         _ok = False
@@ -433,7 +447,14 @@ def plan_molds(
             elif _liv:
                 variation = pr.normalize_variation(_liv)
             else:
-                variation = variation_from_props(li) or (pr.normalize_variation(_dkt) if _dkt else None)
+                # Öncelik: müşteri property'si > ÜRÜN ADI (örn "...Parlak Kılıf") >
+                # tasarımın varsayılan kalip_tipi'si. Ürün adı, müşterinin fiilen
+                # satın aldığı varyasyonu gösterdiği için tasarım varsayılanını EZER.
+                variation = (
+                    variation_from_props(li)
+                    or variation_from_title(li)
+                    or (pr.normalize_variation(_dkt) if _dkt else None)
+                )
             # Hiçbir kaynakta varyasyon yoksa SESSİZCE SİYAH'a düşme — eksik olarak işaretle
             # (yanlış varyasyonla kalıba girip hatalı üretim olmasın).
             if not variation:

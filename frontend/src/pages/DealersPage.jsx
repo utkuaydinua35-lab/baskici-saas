@@ -194,11 +194,18 @@ export function CariDialog({ dealer, onClose, onChanged }) {
   useEffect(() => { load() }, [])
 
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [showRange, setShowRange] = useState(false)
+  const [pdfFrom, setPdfFrom] = useState('')
+  const [pdfTo, setPdfTo] = useState('')
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
       const token = localStorage.getItem('baskici_token')
-      const res = await fetch(`/api/dealers/${dealer.id}/statement.pdf`, {
+      const qp = new URLSearchParams()
+      if (pdfFrom) qp.set('date_from', pdfFrom)
+      if (pdfTo) qp.set('date_to', pdfTo)
+      const qs = qp.toString() ? `?${qp}` : ''
+      const res = await fetch(`/api/dealers/${dealer.id}/statement.pdf${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error()
@@ -206,7 +213,8 @@ export function CariDialog({ dealer, onClose, onChanged }) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `cari-ekstre-${(dealer.name || 'bayi').replace(/[^\w]+/g, '-').toLowerCase()}.pdf`
+      const rng = (pdfFrom || pdfTo) ? `-${pdfFrom || 'bas'}_${pdfTo || 'bugun'}` : ''
+      a.download = `cari-ekstre-${(dealer.name || 'bayi').replace(/[^\w]+/g, '-').toLowerCase()}${rng}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
@@ -275,6 +283,9 @@ export function CariDialog({ dealer, onClose, onChanged }) {
         <div className="flex items-center justify-between mb-1 gap-2">
           <h2 className="text-lg font-semibold text-gray-100 min-w-0 truncate">{dealer.name} — Cari Hesap</h2>
           <div className="flex items-center gap-2 shrink-0">
+            <button onClick={() => setShowRange(v => !v)}
+              className={`btn-secondary !text-xs ${(pdfFrom || pdfTo) ? '!border-accent !text-accent' : ''}`}
+              title="Tarih aralığı seç">📅</button>
             <button onClick={downloadPdf} disabled={pdfBusy}
               className="btn-secondary !text-xs disabled:opacity-50"
               title="Cari ekstre PDF indir">
@@ -283,6 +294,19 @@ export function CariDialog({ dealer, onClose, onChanged }) {
             <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
           </div>
         </div>
+
+        {showRange && (
+          <div className="bg-brand-input/40 rounded-lg p-2.5 mb-3 flex items-center gap-2 flex-wrap text-xs">
+            <span className="text-gray-400">Ekstre aralığı:</span>
+            <input type="date" value={pdfFrom} onChange={e => setPdfFrom(e.target.value)} className="input !text-xs !py-1" title="Başlangıç" />
+            <span className="text-gray-500">→</span>
+            <input type="date" value={pdfTo} onChange={e => setPdfTo(e.target.value)} className="input !text-xs !py-1" title="Bitiş" />
+            {(pdfFrom || pdfTo) && (
+              <button onClick={() => { setPdfFrom(''); setPdfTo('') }} className="text-gray-500 hover:text-red-300">Temizle</button>
+            )}
+            <span className="text-[10px] text-gray-500 w-full">Boş = tüm geçmiş. Aralık seçersen öncesi tek satır "Devir" olarak gösterilir.</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2 mb-4">
           <div className="bg-brand-input/40 rounded-lg p-2.5">
             <div className="text-[10px] text-gray-500 mb-0.5">TL Bakiye</div>

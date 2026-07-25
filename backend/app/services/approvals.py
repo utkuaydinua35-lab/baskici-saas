@@ -55,8 +55,15 @@ def _absolute(url: str | None) -> str | None:
     return f"{base}{url}"
 
 
-def _variation_of(li) -> str:
-    """Kılıf varyasyonu (mockup için): şeffaf mı siyah mı."""
+def _variation_of(li, design=None, slot: int = 1) -> str:
+    """Kılıf varyasyonu (mockup için) — ÜRETİMLE AYNI kaynak (mold_planner) kullanılır ki
+    müşteriye gösterilen onay görseli, basılacak kılıfla aynı olsun.
+    (Eskiden yalnız şeffaf/siyah ayırt ediliyordu; PARLAK/BEYAZ/MAGSAFE siyah görünüyordu.)"""
+    from app.services.mold_planner import resolve_line_variation
+    v = resolve_line_variation(li, design, slot=slot)
+    if v:
+        return v
+    # Son çare: metinden şeffaf ipucu (mockup varsayılanı siyah)
     text = " ".join(filter(None, [
         getattr(li, "birincil_renk", None),
         getattr(li, "variant_title", None),
@@ -128,17 +135,15 @@ def build_items(db: Session, order: Order) -> list[dict]:
         if pid in couple_ko_ids:
             base = li.title or "Ürün"
             slots = [
-                (1, li.assigned_design, (li.device_model_override or ""),
-                 (li.kilif_varyasyon or "")),
-                (2, li.assigned_design_2, (li.device_model_override_2 or ""),
-                 (li.kilif_varyasyon_2 or "")),
+                (1, li.assigned_design, (li.device_model_override or "")),
+                (2, li.assigned_design_2, (li.device_model_override_2 or "")),
             ]
-            for slot, d, mstr, var in slots:
+            for slot, d, mstr in slots:
                 if not (d and getattr(d, "file_path", None)):
                     continue
                 pm = _resolve_phone_model_by_str(db, order.tenant_id, mstr) \
                     or _resolve_phone_model(db, order.tenant_id, li)
-                variation = var.strip() or _variation_of(li)
+                variation = _variation_of(li, d, slot=slot)   # üretimle aynı çözüm
                 items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1, variation))
             continue
 
@@ -150,7 +155,7 @@ def build_items(db: Session, order: Order) -> list[dict]:
         if not (li.assigned_design_id and d and getattr(d, "file_path", None)):
             continue
         pm = _resolve_phone_model(db, order.tenant_id, li)
-        variation = (li.kilif_varyasyon or "").strip() or _variation_of(li)
+        variation = _variation_of(li, d)   # üretimle aynı çözüm (elle > property > ad > tasarım)
         items.append(_mk_item(li, d, pm, li.title or "Ürün", getattr(li, "quantity", 1) or 1, variation))
     return items
 

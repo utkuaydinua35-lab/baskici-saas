@@ -14,6 +14,18 @@ const KALIP_TIPLERI = [
 
 const KILIF_VARYASYONLARI = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
 
+// Ürün adındaki kılıf varyasyonunu yakala (örn "... BERNZ Special Parlak Telefon Kılıfı").
+// Operatör gözden kaçırıp yanlış varyasyonla bastırmasın diye formda ÖN-DOLDURULUR.
+function varyasyonFromTitle(...texts) {
+  const t = (texts.filter(Boolean).join(' ') || '').toLocaleUpperCase('tr')
+  if (/\b(BEYAZ|WHITE)\b/.test(t)) return 'beyaz'
+  if (/\b(ŞEFFAF|SEFFAF|CLEAR|TRANSPARAN)\b/.test(t)) return 'seffaf'
+  if (/\b(PARLAK|GLITTER|SİMLİ|SIMLI)\b/.test(t)) return 'parlak'
+  if (/\b(MAGSAFE|MAG ?SAFE)\b/.test(t)) return 'magsafe'
+  if (/\b(SİYAH|SIYAH|BLACK)\b/.test(t)) return 'siyah'
+  return ''
+}
+
 // Telefon modeli listesi (couple+kişiye özel slot dropdown'u) — bir kez yüklenir
 let _phoneModelsCache = null
 function usePhoneModels() {
@@ -819,7 +831,10 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
     : ''
   const [code, setCode] = useState(defaultCode)
   const [name, setName] = useState('Kişiye Özel')
-  const [kalipTipi, setKalipTipi] = useState('')
+  // Ürün adında varyasyon geçiyorsa (örn "...Parlak...") onu ön-doldur — operatör
+  // seçmeyi unutup tasarımın varsayılanıyla yanlış kılıf basılmasın.
+  const _titleVar = varyasyonFromTitle(lineItem.variant_title, lineItem.title)
+  const [kalipTipi, setKalipTipi] = useState(_titleVar)
   const [birincil, setBirincil] = useState(lineItem.birincil_renk || '')
   const [ikincil, setIkincil] = useState(lineItem.ikincil_renk || '')
   const [ucuncu, setUcuncu] = useState(lineItem.ucuncu_renk || '')
@@ -936,10 +951,20 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
             </div>
 
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Kalıp Tipi</label>
-              <select value={kalipTipi} onChange={e => setKalipTipi(e.target.value)} className="input w-full">
+              <label className="text-xs text-gray-400 block mb-1">
+                Kalıp Tipi (kılıf varyasyonu)
+                {_titleVar && <span className="text-[10px] text-accent ml-1">· ürün adından: {_titleVar}</span>}
+              </label>
+              <select value={kalipTipi} onChange={e => setKalipTipi(e.target.value)}
+                className={`input w-full ${(_titleVar && kalipTipi !== _titleVar) ? '!border-amber-500/60' : ''}`}>
                 {KALIP_TIPLERI.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+              {_titleVar && kalipTipi !== _titleVar && (
+                <p className="text-[11px] text-amber-300 mt-1">
+                  ⚠ Ürün adı <b>{_titleVar}</b> diyor, seçim farklı — yanlış kılıf basılmasın.
+                  <button type="button" onClick={() => setKalipTipi(_titleVar)} className="ml-1 underline hover:text-amber-200">düzelt</button>
+                </p>
+              )}
             </div>
 
             <div>

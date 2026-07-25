@@ -96,6 +96,37 @@ def variation_from_title(line_item) -> str | None:
     return None
 
 
+def resolve_line_variation(line_item, design=None, slot: int = 1) -> str | None:
+    """TEK KAYNAK: bir kalemin kılıf varyasyonunu çöz (SİYAH/BEYAZ/ŞEFFAF/PARLAK/MAGSAFE).
+
+    Öncelik (en güvenilirden zayıfa):
+      1. Kaleme ELLE atanan varyasyon (kişiye özel panel / vitrin / varyant)
+      2. Müşterinin property seçimi (Shopify seçenekleri)
+      3. ÜRÜN/VARYANT ADI — örn "... Special PARLAK Telefon Kılıfı"
+      4. Tasarımın varsayılan kalip_tipi'si
+    Hiçbiri yoksa None (çağıran 'varyasyon eksik' olarak işaretlemeli — SESSİZCE
+    SİYAH'a düşmek yanlış üretime yol açıyordu).
+
+    Üretim (kalıp), müşteri onay görseli ve panel aynı sonucu görsün diye HER YERDE
+    bu fonksiyon kullanılır.
+    """
+    from app.services import placement_rules as _pr
+    _attr = "kilif_varyasyon_2" if slot == 2 else "kilif_varyasyon"
+    manual = (getattr(line_item, _attr, None) or "").strip()
+    if manual:
+        return _pr.normalize_variation(manual)
+    v = variation_from_props(line_item)
+    if v:
+        return v
+    v = variation_from_title(line_item)
+    if v:
+        return v
+    dkt = ((getattr(design, "kalip_tipi", None) or "").strip() if design is not None else "")
+    if dkt:
+        return _pr.normalize_variation(dkt)
+    return None
+
+
 def _li_property_values(line_item) -> list[str]:
     """Line item property DEĞERLERİ (casefold), internal (_) hariç."""
     out = []
@@ -348,15 +379,9 @@ def plan_molds(
                 qty = li.quantity or 1
                 _ok = True
                 _pending = []
-                _liv1 = (getattr(li, "kilif_varyasyon", None) or "").strip()
-                _liv2 = (getattr(li, "kilif_varyasyon_2", None) or "").strip()
-                for (_cd, _cm, _sv) in ((d1, _m1, _liv1), (d2, _m2, _liv2)):
-                    # Slot'a özel seçilen kılıf varyasyonu (ŞEFFAF vb.) > tasarımın kalip_tipi
-                    _ckt = ((_cd.kalip_tipi or "").strip() if _cd else "")
-                    _var = (
-                        pr.normalize_variation(_sv) if _sv
-                        else (variation_from_title(li) or (pr.normalize_variation(_ckt) if _ckt else None))
-                    )
+                for (_cd, _cm, _slot) in ((d1, _m1, 1), (d2, _m2, 2)):
+                    # Slot'a özel seçilen varyasyon > property > ürün adı > tasarımın kalip_tipi
+                    _var = resolve_line_variation(li, _cd, slot=_slot)
                     if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
                         add_eksik("varyasyon_eksik", li, order, _cm)
                         _ok = False
@@ -440,21 +465,13 @@ def plan_molds(
             # 2) Line item'a özel seçilen kılıf varyasyonu (kişiye özel panelde ŞEFFAF vb.)
             # 3) Müşteri property'den varyasyon seçtiyse o
             # 4) Tasarımın kalip_tipi'si (varsayılan)
-            _liv = (getattr(li, "kilif_varyasyon", None) or "").strip()
-            _dkt = ((design.kalip_tipi or "").strip() if design else "")
             if locals().get("_matched_variant"):
+                # Varyantlı ürün: müşteri hangi varyantı seçtiyse ONUN tasarımının
+                # kalip_tipi'si belirleyicidir (eşleşme zaten varyanttan geldi).
+                _dkt = ((design.kalip_tipi or "").strip() if design else "")
                 variation = pr.normalize_variation(_dkt) if _dkt else None
-            elif _liv:
-                variation = pr.normalize_variation(_liv)
             else:
-                # Öncelik: müşteri property'si > ÜRÜN ADI (örn "...Parlak Kılıf") >
-                # tasarımın varsayılan kalip_tipi'si. Ürün adı, müşterinin fiilen
-                # satın aldığı varyasyonu gösterdiği için tasarım varsayılanını EZER.
-                variation = (
-                    variation_from_props(li)
-                    or variation_from_title(li)
-                    or (pr.normalize_variation(_dkt) if _dkt else None)
-                )
+                variation = resolve_line_variation(li, design, slot=1)
             # Hiçbir kaynakta varyasyon yoksa SESSİZCE SİYAH'a düşme — eksik olarak işaretle
             # (yanlış varyasyonla kalıba girip hatalı üretim olmasın).
             if not variation:

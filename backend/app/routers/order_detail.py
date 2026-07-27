@@ -17,7 +17,7 @@ from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
-from app.services import storage
+from app.services import mold_planner, storage
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
 router = APIRouter(prefix="/api/orders", tags=["order_detail"],
@@ -227,7 +227,30 @@ def _molds_by_line_item(db, order) -> dict:
     return out
 
 
-def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None) -> dict:
+def _couple_pids(db, store_id) -> set:
+    """Bu mağazadaki couple (çift kılıf) ürün id'leri — tek sorgu, satır başına değil."""
+    if db is None or not store_id:
+        return set()
+    from app.models import CoupleProduct
+    return {
+        str(p) for (p,) in db.execute(
+            select(CoupleProduct.product_id).where(CoupleProduct.store_id == store_id)
+        ).all() if p
+    }
+
+
+def _is_couple_li(db, li, couple_pids: set | None = None) -> bool:
+    """Kalem couple ürün mü (2 telefon modeli + 2 tasarım)."""
+    if not li.product_id:
+        return False
+    if couple_pids is None:
+        store_id = getattr(getattr(li, "order", None), "store_id", None)
+        couple_pids = _couple_pids(db, store_id)
+    return str(li.product_id) in couple_pids
+
+
+def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
+                         couple_pids: set | None = None) -> dict:
     assigned = None
     if li.assigned_design_id and li.assigned_design:
         d = li.assigned_design
@@ -297,6 +320,10 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None) 
         "title": li.title,
         "variant_title": li.variant_title,
         "device_model_override": li.device_model_override,
+        # Couple (çift kılıf): 2 ayrı telefon modeli — 2. slot ayrı override alır.
+        "device_model_override_2": li.device_model_override_2,
+        "is_couple": _is_couple_li(db, li, couple_pids),
+        "couple_models": list(mold_planner.extract_couple_models(li)),
         "quantity": li.quantity,
         "price": (li.raw or {}).get("price"),
         "sku": li.sku,
@@ -341,9 +368,10 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
     si = stage_info(order.current_stage)
 
     _molds_map = _molds_by_line_item(db, order)
+    _cpids = _couple_pids(db, order.store_id)   # tek sorgu, tüm kalemler için
     _li_list = []
     for li in (order.line_items or []):
-        _d = _serialize_line_item(li, db, adapter)
+        _d = _serialize_line_item(li, db, adapter, couple_pids=_cpids)
         _d["molds"] = sorted(_molds_map.get(li.id, []), key=lambda m: m["kod"] or "")
         _li_list.append(_d)
 
@@ -919,6 +947,7 @@ class LineItemWorkflowPatch(BaseModel):
     is_hazir: bool | None = None
     is_kaliba_eklendi: bool | None = None
     device_model_override: str | None = None
+    device_model_override_2: str | None = None   # couple: 2. kılıfın telefon modeli
     fields_to_update: list[str] = []
 
 
@@ -956,10 +985,18 @@ def update_line_item_workflow(
                 note=f"{(li.title or 'Ürün')[:48]}: {li.device_model_override or '—'} → {_new or '—'}",
             )
         li.device_model_override = _new
+    if "device_model_override_2" in fields:
+        _new2 = (payload.device_model_override_2 or "").strip() or None
+        if _new2 != li.device_model_override_2:
+            _log_history(
+                db, order, user, action="kalem_model_degisti",
+                note=f"{(li.title or 'Ürün')[:48]} (2. kılıf): {li.device_model_override_2 or '—'} → {_new2 or '—'}",
+            )
+        li.device_model_override_2 = _new2
 
     db.commit()
     db.refresh(li)
-    return _serialize_line_item(li)
+    return _serialize_line_item(li, db)
 
 
 # ─── Geçmiş ─────────────────────────────────────────────────

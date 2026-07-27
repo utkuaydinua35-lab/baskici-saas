@@ -366,10 +366,12 @@ def plan_molds(
                     if not d1 or not d2:
                         add_eksik("couple_tasarim_eksik", li, order, model)
                         continue
-                    # Couple: 2 telefon modeli — model1=design_id_1, model2=design_id_2
-                    _m1, _m2 = extract_couple_models(li)
-                    _m1 = _m1 or model
-                    _m2 = _m2 or _m1   # 2. model yoksa 1. modele dus (geriye uyum)
+                    # Couple: 2 telefon modeli — model1=design_id_1, model2=design_id_2.
+                    # ELLE DEĞİŞTİRİLEN model (override) property'yi EZER: müşteri modelini
+                    # sonradan değiştirdiğinde üretim yeni modele göre yapılmalı.
+                    _pm1, _pm2 = extract_couple_models(li)
+                    _m1 = (li.device_model_override or "").strip() or _pm1 or model
+                    _m2 = (li.device_model_override_2 or "").strip() or _pm2 or _m1
                 if getattr(d1, "baski_dosyasi_yok", False) or getattr(d2, "baski_dosyasi_yok", False):
                     add_eksik("baski_dosyasi_yok", li, order, model)
                     continue

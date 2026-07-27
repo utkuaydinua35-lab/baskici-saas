@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { AddOrderItemsDialog } from './DealersPage'
+import { usePhoneModels } from '../lib/phoneModels'
 
 
 /** Line item'tan telefon modelini çıkar.
@@ -38,6 +39,7 @@ function resolveDeviceModel(item) {
 /** Couple ürünlerde 2. telefon modeli (örn 'Apple Model copy' / 'Model 2').
  * Sadece 2. bir model kaydı varsa döner, yoksa null. */
 function resolveSecondModel(item) {
+  if (item.device_model_override_2) return item.device_model_override_2
   const props = item.properties || []
   const marka = props.find(p => (p?.name || '').toLowerCase() === 'mark' || (p?.name || '').toLowerCase() === 'marka 2')?.value
   const second = props.find(p => {
@@ -617,11 +619,34 @@ function KalipOzeti({ lineItems }) {
 
 
 function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
+  const phoneModels = usePhoneModels()
   const [editModel, setEditModel] = useState(false)
+  // Couple ürün: 2 ayrı telefon modeli (1. ve 2. kılıf) ayrı ayrı değiştirilebilir.
+  const isCouple = !!(item.is_couple || item.device_model_override_2 || (item.couple_models || [])[1] || resolveSecondModel(item))
+  const _cm = item.couple_models || []
   const [modelVal, setModelVal] = useState(item.device_model_override || '')
+  const [modelVal2, setModelVal2] = useState(item.device_model_override_2 || '')
+  const listId = `pm-${item.id}`
 
+  const openEdit = () => {
+    // Boşsa mevcut çözülen modellerle ön-doldur (kullanıcı sıfırdan yazmasın)
+    setModelVal(item.device_model_override || resolveDeviceModel(item) || '')
+    setModelVal2(item.device_model_override_2 || _cm[1] || resolveSecondModel(item) || '')
+    setEditModel(true)
+  }
+  const cancelEdit = () => {
+    setEditModel(false)
+    setModelVal(item.device_model_override || '')
+    setModelVal2(item.device_model_override_2 || '')
+  }
   const saveModel = () => {
-    onPatch({ device_model_override: modelVal, fields_to_update: ['device_model_override'] })
+    const fields = ['device_model_override']
+    const body = { device_model_override: modelVal }
+    if (isCouple) {
+      fields.push('device_model_override_2')
+      body.device_model_override_2 = modelVal2
+    }
+    onPatch({ ...body, fields_to_update: fields })
     setEditModel(false)
   }
 
@@ -655,18 +680,35 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {item.variant_title && <span className="text-[10px] bg-gray-700/40 text-gray-300 px-1.5 py-0.5 rounded">{item.variant_title}</span>}
             {item.device_model_override && <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded">↳ Override: {item.device_model_override}</span>}
+            {item.device_model_override_2 && <span className="text-[10px] bg-pink-500/15 text-pink-300 px-1.5 py-0.5 rounded">↳ 2. kılıf: {item.device_model_override_2}</span>}
           </div>
           {!editModel ? (
-            <button onClick={() => setEditModel(true)} className="text-[10px] text-gray-500 hover:text-accent mt-1 flex items-center gap-1">
-              ✎ Cihaz Modelini Değiştir
+            <button onClick={openEdit} className="text-[10px] text-gray-500 hover:text-accent mt-1 flex items-center gap-1">
+              ✎ Cihaz Modelini Değiştir{isCouple ? ' (2 kılıf)' : ''}
             </button>
           ) : (
-            <div className="flex items-center gap-1 mt-1">
-              <input value={modelVal} onChange={e => setModelVal(e.target.value)} placeholder="örn: iPhone 15 Pro"
-                     className="input !text-xs !py-1 flex-1" autoFocus />
-              <button onClick={saveModel} className="btn-primary !text-[10px] !py-1 !px-2">Kaydet</button>
-              <button onClick={() => { setEditModel(false); setModelVal(item.device_model_override || '') }}
-                      className="text-gray-500 text-xs px-1">×</button>
+            <div className="mt-1 space-y-1">
+              <datalist id={listId}>
+                {phoneModels.map(m => <option key={m} value={m} />)}
+              </datalist>
+              <div className="flex items-center gap-1">
+                {isCouple && <span className="text-[10px] text-gray-500 w-12 shrink-0">1. kılıf</span>}
+                <input list={listId} value={modelVal} onChange={e => setModelVal(e.target.value)}
+                       placeholder="Model seç / ara — örn: iPhone 15 Pro"
+                       className="input !text-xs !py-1 flex-1" autoFocus />
+              </div>
+              {isCouple && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-pink-300 w-12 shrink-0">2. kılıf</span>
+                  <input list={listId} value={modelVal2} onChange={e => setModelVal2(e.target.value)}
+                         placeholder="2. kılıfın modeli"
+                         className="input !text-xs !py-1 flex-1" />
+                </div>
+              )}
+              <div className="flex items-center gap-1 justify-end">
+                <button onClick={saveModel} className="btn-primary !text-[10px] !py-1 !px-2">Kaydet</button>
+                <button onClick={cancelEdit} className="text-gray-500 text-xs px-1">×</button>
+              </div>
             </div>
           )}
         </div>

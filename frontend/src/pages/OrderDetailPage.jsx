@@ -84,6 +84,25 @@ export default function OrderDetailPage() {
     }).catch(() => setNeighbors({ prev: null, next: null }))
   }, [orderId])
 
+  // Klavye kısayolu (vim tarzı): j = sonraki sipariş, k = önceki sipariş.
+  // Form alanında yazarken ya da modal/kısayol tuşlarıyla birlikte çalışmaz.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target
+      const tag = (t?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable) return
+      const k = (e.key || '').toLowerCase()
+      if (k === 'j' && neighbors.next) {
+        e.preventDefault(); navigate(`/orders/${neighbors.next}`, { state: location.state })
+      } else if (k === 'k' && neighbors.prev) {
+        e.preventDefault(); navigate(`/orders/${neighbors.prev}`, { state: location.state })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [neighbors, navigate, location.state])
+
   const load = async () => {
     try {
       const [d, st] = await Promise.all([
@@ -217,9 +236,9 @@ export default function OrderDetailPage() {
                 <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
                 <div className="flex flex-col gap-0.5">
                   <button onClick={() => neighbors.next && navigate(`/orders/${neighbors.next}`, { state: location.state })} disabled={!neighbors.next}
-                    title="Sonraki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
+                    title="Sonraki sipariş (J)" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
                   <button onClick={() => neighbors.prev && navigate(`/orders/${neighbors.prev}`, { state: location.state })} disabled={!neighbors.prev}
-                    title="Önceki sipariş" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
+                    title="Önceki sipariş (K)" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
                 </div>
               </div>
               {detail.is_acil && <Badge color="red">⚠ ACİL</Badge>}

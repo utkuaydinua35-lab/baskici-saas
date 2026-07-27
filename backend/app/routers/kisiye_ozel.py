@@ -143,7 +143,20 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
                 customer_note = val
         customer_props_text.append({"name": name, "value": val})
 
-    model_info = li.variant_title or ""
+    # Telefon modeli: ELLE DEĞİŞTİRİLEN (override) önce gelir — model değiştirildiğinde
+    # kişiye özel listesi de güncellensin (eskiden yalnız variant_title okunuyordu, bu
+    # yüzden değişiklik burada hiç görünmüyordu). Sonra kanonik çıkarım, en son variant.
+    from app.services.mold_planner import extract_phone_model
+    _m1 = (li.device_model_override or "").strip() or (extract_phone_model(li) or "") or (li.variant_title or "")
+    if is_couple:
+        _m2 = (li.device_model_override_2 or "").strip()
+        if not _m2:
+            from app.services.mold_planner import extract_couple_models
+            _pm1, _pm2 = extract_couple_models(li)
+            _m2 = _pm2 or ""
+        model_info = f"{_m1} + {_m2}" if (_m1 and _m2) else _m1
+    else:
+        model_info = _m1
 
     assigned = _ser_design(li.assigned_design if li.assigned_design_id else None)
     assigned_2 = _ser_design(li.assigned_design_2 if li.assigned_design_id_2 else None)

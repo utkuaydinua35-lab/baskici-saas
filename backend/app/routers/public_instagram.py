@@ -14,8 +14,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -26,6 +28,20 @@ from app.services import ig_bot
 
 logger = logging.getLogger("ig_webhook")
 router = APIRouter(prefix="/api/public/instagram", tags=["instagram-webhook"])
+
+# ─── Gizlilik politikası (Meta App Review + Live mod için zorunlu) ───
+# Kök yolda servis edilir: https://siparistakip.bernzcompany.com/gizlilik
+pages_router = APIRouter(tags=["public-pages"])
+_PRIVACY_PATH = Path(__file__).parent.parent / "public" / "gizlilik.html"
+
+
+@pages_router.get("/gizlilik", response_class=HTMLResponse)
+@pages_router.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    try:
+        return HTMLResponse(_PRIVACY_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(404, "Sayfa bulunamadı")
 
 
 def _enabled() -> bool:

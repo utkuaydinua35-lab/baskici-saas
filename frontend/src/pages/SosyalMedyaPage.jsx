@@ -316,6 +316,7 @@ function DmBotPanel({ storeId, toast }) {
   const [cfg, setCfg] = useState(null)
   const [token, setToken] = useState('')
   const [bizId, setBizId] = useState('')
+  const [pageId, setPageId] = useState('')
   const [faq, setFaq] = useState([])
   const [testText, setTestText] = useState('')
   const [testRes, setTestRes] = useState(null)
@@ -327,6 +328,17 @@ function DmBotPanel({ storeId, toast }) {
     setBusy(true); setConn(null)
     try { setConn(await api.post('/api/instagram/bot/check', { store_id: storeId, text: '' })) }
     catch (e) { setConn({ ok: false, error: e.detail || 'Test edilemedi' }) }
+    finally { setBusy(false) }
+  }
+
+  // Kayıtlı user token'ından sayfa token'ı türet (tarayıcıda uzun token kopyalama derdi bitsin)
+  const toPageToken = async () => {
+    setBusy(true); setConn(null)
+    try {
+      const r = await api.post('/api/instagram/bot/page-token', { store_id: storeId, text: '' })
+      if (r.ok) { toast.success(`Sayfa token'ı alındı: ${r.page_name || ''} ✓`); load() }
+      else setConn({ ok: false, error: r.error })
+    } catch (e) { setConn({ ok: false, error: e.detail || 'Çevrilemedi' }) }
     finally { setBusy(false) }
   }
 
@@ -348,7 +360,7 @@ function DmBotPanel({ storeId, toast }) {
     if (!storeId) return
     try {
       const c = await api.get(`/api/instagram/bot?store_id=${storeId}`)
-      setCfg(c); setBizId(c.ig_business_id || ''); setFaq(c.ig_faq || []); setToken('')
+      setCfg(c); setBizId(c.ig_business_id || ''); setPageId(c.ig_page_id || ''); setFaq(c.ig_faq || []); setToken('')
       const l = await api.get(`/api/instagram/bot/logs?store_id=${storeId}&limit=30`)
       setLogs(l.items || [])
     } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
@@ -358,7 +370,7 @@ function DmBotPanel({ storeId, toast }) {
   const save = async (patch = {}) => {
     setBusy(true)
     try {
-      const body = { store_id: storeId, ig_business_id: bizId, ig_faq: faq, ...patch }
+      const body = { store_id: storeId, ig_business_id: bizId, ig_page_id: pageId, ig_faq: faq, ...patch }
       if (token.trim()) body.ig_access_token = token.trim()
       const r = await api.patch('/api/instagram/bot', body)
       setCfg(r); setToken(''); toast.success('Kaydedildi')
@@ -410,6 +422,11 @@ function DmBotPanel({ storeId, toast }) {
               placeholder="örn: 17841400000000000" />
           </div>
           <div>
+            <label className="block text-xs text-gray-500 mb-1">Facebook Sayfa ID</label>
+            <input className="input w-full !text-sm" value={pageId} onChange={e => setPageId(e.target.value)}
+              placeholder="örn: 11655407" />
+          </div>
+          <div>
             <label className="block text-xs text-gray-500 mb-1">
               Access token {cfg.has_token && <span className="text-emerald-400">· kayıtlı ✓</span>}
             </label>
@@ -423,6 +440,8 @@ function DmBotPanel({ storeId, toast }) {
               {conn.ok ? `✓ Bağlandı: @${conn.username || conn.name || conn.id}` : `✗ ${conn.error}`}
             </span>
           )}
+          <button onClick={toPageToken} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50"
+            title="Kayıtlı kullanıcı token'ından sayfa token'ı üret (mesaj göndermek için gerekli)">🔑 Sayfa token'ına çevir</button>
           <button onClick={subscribePage} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50"
             title="Sayfayı uygulamanın webhook'una abone et — mesajların gelmesi için gerekli">📡 Webhook'a abone et</button>
           <button onClick={checkConn} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50">🔌 Bağlantıyı test et</button>

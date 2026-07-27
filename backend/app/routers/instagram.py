@@ -812,6 +812,7 @@ def delete_post(post_id: uuid.UUID, user: User = Depends(get_current_user), db: 
 class BotCfgIn(BaseModel):
     store_id: uuid.UUID
     ig_business_id: str | None = None
+    ig_page_id: str | None = None           # Facebook Sayfa ID (token çevirimi + gönderim yedeği)
     ig_access_token: str | None = None      # boş gönderilirse mevcut token korunur
     ig_enabled: bool | None = None
     ig_faq: list[dict] | None = None        # [{keywords:[...], reply:"..."}]
@@ -825,6 +826,7 @@ def _bot_cfg(store: Store) -> dict:
         "store_id": str(store.id),
         "store_name": store.name,
         "ig_business_id": cfg.get("ig_business_id") or "",
+        "ig_page_id": cfg.get("ig_page_id") or "",
         "ig_enabled": bool(cfg.get("ig_enabled", True)),
         "has_token": bool(tok),                       # token GERİ DÖNMEZ (güvenlik)
         "ig_faq": ig_bot.faq_rules(store),
@@ -848,6 +850,8 @@ def set_bot_cfg(body: BotCfgIn, user: User = Depends(get_current_user), db: Sess
     cfg = dict(st.config or {})
     if body.ig_business_id is not None:
         cfg["ig_business_id"] = body.ig_business_id.strip() or None
+    if body.ig_page_id is not None:
+        cfg["ig_page_id"] = body.ig_page_id.strip() or None
     if body.ig_access_token:                       # boş = değiştirme
         cfg["ig_access_token"] = body.ig_access_token.strip()
     if body.ig_enabled is not None:
@@ -975,5 +979,47 @@ def subscribe_page_webhook(body: BotTestIn | None = None, store_id: uuid.UUID | 
             for a in (g.json().get("data") or []):
                 subs.append({"name": a.get("name"), "fields": a.get("subscribed_fields")})
         return {"ok": True, "subscriptions": subs}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@router.post("/bot/page-token", response_model=dict)
+def convert_to_page_token(body: BotTestIn | None = None, store_id: uuid.UUID | None = None,
+                          user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kayıtlı KULLANICI token'ından SAYFA token'ı türetip kaydeder.
+    Uzun ömürlü user token'dan türeyen sayfa token'ı süresizdir. Böylece kullanıcının
+    tarayıcıda uzun token kopyalamasına gerek kalmaz (kopyalarken kesilme sorunu)."""
+    import httpx
+    sid = store_id or (body.store_id if body else None)
+    st = db.scalar(select(Store).where(Store.id == sid, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = dict(st.config or {})
+    token = (cfg.get("ig_access_token") or "").strip()
+    page_id = (cfg.get("ig_page_id") or "").strip()
+    if not token:
+        return {"ok": False, "error": "Önce access token girip kaydet."}
+    if not page_id:
+        return {"ok": False, "error": "Facebook Sayfa ID girilmemiş (token çevirimi için gerekli)."}
+    ver = get_settings().ig_graph_version
+    try:
+        r = httpx.get(f"https://graph.facebook.com/{ver}/{page_id}",
+                      params={"fields": "name,access_token", "access_token": token}, timeout=15)
+        if r.status_code != 200:
+            try:
+                msg = (r.json().get("error") or {}).get("message") or r.text[:200]
+            except Exception:  # noqa: BLE001
+                msg = r.text[:200]
+            return {"ok": False, "error": f"{r.status_code}: {msg}"}
+        d = r.json()
+        new_tok = (d.get("access_token") or "").strip()
+        if not new_tok:
+            return {"ok": False, "error": "Sayfa token'ı dönmedi — bu sayfada yetkin olmayabilir."}
+        cfg["ig_access_token"] = new_tok
+        st.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(st, "config")
+        db.commit()
+        return {"ok": True, "page_name": d.get("name")}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": str(e)[:200]}

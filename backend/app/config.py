@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     surat_sifre: str = Field("", alias="SURAT_SIFRE")
     surat_relay_url: str = Field("", alias="SURAT_RELAY_URL")
 
+    # Instagram DM otomasyonu (Meta webhook). Boş ise webhook kapalı (404).
+    # Hesap bazlı business_id + access_token store.config'te tutulur (panelden girilir).
+    ig_verify_token: str = Field("", alias="IG_VERIFY_TOKEN")   # webhook doğrulama (Meta panelinde aynısı)
+    ig_app_secret: str = Field("", alias="IG_APP_SECRET")       # imza doğrulama (X-Hub-Signature-256)
+    ig_graph_version: str = Field("v21.0", alias="IG_GRAPH_VERSION")
+
     # Basit Kargo (çoklu kargo agregatörü). Boş ise kargo gönderimi kapalı.
     basit_kargo_token: str = Field("", alias="BASIT_KARGO_TOKEN")
     basit_kargo_address_id: str = Field("", alias="BASIT_KARGO_ADDRESS_ID")  # opsiyonel gönderici

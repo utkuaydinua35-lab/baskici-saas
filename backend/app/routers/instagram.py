@@ -803,3 +803,99 @@ def delete_post(post_id: uuid.UUID, user: User = Depends(get_current_user), db: 
     db.delete(p)
     db.commit()
     return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════
+# DM OTOMASYONU — bot ayarları, SSS kuralları, kayıtlar, test
+# ═══════════════════════════════════════════════════════════
+
+class BotCfgIn(BaseModel):
+    store_id: uuid.UUID
+    ig_business_id: str | None = None
+    ig_access_token: str | None = None      # boş gönderilirse mevcut token korunur
+    ig_enabled: bool | None = None
+    ig_faq: list[dict] | None = None        # [{keywords:[...], reply:"..."}]
+
+
+def _bot_cfg(store: Store) -> dict:
+    from app.services import ig_bot
+    cfg = store.config or {}
+    tok = (cfg.get("ig_access_token") or "").strip()
+    return {
+        "store_id": str(store.id),
+        "store_name": store.name,
+        "ig_business_id": cfg.get("ig_business_id") or "",
+        "ig_enabled": bool(cfg.get("ig_enabled", True)),
+        "has_token": bool(tok),                       # token GERİ DÖNMEZ (güvenlik)
+        "ig_faq": ig_bot.faq_rules(store),
+        "webhook_ready": bool(get_settings().ig_verify_token and get_settings().ig_app_secret),
+    }
+
+
+@router.get("/bot", response_model=dict)
+def get_bot_cfg(store_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    st = db.scalar(select(Store).where(Store.id == store_id, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    return _bot_cfg(st)
+
+
+@router.patch("/bot", response_model=dict)
+def set_bot_cfg(body: BotCfgIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    st = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = dict(st.config or {})
+    if body.ig_business_id is not None:
+        cfg["ig_business_id"] = body.ig_business_id.strip() or None
+    if body.ig_access_token:                       # boş = değiştirme
+        cfg["ig_access_token"] = body.ig_access_token.strip()
+    if body.ig_enabled is not None:
+        cfg["ig_enabled"] = bool(body.ig_enabled)
+    if body.ig_faq is not None:
+        clean = []
+        for r in body.ig_faq:
+            if not isinstance(r, dict):
+                continue
+            rep = (r.get("reply") or "").strip()
+            kws = [str(k).strip() for k in (r.get("keywords") or []) if str(k).strip()]
+            if rep and kws:
+                clean.append({"keywords": kws[:20], "reply": rep[:900]})
+        cfg["ig_faq"] = clean[:60]
+    st.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(st, "config")
+    db.commit()
+    return {"ok": True, **_bot_cfg(st)}
+
+
+class BotTestIn(BaseModel):
+    store_id: uuid.UUID
+    text: str
+
+
+@router.post("/bot/test", response_model=dict)
+def test_bot(body: BotTestIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Mesajı GÖNDERMEDEN botun ne cevaplayacağını göster (kural denemesi)."""
+    from app.services import ig_bot
+    st = db.scalar(select(Store).where(Store.id == body.store_id, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    reply, rule = ig_bot.build_reply(db, user.tenant_id, st, body.text or "")
+    return {"reply": reply, "rule": rule}
+
+
+@router.get("/bot/logs", response_model=dict)
+def bot_logs(store_id: uuid.UUID | None = None, limit: int = 50,
+             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Son otomatik yanıtlar — ne soruldu, bot ne dedi, hangi kural."""
+    from app.models import InstagramDM
+    q = select(InstagramDM).where(InstagramDM.tenant_id == user.tenant_id)
+    if store_id:
+        q = q.where(InstagramDM.store_id == store_id)
+    rows = db.scalars(q.order_by(desc(InstagramDM.created_at)).limit(min(limit, 200))).all()
+    return {"items": [{
+        "id": str(r.id), "sender_id": r.sender_id, "incoming": r.incoming,
+        "reply": r.reply, "rule": r.rule, "sent_ok": r.sent_ok, "error": r.error,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows]}

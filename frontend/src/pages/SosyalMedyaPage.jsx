@@ -83,11 +83,15 @@ export default function SosyalMedyaPage() {
 
       {/* Görünüm */}
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setView('kuyruk')} className={`px-3 py-1.5 rounded-lg text-sm ${view === 'kuyruk' ? 'bg-accent/15 text-accent border border-accent/40' : 'btn-secondary'}`}>📋 Kuyruk</button>
-        <button onClick={() => setView('takvim')} className={`px-3 py-1.5 rounded-lg text-sm ${view === 'takvim' ? 'bg-accent/15 text-accent border border-accent/40' : 'btn-secondary'}`}>📅 Takvim</button>
+        <button onClick={() => setView('kuyruk')} className={`px-3 py-1.5 rounded-full text-sm ${view === 'kuyruk' ? 'bg-accent/15 text-accent border border-accent/40' : 'btn-secondary'}`}>📋 Kuyruk</button>
+        <button onClick={() => setView('takvim')} className={`px-3 py-1.5 rounded-full text-sm ${view === 'takvim' ? 'bg-accent/15 text-accent border border-accent/40' : 'btn-secondary'}`}>📅 Takvim</button>
+        <button onClick={() => setView('dm')} className={`px-3 py-1.5 rounded-full text-sm ${view === 'dm' ? 'bg-accent/15 text-accent border border-accent/40' : 'btn-secondary'}`}>🤖 DM Otomasyonu</button>
       </div>
 
+      {view === 'dm' && <DmBotPanel storeId={storeId} toast={toast} />}
+
       {view === 'kuyruk' && <>
+
         <div className="flex gap-1 border-b border-brand-border mb-4">
           {STATUS.map(s => (
             <button key={s.key} onClick={() => setTab(s.key)} className={`px-3 py-2 text-sm border-b-2 -mb-px ${tab === s.key ? 'border-accent text-accent' : 'border-transparent text-gray-400 hover:text-gray-200'}`}>{s.label}</button>
@@ -300,6 +304,172 @@ function PostCard({ post, onStatus, onSave, onDelete, toast }) {
           {!edit && <button onClick={() => setEdit(true)} className="text-[11px] px-2 py-1 rounded border border-brand-border text-gray-300 hover:bg-brand-input">Düzenle</button>}
           <button onClick={() => onDelete(post)} className="text-[11px] px-2 py-1 rounded border border-brand-border text-gray-500 hover:text-red-300">Sil</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// DM OTOMASYONU — bağlantı, SSS kuralları, test, son yanıtlar
+// ═══════════════════════════════════════════════════════════
+function DmBotPanel({ storeId, toast }) {
+  const [cfg, setCfg] = useState(null)
+  const [token, setToken] = useState('')
+  const [bizId, setBizId] = useState('')
+  const [faq, setFaq] = useState([])
+  const [testText, setTestText] = useState('')
+  const [testRes, setTestRes] = useState(null)
+  const [logs, setLogs] = useState([])
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    if (!storeId) return
+    try {
+      const c = await api.get(`/api/instagram/bot?store_id=${storeId}`)
+      setCfg(c); setBizId(c.ig_business_id || ''); setFaq(c.ig_faq || []); setToken('')
+      const l = await api.get(`/api/instagram/bot/logs?store_id=${storeId}&limit=30`)
+      setLogs(l.items || [])
+    } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
+  }
+  useEffect(() => { load() }, [storeId]) // eslint-disable-line
+
+  const save = async (patch = {}) => {
+    setBusy(true)
+    try {
+      const body = { store_id: storeId, ig_business_id: bizId, ig_faq: faq, ...patch }
+      if (token.trim()) body.ig_access_token = token.trim()
+      const r = await api.patch('/api/instagram/bot', body)
+      setCfg(r); setToken(''); toast.success('Kaydedildi')
+    } catch (e) { toast.error(e.detail || 'Kaydedilemedi') }
+    finally { setBusy(false) }
+  }
+
+  const runTest = async () => {
+    if (!testText.trim()) return
+    setBusy(true)
+    try { setTestRes(await api.post('/api/instagram/bot/test', { store_id: storeId, text: testText })) }
+    catch (e) { toast.error(e.detail || 'Test başarısız') }
+    finally { setBusy(false) }
+  }
+
+  const setRule = (i, patch) => setFaq(f => f.map((r, j) => j === i ? { ...r, ...patch } : r))
+  const addRule = () => setFaq(f => [...f, { keywords: [''], reply: '' }])
+  const delRule = (i) => setFaq(f => f.filter((_, j) => j !== i))
+
+  const RULE_LABEL = {
+    order_status: '📦 Sipariş durumu', order_ask: '📦 Sipariş no soruldu',
+    model_ok: '📱 Model uyumu', model_ask: '📱 Model soruldu',
+    faq: '💬 Sık sorulan', fallback: '🙋 Temsilciye aktarıldı',
+  }
+
+  if (!cfg) return <div className="card text-center py-8 text-gray-500 text-sm">Yükleniyor…</div>
+
+  return (
+    <div className="space-y-4">
+      {/* Bağlantı */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-gray-200">🔗 Instagram bağlantısı</h3>
+          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+            <input type="checkbox" checked={!!cfg.ig_enabled} className="accent-accent"
+              onChange={e => save({ ig_enabled: e.target.checked })} />
+            Otomatik yanıt açık
+          </label>
+        </div>
+        {!cfg.webhook_ready && (
+          <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 mb-2">
+            ⚠ Sunucuda <b>IG_VERIFY_TOKEN</b> ve <b>IG_APP_SECRET</b> tanımlı değil — webhook kapalı.
+          </p>
+        )}
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Instagram business ID</label>
+            <input className="input w-full !text-sm" value={bizId} onChange={e => setBizId(e.target.value)}
+              placeholder="örn: 17841400000000000" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">
+              Access token {cfg.has_token && <span className="text-emerald-400">· kayıtlı ✓</span>}
+            </label>
+            <input className="input w-full !text-sm" type="password" value={token} onChange={e => setToken(e.target.value)}
+              placeholder={cfg.has_token ? '(değiştirmek için yeni token)' : 'EAAG...'} />
+          </div>
+        </div>
+        <div className="flex justify-end mt-3">
+          <button onClick={() => save()} disabled={busy} className="btn-primary !text-xs disabled:opacity-50">Kaydet</button>
+        </div>
+      </div>
+
+      {/* Test */}
+      <div className="card">
+        <h3 className="text-sm font-semibold text-gray-200 mb-1">🧪 Bot testi</h3>
+        <p className="text-[11px] text-gray-500 mb-2">Müşteri şunu yazsa ne cevap verirdi? (mesaj gönderilmez)</p>
+        <div className="flex gap-2">
+          <input className="input flex-1 !text-sm" value={testText} onChange={e => setTestText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && runTest()}
+            placeholder="örn: siparişim nerede 11429 / iphone 16 pro max var mı" />
+          <button onClick={runTest} disabled={busy} className="btn-secondary !text-sm disabled:opacity-50">Dene</button>
+        </div>
+        {testRes && (
+          <div className="mt-2 rounded-lg bg-brand-input/50 border border-brand-border p-3">
+            <div className="text-[10px] text-gray-500 mb-1">{RULE_LABEL[testRes.rule] || testRes.rule}</div>
+            <div className="text-sm text-gray-200 whitespace-pre-wrap">{testRes.reply}</div>
+          </div>
+        )}
+      </div>
+
+      {/* SSS kuralları */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-semibold text-gray-200">💬 Sık sorulan cevaplar</h3>
+          <button onClick={addRule} className="text-xs text-accent hover:underline">+ Kural ekle</button>
+        </div>
+        <p className="text-[11px] text-gray-500 mb-2">
+          Mesajda anahtar kelimelerden biri geçerse bu cevap gönderilir. Sipariş ve model soruları
+          zaten sistemden otomatik yanıtlanır.
+        </p>
+        <div className="space-y-2">
+          {faq.map((r, i) => (
+            <div key={i} className="rounded-lg border border-brand-border/60 p-2 space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <input className="input flex-1 !text-xs" value={(r.keywords || []).join(', ')}
+                  onChange={e => setRule(i, { keywords: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  placeholder="anahtar kelimeler (virgülle): kargo ne zaman, kaç günde" />
+                <button onClick={() => delRule(i)} className="text-gray-500 hover:text-red-400 text-sm px-1">🗑</button>
+              </div>
+              <textarea className="input w-full !text-xs" rows={2} value={r.reply || ''}
+                onChange={e => setRule(i, { reply: e.target.value })} placeholder="Gönderilecek cevap" />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end mt-3">
+          <button onClick={() => save()} disabled={busy} className="btn-primary !text-xs disabled:opacity-50">Kuralları Kaydet</button>
+        </div>
+      </div>
+
+      {/* Son yanıtlar */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-200">📜 Son otomatik yanıtlar</h3>
+          <button onClick={load} className="text-[11px] text-gray-400 hover:text-gray-200">↻ Yenile</button>
+        </div>
+        {logs.length === 0 ? (
+          <div className="text-xs text-gray-600 py-4 text-center">Henüz mesaj yok.</div>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {logs.map(l => (
+              <div key={l.id} className="text-xs border-b border-brand-border/40 pb-2">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-input text-gray-400">{RULE_LABEL[l.rule] || l.rule}</span>
+                  {!l.sent_ok && <span className="text-[10px] text-red-300" title={l.error || ''}>⚠ gönderilemedi</span>}
+                  <span className="text-[10px] text-gray-600 ml-auto">{l.created_at ? new Date(l.created_at).toLocaleString('tr-TR') : ''}</span>
+                </div>
+                <div className="text-gray-300">👤 {l.incoming}</div>
+                <div className="text-gray-500 mt-0.5">🤖 {l.reply}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

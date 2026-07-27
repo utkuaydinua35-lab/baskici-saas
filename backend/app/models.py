@@ -1148,6 +1148,26 @@ class DealerTransaction(Base):
     dealer: Mapped["Dealer"] = relationship(back_populates="transactions")
 
 
+class InstagramDM(Base):
+    """Instagram DM otomasyon kaydı — gelen mesaj + botun verdiği yanıt (denetim/panel)."""
+    __tablename__ = "instagram_dms"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sender_id: Mapped[str] = mapped_column(String(64), index=True)   # IG kullanıcı id (PSID)
+    incoming: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rule: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)  # order_status/model_ok/faq/fallback
+    sent_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class WebAuthnCredential(Base):
     """Kullanıcının geçiş anahtarı (passkey / WebAuthn). Parolasız giriş için."""
     __tablename__ = "webauthn_credentials"

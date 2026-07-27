@@ -917,16 +917,25 @@ def check_bot_connection(body: BotTestIn | None = None, store_id: uuid.UUID | No
     if not token or not ig_id:
         return {"ok": False, "error": "Business ID ve access token girilmemiş."}
     ver = get_settings().ig_graph_version
-    try:
-        r = httpx.get(f"https://graph.facebook.com/{ver}/{ig_id}",
-                      params={"fields": "id,username,name", "access_token": token}, timeout=15)
-        if r.status_code == 200:
-            d = r.json()
-            return {"ok": True, "username": d.get("username"), "name": d.get("name"), "id": d.get("id")}
+    # İki kurulum yolu da denenir (Facebook-login / Instagram-login)
+    attempts = [
+        ("https://graph.facebook.com", ig_id),
+        ("https://graph.instagram.com", "me"),
+        ("https://graph.facebook.com", "me"),
+    ]
+    last = "bilinmeyen hata"
+    for base, node in attempts:
         try:
-            msg = (r.json().get("error") or {}).get("message") or r.text[:200]
-        except Exception:  # noqa: BLE001
-            msg = r.text[:200]
-        return {"ok": False, "error": f"{r.status_code}: {msg}"}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)[:200]}
+            r = httpx.get(f"{base}/{ver}/{node}",
+                          params={"fields": "id,username,name", "access_token": token}, timeout=15)
+            if r.status_code == 200:
+                d = r.json()
+                return {"ok": True, "username": d.get("username"), "name": d.get("name"),
+                        "id": d.get("id"), "via": base.replace("https://", "")}
+            try:
+                last = (r.json().get("error") or {}).get("message") or r.text[:180]
+            except Exception:  # noqa: BLE001
+                last = r.text[:180]
+        except Exception as e:  # noqa: BLE001
+            last = str(e)[:180]
+    return {"ok": False, "error": last}

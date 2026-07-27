@@ -330,6 +330,20 @@ function DmBotPanel({ storeId, toast }) {
     finally { setBusy(false) }
   }
 
+  // Sayfayı uygulamanın webhook'una abone et (Meta'da alan işaretlemek tek başına yetmiyor)
+  const subscribePage = async () => {
+    setBusy(true); setConn(null)
+    try {
+      const r = await api.post('/api/instagram/bot/subscribe', { store_id: storeId, text: '' })
+      if (r.ok) {
+        const f = (r.subscriptions || []).map(s => `${s.name}: ${(s.fields || []).join(', ')}`).join(' · ')
+        toast.success('Sayfa webhook’a abone edildi ✓')
+        setConn({ ok: true, username: f || 'abone' })
+      } else { setConn({ ok: false, error: r.error }) }
+    } catch (e) { setConn({ ok: false, error: e.detail || 'Abone edilemedi' }) }
+    finally { setBusy(false) }
+  }
+
   const load = async () => {
     if (!storeId) return
     try {
@@ -409,6 +423,8 @@ function DmBotPanel({ storeId, toast }) {
               {conn.ok ? `✓ Bağlandı: @${conn.username || conn.name || conn.id}` : `✗ ${conn.error}`}
             </span>
           )}
+          <button onClick={subscribePage} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50"
+            title="Sayfayı uygulamanın webhook'una abone et — mesajların gelmesi için gerekli">📡 Webhook'a abone et</button>
           <button onClick={checkConn} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50">🔌 Bağlantıyı test et</button>
           <button onClick={() => save()} disabled={busy} className="btn-primary !text-xs disabled:opacity-50">Kaydet</button>
         </div>

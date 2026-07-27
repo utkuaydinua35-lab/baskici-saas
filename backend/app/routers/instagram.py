@@ -939,3 +939,41 @@ def check_bot_connection(body: BotTestIn | None = None, store_id: uuid.UUID | No
         except Exception as e:  # noqa: BLE001
             last = str(e)[:180]
     return {"ok": False, "error": last}
+
+
+@router.post("/bot/subscribe", response_model=dict)
+def subscribe_page_webhook(body: BotTestIn | None = None, store_id: uuid.UUID | None = None,
+                           user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Sayfayı/hesabı uygulamanın webhook'una abone et (subscribed_apps).
+    Meta'da 'messages' alanını işaretlemek yetmiyor; SAYFANIN da uygulamaya abone
+    olması gerekiyor. Kayıtlı sayfa token'ı ile yapılır (me = token'ın sahibi sayfa)."""
+    import httpx
+    sid = store_id or (body.store_id if body else None)
+    st = db.scalar(select(Store).where(Store.id == sid, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    token = ((st.config or {}).get("ig_access_token") or "").strip()
+    if not token:
+        return {"ok": False, "error": "Access token girilmemiş."}
+    ver = get_settings().ig_graph_version
+    base = "https://graph.facebook.com"
+    try:
+        r = httpx.post(f"{base}/{ver}/me/subscribed_apps",
+                       params={"subscribed_fields": "messages", "access_token": token}, timeout=15)
+        ok = r.status_code in (200, 201) and (r.json() or {}).get("success") is not False
+        if not ok:
+            try:
+                msg = (r.json().get("error") or {}).get("message") or r.text[:200]
+            except Exception:  # noqa: BLE001
+                msg = r.text[:200]
+            return {"ok": False, "error": f"{r.status_code}: {msg}"}
+        # Doğrula: gerçekten abone mi
+        g = httpx.get(f"{base}/{ver}/me/subscribed_apps",
+                      params={"access_token": token}, timeout=15)
+        subs = []
+        if g.status_code == 200:
+            for a in (g.json().get("data") or []):
+                subs.append({"name": a.get("name"), "fields": a.get("subscribed_fields")})
+        return {"ok": True, "subscriptions": subs}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}

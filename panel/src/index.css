@@ -104,3 +104,24 @@ select.input option, .input option { @apply bg-panel-card text-panel-ink; }
 .card table { font-variant-numeric: tabular-nums; }
 .card tbody tr { transition: background-color 0.12s ease; }
 .card tbody tr:hover { background: rgb(255 255 255 / 0.025); }
+
+/* Ana panelle BİRLEŞİK menü: dropdown açılış + mobil çekmece animasyonları */
+@keyframes menu-pop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.menu-pop { animation: menu-pop 0.16s cubic-bezier(0.2,0.8,0.3,1) both; transform-origin: top; }
+
+@keyframes slidein-left {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slidein { animation: slidein-left 0.3s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop, .animate-slidein { animation: none; }
+}
+
+/* Yatay menüde kaydırma çubuğunu gizle (üst bar taşmasın) */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

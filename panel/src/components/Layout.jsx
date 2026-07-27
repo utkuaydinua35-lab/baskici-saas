@@ -1,42 +1,49 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useStore } from '../lib/store'
 import { useToast } from './Toast'
 import BrandMark from './BrandMark'
 
-// Shopify yerleşim mantığı: koyu üst bar (marka + mağaza + vitrin linki +
-// profil menüsü), solda GRUPLU menü, Ayarlar en altta sabit.
-const NAV_GROUPS = [
-  { label: null, items: [
-    { to: '/', label: 'Ana Sayfa', icon: '🏠', end: true },
-  ]},
-  { label: 'Satış', items: [
+// BİRLEŞİK MENÜ — baskıcı paneliyle aynı dil: üst yatay bar + "hap" (pill)
+// bölümler + dropdown. Tek öğeli bölüm doğrudan linke iner, boş bölüm gizlenir.
+// (Ayarlar üst menüde değil — sağ üstteki profil menüsünde.)
+const NAV = [
+  { label: 'Ana Sayfa', to: '/', icon: '🏠', end: true },
+  { label: 'Satış', icon: '📦', items: [
     { to: '/siparisler', label: 'Siparişler', icon: '📦' },
-  ]},
-  { label: 'Katalog', items: [
+    { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
+  ] },
+  { label: 'Katalog', icon: '🛍️', items: [
     { to: '/urunler', label: 'Ürünler', icon: '🛍️' },
     { to: '/koleksiyonlar', label: 'Koleksiyonlar', icon: '🗂️' },
     { to: '/envanter', label: 'Envanter', icon: '📋' },
-  ]},
-  { label: 'Müşteri', items: [
+  ] },
+  { label: 'Müşteri', icon: '👥', items: [
     { to: '/musteriler', label: 'Müşteriler', icon: '👥' },
     { to: '/yorumlar', label: 'Yorumlar', icon: '⭐' },
     { to: '/tasarim-talepleri', label: 'Tasarım Talepleri', icon: '🖌️' },
-  ]},
-  { label: 'Pazarlama', items: [
+  ] },
+  { label: 'Pazarlama', icon: '📣', items: [
     { to: '/kuponlar', label: 'İndirimler', icon: '🎟️' },
-    { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
     { to: '/analitik', label: 'Analitik', icon: '📈' },
-  ]},
-  { label: 'Online Mağaza', items: [
+  ] },
+  { label: 'Online Mağaza', icon: '🎨', items: [
     { to: '/tema', label: 'Tema', icon: '🎨' },
     { to: '/sayfalar', label: 'Sayfalar', icon: '📄' },
     { to: '/blog', label: 'Blog', icon: '✍️' },
     { to: '/uygulamalar', label: 'Uygulamalar', icon: '🧩' },
-  ]},
+  ] },
 ]
+
+// Tek öğeli bölümü doğrudan linke indir (ana paneldeki visibleNav ile aynı mantık)
+function flatNav() {
+  return NAV.map(sec => (sec.to || (sec.items || []).length > 1)
+    ? sec
+    : { ...(sec.items || [])[0] })
+}
 
 export default function Layout() {
   const { user, logout, refresh } = useAuth()
@@ -52,87 +59,176 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Üst bar — koyu, Shopify tarzı */}
-      <header className="h-12 shrink-0 bg-slate-900 flex items-center gap-3 px-3 text-white sticky top-0 z-40">
-        {/* Mobil menü düğmesi */}
-        <button onClick={() => setMenuOpen(o => !o)} aria-label="Menü"
-          className="lg:hidden w-8 h-8 rounded-lg border border-slate-700 flex items-center justify-center text-slate-300">
-          {menuOpen ? '✕' : '☰'}
-        </button>
-        <div className="flex items-center gap-2 pr-2">
-          <BrandMark />
-          <span className="text-[13px] tracking-tight hidden sm:inline">
-            <span className="font-bold">BERNZ</span>
-            <span className="text-emerald-300 font-light ml-1">Commerce</span>
-          </span>
-        </div>
+      {/* ÜST MENÜ — baskıcı paneliyle aynı: yatay, bölüm dropdown'lı */}
+      <header className="sticky top-0 z-[60] border-b border-panel-border/70 bg-panel-bg/95 backdrop-blur pt-[env(safe-area-inset-top)]">
+        <div className="px-3 md:px-5 h-14 flex items-center gap-2 md:gap-3">
+          <button onClick={() => setMenuOpen(true)} aria-label="Menü"
+            className="md:hidden text-panel-muted hover:text-panel-ink p-1 -ml-1">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
 
-        {stores.length > 1 ? (
-          <select value={store?.id || ''} onChange={e => setStoreId(e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5
-              focus:outline-none focus:border-emerald-500">
-            {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        ) : (
-          <span className="text-xs text-slate-300 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5">
-            🏪 {store?.name || 'Mağaza'}
-          </span>
-        )}
+          <div className="flex items-center gap-2 shrink-0">
+            <BrandMark />
+            <span className="hidden lg:block text-sm font-semibold tracking-tight text-panel-ink">
+              BERNZ <span className="text-panel-accent font-light">Commerce</span>
+            </span>
+          </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          {storefrontUrl && (
-            <a href={storefrontUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500
-                rounded-lg px-2.5 py-1.5 transition-colors">
-              Vitrini Gör ↗
-            </a>
-          )}
-          <ProfileMenu user={user} logout={logout} refresh={refresh} />
+          <DesktopNav />
+
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {stores.length > 1 ? (
+              <select value={store?.id || ''} onChange={e => setStoreId(e.target.value)}
+                className="bg-panel-input/60 border border-panel-border text-panel-ink text-xs rounded-full px-2.5 h-9
+                  focus:outline-none focus:border-panel-accent">
+                {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            ) : (
+              <span className="hidden sm:flex items-center h-9 text-xs text-panel-muted bg-panel-input/60 border border-panel-border rounded-full px-3">
+                🏪 {store?.name || 'Mağaza'}
+              </span>
+            )}
+            {storefrontUrl && (
+              <a href={storefrontUrl} target="_blank" rel="noopener noreferrer" title="Vitrini yeni sekmede aç"
+                className="hidden sm:flex items-center h-9 text-xs text-panel-muted hover:text-panel-ink bg-panel-input/60 border border-panel-border hover:border-panel-accent/50 rounded-full px-3 transition-colors">
+                Vitrini Gör ↗
+              </a>
+            )}
+            <ProfileMenu user={user} logout={logout} refresh={refresh} />
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 flex min-h-0">
-        {/* Mobil çekmece örtüsü */}
-        {menuOpen && (
-          <div className="fixed inset-0 top-12 bg-black/40 z-20 lg:hidden"
-            onClick={() => setMenuOpen(false)} />
-        )}
-        {/* Sol menü — gruplu; mobilde soldan kayan çekmece */}
-        <aside className={`w-56 shrink-0 border-r border-panel-border bg-panel-card flex flex-col
-          fixed lg:sticky top-12 h-[calc(100vh-3rem)] z-30
-          transition-transform duration-200 lg:translate-x-0
-          ${menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}`}>
-          <nav className="flex-1 px-2 py-2 overflow-y-auto">
-            {NAV_GROUPS.map((g, gi) => (
-              <div key={gi}>
-                {g.label && <div className="nav-group-label">{g.label}</div>}
-                {g.items.map(item => (
-                  <NavLink key={item.to} to={item.to} end={item.end}
-                    className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                    <span className="nav-icon">{item.icon}</span>
-                    {item.label}
-                  </NavLink>
-                ))}
-              </div>
-            ))}
-          </nav>
-          {/* Ayarlar — Shopify gibi en altta sabit */}
-          <div className="p-2 border-t border-panel-border">
-            <NavLink to="/ayarlar"
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <span className="nav-icon">⚙️</span>
-              Ayarlar
-            </NavLink>
-          </div>
-        </aside>
+      {menuOpen && <MobileNav onClose={() => setMenuOpen(false)} />}
 
-        {/* İçerik */}
-        <main className="flex-1 min-w-0 p-5 overflow-y-auto">
-          <div key={location.pathname} className="page-in">
-            <Outlet />
+      {/* İçerik */}
+      <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div key={location.pathname} className="mx-auto w-full max-w-[1400px] page-in">
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+// ── Üst yatay menü (masaüstü) ──
+function DesktopNav() {
+  return (
+    <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1">
+      {flatNav().map(e => e.items
+        ? <NavDropdown key={e.label} entry={e} />
+        : <TopLink key={e.to} {...e} />)}
+    </nav>
+  )
+}
+
+function TopLink({ to, label, icon, end }) {
+  return (
+    <NavLink to={to} end={end}
+      className={({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+        isActive ? 'bg-panel-accent/15 text-panel-accent font-medium' : 'text-panel-muted hover:text-panel-ink hover:bg-panel-input/60'
+      }`}>
+      <span className="text-[13px]">{icon}</span>{label}
+    </NavLink>
+  )
+}
+
+function NavDropdown({ entry }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const menuRef = useRef(null)
+  const loc = useLocation()
+  const active = entry.items.some(it => loc.pathname === it.to.split('?')[0])
+  const closeTimer = useRef(null)
+
+  const place = () => {
+    const b = btnRef.current?.getBoundingClientRect()
+    if (b) setPos({ left: Math.max(8, Math.min(b.left, window.innerWidth - 232)), top: b.bottom + 8 })
+  }
+  const toggle = () => { if (!open) place(); setOpen(o => !o) }
+  const hoverOpen = () => { clearTimeout(closeTimer.current); place(); setOpen(true) }
+  const hoverClose = () => { closeTimer.current = setTimeout(() => setOpen(false), 130) }
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = e => {
+      if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onReposition = () => place()
+    document.addEventListener('mousedown', onDoc)
+    window.addEventListener('resize', onReposition)
+    window.addEventListener('scroll', onReposition, true)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('resize', onReposition)
+      window.removeEventListener('scroll', onReposition, true)
+    }
+  }, [open])
+  useEffect(() => { setOpen(false) }, [loc.pathname])
+
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+          active || open ? 'bg-panel-accent/15 text-panel-accent font-medium' : 'text-panel-muted hover:text-panel-ink hover:bg-panel-input/60'
+        }`}>
+        <span className="text-[13px]">{entry.icon}</span>{entry.label}
+        <span className={`text-[8px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: 'fixed', left: pos.left, top: pos.top }}
+          onMouseEnter={() => clearTimeout(closeTimer.current)} onMouseLeave={hoverClose}
+          className="w-56 bg-panel-card border border-panel-border rounded-2xl shadow-2xl p-1.5 z-[200] menu-pop">
+          {entry.items.map(it => <DropItem key={it.to} {...it} onClick={() => setOpen(false)} />)}
+        </div>, document.body)}
+    </>
+  )
+}
+
+function DropItem({ to, label, icon, end, onClick }) {
+  return (
+    <NavLink to={to} end={end} onClick={onClick}
+      className={({ isActive }) => `group flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] transition-colors ${
+        isActive ? 'bg-panel-accent/15 text-panel-accent' : 'text-panel-muted hover:bg-panel-input/70 hover:text-panel-ink'
+      }`}>
+      {({ isActive }) => (
+        <>
+          <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-[13px] shrink-0 transition-colors ${
+            isActive ? 'bg-panel-accent/20' : 'bg-panel-input/70 group-hover:bg-panel-input'
+          }`}>{icon}</span>
+          <span>{label}</span>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+// ── Mobil çekmece (dikey, bölümlü) — ana panelle aynı ──
+function MobileNav({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-[80] md:hidden">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] bg-panel-card border-r border-panel-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto animate-slidein">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <span className="text-sm font-semibold text-panel-ink">Menü</span>
+          <button onClick={onClose} className="text-panel-muted hover:text-panel-ink text-2xl leading-none">×</button>
+        </div>
+        <nav className="space-y-1">
+          {flatNav().map(e => e.items ? (
+            <div key={e.label} className="mb-1">
+              <div className="nav-group-label">{e.label}</div>
+              {e.items.map(it => <DropItem key={it.to} {...it} onClick={onClose} />)}
+            </div>
+          ) : (
+            <DropItem key={e.to} {...e} onClick={onClose} />
+          ))}
+          <div className="mt-2 pt-2 border-t border-panel-border">
+            <DropItem to="/ayarlar" label="Ayarlar" icon="⚙️" onClick={onClose} />
           </div>
-        </main>
-      </div>
+        </nav>
+      </aside>
     </div>
   )
 }
@@ -158,6 +254,7 @@ function ProfileMenu({ user, logout, refresh }) {
   const [open, setOpen] = useState(false)
   const [modal, setModal] = useState(null)   // null | 'hesap' | 'sifre' | 'guvenlik'
   const ref = useRef(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -194,6 +291,9 @@ function ProfileMenu({ user, logout, refresh }) {
             </div>
           </div>
           <div className="p-1.5 text-sm">
+            {/* Ayarlar artık sol menüde değil — ana paneldeki gibi profil menüsünde */}
+            {item('⚙️', 'Mağaza ayarları', () => { navigate('/ayarlar'); setOpen(false) })}
+            <div className="my-1 border-t border-panel-border" />
             {item('👤', 'Hesap bilgileri', () => { setModal('hesap'); setOpen(false) })}
             {item('🛡️', <>Güvenlik (2FA) {user?.totp_enabled &&
               <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">aktif</span>}</>,

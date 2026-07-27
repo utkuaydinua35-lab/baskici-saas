@@ -322,3 +322,30 @@ tr, .row-hover { transition: background-color 0.15s ease; }
   .ciro-line, .ciro-area, .ciro-dot { animation: none; stroke-dashoffset: 0; }
 }
 
+
+/* ─── Sayfa araçları (arama · dropdown · filtre) — ÜST MENÜYLE AYNI DİL ───
+   Menü hap (pill) butonlar, yumuşak hover ve accent odak kullanıyor; sayfa içi
+   arama kutuları ve select'ler de aynı forma girer. Çok satırlı textarea kutu kalır. */
+input.input, select.input { border-radius: 9999px; padding-left: 1rem; padding-right: 1rem; }
+textarea.input { border-radius: 0.75rem; }
+
+input.input:hover:not(:focus), select.input:hover {
+  border-color: #2c3f38;
+  background-color: #1b2721;
+}
+.input:focus, .input:focus-visible {
+  box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.14);
+}
+
+/* Native select oku yerine menüdeki ▼ ile aynı ince chevron */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%238aa096' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.1rem;
+}
+select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%23e5e7eb' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+/* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
+select.input option, select option { background: #0e1612; color: #f3f4f6; }

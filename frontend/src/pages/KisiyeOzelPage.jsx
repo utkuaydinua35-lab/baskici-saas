@@ -1269,8 +1269,8 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-md text-xs transition-colors ${
-        active ? 'bg-accent/15 text-accent' : 'text-gray-400 hover:text-gray-200'
+      className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+        active ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-200 hover:bg-brand-input/60'
       }`}
     >{children}</button>
   )

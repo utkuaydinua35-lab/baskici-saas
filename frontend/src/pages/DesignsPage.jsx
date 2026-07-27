@@ -544,7 +544,7 @@ function FilterChip({ active, onClick, color = 'gray', label }) {
   return (
     <button
       onClick={onClick}
-      className={`text-[11px] px-2.5 py-1 rounded-md border transition-colors ${colors[color]}`}
+      className={`text-[11px] px-3 py-1 rounded-full border transition-colors ${colors[color]}`}
     >
       {label}
     </button>
@@ -555,8 +555,8 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-md text-xs transition-colors ${
-        active ? 'bg-accent/15 text-accent' : 'text-gray-400 hover:text-gray-200'
+      className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+        active ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-200 hover:bg-brand-input/60'
       }`}
     >{children}</button>
   )

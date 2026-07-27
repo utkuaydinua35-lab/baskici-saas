@@ -899,3 +899,34 @@ def bot_logs(store_id: uuid.UUID | None = None, limit: int = 50,
         "reply": r.reply, "rule": r.rule, "sent_ok": r.sent_ok, "error": r.error,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     } for r in rows]}
+
+
+@router.post("/bot/check", response_model=dict)
+def check_bot_connection(body: BotTestIn | None = None, store_id: uuid.UUID | None = None,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Girilen business ID + access token gerçekten çalışıyor mu — Graph API'ye sorar.
+    Kurulumda 'neden mesaj gitmiyor' tahmin etmek yerine net cevap verir."""
+    import httpx
+    sid = store_id or (body.store_id if body else None)
+    st = db.scalar(select(Store).where(Store.id == sid, Store.tenant_id == user.tenant_id))
+    if not st:
+        raise HTTPException(404, "Mağaza bulunamadı")
+    cfg = st.config or {}
+    token = (cfg.get("ig_access_token") or "").strip()
+    ig_id = (cfg.get("ig_business_id") or "").strip()
+    if not token or not ig_id:
+        return {"ok": False, "error": "Business ID ve access token girilmemiş."}
+    ver = get_settings().ig_graph_version
+    try:
+        r = httpx.get(f"https://graph.facebook.com/{ver}/{ig_id}",
+                      params={"fields": "id,username,name", "access_token": token}, timeout=15)
+        if r.status_code == 200:
+            d = r.json()
+            return {"ok": True, "username": d.get("username"), "name": d.get("name"), "id": d.get("id")}
+        try:
+            msg = (r.json().get("error") or {}).get("message") or r.text[:200]
+        except Exception:  # noqa: BLE001
+            msg = r.text[:200]
+        return {"ok": False, "error": f"{r.status_code}: {msg}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}

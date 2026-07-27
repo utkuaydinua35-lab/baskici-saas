@@ -63,18 +63,23 @@ def _send_dm(store: Store, recipient_id: str, text: str) -> tuple[bool, str | No
     if not token or not ig_id:
         return False, "ig_access_token / ig_business_id eksik"
     ver = get_settings().ig_graph_version
-    try:
-        r = httpx.post(
-            f"https://graph.facebook.com/{ver}/{ig_id}/messages",
-            json={"recipient": {"id": recipient_id}, "message": {"text": text[:950]}},
-            params={"access_token": token},
-            timeout=15,
-        )
-        if r.status_code in (200, 201):
-            return True, None
-        return False, f"{r.status_code}: {r.text[:200]}"
-    except Exception as e:  # noqa: BLE001
-        return False, str(e)[:200]
+    body = {"recipient": {"id": recipient_id}, "message": {"text": text[:950]}}
+    # Meta'nın iki kurulum yolu farklı uç kullanıyor (IG-login vs Facebook-login):
+    # önce IG business id, olmazsa /me — hangi kurulum yapılırsa yapılsın çalışsın.
+    paths = [f"{ig_id}/messages", "me/messages"]
+    if (cfg.get("ig_page_id") or "").strip():
+        paths.insert(1, f"{cfg['ig_page_id'].strip()}/messages")
+    last = None
+    for p in paths:
+        try:
+            r = httpx.post(f"https://graph.facebook.com/{ver}/{p}",
+                           json=body, params={"access_token": token}, timeout=15)
+            if r.status_code in (200, 201):
+                return True, None
+            last = f"{p} → {r.status_code}: {r.text[:160]}"
+        except Exception as e:  # noqa: BLE001
+            last = f"{p} → {str(e)[:160]}"
+    return False, last
 
 
 @router.get("/webhook", response_model=None)

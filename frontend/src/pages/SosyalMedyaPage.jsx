@@ -321,6 +321,14 @@ function DmBotPanel({ storeId, toast }) {
   const [testRes, setTestRes] = useState(null)
   const [logs, setLogs] = useState([])
   const [busy, setBusy] = useState(false)
+  const [conn, setConn] = useState(null)   // bağlantı testi sonucu
+
+  const checkConn = async () => {
+    setBusy(true); setConn(null)
+    try { setConn(await api.post('/api/instagram/bot/check', { store_id: storeId, text: '' })) }
+    catch (e) { setConn({ ok: false, error: e.detail || 'Test edilemedi' }) }
+    finally { setBusy(false) }
+  }
 
   const load = async () => {
     if (!storeId) return
@@ -395,7 +403,13 @@ function DmBotPanel({ storeId, toast }) {
               placeholder={cfg.has_token ? '(değiştirmek için yeni token)' : 'EAAG...'} />
           </div>
         </div>
-        <div className="flex justify-end mt-3">
+        <div className="flex justify-end items-center gap-2 mt-3">
+          {conn && (
+            <span className={`text-[11px] ${conn.ok ? 'text-emerald-300' : 'text-red-300'}`} title={conn.error || ''}>
+              {conn.ok ? `✓ Bağlandı: @${conn.username || conn.name || conn.id}` : `✗ ${conn.error}`}
+            </span>
+          )}
+          <button onClick={checkConn} disabled={busy} className="btn-secondary !text-xs disabled:opacity-50">🔌 Bağlantıyı test et</button>
           <button onClick={() => save()} disabled={busy} className="btn-primary !text-xs disabled:opacity-50">Kaydet</button>
         </div>
       </div>

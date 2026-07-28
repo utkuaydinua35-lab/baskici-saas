@@ -482,6 +482,7 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
 
     fixed = 0      # plana döndürülen (kayıp)
     restored = 0   # kalıpta olduğu halde bayrağı kapalıyken geri işaretlenen
+    relinked = 0   # kalıp slotu ↔ kalem bağı kalıcı olarak yeniden kuruldu
 
     def _onum(li):
         return str(li.order.order_number) if (li.order and li.order.order_number is not None) else None
@@ -524,6 +525,11 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
             i = _pick(li, slots, used) if slots else None
             if i is not None:
                 used.add(i)
+                # Eslesme bulundu -> bagi KALICI yaz. Boylece bir dahaki kalip silme /
+                # serbest birakma bulanik tahmine dusmez; sync de bagi artik koruyor.
+                if slots[i].line_item_id is None:
+                    slots[i].line_item_id = li.id
+                    relinked += 1
                 if not li.is_kaliba_eklendi:
                     li.is_kaliba_eklendi = True
                     restored += 1
@@ -532,7 +538,7 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
                 fixed += 1
 
     db.commit()
-    return {"ok": True, "fixed": fixed, "restored": restored}
+    return {"ok": True, "fixed": fixed, "restored": restored, "relinked": relinked}
 
 
 class RemoveItemRequest(BaseModel):

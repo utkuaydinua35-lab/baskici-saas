@@ -107,8 +107,9 @@ export default function MoldGeneratorPage() {
     try {
       const r = await api.post('/api/molds/_resync-flags', {})
       const parts = []
-      if (r?.fixed > 0) parts.push(`${r.fixed} kayıp ürün plana döndü`)
-      if (r?.restored > 0) parts.push(`${r.restored} ürün kalıpta olarak düzeltildi`)
+      if (r?.fixed > 0) parts.push(`${r.fixed} ürün hiçbir kalıpta değildi → plana döndü (artık basılacak)`)
+      if (r?.restored > 0) parts.push(`${r.restored} ürün kalıpta olduğu halde plana düşmüştü → düzeltildi`)
+      if (r?.relinked > 0) parts.push(`${r.relinked} kalıp–ürün bağı kalıcı olarak onarıldı`)
       toast.success(parts.length ? parts.join(' · ') : 'Her şey güncel — düzeltme gerekmedi')
       loadPlan(storeId); loadExisting(storeId)
     } catch (e) { toast.error(e?.detail || 'Tarama başarısız') }

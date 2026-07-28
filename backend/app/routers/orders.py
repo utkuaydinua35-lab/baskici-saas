@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import case, desc, func as sql_func, select
+from sqlalchemy import case, desc, func as sql_func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -202,6 +202,7 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
     _deadline = _compute_deadline(order_data["created_at_platform"], _sla_days)
 
     _preserved_li: dict[str, dict] = {}   # external_id -> app-owned alan snapshot'i
+    _mold_links: dict[str, list] = {}     # external_id -> [mold_item.id, ...]
 
     if existing:
         is_new = False
@@ -218,11 +219,23 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         order = existing
         # Sync sirasinda line item'lar silinip yeniden olusturuluyor; uygulamaya ait
         # tum alanlari (_LI_APP_FIELDS) Shopify line item id'si (external_id) bazinda koru.
+        _old_ids: dict[uuid.UUID, str] = {}   # eski line item id -> external_id
         for _li in order.line_items:
             if _li.external_id:
                 _preserved_li[_li.external_id] = {
                     _f: getattr(_li, _f, None) for _f in _LI_APP_FIELDS
                 }
+                _old_ids[_li.id] = _li.external_id
+        # Kalip slotu <-> kalem bagini (mold_items.line_item_id) yakala. FK ondelete=SET NULL
+        # oldugu icin asagidaki clear() bu bagi koparir; yeni kalemler olusunca geri baglanir.
+        # Bag kopunca kalip silme/serbest birakma bulanik tahmine dusuyor ve urunler
+        # "kalibimdayim" diye takili kalip hic basilmiyordu.
+        if _old_ids:
+            for _mi_id, _li_id in db.execute(
+                select(MoldItem.id, MoldItem.line_item_id)
+                .where(MoldItem.line_item_id.in_(list(_old_ids.keys())))
+            ).all():
+                _mold_links.setdefault(_old_ids[_li_id], []).append(_mi_id)
         order.line_items.clear()
         db.flush()
     else:
@@ -263,6 +276,7 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         except Exception:
             pass
 
+    _new_li_by_ext: dict[str, LineItem] = {}
     for pos, li_raw in enumerate(raw.get("line_items", [])):
         _ext = str(li_raw.get("id", "")) if li_raw.get("id") else None
         li = LineItem(
@@ -286,6 +300,20 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             for _f, _v in _snap.items():
                 setattr(li, _f, _v)
         db.add(li)
+        if _ext:
+            _new_li_by_ext[_ext] = li
+
+    # Kalip slotlarini yeni kalem id'lerine geri bagla (yukarida yakalanan eslesme).
+    if _mold_links:
+        db.flush()   # yeni line item id'leri olussun
+        for _ext, _mi_ids in _mold_links.items():
+            _nli = _new_li_by_ext.get(_ext)
+            if _nli is None:
+                continue   # Shopify'dan bu kalem artik gelmiyor -> bag NULL kalir
+            db.execute(
+                update(MoldItem).where(MoldItem.id.in_(_mi_ids))
+                .values(line_item_id=_nli.id)
+            )
 
     # Müşteri CRM kaydını güncelle — hata sync'i asla düşürmesin
     try:

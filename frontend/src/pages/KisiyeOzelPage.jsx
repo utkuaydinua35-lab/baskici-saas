@@ -592,12 +592,26 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
     const f = slot === 2 ? 'assigned_design_id_2' : 'assigned_design_id'
     patchLi({ [f]: null, fields_to_update: [f] })
   }
+  // Kalıptaki kayıt model+varyasyonun SNAPSHOT'ını tutar (kalıp kodu = GRUP|RENK).
+  // Kalıba eklendikten sonra bunlar değişirse kalıp eski değerle basılır — uyar.
+  const confirmIfInMold = (what) => {
+    if (!item.is_kaliba_eklendi) return true
+    return window.confirm(
+      `Bu ürün zaten KALIBA EKLENMİŞ.\n\n${what} değişikliği kalıptaki kayda yansımaz — ` +
+      'bu haliyle basılırsa yanlış üretim olur.\n\nDeğiştirdikten sonra Kalıplar sayfasından ' +
+      'bu kalemi "plana geri döndür" yapıp yeniden kalıba almalısın.\n\nDevam edilsin mi?'
+    )
+  }
   const saveModel = (slot, value) => {
     const f = slot === 2 ? 'device_model_override_2' : 'device_model_override'
+    if (value === (item[f] || '')) return
+    if (!confirmIfInMold('Telefon modeli')) return
     patchLi({ [f]: value, fields_to_update: [f] })
   }
   const saveVaryasyon = (slot, value) => {
     const f = slot === 2 ? 'kilif_varyasyon_2' : 'kilif_varyasyon'
+    if (value === (item[f] || '')) return
+    if (!confirmIfInMold('Varyasyon')) return
     patchLi({ [f]: value, fields_to_update: [f] })
   }
   const renderDesign = (design, slot) => design ? (

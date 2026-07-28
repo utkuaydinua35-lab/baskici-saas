@@ -659,6 +659,19 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
     setModelVal2(item.device_model_override_2 || '')
   }
   const saveModel = () => {
+    const changed = modelVal !== (item.device_model_override || '') ||
+                    (isCouple && modelVal2 !== (item.device_model_override_2 || ''))
+    // Kalıptaki kayıt modelin SNAPSHOT'ını tutar; sonradan model değişirse kalıp
+    // eski modelle basılır. Kullanıcıyı uyar — sessizce yanlış baskıya izin verme.
+    if (changed && item.is_kaliba_eklendi) {
+      const ok = window.confirm(
+        'Bu ürün zaten KALIBA EKLENMİŞ.\n\n' +
+        'Kalıptaki kayıt eski telefon modeliyle kalır — bu haliyle basılırsa yanlış model üretilir.\n\n' +
+        'Modeli değiştirdikten sonra Kalıplar sayfasından bu kalemi "plana geri döndür" yapıp ' +
+        'yeniden kalıba almalısın.\n\nDevam edilsin mi?'
+      )
+      if (!ok) return
+    }
     const fields = ['device_model_override']
     const body = { device_model_override: modelVal }
     if (isCouple) {

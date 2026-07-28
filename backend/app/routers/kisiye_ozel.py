@@ -185,6 +185,9 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
         "birincil_renk": li.birincil_renk,
         "ikincil_renk": li.ikincil_renk,
         "ucuncu_renk": li.ucuncu_renk,
+        # Kaliptaki kayit model/varyasyon SNAPSHOT'i tutar; kaliba eklendikten sonra
+        # bunlar degisirse panel uyarsin diye bayragi disari veriyoruz.
+        "is_kaliba_eklendi": li.is_kaliba_eklendi,
         "status": status,
     }
 

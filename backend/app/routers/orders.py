@@ -146,6 +146,21 @@ def _compute_deadline(created_at_platform: datetime | None, sla_days: int | None
     return created_at_platform + timedelta(days=sla_days)
 
 
+# Sync sirasinda line item'lar silinip yeniden olusturuluyor. Asagidaki alanlar
+# Shopify'dan DEGIL uygulamadan gelir (elle secim, atama, uretim akisi) — sync'in
+# bunlari ezmemesi icin external_id bazinda snapshot alinip geri yazilir.
+# ⚠️ LineItem'a yeni bir app-owned alan eklendiginde BURAYA DA EKLENMELI,
+#    yoksa her saatlik sync o alani sessizce sifirlar.
+_LI_APP_FIELDS = (
+    "assigned_design_id", "assigned_design_id_2",
+    "device_model_override", "device_model_override_2",
+    "kilif_varyasyon", "kilif_varyasyon_2",
+    "birincil_renk", "ikincil_renk", "ucuncu_renk",
+    "tedarik_status", "is_hazir", "is_kaliba_eklendi",
+    "is_kisiye_ozel", "product_image_url",
+)
+
+
 def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order, bool, bool]:
     """Raw order dict'ten Order kaydı oluştur veya güncelle."""
     external_id = str(raw.get("id", ""))
@@ -186,6 +201,8 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
 
     _deadline = _compute_deadline(order_data["created_at_platform"], _sla_days)
 
+    _preserved_li: dict[str, dict] = {}   # external_id -> app-owned alan snapshot'i
+
     if existing:
         is_new = False
         was_updated = False
@@ -199,25 +216,12 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         if existing.kargo_deadline is None and _deadline is not None:
             existing.kargo_deadline = _deadline
         order = existing
-        # Sync sirasinda line item'lar silinip yeniden olusturuluyor; design bağlamasini
-        # (assigned_design_id) Shopify line item id'si (external_id) bazinda koru.
-        _preserved_assign = {}
-        _preserved_ko = {}
-        _preserved_flow = {}  # uretim akisi alanlari (is_kaliba_eklendi vb) — cift baski riskini onler
+        # Sync sirasinda line item'lar silinip yeniden olusturuluyor; uygulamaya ait
+        # tum alanlari (_LI_APP_FIELDS) Shopify line item id'si (external_id) bazinda koru.
         for _li in order.line_items:
             if _li.external_id:
-                if _li.assigned_design_id:
-                    _preserved_assign[_li.external_id] = _li.assigned_design_id
-                if getattr(_li, "is_kisiye_ozel", None):
-                    _preserved_ko[_li.external_id] = _li.is_kisiye_ozel
-                _preserved_flow[_li.external_id] = {
-                    "is_kaliba_eklendi": getattr(_li, "is_kaliba_eklendi", False),
-                    "is_hazir": getattr(_li, "is_hazir", False),
-                    "tedarik_status": getattr(_li, "tedarik_status", "bekliyor"),
-                    "device_model_override": getattr(_li, "device_model_override", None),
-                    "birincil_renk": getattr(_li, "birincil_renk", None),
-                    "ikincil_renk": getattr(_li, "ikincil_renk", None),
-                    "ucuncu_renk": getattr(_li, "ucuncu_renk", None),
+                _preserved_li[_li.external_id] = {
+                    _f: getattr(_li, _f, None) for _f in _LI_APP_FIELDS
                 }
         order.line_items.clear()
         db.flush()
@@ -259,9 +263,6 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         except Exception:
             pass
 
-    _preserved_assign = locals().get("_preserved_assign", {})
-    _preserved_ko = locals().get("_preserved_ko", {})
-    _preserved_flow = locals().get("_preserved_flow", {})
     for pos, li_raw in enumerate(raw.get("line_items", [])):
         _ext = str(li_raw.get("id", "")) if li_raw.get("id") else None
         li = LineItem(
@@ -278,21 +279,12 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
             properties=li_raw.get("properties") or [],
             raw=li_raw,
         )
-        # Sync oncesi uretim akisi alanlarini koru (is_kaliba_eklendi -> cift baski riskini onler)
-        if _ext and _ext in locals().get("_preserved_flow", {}):
-            _fl = _preserved_flow[_ext]
-            li.is_kaliba_eklendi = _fl["is_kaliba_eklendi"]
-            li.is_hazir = _fl["is_hazir"]
-            li.tedarik_status = _fl["tedarik_status"]
-            li.device_model_override = _fl["device_model_override"]
-            li.birincil_renk = _fl["birincil_renk"]
-            li.ikincil_renk = _fl["ikincil_renk"]
-            li.ucuncu_renk = _fl["ucuncu_renk"]
-        # Sync oncesi bağlama varsa koru (PDF/design line item'a bağli kalsin)
-        if _ext and _ext in _preserved_assign:
-            li.assigned_design_id = _preserved_assign[_ext]
-        if _ext and _ext in _preserved_ko:
-            li.is_kisiye_ozel = _preserved_ko[_ext]
+        # Sync oncesi uygulamaya ait alanlari geri yaz: design baglamasi, elle secilen
+        # telefon modeli/varyasyon ve uretim akisi (is_kaliba_eklendi -> cift baski riskini onler)
+        _snap = _preserved_li.get(_ext) if _ext else None
+        if _snap:
+            for _f, _v in _snap.items():
+                setattr(li, _f, _v)
         db.add(li)
 
     # Müşteri CRM kaydını güncelle — hata sync'i asla düşürmesin

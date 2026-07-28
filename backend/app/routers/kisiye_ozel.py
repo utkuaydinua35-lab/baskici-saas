@@ -236,6 +236,10 @@ def _serialize_order_row(o: Order, product_ids: set[str], couple_ids: set[str] |
         "status": status_,
         # Müşteri onayı (en güncel) — sipariş no yanında rozet için
         "approval_status": (o.approvals[0].status if getattr(o, "approvals", None) else None),
+        # Revizyon istendiyse müşterinin YAZDIĞI gerekçe — yeni tasarımı buna göre hazırla
+        "approval_note": (o.approvals[0].customer_note if getattr(o, "approvals", None) else None),
+        "approval_at": (o.approvals[0].decided_at.isoformat()
+                        if getattr(o, "approvals", None) and o.approvals[0].decided_at else None),
     }
 
 

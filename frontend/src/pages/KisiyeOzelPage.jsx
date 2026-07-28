@@ -91,7 +91,7 @@ export default function KisiyeOzelPage() {
     const p = new URLSearchParams(window.location.search)
     const st = p.get('store'); const ord = p.get('order')
     if (st || ord) {
-      navRef.current = { store: st }
+      navRef.current = { store: st, order: ord }
       if (ord) { setSearch(ord); setSearchOpen(true) }
       window.history.replaceState({}, '', '/kisiye-ozel')
     }
@@ -152,6 +152,15 @@ export default function KisiyeOzelPage() {
     return () => clearTimeout(t)
     // eslint-disable-next-line
   }, [search])
+
+  // Bildirimden gelindiyse (?order=...) o siparişi otomatik aç — revizyon notu hemen görünsün
+  useEffect(() => {
+    const want = navRef.current?.order
+    if (!want || !orders.length) return
+    const hit = orders.find(o => String(o.order_number) === String(want))
+    if (hit) { navRef.current = { ...navRef.current, order: null }; toggleExpand(hit.id) }
+    // eslint-disable-next-line
+  }, [orders])
 
   const toggleExpand = async (orderId) => {
     const next = new Set(expanded)
@@ -434,6 +443,34 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
 
       {expanded && (
         <div className="bg-brand-card/40 border-t border-brand-border/50 px-3 py-3 space-y-2">
+          {/* Müşteri revizyon istediyse: gerekçesi burada — yeni tasarımı buna göre hazırla */}
+          {order.approval_status === 'revizyon' && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+              <div className="text-xs font-medium text-red-200 mb-1">
+                ✏ Müşteri revizyon istedi
+                {order.approval_at && (
+                  <span className="text-[10px] text-gray-400 font-normal ml-1.5">
+                    · {new Date(order.approval_at).toLocaleString('tr-TR')}
+                  </span>
+                )}
+              </div>
+              {order.approval_note ? (
+                <p className="text-sm text-gray-100 whitespace-pre-wrap">{order.approval_note}</p>
+              ) : (
+                <p className="text-xs text-gray-400 italic">Müşteri gerekçe yazmamış.</p>
+              )}
+              <p className="text-[10px] text-gray-500 mt-1.5">
+                Yeni tasarımı yükledikten sonra tekrar onaya gönder.
+              </p>
+            </div>
+          )}
+          {order.approval_status === 'onaylandi' && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+              ✓ Müşteri tasarımı onayladı
+              {order.approval_at && <span className="text-gray-400 ml-1.5">· {new Date(order.approval_at).toLocaleString('tr-TR')}</span>}
+              {' '}— üretime alabilirsin.
+            </div>
+          )}
           {!detail && <div className="text-xs text-gray-500 text-center py-4">Yükleniyor...</div>}
           {detail && detail.line_items && (() => {
             const kisiyeItems = detail.line_items.filter(li => li.is_kisiye_ozel)

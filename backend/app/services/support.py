@@ -83,6 +83,7 @@ def add_customer_message(db: Session, store, order_info: dict, body: str, image_
         kind="info",
         title=f"Yeni destek mesajı — {thread.order_number or thread.shopify_order_id}",
         body=(body.strip()[:200] or "📷 Görsel"),
+        link=f"/destek?thread={thread.id}",   # tıklanınca o talebi aç
     ))
     db.commit()
     db.refresh(thread)

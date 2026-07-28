@@ -22,6 +22,7 @@ def _serialize(n: Notification) -> dict:
         "kind": n.kind,
         "title": n.title,
         "body": n.body,
+        "link": n.link,
         "is_read": n.is_read,
         "created_at": n.created_at.isoformat() if n.created_at else None,
     }

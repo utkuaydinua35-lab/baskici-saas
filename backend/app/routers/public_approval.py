@@ -115,10 +115,11 @@ def post_decision(
         tenant_id=ap.tenant_id, order_id=ap.order_id,
         action=action, note=note, created_by="Müşteri",
     ))
-    # Panel bildirimi (zil)
+    # Panel bildirimi (zil) — tıklanınca o siparişin kişiye özel paneline gitsin
+    _link = f"/kisiye-ozel?store={order.store_id}&order={order.order_number}"
     db.add(Notification(
         tenant_id=ap.tenant_id, store_id=order.store_id,
-        kind="info", title=notif_title, body=notif_body,
+        kind="info", title=notif_title, body=notif_body, link=_link,
     ))
     db.commit()
 

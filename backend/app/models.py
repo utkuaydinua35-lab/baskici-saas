@@ -701,6 +701,8 @@ class Notification(Base):
     kind: Mapped[str] = mapped_column(String(40), default="sync")  # sync | error | info
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Tıklanınca gidilecek panel yolu (ör "/kisiye-ozel?store=..&order=.." | "/destek?thread=..")
+    link: Mapped[str | None] = mapped_column(String(300), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

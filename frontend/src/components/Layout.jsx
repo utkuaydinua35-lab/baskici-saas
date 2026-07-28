@@ -290,6 +290,12 @@ function NotificationBell() {
   const markRead = async (id) => {
     try { await api.patch(`/api/notifications/${id}/read`, {}) ; load() } catch {}
   }
+  // Bildirime tıkla → okundu işaretle + ilgili sayfaya git (revizyon/onay → kişiye özel,
+  // destek mesajı → o talep). link yoksa sadece okundu olur.
+  const openNotif = (n) => {
+    markRead(n.id)
+    if (n.link) { setOpen(false); window.location.href = n.link }
+  }
   const markAll = async () => {
     try { await api.post('/api/notifications/read-all', {}); load() } catch {}
   }
@@ -339,7 +345,8 @@ function NotificationBell() {
             {items.length === 0 && !wlBadge ? (
               <div className="px-3 py-8 text-center text-xs text-gray-500">Bildirim yok</div>
             ) : items.map(n => (
-              <button key={n.id} onClick={() => markRead(n.id)}
+              <button key={n.id} onClick={() => openNotif(n)}
+                title={n.link ? 'İlgili sayfaya git' : undefined}
                 className={`w-full text-left px-3 py-2 border-b border-brand-border/50 hover:bg-brand-input flex gap-2 ${
                   n.is_read ? 'opacity-55' : ''
                 }`}>
@@ -347,7 +354,9 @@ function NotificationBell() {
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-gray-200 leading-snug">{n.title}</div>
                   {n.body && <div className="text-[11px] text-gray-500 mt-0.5 truncate">{n.body}</div>}
-                  <div className="text-[10px] text-gray-600 mt-0.5">{fmtTime(n.created_at)}</div>
+                  <div className="text-[10px] text-gray-600 mt-0.5">
+                    {fmtTime(n.created_at)}{n.link && <span className="text-accent ml-1.5">· aç →</span>}
+                  </div>
                 </div>
                 {!n.is_read && <span className="w-2 h-2 rounded-full bg-accent shrink-0 mt-1" />}
               </button>

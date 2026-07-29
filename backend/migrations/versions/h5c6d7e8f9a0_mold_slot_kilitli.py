@@ -1,13 +1,13 @@
 """molds.slot_kilitli — slot pozisyonlarini kilitle (silince kalanlar kaymasin)
 
-Revision ID: f3a4b5c6d7e8
+Revision ID: h5c6d7e8f9a0
 Revises: e2z3a4b5c6d7
 Create Date: 2026-07-29
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "f3a4b5c6d7e8"
+revision = "h5c6d7e8f9a0"
 down_revision = "e2z3a4b5c6d7"
 branch_labels = None
 depends_on = None

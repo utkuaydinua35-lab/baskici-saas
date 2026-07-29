@@ -104,7 +104,14 @@ export default function MoldDetailPage() {
       const res = await fetch(`/api/molds/${moldId}/pdf`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
       })
-      if (!res.ok) throw new Error('PDF üretilemedi')
+      if (!res.ok) {
+        // Sunucu NEDEN üretmediğini yazıyor (eksik ölçü / tasarım yok vb.).
+        // Eskiden gövde hiç okunmuyordu ve ekranda sadece "PDF üretilemedi" çıkıyordu.
+        let detay = ''
+        try { detay = (await res.json())?.detail || '' } catch { /* json değilse geç */ }
+        if (detay) { alert(detay); return }
+        throw new Error(`PDF üretilemedi (HTTP ${res.status})`)
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')

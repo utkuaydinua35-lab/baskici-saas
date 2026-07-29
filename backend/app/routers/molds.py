@@ -681,6 +681,12 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
     # Artık PDF HİÇ verilmez; nedeni ve hangi model olduğu söylenir.
     _skipped = report.get("skipped") or []
     if _skipped:
+        # journalctl'den de gorunsun (indirme akisinda hata govdesi kaybolabiliyor)
+        import logging as _lg
+        _lg.getLogger("molds").warning(
+            "[kalip-pdf] %s: %s slot basilamadi -> %s",
+            mo.kod, len(_skipped), _skipped[:12],
+        )
         _NEDEN = {
             "olcu_yok": "ölçüsü tanımlı değil (Telefon Modelleri'nden ölçü gir)",
             "tasarim_dosyasi_yok": "tasarım dosyası atanmamış",

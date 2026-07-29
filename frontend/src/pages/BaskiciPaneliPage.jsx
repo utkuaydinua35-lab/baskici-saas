@@ -320,14 +320,19 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
       const res = await fetch(`/api/molds/${mold.id}/pdf`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
       })
-      if (!res.ok) throw new Error('PDF üretilemedi')
+      if (!res.ok) {
+        let detay = ''
+        try { detay = (await res.json())?.detail || '' } catch { /* json değilse geç */ }
+        alert(detay || `PDF üretilemedi (HTTP ${res.status})`)
+        return
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = `kalip_${mold.kod || mold.id}.pdf`
       document.body.appendChild(a); a.click(); a.remove()
       URL.revokeObjectURL(url)
-    } catch { /* sessiz */ }
+    } catch (e) { alert('PDF indirilemedi: ' + (e?.message || '')) }
     finally { setPdfBusy(false) }
   }
 

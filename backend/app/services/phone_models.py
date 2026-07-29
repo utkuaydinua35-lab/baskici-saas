@@ -64,8 +64,13 @@ def key_variants(key: str) -> list[str]:
     k = (key or "").upper()
     add(k)
     add(canonical_key(k))
+    # Marka sözcüğünü YALNIZCA kalan kısım DA bir markayla başlıyorsa soy.
+    # Gerçek dünyadaki fazlalık hep çift marka: "Xiaomi Redmi", "Samsung Galaxy",
+    # "Apple iPhone". Bunun ötesine soymak TEHLİKELİ:
+    #   REDMI-12 -> 12  ve '12' Apple takma adı -> iPhone 12 ölçüsü (7.35x14.9)
+    # Bu şekilde Redmi 12 siparişi iPhone ölçüsüyle basılmıştı.
     parts = [p for p in k.split("-") if p]
-    while len(parts) > 1 and parts[0] in _BRAND_TOKENS:
+    while len(parts) > 2 and parts[0] in _BRAND_TOKENS and parts[1] in _BRAND_TOKENS:
         parts = parts[1:]
         add("-".join(parts))
     return out
@@ -78,6 +83,9 @@ def _unique_brand_prefixed(key: str) -> str | None:
     basmaktansa 'tanınmıyor' demek doğrusu."""
     k = (key or "").upper()
     if not k or k.split("-")[0] in _BRAND_TOKENS:
+        return None
+    # Çıplak Apple takma adı ('12', 'XR', '15-PRO') marka öneki ALMAZ — o zaten iPhone.
+    if is_apple_alias_key(k):
         return None
     base = _baseline_key_set()
     adaylar = [f"{b}-{k}" for b in _BRAND_TOKENS if f"{b}-{k}" in base]

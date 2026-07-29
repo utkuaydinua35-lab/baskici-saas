@@ -307,7 +307,8 @@ export default function PhoneModelsPage() {
               <tr className="text-left text-xs text-gray-500">
                 <th className="px-3 py-2 font-medium">Model</th>
                 <th className="px-3 py-2 font-medium">Marka</th>
-                <th className="px-3 py-2 font-medium">Anahtar</th>
+                <th className="px-3 py-2 font-medium"
+                    title="Eşleşme BU sütuna göre yapılır. Siparişteki telefon modeli metni bu anahtara çevrilir; tutmuyorsa ölçü bulunamaz. Ad sütunu yalnızca görünümdür.">Anahtar <span className="opacity-60">(eşleşme)</span></th>
                 <th className="px-3 py-2 font-medium text-right">G × Y (cm)</th>
                 <th className="px-3 py-2 font-medium text-right">Yarıçap</th>
                 <th className="px-3 py-2 font-medium text-center">Aktif</th>
@@ -330,7 +331,9 @@ export default function PhoneModelsPage() {
                         className="input !text-sm !py-0.5 w-full max-w-[220px]" />
                     ) : (
                       <button onClick={() => setRenamingId(m.id)}
-                              title="Adı değiştirmek için tıkla"
+                              title={"Adı değiştirmek için tıkla.\n\nDİKKAT: Ad yalnızca görünümdür. " +
+                                     "Siparişin hangi ölçüyle basılacağını ANAHTAR (" + (m.spec_key || '') + ") belirler. " +
+                                     "Sipariş farklı bir isimle geliyorsa adı değiştirmek yetmez — o isimle YENİ bir model ekle."}
                               className="text-left hover:text-accent transition-colors">
                         {m.display_name}
                       </button>

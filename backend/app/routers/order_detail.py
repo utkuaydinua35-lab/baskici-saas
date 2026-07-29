@@ -249,6 +249,68 @@ def _is_couple_li(db, li, couple_pids: set | None = None) -> bool:
     return str(li.product_id) in couple_pids
 
 
+def _ser_design_min(d) -> dict | None:
+    if d is None:
+        return None
+    return {
+        "id": str(d.id),
+        "code": d.code,
+        "name": d.name,
+        "thumbnail_url": storage.get_thumbnail_url(d.file_path, d.file_format),
+        "file_url": storage.get_design_url(d.file_path),
+    }
+
+
+def _couple_parcalar(li: LineItem, db) -> list[dict]:
+    """Çift kılıfı 2 ALT ÜRÜNE ayır: her kılıfın kendi tasarımı, telefon modeli,
+    varyasyonu ve KENDİ kalıp/baskı durumu olur.
+
+    Neden: üretim durumu (is_kaliba_eklendi / basıldı) kalem BAZINDA tutuluyordu;
+    çift kılıfın biri basılıp diğeri basılmasa bile kalem 'üretildi' görünüyor ve
+    sipariş EKSİK paketleniyordu. Slot bazında kalıp kaydı (MoldItem.design_id)
+    zaten var — burada onu okuyup her yarıyı ayrı gösteriyoruz.
+    """
+    from app.services import mold_planner as _mp
+
+    # Slot -> kalıp/baskı durumu: MoldItem'ları design_id ile eşle.
+    by_design: dict = {}
+    if db is not None:
+        for _mi_did, _kod, _mid, _pstat, _stage in db.execute(
+            select(MoldItem.design_id, Mold.kod, Mold.id, Mold.print_status, Mold.current_stage)
+            .join(Mold, Mold.id == MoldItem.mold_id)
+            .where(MoldItem.line_item_id == li.id)
+        ).all():
+            by_design.setdefault(_mi_did, []).append({
+                "kalip_kodu": _kod,
+                "mold_id": str(_mid),
+                "basildi": (_pstat == "basildi") or (_stage == 5),
+            })
+
+    _pm1, _pm2 = _mp.extract_couple_models(li)
+    _m1 = (li.device_model_override or "").strip() or _pm1 or (_mp.extract_phone_model(li) or "")
+    _m2 = (li.device_model_override_2 or "").strip() or _pm2 or _m1
+
+    out = []
+    for _slot, _design, _model in (
+        (1, li.assigned_design if li.assigned_design_id else None, _m1),
+        (2, li.assigned_design_2 if li.assigned_design_id_2 else None, _m2),
+    ):
+        _var, _kaynak = _mp.resolve_line_variation_detail(li, _design, slot=_slot)
+        _kaliplar = by_design.get(_design.id if _design else None, [])
+        out.append({
+            "slot": _slot,
+            "baslik": f"{_slot}. kılıf",
+            "design": _ser_design_min(_design),
+            "model": _model or None,
+            "varyasyon": _var,
+            "varyasyon_kaynak": _kaynak,
+            "kaliplar": _kaliplar,
+            "kaliba_eklendi": bool(_kaliplar),
+            "basildi": bool(_kaliplar) and all(x["basildi"] for x in _kaliplar),
+        })
+    return out
+
+
 def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
                          couple_pids: set | None = None) -> dict:
     assigned = None
@@ -315,6 +377,8 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
     if not image_url and li.assigned_design_id and li.assigned_design:
         image_url = storage.get_thumbnail_url(li.assigned_design.file_path, li.assigned_design.file_format)
 
+    _is_couple = _is_couple_li(db, li, couple_pids)
+
     return {
         "id": str(li.id),
         "title": li.title,
@@ -322,7 +386,10 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
         "device_model_override": li.device_model_override,
         # Couple (çift kılıf): 2 ayrı telefon modeli — 2. slot ayrı override alır.
         "device_model_override_2": li.device_model_override_2,
-        "is_couple": _is_couple_li(db, li, couple_pids),
+        "is_couple": _is_couple,
+        # Çift kılıf 2 alt ürün olarak döner; her yarının kendi tasarımı/modeli/
+        # varyasyonu ve KENDİ kalıp+baskı durumu var.
+        "parcalar": _couple_parcalar(li, db) if _is_couple else None,
         "couple_models": list(mold_planner.extract_couple_models(li)),
         "quantity": li.quantity,
         "price": (li.raw or {}).get("price"),

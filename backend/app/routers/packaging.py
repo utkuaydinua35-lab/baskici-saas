@@ -19,7 +19,8 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.adapters import get_adapter
 from app.database import get_db
 from app.models import (
-    AccessoryProduct, Dealer, Design, LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User,
+    AccessoryProduct, CoupleProduct, Dealer, Design, LineItem, Mold, MoldItem, Order,
+    OrderStatusHistory, Store, User,
 )
 from app.services import basit_kargo, label_pdf, packaging as pkg, storage
 from app import stages as stage_defs
@@ -527,9 +528,26 @@ def _accessory_ids(db, tenant_id) -> set:
     }
 
 
-def _order_ready(order, by_li, by_om, acc_ids) -> bool:
+def _couple_ids(db, tenant_id) -> set:
+    """Çift kılıf (couple) ürün id'leri — bir kalem = 2 basılacak kılıf."""
+    return {
+        str(pid) for (pid,) in db.execute(
+            select(CoupleProduct.product_id)
+            .join(Store, Store.id == CoupleProduct.store_id)
+            .where(Store.tenant_id == tenant_id, CoupleProduct.product_id.isnot(None))
+        ).all()
+    }
+
+
+def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None) -> bool:
     """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar.
-    Herhangi bir ürün basılmamış kalıpta ya da henüz hazırlanmamışsa -> False."""
+    Herhangi bir ürün basılmamış kalıpta ya da henüz hazırlanmamışsa -> False.
+
+    ÇİFT KILIF: bir kalem = 2 ayrı kılıf. Eskiden yalnızca "bulunan slotların hepsi
+    basıldı mı" bakılıyordu; ikinci kılıf hiç kalıba girmemişse liste [True] oluyor,
+    all() geçiyor ve sipariş EKSİK haliyle paketlemeye hazır görünüyordu. Artık
+    BEKLENEN slot sayısı da aranır."""
+    couple_ids = couple_ids or set()
     onum = str(order.order_number) if order.order_number is not None else None
     has_item = False
     for li in (order.line_items or []):
@@ -546,7 +564,11 @@ def _order_ready(order, by_li, by_om, acc_ids) -> bool:
         ms = by_li.get(str(li.id))
         if not ms and onum:
             ms = by_om.get((onum, _nm(_extract_model(li))))
-        if not ms or not all(ms):   # eşleşen kalıp yok ya da biri bile basılmadıysa hazır değil
+        # Beklenen kılıf adedi: çift kılıfta adet x2, diğerlerinde adet.
+        _qty = max(1, int(getattr(li, "quantity", 1) or 1))
+        _beklenen = _qty * (2 if (li.product_id and str(li.product_id) in couple_ids) else 1)
+        # Eşleşen kalıp yok / beklenenden AZ slot var / biri bile basılmadı -> hazır değil
+        if not ms or len(ms) < _beklenen or not all(ms):
             return False
     return has_item
 
@@ -595,13 +617,14 @@ def packaging_queue(
     if ready_only:
         by_li, by_om = _printed_maps(db, user.tenant_id)
         acc_ids = _accessory_ids(db, user.tenant_id)
+        couple_ids = _couple_ids(db, user.tenant_id)
 
     _dealer = (dealer_id or "").strip()
 
     def _passes(o):
         if _dealer and str((o.raw or {}).get("dealer_id") or "") != _dealer:
             return False
-        if ready_only and not _order_ready(o, by_li, by_om, acc_ids):
+        if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids):
             return False
         return True
 

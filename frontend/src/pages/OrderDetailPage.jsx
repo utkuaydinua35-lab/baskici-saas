@@ -758,6 +758,52 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
         </div>
       </div>
 
+      {/* Çift kılıf: 2 ALT ÜRÜN — her kılıfın kendi tasarımı/modeli/kalıbı ve baskı durumu */}
+      {Array.isArray(item.parcalar) && item.parcalar.length > 0 && (
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {item.parcalar.map(p => (
+            <div key={p.slot}
+                 className={`rounded-lg border p-2 ${p.basildi
+                   ? 'bg-emerald-500/5 border-emerald-500/25'
+                   : 'bg-brand-input/30 border-brand-border/60'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-gray-300">{p.baslik}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.basildi
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : p.kaliba_eklendi
+                    ? 'bg-amber-500/15 text-amber-300'
+                    : 'bg-gray-600/20 text-gray-400'}`}>
+                  {p.basildi ? '✓ Basıldı' : p.kaliba_eklendi ? '⏳ Kalıpta, basılmadı' : '○ Kalıba girmedi'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1.5">
+                {p.design?.thumbnail_url
+                  ? <img src={p.design.thumbnail_url} alt="" className="w-8 h-8 rounded object-cover border border-emerald-500/30 shrink-0" />
+                  : <span className="w-8 h-8 rounded bg-brand-card border border-brand-border flex items-center justify-center text-gray-600 text-xs shrink-0">—</span>}
+                <div className="min-w-0 text-[10px] leading-tight">
+                  <div className="font-mono text-emerald-300 truncate">{p.design?.code || 'tasarım yok'}</div>
+                  <div className="text-accent truncate">📱 {p.model || '—'}</div>
+                </div>
+              </div>
+              <div className="mt-1.5 text-[10px] text-gray-500">
+                Varyasyon: <b className="text-gray-300">{p.varyasyon || '—'}</b>
+                {p.varyasyon_kaynak === 'urun_adi' && <span className="text-amber-300"> · ürün adından</span>}
+                {p.varyasyon_kaynak === 'elle' && <span className="text-emerald-300"> · elle</span>}
+              </div>
+              <div className="mt-1 text-[10px] text-gray-500">
+                Kalıp:{' '}
+                {p.kaliplar.length > 0
+                  ? p.kaliplar.map((k, i) => (
+                      <a key={k.mold_id + i} href={`/kaliplar?mold=${k.mold_id}`}
+                         className="text-accent hover:underline mr-1">{k.kalip_kodu}</a>
+                    ))
+                  : <span className="text-gray-600">—</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Alt aksiyon barı */}
       <div className="flex items-center gap-3 mt-2 pt-2 border-t border-brand-border/50 flex-wrap">
         <span className="text-[10px] uppercase text-gray-600">Durum:</span>

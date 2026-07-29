@@ -50,6 +50,30 @@ export default function PhoneModelsPage() {
     // eslint-disable-next-line
   }, [search])
 
+  // Listede isme tiklayip hizlica yeniden adlandir. Katalog satirinda ayni
+  // spec_key ile kendi kaydin olusur (katalogdakini ezer), DB satirinda PATCH.
+  const [renamingId, setRenamingId] = useState(null)
+  const quickRename = async (m, yeniAd) => {
+    const ad = (yeniAd || '').trim()
+    setRenamingId(null)
+    if (!ad || ad === m.display_name) return
+    try {
+      if (m.is_baseline) {
+        await api.post('/api/phone-models', {
+          display_name: ad,
+          spec_key: m.spec_key,
+          width_cm: m.width_cm ?? null,
+          height_cm: m.height_cm ?? null,
+          radius_cm: m.radius_cm ?? null,
+        })
+      } else {
+        await api.patch(`/api/phone-models/${m.id}`, { display_name: ad })
+      }
+      toast.success(`"${ad}" olarak kaydedildi`)
+      load()
+    } catch (e) { toast.error(e?.detail || 'Ad değiştirilemedi') }
+  }
+
   const openCreate = () => {
     setForm(EMPTY); setEditId(null); setShowForm(true); setMsg(null)
   }
@@ -295,7 +319,22 @@ export default function PhoneModelsPage() {
               {items.map(m => (
                 <tr key={m.id} className={`hover:bg-brand-input/30 ${!m.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-3 py-2 text-gray-200">
-                    {m.display_name}
+                    {renamingId === m.id ? (
+                      <input
+                        autoFocus defaultValue={m.display_name}
+                        onBlur={e => quickRename(m, e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') e.target.blur()
+                          if (e.key === 'Escape') { setRenamingId(null) }
+                        }}
+                        className="input !text-sm !py-0.5 w-full max-w-[220px]" />
+                    ) : (
+                      <button onClick={() => setRenamingId(m.id)}
+                              title="Adı değiştirmek için tıkla"
+                              className="text-left hover:text-accent transition-colors">
+                        {m.display_name}
+                      </button>
+                    )}
                     {m.is_baseline && (
                       <span className="ml-2 text-[10px] bg-brand-input/70 text-gray-400 border border-brand-border px-1.5 py-0.5 rounded"
                             title="Hazır katalogdan geliyor. Ölçüyü düzenlersen kendi kaydın oluşur ve katalogdakini ezer.">

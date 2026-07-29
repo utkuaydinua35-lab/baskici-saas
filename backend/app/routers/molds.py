@@ -278,11 +278,25 @@ def _get_mold(db, mold_id, tenant_id):
 
 def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> None:
     """Kalip slot'unu plana geri dondur (cancel=False) YA DA 'geri dönmesin' diye kalıcı
-    hariç işaretle (cancel=True -> is_hazir=True; planlayıcı ve resync bunu atlar).
-    line_item_id varsa onu; YOKSA order_number + design_code/model ile esle."""
+    hariç işaretle (cancel=True -> ilgili yarı is_hazir; planlayıcı ve resync bunu atlar).
+    line_item_id varsa onu; YOKSA order_number + design_code/model ile esle.
+
+    ÇİFT KILIF: slot, MoldItem.design_id ile belirlenir — çıkarılan YARININ hazır
+    işareti konur. Eskiden kalem bazında is_hazir=True yazılıyordu ve tek yarıyı
+    çıkarmak DİĞER yarıyı da "üretildi" sayıyordu (eksik sipariş riski)."""
     def _apply(li):
+        # Çıkarılan slot 2. kılıf mı? (2. tasarıma eşleşiyor ve 1. tasarımdan farklı)
+        _slot2 = (
+            mi.design_id is not None
+            and getattr(li, "assigned_design_id_2", None) == mi.design_id
+            and getattr(li, "assigned_design_id", None) != mi.design_id
+        )
         if cancel:
-            li.is_hazir = True   # kalıcı hariç: planlayıcı atlar, 'kayıp tara' dokunmaz
+            # kalıcı hariç: planlayıcı atlar, 'kayıp tara' dokunmaz
+            if _slot2:
+                li.is_hazir_2 = True
+            else:
+                li.is_hazir = True
         li.is_kaliba_eklendi = False
     # 1) line_item_id ile dogrudan (gecerliyse)
     if mi.line_item_id:

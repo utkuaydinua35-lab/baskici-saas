@@ -148,6 +148,47 @@ def _prettify_iphone(key: str) -> str:
     return ("iPhone " + " ".join(words)).strip()
 
 
+# Katalog anahtarini okunur ada cevirirken kullanilan sozlukler.
+_BRAND_PRETTY = {
+    "SAMSUNG": "Samsung", "GALAXY": "Galaxy", "REDMI": "Redmi", "XIAOMI": "Xiaomi",
+    "POCO": "POCO", "OPPO": "Oppo", "REALME": "realme", "TECNO": "Tecno",
+    "HUAWEI": "Huawei", "VIVO": "vivo", "INFINIX": "Infinix", "HONOR": "Honor",
+    "OMIX": "Omix", "REEDER": "Reeder", "GENERAL": "General Mobile",
+}
+_TOKEN_PRETTY = {
+    "PROMAX": "Pro Max", "PRO": "Pro", "MAX": "Max", "PLUS": "Plus", "ULTRA": "Ultra",
+    "MINI": "Mini", "LITE": "Lite", "NOTE": "Note", "NEO": "Neo", "PRIME": "Prime",
+    "POWER": "Power", "FE": "FE", "SE": "SE",
+}
+
+
+def baseline_display_name(key: str) -> str:
+    """Katalog anahtarini okunur ada cevir — YALNIZCA LISTE GORUNUMU icin.
+
+    'SAMSUNG-A15' -> 'Samsung A15', 'REDMI-NOTE-8' -> 'Redmi Note 8',
+    'IPHONE-15-PROMAX' -> 'iPhone 15 Pro Max'. Eslesme/kalip mantigini ETKILEMEZ.
+    canonical_model_name'den ayri: o fonksiyon kullanicinin yazdigi serbest metni de
+    aliyor ve onu yeniden yazmamali; bu ise her zaman bir KATALOG ANAHTARI alir.
+    """
+    if not key:
+        return key
+    k = key.upper()
+    if k.startswith("IPHONE") or is_apple_alias_key(k):
+        return canonical_model_name(k)
+    parts = [p for p in k.split("-") if p]
+    out = []
+    for i, p in enumerate(parts):
+        if i == 0 and p in _BRAND_PRETTY:
+            out.append(_BRAND_PRETTY[p])
+        elif p in _TOKEN_PRETTY:
+            out.append(_TOKEN_PRETTY[p])
+        elif any(c.isdigit() for c in p):
+            out.append(p)          # model numarasi: A15, S24, 12T -> aynen
+        else:
+            out.append(p.capitalize())
+    return " ".join(out)
+
+
 def canonical_key(key: str) -> str:
     """spec_key'i kanonik forma getir: cıplak Apple takma adi -> IPHONE- ikizi."""
     if not key:

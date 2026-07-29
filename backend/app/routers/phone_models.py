@@ -126,7 +126,7 @@ def list_models(
                 continue
             if pm.canonical_key(bkey) in _existing_canon:
                 continue
-            disp = pm.canonical_model_name(bkey)  # 'IPHONE-15' -> 'iPhone 15'
+            disp = pm.baseline_display_name(bkey)  # 'SAMSUNG-A15' -> 'Samsung A15'
             if search:
                 s = search.lower()
                 if s not in bkey.lower() and s not in disp.lower():

@@ -75,7 +75,32 @@ async def lifespan(app: FastAPI):
     print("[baskici] shutting down")
 
 
-app = FastAPI(title="Baskıcı SaaS API", version="0.1.0", lifespan=lifespan)
+# Üretimde /docs, /redoc ve /openapi.json KAPALI: tüm uçların, şemaların ve
+# alan adlarının haritasını saldırgana vermek gereksiz kolaylıktır
+# (yetkilendirme zaten koruyor ama keşfi zorlaştırmak savunmanın parçası).
+_is_prod = settings.env == "production"
+app = FastAPI(
+    title="Baskıcı SaaS API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
+)
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """API yanıtlarına güvenlik başlıkları — JSON'un tarayıcıda script gibi
+    yorumlanmasını ve API'nin iframe'e gömülmesini engeller."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    if _is_prod:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 app.add_middleware(
     CORSMiddleware,

@@ -96,6 +96,34 @@ def create_molds(
     if plan["mold_count"] == 0:
         return {"success": False, "reason": "bos", "message": "Oluşturulacak kalıp yok."}
 
+    # ★ SON SAVUNMA — ÇİFT BASKI ★
+    # Plan hesaplandıktan SONRA durum değişmiş olabilir (başka sekmede kalıp
+    # oluşturuldu, bayrak değişti). Yazmadan hemen önce fiziksel gerçeği yeniden
+    # sor: planlanan kalemlerden herhangi biri zaten bir kalıptaysa HİÇBİR ŞEY
+    # YAZMA. Yarım kalıp üretmektense hiç üretmemek doğrusu.
+    _already = set(db.scalars(
+        select(MoldItem.line_item_id)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(Mold.tenant_id == user.tenant_id, MoldItem.line_item_id.isnot(None))
+    ).all())
+    _cakisan = {
+        it.get("order_number")
+        for m in plan["molds"] for it in m["items"]
+        if it.get("line_item_id") and uuid.UUID(it["line_item_id"]) in _already
+    }
+    if _cakisan:
+        _liste = ", ".join(sorted(str(x) for x in _cakisan if x)[:10])
+        return {
+            "success": False,
+            "reason": "zaten_kalipta",
+            "message": (
+                f"{len(_cakisan)} siparişteki kalem ZATEN başka bir kalıpta — çift baskı "
+                f"riski nedeniyle hiçbir kalıp oluşturulmadı. Sipariş(ler): {_liste}. "
+                "Sayfayı yenileyip tekrar dene; sorun sürerse o kalemleri kalıptan çıkar."
+            ),
+            "orders": sorted(str(x) for x in _cakisan if x),
+        }
+
     created = []
     li_ids_done: set = set()
 
@@ -276,6 +304,22 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> No
             LineItem.is_kaliba_eklendi == True,  # noqa: E712
         )
     ).all()
+    if not cands:
+        return
+    # ★ ÇİFT BASKI KORUMASI ★ — Hâlâ BAŞKA bir fiziksel kalıp slotu olan kalemi ASLA
+    # serbest bırakma. Aksi halde: bu slotun kalemi bulunamayınca tahminle kardeş kalem
+    # seçiliyor, onun bayrağı sıfırlanıyor, planlayıcı onu YENİ bir kalıba ekliyor ve
+    # ürün İKİ kalıpta birden basılıyordu (27.07 olayı).
+    _busy = set(db.scalars(
+        select(MoldItem.line_item_id)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(
+            Mold.tenant_id == tenant_id,
+            MoldItem.line_item_id.isnot(None),
+            MoldItem.id != mi.id,
+        )
+    ).all())
+    cands = [c for c in cands if c.id not in _busy]
     if not cands:
         return
     from app.services.phone_models import normalize_key

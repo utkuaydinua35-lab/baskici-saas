@@ -303,15 +303,22 @@ def plan_molds(
     # kalıptaysa atla. ANAHTAR design_code DAHİL: aksi halde aynı modelden hâlâ kalıpta olan
     # kardeş ürün, geri planladığın FARKLI tasarımlı ürünü yanlışlıkla "kapsayıp" tekrar
     # planlanmasını engelliyordu.
+    # BİRİNCİL ANAHTAR: line_item_id. Fiziksel slot hangi KALEME ait, doğrudan bu söyler.
+    # Model/varyasyon/tasarım sonradan değişse bile kimlik değişmez -> koruma kör olmaz.
+    # (Eski kayıtlarda bu bağ NULL olabilir; onlar için aşağıdaki üçlü anahtara düşülür.)
     from app.models import Mold as _Mold, MoldItem as _MoldItem
     from app.services.phone_models import normalize_key as _normkey
-    _molded_left: dict = {}
-    for _on, _dc, _md in db.execute(
-        select(_MoldItem.order_number, _MoldItem.design_code, _MoldItem.model)
+    _molded_by_li: dict = {}   # line_item_id -> mevcut fiziksel slot sayısı
+    _molded_left: dict = {}    # (siparis, tasarim, model) -> sayı  [YALNIZCA bağı kopuk kayıtlar]
+    for _liid, _on, _dc, _md in db.execute(
+        select(_MoldItem.line_item_id, _MoldItem.order_number,
+               _MoldItem.design_code, _MoldItem.model)
         .join(_Mold, _Mold.id == _MoldItem.mold_id)
-        .where(_Mold.tenant_id == tenant_id, _MoldItem.order_number.isnot(None))
+        .where(_Mold.tenant_id == tenant_id)
     ).all():
-        if _md:
+        if _liid:
+            _molded_by_li[_liid] = _molded_by_li.get(_liid, 0) + 1
+        elif _on and _md:
             _k = (str(_on), str(_dc or ""), _normkey(_md))
             _molded_left[_k] = _molded_left.get(_k, 0) + 1
 
@@ -342,6 +349,13 @@ def plan_molds(
         for li in (order.line_items or []):
             # Kalıba eklenmiş VEYA hazır işaretlenmiş kalemler plana girmez
             if li.is_kaliba_eklendi or getattr(li, "is_hazir", False):
+                continue
+            # ★ ÇİFT BASKI KORUMASI — BAYRAKTAN BAĞIMSIZ ★
+            # Bu kalemin FİZİKSEL kalıp slotu varsa tekrar planlanamaz. Bayrak
+            # yanlışlıkla sıfırlansa da, telefon modeli/varyasyonu/tasarımı
+            # sonradan değiştirilse de aynı ürün ikinci kez kalıba giremez.
+            # Couple dahil TÜM dalları kapsasın diye döngünün en başında.
+            if _molded_by_li.get(li.id, 0) > 0:
                 continue
             pid = str(li.product_id) if li.product_id else None
             model = extract_phone_model(li)

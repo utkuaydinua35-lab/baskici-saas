@@ -178,6 +178,18 @@ def render_mold_pdf(mold_items, template=None):
     skipped = []
     slots = _ordered_slots(mold_items, cols, rows)
 
+    # ★ SESSIZ KAYIP KORUMASI ★ — iki item ayni slot_index'i tasiyorsa (bozuk veri)
+    # _ordered_slots birini haritadan dusuruyor ve o kalem hic basilmiyordu, uustelik
+    # 'skipped' listesine de girmiyordu. Yerlesemeyeni acikca raporla.
+    _yerlesen = {id(x) for x in slots if x is not None}
+    for _it in mold_items:
+        if id(_it) not in _yerlesen:
+            skipped.append({
+                "slot": _it.get("slot_index"),
+                "model": _it.get("model"),
+                "reason": "slot_cakismasi",
+            })
+
     for idx, it in enumerate(slots):
         if it is None:
             continue

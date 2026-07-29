@@ -1133,7 +1133,8 @@ def remove_line_item_from_molds(
                 continue
             items = db.scalars(select(MoldItem).where(MoldItem.mold_id == mid)).all()
             mo.kilif_sayisi = len(items)
-            if items:
+            # Slot kilidi acikken kalanlar YERINDE kalir (kalip detayindaki anahtar).
+            if items and not getattr(mo, "slot_kilitli", False):
                 placed = mold_planner.pr.assign_slots(
                     [{"kod": x.kalip_kodu, "model": x.model, "_ref": x} for x in items])
                 for d in placed:

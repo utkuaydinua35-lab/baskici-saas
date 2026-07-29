@@ -254,6 +254,22 @@ def _stage_info(no):
     return _STAGE_BY_NO.get(no, {"no": no, "key": "?", "label": "?", "icon": "circle"})
 
 
+def _bos_slot_index(mo, tercih: int, kapasite: int = 27) -> int:
+    """tercih slotu BOŞSA onu ver; DOLUYSA ilk boş index'e kay.
+
+    Slot kilidi acikken silinen slotlar bosluk olarak kaliyor; 'max+1' hesabi bu
+    durumda BASKA bir satirin dolu slotuna denk gelebiliyordu. Iki item ayni
+    slot_index'i tasiyinca PDF birini sessizce dusuruyordu.
+    """
+    dolu = {it.slot_index for it in mo.items if it.slot_index is not None}
+    if tercih not in dolu and 0 <= tercih < kapasite:
+        return tercih
+    for i in range(kapasite):
+        if i not in dolu:
+            return i
+    raise HTTPException(400, "Kalıpta boş slot kalmadı.")
+
+
 def _mold_progress(stage):
     return round((max(0, min(stage, 5)) / 5) * 100)
 
@@ -388,6 +404,7 @@ def _serialize_mold_detail(mo, db):
         "kalip_kodlari": mo.kalip_kodlari, "kilif_sayisi": mo.kilif_sayisi,
         "rows_used": mo.rows_used, "status": mo.status,
         "current_stage": mo.current_stage, "is_hatali": mo.is_hatali,
+        "slot_kilitli": bool(getattr(mo, "slot_kilitli", False)),
         "current_stage_info": _stage_info(mo.current_stage),
         "progress_percent": _mold_progress(mo.current_stage),
         "hazir_count": hazir_count,
@@ -436,6 +453,27 @@ def rename_mold(mold_id: uuid.UUID, payload: MoldRenameIn,
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)
     return _serialize_mold_detail(mo, db)
+
+
+class SlotKilitIn(BaseModel):
+    slot_kilitli: bool
+
+
+@router.patch("/{mold_id}/slot-kilit", response_model=None)
+def set_slot_kilit(mold_id: uuid.UUID, body: SlotKilitIn,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalıptaki tasarımların yerini sabitle/serbest bırak.
+
+    Açıkken: slot silinince kalan slotlar kaymaz, herkes kendi yerinde kalır.
+    Kapalıyken (varsayılan): kalanlar yeniden dizilir, boş satırlar kalkar,
+    baskı alanı daralır.
+    """
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    mo.slot_kilitli = bool(body.slot_kilitli)
+    _log_mold(db, mo, user, action="slot_kilit",
+              note="Slot pozisyonları kilitlendi" if mo.slot_kilitli else "Slot kilidi kaldırıldı")
+    db.commit()
+    return {"ok": True, "slot_kilitli": mo.slot_kilitli}
 
 
 @router.patch("/{mold_id}/stage", response_model=None)
@@ -634,7 +672,11 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     # satır(lar)da toplanır, farklı gruplar AYRI satırlarda kalır, boş satırlar kalkar ->
     # baskı süresi kısalır. Her item KENDİ tasarımını korur (slot_index'i sıralı vererek
     # grup-içi sırayı stabil tutuyoruz; tasarım-model eşleşmesi asla karışmaz).
-    _kalanlar = sorted((x for x in mo.items if x.id != it.id), key=lambda x: x.slot_index or 0)
+    # ★ SLOT KİLİDİ ★ açıkken kalanlar YERİNDE kalır (boşluk boşluk olarak durur).
+    # Yarım basılmış kalıptan tek kalemi yeniden basarken kalemin 1. slota kayması
+    # baskıyı birkaç mm oynatabiliyor; ince tasarımlarda bu göze batıyor.
+    _kalanlar = [] if getattr(mo, "slot_kilitli", False) else sorted(
+        (x for x in mo.items if x.id != it.id), key=lambda x: x.slot_index or 0)
     if _kalanlar:
         _dicts = [{"kod": x.kalip_kodu, "model": x.model, "_ref": x} for x in _kalanlar]
         _yeni = mold_planner.pr.assign_slots(_dicts)
@@ -706,6 +748,7 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
             "tasarim_dosyasi_yok": "tasarım dosyası atanmamış",
             "dosya_bulunamadi": "tasarım dosyası sunucuda bulunamadı",
             "sablon_kutu_yetersiz": "kalıp şablonunda yeterli kutu yok",
+            "slot_cakismasi": "iki kalem aynı slotta görünüyor (slot çakışması)",
         }
         _sat = []
         for s in _skipped[:12]:
@@ -1062,7 +1105,8 @@ def assign_slot(
         same_kod = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
         if len(same_kod) >= 9:
             raise HTTPException(400, f"'{body.kalip_kodu}' satırı dolu (9/9)")
-        next_slot_index = max((it.slot_index for it in same_kod), default=-1) + 1
+        next_slot_index = _bos_slot_index(
+            mo, max((it.slot_index for it in same_kod), default=-1) + 1)
 
     line_item_id = None
     design_id = None
@@ -1181,7 +1225,8 @@ def assign_slot(
     _same = [it for it in mo.items if it.kalip_kodu == body.kalip_kodu]
     if len(_same) >= 9:
         raise HTTPException(400, f"'{body.kalip_kodu}' satiri dolu (9/9)")
-    next_slot_index = max((it.slot_index for it in _same), default=-1) + 1
+    next_slot_index = _bos_slot_index(
+        mo, max((it.slot_index for it in _same), default=-1) + 1)
 
     # Slot'un store_id'sini belirle: order source → line item'ın store'u; manual → design'ın store'u
     slot_store_id = None

@@ -744,6 +744,12 @@ class Mold(Base):
 
     # Baskici Paneli: baski durumu (pipeline'dan bagimsiz)
     print_status: Mapped[str] = mapped_column(String(20), default="bekliyor", server_default=text("'bekliyor'"))  # bekliyor | basildi | eksik_var | hatali_basildi
+    # Slot pozisyonlarini KILITLE: slot silinince kalanlar kaymaz, herkes yerinde kalir.
+    # Yarim basilmis bir kaliptan tek kalemi yeniden basarken kritik — kalem 1. slota
+    # kayarsa baski birkac mm oynayabiliyor ve ince tasarimlarda bu goze batiyor.
+    slot_kilitli: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     print_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     print_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     print_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

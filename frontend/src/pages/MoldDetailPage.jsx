@@ -98,6 +98,20 @@ export default function MoldDetailPage() {
     finally { setRenameBusy(false) }
   }
 
+  const [kilitBusy, setKilitBusy] = useState(false)
+  const toggleSlotKilit = async () => {
+    const next = !mold?.slot_kilitli
+    setKilitBusy(true)
+    try {
+      await api.patch(`/api/molds/${moldId}/slot-kilit`, { slot_kilitli: next })
+      toast.success(next
+        ? 'Tasarımlar yerinde sabitlendi — slot silsen de kimse kaymayacak'
+        : 'Kilit kaldırıldı — slot silinince kalanlar yeniden dizilecek')
+      load()
+    } catch (e) { toast.error(e?.detail || 'Değiştirilemedi') }
+    finally { setKilitBusy(false) }
+  }
+
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
@@ -226,6 +240,21 @@ export default function MoldDetailPage() {
       <div className="card mb-5">
         <StageTimeline stages={stages} current={mold.current_stage} progress={mold.progress_percent} />
       </div>
+
+      <label className={`card !py-2.5 !px-3 mb-4 flex items-start gap-2.5 cursor-pointer transition-colors ${
+        mold.slot_kilitli ? 'border-amber-500/40 bg-amber-500/5' : ''}`}>
+        <input type="checkbox" checked={!!mold.slot_kilitli} disabled={kilitBusy}
+               onChange={toggleSlotKilit}
+               className="mt-0.5 w-4 h-4 accent-amber-400 shrink-0" />
+        <span className="min-w-0">
+          <span className="block text-sm text-gray-200">Kalıptaki tasarımların yerini değiştirme</span>
+          <span className="block text-[11px] text-gray-500 mt-0.5">
+            {mold.slot_kilitli
+              ? 'Açık — slot sildiğinde kalanlar YERİNDE kalır, boşluk boşluk durur. Tek kalemi yeniden basarken baskı aynı noktaya gelir.'
+              : 'Kapalı — slot sildiğinde kalanlar yeniden dizilir, boş satırlar kalkar (baskı alanı daralır, mürekkep tasarrufu).'}
+          </span>
+        </span>
+      </label>
 
       {printView ? (
         <div className="card">

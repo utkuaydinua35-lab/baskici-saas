@@ -28,7 +28,7 @@ def main() -> None:
     db = SessionLocal()
     try:
         rows = db.execute(
-            select(Mold.kod, Mold.tenant_id, Mold.current_stage,
+            select(Mold.kod, Mold.tenant_id, Mold.current_stage, Mold.print_status,
                    MoldItem.model, MoldItem.order_number, MoldItem.slot_index)
             .join(MoldItem, MoldItem.mold_id == Mold.id)
             .order_by(Mold.kod, MoldItem.slot_index)
@@ -38,14 +38,16 @@ def main() -> None:
         apple_supheli: list = []
         toplam = 0
 
-        for kod, tid, stage, model, onum, slot in rows:
+        for kod, tid, stage, pstat, model, onum, slot in rows:
             toplam += 1
             if not model:
                 continue
+            basildi = (pstat == "basildi") or (stage == 5)
+            durum = "BASILDI" if basildi else "basilmadi"
             spec = pm.get_spec(db, tid, model)
             key = pm.normalize_key(model)
             if spec is None:
-                cozulemeyen.append((kod, slot, onum, model, key))
+                cozulemeyen.append((kod, durum, slot, onum, model, key))
                 continue
             # Apple olmayan bir model, bir iPhone ölçüsüne mi denk geliyor?
             if not key.startswith("IPHONE") and not pm.is_apple_alias_key(key):
@@ -54,19 +56,24 @@ def main() -> None:
                     iph = pm.get_spec(db, tid, "IPHONE-" + "-".join(parcalar[1:]))
                     if iph and abs(iph[0] - spec[0]) < APPLE_OLCU_ESIGI \
                             and abs(iph[1] - spec[1]) < APPLE_OLCU_ESIGI:
-                        apple_supheli.append((kod, slot, onum, model, key, spec))
+                        apple_supheli.append((kod, durum, slot, onum, model, key, spec))
 
         print(f"Toplam kalıp slotu: {toplam}\n")
 
         print(f"[1] Ölçüsü ÇÖZÜLEMEYEN slotlar ({len(cozulemeyen)}) — PDF bunları reddeder:")
-        for kod, slot, onum, model, key in cozulemeyen:
-            print(f"    {kod:14} slot {slot:>2}  sipariş {str(onum):>8}  '{model}'  -> anahtar {key}")
+        for kod, durum, slot, onum, model, key in cozulemeyen:
+            print(f"    {kod:14} [{durum:9}] slot {slot:>2}  sipariş {str(onum):>8}  "
+                  f"'{model}'  -> anahtar {key}")
         if not cozulemeyen:
             print("    yok")
 
-        print(f"\n[2] iPhone ölçüsüne düşmüş ŞÜPHELİ slotlar ({len(apple_supheli)}) — KONTROL ET:")
-        for kod, slot, onum, model, key, spec in apple_supheli:
-            print(f"    {kod:14} slot {slot:>2}  sipariş {str(onum):>8}  '{model}'  -> {spec}")
+        _basilan = sum(1 for x in apple_supheli if x[1] == "BASILDI")
+        print(f"\n[2] iPhone ölçüsüne düşmüş ŞÜPHELİ slotlar ({len(apple_supheli)}, "
+              f"{_basilan} tanesi BASILMIŞ) — KONTROL ET:")
+        for kod, durum, slot, onum, model, key, spec in apple_supheli:
+            isaret = "  ⚠ BASILDI — fiziksel kontrol" if durum == "BASILDI" else ""
+            print(f"    {kod:14} [{durum:9}] slot {slot:>2}  sipariş {str(onum):>8}  "
+                  f"'{model}'  -> {spec}{isaret}")
         if not apple_supheli:
             print("    yok")
     finally:

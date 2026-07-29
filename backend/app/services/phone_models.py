@@ -37,6 +37,53 @@ def normalize_key(model: str) -> str:
     return cd._normalize_to_spec_key(model)
 
 
+# Ürün adının başına yapışabilen marka sözcükleri. Shopify ürün adlarında sık:
+# "Xiaomi Redmi Note 13 Pro 5G" -> katalogda "REDMI-NOTE-13-PRO-5G" olarak duruyor.
+_BRAND_TOKENS = {
+    "XIAOMI", "REDMI", "POCO", "SAMSUNG", "GALAXY", "APPLE", "IPHONE", "OPPO",
+    "REALME", "HUAWEI", "VIVO", "TECNO", "INFINIX", "HONOR", "GENERAL", "OMIX",
+    "REEDER", "NOKIA", "MOTOROLA", "ONEPLUS",
+}
+
+
+def key_variants(key: str) -> list[str]:
+    """Aynı telefonu gösterebilecek anahtar adayları — spesifikten genele.
+
+    Baştaki marka sözcükleri sırayla soyulur:
+      XIAOMI-REDMI-NOTE-13-PRO-5G -> REDMI-NOTE-13-PRO-5G -> NOTE-13-PRO-5G
+    Böylece ürün adında fazladan marka geçtiğinde eşleşme kaçmaz.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(k: str) -> None:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+
+    k = (key or "").upper()
+    add(k)
+    add(canonical_key(k))
+    parts = [p for p in k.split("-") if p]
+    while len(parts) > 1 and parts[0] in _BRAND_TOKENS:
+        parts = parts[1:]
+        add("-".join(parts))
+    return out
+
+
+def _unique_brand_prefixed(key: str) -> str | None:
+    """Ters yön: ürün adında marka YOK ama katalogda VAR ('NOTE-13-PRO-5G' ->
+    'REDMI-NOTE-13-PRO-5G'). YALNIZCA tek aday varsa döner; birden fazla marka
+    eşleşiyorsa (NOTE-8 hem REDMI hem SAMSUNG) TAHMİN ETMEZ — yanlış ölçüyle
+    basmaktansa 'tanınmıyor' demek doğrusu."""
+    k = (key or "").upper()
+    if not k or k.split("-")[0] in _BRAND_TOKENS:
+        return None
+    base = _baseline_key_set()
+    adaylar = [f"{b}-{k}" for b in _BRAND_TOKENS if f"{b}-{k}" in base]
+    return adaylar[0] if len(adaylar) == 1 else None
+
+
 def _db_lookup(db: Session, tenant_id: uuid.UUID, key: str) -> PhoneModel | None:
     """Önce tenant'a özel, yoksa global (tenant_id IS NULL) aktif kayıt.
     Kayıt çıplak Apple alias'ı ('16-PROMAX') ya da kanonik ('IPHONE-16-PROMAX')
@@ -70,14 +117,32 @@ def get_spec(db: Session, tenant_id: uuid.UUID, model: str):
 
     case_dimensions.get_spec ile AYNI dönüş tipi — mevcut PDF motoru
     çağrılarını birebir değiştirebilirsin.
+
+    Eşleşme marka önekine TOLERANSLI: ürün adında fazladan marka geçse de
+    ("Xiaomi Redmi Note 13 Pro 5G") katalogdaki kayıt bulunur.
     """
     if not model:
         return None
     key = normalize_key(model)
-    row = _db_lookup(db, tenant_id, key)
-    if row is not None:
-        return (row.width_cm, row.height_cm, row.radius_cm)
-    return cd.get_spec(model)
+    variants = key_variants(key)
+    for k in variants:
+        row = _db_lookup(db, tenant_id, k)
+        if row is not None:
+            return (row.width_cm, row.height_cm, row.radius_cm)
+    spec = cd.get_spec(model)
+    if spec:
+        return spec
+    for k in variants:
+        spec = cd.get_spec(k)
+        if spec:
+            return spec
+    k2 = _unique_brand_prefixed(key)
+    if k2:
+        row = _db_lookup(db, tenant_id, k2)
+        if row is not None:
+            return (row.width_cm, row.height_cm, row.radius_cm)
+        return cd.get_spec(k2)
+    return None
 
 
 def has_spec(db: Session, tenant_id: uuid.UUID, model: str) -> bool:
@@ -90,9 +155,10 @@ def resolve_source(db: Session, tenant_id: uuid.UUID, model: str) -> str | None:
     if not model:
         return None
     key = normalize_key(model)
-    if _db_lookup(db, tenant_id, key) is not None:
-        return "db"
-    if cd.get_spec(model) is not None:
+    for k in key_variants(key):
+        if _db_lookup(db, tenant_id, k) is not None:
+            return "db"
+    if get_spec(db, tenant_id, model) is not None:
         return "baseline"
     return None
 

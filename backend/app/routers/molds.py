@@ -722,14 +722,19 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
 
     # === Asama otomasyonu: PDF indirilince ===
     # 1) Onceki acik kaliplari (baskiya_gonderildi=3 veya baskida=4, bu kalip haric) tamamla
+    # ⚠ YALNIZCA bu kalip ILK KEZ baskiya gidiyorsa. "Yeni kalip basildi -> oncekiler
+    # bitti" varsayimi ancak o zaman gecerli. Zaten gonderilmis/tamamlanmis bir kalibin
+    # PDF'ini YENIDEN indirmek (duzeltme baskisi) devam eden kaliplari yanlislikla
+    # tamamlayip stoklarini dusuyordu.
     from datetime import datetime as _dt, timezone as _tz
+    _ilk_gonderim = (mo.current_stage or 0) < 3
     _onceki = db.scalars(
         select(Mold).where(
             Mold.tenant_id == user.tenant_id,
             Mold.id != mo.id,
             Mold.current_stage.in_([3, 4]),
         )
-    ).all()
+    ).all() if _ilk_gonderim else []
     for _prev in _onceki:
         _old_stage = _prev.current_stage
         _prev.current_stage = 5  # tamamlandi
@@ -744,7 +749,7 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
         except Exception:
             pass
     # 2) Bu kalibi baskiya_gonderildi yap + indirme zamanini kaydet
-    if mo.current_stage < 3:
+    if _ilk_gonderim:
         _old = mo.current_stage
         mo.current_stage = 3  # baskiya_gonderildi
         _log_mold(db, mo, user, action="stage_change", from_stage=_old, to_stage=3,

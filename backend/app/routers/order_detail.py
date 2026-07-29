@@ -291,9 +291,11 @@ def _couple_parcalar(li: LineItem, db) -> list[dict]:
     _m2 = (li.device_model_override_2 or "").strip() or _pm2 or _m1
 
     out = []
-    for _slot, _design, _model in (
-        (1, li.assigned_design if li.assigned_design_id else None, _m1),
-        (2, li.assigned_design_2 if li.assigned_design_id_2 else None, _m2),
+    for _slot, _design, _model, _manual in (
+        (1, li.assigned_design if li.assigned_design_id else None, _m1,
+         bool(getattr(li, "is_hazir", False))),
+        (2, li.assigned_design_2 if li.assigned_design_id_2 else None, _m2,
+         bool(getattr(li, "is_hazir_2", False))),
     ):
         _var, _kaynak = _mp.resolve_line_variation_detail(li, _design, slot=_slot)
         _kaliplar = by_design.get(_design.id if _design else None, [])
@@ -307,6 +309,9 @@ def _couple_parcalar(li: LineItem, db) -> list[dict]:
             "kaliplar": _kaliplar,
             "kaliba_eklendi": bool(_kaliplar),
             "basildi": bool(_kaliplar) and all(x["basildi"] for x in _kaliplar),
+            "elle_hazir": _manual,
+            # Bu yarı üretilmiş sayılır mı (paketleme bunu arar)
+            "uretildi": _manual or (bool(_kaliplar) and all(x["basildi"] for x in _kaliplar)),
         })
     return out
 
@@ -398,6 +403,7 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
         "image_url": image_url,
         "tedarik_status": li.tedarik_status,
         "is_hazir": li.is_hazir,
+        "is_hazir_2": li.is_hazir_2,
         "is_kaliba_eklendi": li.is_kaliba_eklendi,
         **_mold_info(li, db),
         "assigned_design": assigned,
@@ -1012,6 +1018,7 @@ def list_design_approvals(
 class LineItemWorkflowPatch(BaseModel):
     tedarik_status: str | None = None
     is_hazir: bool | None = None
+    is_hazir_2: bool | None = None   # çift kılıfın 2. yarısı
     is_kaliba_eklendi: bool | None = None
     device_model_override: str | None = None
     device_model_override_2: str | None = None   # couple: 2. kılıfın telefon modeli
@@ -1042,6 +1049,8 @@ def update_line_item_workflow(
         li.tedarik_status = payload.tedarik_status
     if "is_hazir" in fields and payload.is_hazir is not None:
         li.is_hazir = payload.is_hazir
+    if "is_hazir_2" in fields and payload.is_hazir_2 is not None:
+        li.is_hazir_2 = payload.is_hazir_2
     if "is_kaliba_eklendi" in fields and payload.is_kaliba_eklendi is not None:
         li.is_kaliba_eklendi = payload.is_kaliba_eklendi
     if "device_model_override" in fields:

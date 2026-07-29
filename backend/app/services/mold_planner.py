@@ -329,14 +329,17 @@ def plan_molds(
     from app.services.phone_models import normalize_key as _normkey
     _molded_by_li: dict = {}   # line_item_id -> mevcut fiziksel slot sayısı
     _molded_left: dict = {}    # (siparis, tasarim, model) -> sayı  [YALNIZCA bağı kopuk kayıtlar]
-    for _liid, _on, _dc, _md in db.execute(
-        select(_MoldItem.line_item_id, _MoldItem.order_number,
+    _molded_by_slot: dict = {}  # (line_item_id, design_id) -> slot sayısı
+    for _liid, _did, _on, _dc, _md in db.execute(
+        select(_MoldItem.line_item_id, _MoldItem.design_id, _MoldItem.order_number,
                _MoldItem.design_code, _MoldItem.model)
         .join(_Mold, _Mold.id == _MoldItem.mold_id)
         .where(_Mold.tenant_id == tenant_id)
     ).all():
         if _liid:
             _molded_by_li[_liid] = _molded_by_li.get(_liid, 0) + 1
+            # Çift kılıfta yarıları ayırt etmek için (kalem, tasarım) bazında da say.
+            _molded_by_slot[(_liid, _did)] = _molded_by_slot.get((_liid, _did), 0) + 1
         elif _on and _md:
             _k = (str(_on), str(_dc or ""), _normkey(_md))
             _molded_left[_k] = _molded_left.get(_k, 0) + 1
@@ -366,23 +369,31 @@ def plan_molds(
     for order in orders:
         order_store_id = order.store_id
         for li in (order.line_items or []):
-            # Kalıba eklenmiş VEYA hazır işaretlenmiş kalemler plana girmez
-            if li.is_kaliba_eklendi or getattr(li, "is_hazir", False):
-                continue
-            # ★ ÇİFT BASKI KORUMASI — BAYRAKTAN BAĞIMSIZ ★
-            # Bu kalemin FİZİKSEL kalıp slotu varsa tekrar planlanamaz. Bayrak
-            # yanlışlıkla sıfırlansa da, telefon modeli/varyasyonu/tasarımı
-            # sonradan değiştirilse de aynı ürün ikinci kez kalıba giremez.
-            # Couple dahil TÜM dalları kapsasın diye döngünün en başında.
-            if _molded_by_li.get(li.id, 0) > 0:
-                continue
             pid = str(li.product_id) if li.product_id else None
-            model = extract_phone_model(li)
             if pid and (order_store_id, pid) in acc_keys:
                 continue  # aksesuar — kalipa da eksik listesine de girmez
-
-            # Couple (cift kilif): 2 ayri tasarim, ayni model, 2 birim
+            # Couple (cift kilif): 2 ayri tasarim, 2 birim — YARI BAZINDA ele alinir
             couple = couple_map.get((order_store_id, pid)) if pid else None
+
+            if couple is None:
+                # Tekil ürün: kalem bazında bayraklar geçerli
+                if li.is_kaliba_eklendi or getattr(li, "is_hazir", False):
+                    continue
+                # ★ ÇİFT BASKI KORUMASI — BAYRAKTAN BAĞIMSIZ ★
+                # Bu kalemin FİZİKSEL kalıp slotu varsa tekrar planlanamaz.
+                if _molded_by_li.get(li.id, 0) > 0:
+                    continue
+            else:
+                # Çift kılıf: iki yarı da ele alınmışsa (elle hazır ya da fiziksel
+                # slotu var) kalem tamamen atlanır; biri eksikse SADECE o yarı planlanır.
+                _h1 = bool(getattr(li, "is_hazir", False)) or \
+                    _molded_by_slot.get((li.id, li.assigned_design_id), 0) > 0
+                _h2 = bool(getattr(li, "is_hazir_2", False)) or \
+                    _molded_by_slot.get((li.id, li.assigned_design_id_2), 0) > 0
+                if _h1 and _h2:
+                    continue
+            model = extract_phone_model(li)
+
             if couple is not None:
                 if couple.is_kisiye_ozel:
                     # Couple + kişiye özel: 2 tasarım sipariş başına yüklenir, modeller elle seçilir
@@ -415,6 +426,10 @@ def plan_molds(
                 _ok = True
                 _pending = []
                 for (_cd, _cm, _slot) in ((d1, _m1, 1), (d2, _m2, 2)):
+                    # Bu yarı zaten ele alınmışsa (elle hazır ya da fiziksel kalıp
+                    # slotu var) TEKRAR PLANLAMA — yoksa basılmış yarı ikinci kez basılır.
+                    if (_slot == 1 and _h1) or (_slot == 2 and _h2):
+                        continue
                     # Slot'a özel seçilen varyasyon > property > ürün adı > tasarımın kalip_tipi
                     _var = resolve_line_variation(li, _cd, slot=_slot)
                     if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
@@ -428,7 +443,7 @@ def plan_molds(
                         _ok = False
                         break
                     _pending.append((_cd, _var, _kod, _cm))
-                if not _ok:
+                if not _ok or not _pending:
                     continue
                 for _ in range(qty):
                     for (_cd, _var, _kod, _cm) in _pending:

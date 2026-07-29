@@ -799,6 +799,16 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
                     ))
                   : <span className="text-gray-600">—</span>}
               </div>
+              <div className="mt-1.5 pt-1.5 border-t border-brand-border/40">
+                <CheckPill
+                  checked={!!p.elle_hazir}
+                  onChange={c => {
+                    const f = p.slot === 2 ? 'is_hazir_2' : 'is_hazir'
+                    onPatch({ [f]: c, fields_to_update: [f] })
+                  }}
+                  label={`📦 ${p.slot}. kılıf hazır`}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -812,6 +822,7 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
           onChange={c => onPatch({ tedarik_status: c ? 'tedarik' : 'bekliyor', fields_to_update: ['tedarik_status'] })}
           label="⏰ Tedarik"
         />
+        {!(Array.isArray(item.parcalar) && item.parcalar.length > 0) && (
         <CheckPill
           checked={item.is_hazir}
           onChange={async c => {
@@ -825,6 +836,7 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
           }}
           label="📦 Hazır"
         />
+        )}
         <button
           onClick={async () => {
             if (!confirm("Bu ürünü askıya atmak istediğine emin misin?")) return

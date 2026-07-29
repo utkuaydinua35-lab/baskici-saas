@@ -500,22 +500,24 @@ def _printed_maps(db, tenant_id):
     """Tüm MoldItem'ları kalıbın print_status'üyle: line_item_id ve (order_no, model)
     bazında 'basıldı mı' listesi."""
     rows = db.execute(
-        select(MoldItem.line_item_id, MoldItem.order_number, MoldItem.model,
-               Mold.print_status, Mold.current_stage)
+        select(MoldItem.line_item_id, MoldItem.design_id, MoldItem.order_number,
+               MoldItem.model, Mold.print_status, Mold.current_stage)
         .join(Mold, Mold.id == MoldItem.mold_id)
         .where(Mold.tenant_id == tenant_id)
     ).all()
     by_li: dict = {}
     by_om: dict = {}
-    for li_id, onum, model, pstat, stage in rows:
+    by_slot: dict = {}   # (line_item_id, design_id) -> [basildi?] — çift kılıf yarıları
+    for li_id, did, onum, model, pstat, stage in rows:
         # Basili sayilir: print_status='basildi' (Baskici paneli) VEYA kalip stage 5
         # 'Tamamlandi' (asama akisindan tamamlanan kaliplar print_status'u basildi olmayabilir).
         printed = (pstat == "basildi") or (stage == 5)
         if li_id:
             by_li.setdefault(str(li_id), []).append(printed)
+            by_slot.setdefault((str(li_id), str(did) if did else None), []).append(printed)
         if onum and model:
             by_om.setdefault((str(onum), _nm(model)), []).append(printed)
-    return by_li, by_om
+    return by_li, by_om, by_slot
 
 
 def _accessory_ids(db, tenant_id) -> set:
@@ -539,7 +541,7 @@ def _couple_ids(db, tenant_id) -> set:
     }
 
 
-def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None) -> bool:
+def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
     """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar.
     Herhangi bir ürün basılmamış kalıpta ya da henüz hazırlanmamışsa -> False.
 
@@ -548,12 +550,31 @@ def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None) -> bool:
     all() geçiyor ve sipariş EKSİK haliyle paketlemeye hazır görünüyordu. Artık
     BEKLENEN slot sayısı da aranır."""
     couple_ids = couple_ids or set()
+    by_slot = by_slot or {}
     onum = str(order.order_number) if order.order_number is not None else None
     has_item = False
     for li in (order.line_items or []):
         has_item = True
         if li.product_id and str(li.product_id) in acc_ids:
             continue  # aksesuar — kalıp gerekmez
+        _qty0 = max(1, int(getattr(li, "quantity", 1) or 1))
+        _couple = bool(li.product_id and str(li.product_id) in couple_ids)
+
+        if _couple:
+            # ÇİFT KILIF: her yarı AYRI değerlendirilir. Bir yarı ya elle hazır
+            # işaretlenmiş ya da kendi kalıbı basılmış olmalı. Biri eksikse sipariş
+            # paketlemeye HAZIR DEĞİLDİR (eskiden tek yarı yeterli sayılıyordu).
+            for _manual, _did in (
+                (getattr(li, "is_hazir", False), li.assigned_design_id),
+                (getattr(li, "is_hazir_2", False), li.assigned_design_id_2),
+            ):
+                if _manual:
+                    continue
+                _ms = by_slot.get((str(li.id), str(_did) if _did else None))
+                if not _ms or len(_ms) < _qty0 or not all(_ms):
+                    return False
+            continue
+
         if getattr(li, "is_hazir", False):
             continue  # elle hazır işaretli — üretildi sayılır
         # Kalıba eklenmemiş (hiç eklenmemiş YA DA tamamlanan kalıptan geri çıkarılmış) ->
@@ -612,10 +633,10 @@ def packaging_queue(
     dealers = [{"id": str(x.id), "name": x.name} for x in db.scalars(
         select(Dealer).where(Dealer.tenant_id == user.tenant_id).order_by(Dealer.name)).all()]
 
-    by_li = by_om = None
+    by_li = by_om = by_slot = None
     acc_ids: set = set()
     if ready_only:
-        by_li, by_om = _printed_maps(db, user.tenant_id)
+        by_li, by_om, by_slot = _printed_maps(db, user.tenant_id)
         acc_ids = _accessory_ids(db, user.tenant_id)
         couple_ids = _couple_ids(db, user.tenant_id)
 
@@ -624,7 +645,7 @@ def packaging_queue(
     def _passes(o):
         if _dealer and str((o.raw or {}).get("dealer_id") or "") != _dealer:
             return False
-        if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids):
+        if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids, by_slot):
             return False
         return True
 

@@ -520,6 +520,11 @@ class LineItem(Base):
     is_hazir: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    # Çift kılıf: her yarı ayrı üretilir, ayrı "hazır" işaretlenir.
+    # is_hazir -> 1. kılıf, is_hazir_2 -> 2. kılıf. Tekil üründe is_hazir_2 kullanılmaz.
+    is_hazir_2: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     is_kaliba_eklendi: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )

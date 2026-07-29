@@ -1162,8 +1162,10 @@ def apply_variant_set(
 
 
 class BulkApplySetRequest(BaseModel):
-    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    # ids boş + only_without_variants=true → mağazadaki TÜM varyantsız ürünler
+    ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
     variant_set_id: uuid.UUID
+    only_without_variants: bool = False
 
 
 @router.post("/products/bulk-apply-variant-set", response_model=dict)
@@ -1183,13 +1185,22 @@ def bulk_apply_variant_set(
     if not vs:
         raise HTTPException(404, "Set bulunamadı")
 
-    products = db.scalars(
-        select(CatalogProduct).where(
-            CatalogProduct.id.in_(body.ids),
-            CatalogProduct.tenant_id == user.tenant_id,
-            CatalogProduct.store_id == vs.store_id,
-        )
-    ).all()
+    q = select(CatalogProduct).where(
+        CatalogProduct.tenant_id == user.tenant_id,
+        CatalogProduct.store_id == vs.store_id,
+    )
+    if body.only_without_variants:
+        # Varyantı hiç olmayan ürünler — müşteri model seçemediği için
+        # bunlar SATIN ALINAMAZ; sayfa sayfa seçmeye gerek kalmasın
+        has_variant = select(CatalogVariant.id).where(
+            CatalogVariant.product_id == CatalogProduct.id).exists()
+        q = q.where(~has_variant)
+    else:
+        if not body.ids:
+            raise HTTPException(422, "Ürün seçilmedi")
+        q = q.where(CatalogProduct.id.in_(body.ids))
+
+    products = db.scalars(q).all()
     if not products:
         raise HTTPException(404, "Ürün bulunamadı")
 

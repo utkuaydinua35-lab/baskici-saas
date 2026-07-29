@@ -17,6 +17,8 @@ export default function UrunlerPage() {
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   const [showSets, setShowSets] = useState(false)
   const [showBulkSet, setShowBulkSet] = useState(false)
+  const [showFixVariants, setShowFixVariants] = useState(false)
+  const noVariantCount = products.filter(p => !p.variant_count).length
 
   const exportCsv = async () => {
     try {
@@ -80,6 +82,21 @@ export default function UrunlerPage() {
       {error && <p className="text-sm text-red-400">{error}</p>}
       {loading && <p className="text-sm text-panel-muted">Yükleniyor…</p>}
 
+      {/* Varyantsız ürünler satın ALINAMAZ — sessiz satış kaybı, tek tık düzeltme */}
+      {noVariantCount > 0 && (
+        <div className="card !py-2.5 border-amber-500/40 bg-amber-500/5 flex items-center gap-3 text-sm">
+          <span>⚠️</span>
+          <div className="min-w-0">
+            <b>{noVariantCount} ürün varyantsız</b> — müşteri telefon modeli
+            seçemediği için sepete ekleyemiyor.
+          </div>
+          <button onClick={() => setShowFixVariants(true)}
+            className="ml-auto shrink-0 px-3 py-1 rounded-lg text-xs bg-amber-500/15 text-amber-300">
+            🧩 Hepsine set uygula
+          </button>
+        </div>
+      )}
+
       {checked.size > 0 && (
         <div className="card !py-2.5 flex items-center gap-3 text-sm">
           <span className="font-medium">{checked.size} ürün seçili</span>
@@ -109,6 +126,12 @@ export default function UrunlerPage() {
         <BulkApplySetModal ids={[...checked]} storeId={storeId}
           onClose={() => setShowBulkSet(false)}
           onDone={() => { setShowBulkSet(false); setChecked(new Set()); load() }} />
+      )}
+
+      {showFixVariants && (
+        <BulkApplySetModal ids={[]} storeId={storeId} allWithoutVariants
+          onClose={() => setShowFixVariants(false)}
+          onDone={() => { setShowFixVariants(false); load() }} />
       )}
 
       {/* Shopify tarzı liste görünümü — satır tıklanınca detaya gider */}
@@ -431,7 +454,7 @@ function ShopifyImageImport({ storeId, file }) {
 }
 
 // Toplu varyant seti uygulama — seçili ürünlerin HEPSİNE aynı set bağlanır.
-function BulkApplySetModal({ ids, storeId, onClose, onDone }) {
+function BulkApplySetModal({ ids, storeId, onClose, onDone, allWithoutVariants = false }) {
   const [sets, setSets] = useState(null)
   const [setId, setSetId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -449,7 +472,9 @@ function BulkApplySetModal({ ids, storeId, onClose, onDone }) {
     setBusy(true); setErr('')
     try {
       const r = await api.post('/api/catalog/products/bulk-apply-variant-set', {
-        ids, variant_set_id: setId,
+        ids: allWithoutVariants ? [] : ids,
+        variant_set_id: setId,
+        only_without_variants: allWithoutVariants,
       })
       setResult(r)
     } catch (e2) {
@@ -462,7 +487,16 @@ function BulkApplySetModal({ ids, storeId, onClose, onDone }) {
       onClick={onClose}>
       <form onSubmit={submit} onClick={e => e.stopPropagation()}
         className="card w-full max-w-md space-y-3">
-        <h2 className="font-semibold">🧩 Varyant Seti Uygula ({ids.length} ürün)</h2>
+        <h2 className="font-semibold">
+          🧩 Varyant Seti Uygula {allWithoutVariants
+            ? '(varyantsız TÜM ürünler)' : `(${ids.length} ürün)`}
+        </h2>
+        {allWithoutVariants && (
+          <p className="text-[11px] text-amber-300 -mt-1">
+            Mağazadaki varyantı olmayan tüm ürünlere uygulanır — bu ürünler şu an
+            müşteri tarafından sepete eklenemiyor.
+          </p>
+        )}
         {result ? (
           <>
             <p className="text-sm">

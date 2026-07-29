@@ -178,6 +178,96 @@ def patch_settings(
     }
 
 
+@router.get("/{store_id}/readiness", response_model=dict)
+def store_readiness(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Canlıya hazırlık kontrolü — yayına engel olan eksikleri tek yerde toplar.
+
+    Panel ana sayfası bu listeyi gösterir; 'blocker' işaretliler satışı
+    fiilen durduran sorunlardır (ödeme alınamaz / ürün satın alınamaz /
+    müşteri giriş yapamaz)."""
+    from sqlalchemy import func as sql_func
+
+    from app.models import CatalogProduct, CatalogVariant
+    from app.services import email_service
+
+    store = _get_store(db, user, store_id)
+    config = store.config or {}
+    checks: list[dict] = []
+
+    def add(key: str, ok: bool, label: str, hint: str, blocker: bool = False,
+            to: str | None = None, count: int | None = None) -> None:
+        checks.append({"key": key, "ok": ok, "label": label, "hint": hint,
+                       "blocker": blocker and not ok, "to": to, "count": count})
+
+    # 1) Ödeme sağlayıcı — canlı mod mu, anahtar var mı
+    provider = (config.get("payment_provider") or "iyzico").lower()
+    if provider == "iyzico":
+        has_keys = bool(config.get("iyzico_api_key") and config.get("iyzico_secret_key"))
+        is_live = "sandbox" not in (config.get("iyzico_base_url") or "").lower()
+        add("payment_keys", has_keys, "Ödeme sağlayıcı bağlı",
+            "Ayarlar → Ödeme'ye iyzico API + güvenlik anahtarlarını girin",
+            blocker=True, to="/ayarlar")
+        add("payment_live", has_keys and is_live, "Ödeme CANLI modda",
+            "iyzico ortamı 'Sandbox (test)' — gerçek tahsilat yapılmaz, 'Canlı'ya alın",
+            blocker=True, to="/ayarlar")
+    else:
+        has_keys = bool(config.get("paytr_merchant_id") and config.get("paytr_merchant_key"))
+        add("payment_keys", has_keys, "Ödeme sağlayıcı bağlı",
+            "Ayarlar → Ödeme'ye PayTR bilgilerini girin", blocker=True, to="/ayarlar")
+        add("payment_live", has_keys and str(config.get("paytr_test_mode")) == "0",
+            "Ödeme CANLI modda", "PayTR modu 'Test' — 'Canlı'ya alın",
+            blocker=True, to="/ayarlar")
+
+    # 2) E-posta servisi — müşteri giriş kodu + sipariş onayı buna bağlı
+    add("email", email_service.is_configured(), "E-posta servisi çalışıyor",
+        "RESEND_API_KEY (veya SMTP) tanımlı değil: sipariş onayı, kargo bildirimi "
+        "ve müşteri giriş kodu e-postaları GÖNDERİLEMİYOR", blocker=True)
+
+    # 3) Varyantsız ürünler — model seçilemediği için satın alınamaz
+    has_variant = select(CatalogVariant.id).where(
+        CatalogVariant.product_id == CatalogProduct.id).exists()
+    no_variant = db.scalar(
+        select(sql_func.count()).select_from(CatalogProduct).where(
+            CatalogProduct.store_id == store.id,
+            CatalogProduct.status == "active",
+            ~has_variant)) or 0
+    add("variants", no_variant == 0, "Tüm yayındaki ürünler satın alınabilir",
+        f"{no_variant} yayındaki üründe telefon modeli yok — müşteri sepete "
+        "EKLEYEMEZ. Ürünler → Varyant Seti Uygula ile toplu düzeltin",
+        blocker=True, to="/urunler", count=no_variant)
+
+    # 4) Vitrin adresi + yayın kilidi
+    add("storefront_url", bool(config.get("storefront_url")), "Vitrin adresi tanımlı",
+        "Ayarlar → Yayın & Domain'e vitrin adresini yazın (ödeme dönüşü buna bağlı)",
+        blocker=True, to="/ayarlar")
+    add("unlocked", not (config.get("storefront_password") or "").strip(),
+        "Mağaza ziyaretçilere açık",
+        "Yayın öncesi kilit AÇIK — ziyaretçiler şifre ekranı görüyor",
+        blocker=True, to="/ayarlar")
+
+    # 5) Pazarlama + içerik (engel değil, öneri)
+    add("pixel", bool(config.get("meta_pixel_id")), "Meta Pixel bağlı",
+        "Reklam ölçümü için Ayarlar → Pazarlama'ya piksel ID girin", to="/ayarlar")
+    add("capi", bool(config.get("meta_capi_token")), "Conversions API bağlı",
+        "Reklam engelleyicili ziyaretçilerin satın almaları ölçülemiyor", to="/ayarlar")
+    add("contact_email", bool(config.get("contact_email")), "İletişim e-postası tanımlı",
+        "Müşteri mesajları ve test mailleri buraya gider", to="/ayarlar")
+    add("legal", bool(config.get("kvkk_text") or config.get("mesafeli_satis_text")),
+        "Yasal metinler özelleştirildi",
+        "Hazır şablon kullanılıyor — kendi metinlerinizi girmeniz önerilir", to="/sayfalar")
+
+    blockers = [c for c in checks if c["blocker"]]
+    return {
+        "ready": not blockers,
+        "blocker_count": len(blockers),
+        "checks": checks,
+    }
+
+
 # ─── E-posta şablon önizleme + test gönderimi ────────────────
 # Panel E-posta sekmesi: formdaki (henüz kaydedilmemiş) konu+giriş metniyle
 # örnek veri üzerinden gerçek şablonu render eder / test maili yollar.

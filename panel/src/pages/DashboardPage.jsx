@@ -10,6 +10,7 @@ export default function DashboardPage() {
   const [live, setLive] = useState(null)
   const [stok, setStok] = useState(null)   // {low_stock, out_of_stock}
   const [guide, setGuide] = useState(null) // kurulum rehberi adımları
+  const [ready, setReady] = useState(null) // canlıya hazırlık kontrolü
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -22,6 +23,8 @@ export default function DashboardPage() {
     api.get(`/api/catalog/inventory?store_id=${storeId}`)
       .then(d => setStok({ low_stock: d.low_stock, out_of_stock: d.out_of_stock }))
       .catch(() => {})
+    // Canlıya hazırlık — satışı fiilen durduran eksikler en üstte gösterilir
+    api.get(`/api/store-settings/${storeId}/readiness`).then(setReady).catch(() => {})
     // Kurulum rehberi (Shopify setup guide) — tamamlanınca kart kaybolur
     if (localStorage.getItem(`kurulum_gizle_${storeId}`)) { setGuide([]); return }
     Promise.all([
@@ -74,6 +77,46 @@ export default function DashboardPage() {
           hint={data?.funnel?.abandoned_count > 0
             ? `${data.funnel.abandoned_count} terk sepet` : 'checkout verisi yok'} />
       </div>
+
+      {/* Canlıya hazırlık — satışı durduran eksikler her şeyin üstünde */}
+      {ready && !ready.ready && (
+        <div className="card border-red-500/40 bg-red-500/5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-red-300">
+              🚨 Satışı engelleyen {ready.blocker_count} sorun var
+            </h2>
+          </div>
+          <ul className="mt-2.5 space-y-2">
+            {ready.checks.filter(c => c.blocker).map(c => (
+              <li key={c.key} className="text-sm">
+                <div className="flex items-start gap-2">
+                  <span className="text-red-400 mt-0.5">●</span>
+                  <div className="min-w-0">
+                    <div className="font-medium">
+                      {c.label.replace(/^Tüm/, 'Bazı')}
+                      {c.count ? ` — ${c.count} ürün` : ''}
+                    </div>
+                    <div className="text-xs text-panel-muted mt-0.5">{c.hint}</div>
+                  </div>
+                  {c.to && (
+                    <Link to={c.to} className="ml-auto shrink-0 text-xs text-panel-accent hover:underline">
+                      Düzelt →
+                    </Link>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {ready?.ready && ready.checks.some(c => !c.ok) && (
+        <div className="card !py-2.5 flex items-center gap-2 text-sm">
+          <span className="text-emerald-300">✓ Satışa hazır</span>
+          <span className="text-xs text-panel-muted">
+            — öneri: {ready.checks.filter(c => !c.ok).map(c => c.label).join(', ')}
+          </span>
+        </div>
+      )}
 
       {guide && guide.length > 0 && guide.some(g => !g.done) && (
         <div className="card">

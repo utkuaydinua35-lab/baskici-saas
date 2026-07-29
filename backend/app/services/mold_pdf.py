@@ -60,11 +60,17 @@ def _ordered_slots(items, cols, rows):
     return slots
 
 
-def _placement_rect(box, model):
+def _placement_rect(box, model, spec=None):
     """Şablon kutusu içinde modelin gerçek kılıf ölçüsünde rect + radius_pt.
-    Tasarım kutunun SAĞ-ALT köşesine yaslanır. Dönüş: (fitz.Rect, radius_pt) | None."""
-    spec = cd.get_spec(model)
-    if not spec:
+    Tasarım kutunun SAĞ-ALT köşesine yaslanır. Dönüş: (fitz.Rect, radius_pt) | None.
+
+    spec: (w_cm, h_cm, r_cm) — çağıran DB'den çözüp geçirir (panelden EKLENEN
+    modeller yalnızca DB'de; burada baseline'a bakmak onları göremiyordu ve slot
+    sessizce BOŞ basılıyordu). Geçilmezse baseline kataloğa düşülür.
+    """
+    if spec is None:
+        spec = cd.get_spec(model)
+    if not spec or spec[0] is None or spec[1] is None:
         return None
     w_cm, h_cm, r_cm = spec
     # TRIM kaldırıldı: gerçek kılıf ölçüsünde basılır (8.0 × 16.25 gibi).
@@ -183,7 +189,7 @@ def render_mold_pdf(mold_items, template=None):
         rel = it.get("design_file_path")
         fmt = (it.get("design_format") or "").lower()
 
-        pr = _placement_rect(box, model or "")
+        pr = _placement_rect(box, model or "", it.get("spec"))
         if pr is None:
             skipped.append({"slot": idx, "model": model, "reason": "olcu_yok"})
             continue

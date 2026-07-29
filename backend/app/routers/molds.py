@@ -650,6 +650,10 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
             "slot_index": it.slot_index,
             "kalip_kodu": it.kalip_kodu,
             "model": it.model,
+            # Ölçüyü BURADA çöz: panelden eklenen modeller yalnızca DB'de durur.
+            # PDF motoru tek başına baseline kataloğa bakıyordu ve bu modellerin
+            # slotlarını sessizce boş basıyordu.
+            "spec": pm.get_spec(db, user.tenant_id, it.model or ""),
             "design_file_path": d.file_path if d else None,
             "design_format": d.file_format if d else None,
         })
@@ -670,6 +674,31 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
         "cols": tpl.cols, "rows": tpl.rows, "boxes": tpl.boxes,
     }
     pdf_bytes, report = mold_pdf.render_mold_pdf(slot_items, template=template_data)
+
+    # ★ BOŞ SLOT KORUMASI ★ — bir slotta kalem var ama tasarım basılamadıysa o
+    # kalıp eksik basılır: malzeme çöpe gider, ürün eksik kalır. Eskiden bu
+    # sessizce geçiliyordu (rapor üretiliyor ama kimseye gösterilmiyordu).
+    # Artık PDF HİÇ verilmez; nedeni ve hangi model olduğu söylenir.
+    _skipped = report.get("skipped") or []
+    if _skipped:
+        _NEDEN = {
+            "olcu_yok": "ölçüsü tanımlı değil (Telefon Modelleri'nden ölçü gir)",
+            "tasarim_dosyasi_yok": "tasarım dosyası atanmamış",
+            "dosya_bulunamadi": "tasarım dosyası sunucuda bulunamadı",
+            "sablon_kutu_yetersiz": "kalıp şablonunda yeterli kutu yok",
+        }
+        _sat = []
+        for s in _skipped[:12]:
+            _r = str(s.get("reason") or "")
+            _sat.append(f"• {s.get('model') or '?'} — {_NEDEN.get(_r, _r)}")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{len(_skipped)} slot basılamadı, bu yüzden PDF oluşturulmadı "
+                f"(eksik kalıp basmayı önlemek için):\n" + "\n".join(_sat) +
+                "\n\nEksikleri giderip tekrar dene."
+            ),
+        )
 
     # === Asama otomasyonu: PDF indirilince ===
     # 1) Onceki acik kaliplari (baskiya_gonderildi=3 veya baskida=4, bu kalip haric) tamamla
@@ -958,6 +987,21 @@ def assignable_models(
             continue
         seen.add(name)
         names.append(name)
+
+    # Panelden EKLENEN modeller (DB) de listede olmalı — yoksa yeni çıkan bir
+    # telefonu Telefon Modelleri'ne ekleyip burada seçemiyordun.
+    from app.models import PhoneModel as _PM
+    for _row in db.scalars(
+        select(_PM).where(
+            _PM.tenant_id.in_([user.tenant_id, None]),
+            _PM.is_active.is_(True),
+        )
+    ).all():
+        _n = (_row.display_name or "").strip()
+        if _n and _n not in seen:
+            seen.add(_n)
+            names.append(_n)
+
     names.sort()
     return {"items": names}
 

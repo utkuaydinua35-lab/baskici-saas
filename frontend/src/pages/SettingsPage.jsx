@@ -344,10 +344,25 @@ function PasskeyModal({ onClose }) {
   const [list, setList] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [onlyPk, setOnlyPk] = useState(null)   // { enabled, passkey_count }
   const load = async () => {
     try { setList(await api.get('/api/auth/passkey')) } catch (e) { setErr(e.detail || 'Yüklenemedi'); setList([]) }
+    try { setOnlyPk(await api.get('/api/auth/passkey/only')) } catch { /* eski sürüm */ }
   }
   useEffect(() => { load() }, [])
+  const toggleOnly = async () => {
+    const next = !onlyPk?.enabled
+    if (next && !confirm(
+      'Şifreyle giriş KAPATILACAK.\n\n' +
+      'Bundan sonra bu hesaba yalnızca geçiş anahtarıyla girebilirsin — ' +
+      'şifreni bilen biri bile giremez.\n\n' +
+      'Devam etmeden önce geçiş anahtarının çalıştığından emin ol.\n\nAçılsın mı?'
+    )) return
+    setErr(''); setBusy(true)
+    try { await api.post('/api/auth/passkey/only', { enabled: next }); load() }
+    catch (e) { setErr(e.detail || 'Değiştirilemedi') }
+    finally { setBusy(false) }
+  }
   const add = async () => {
     setErr(''); setBusy(true)
     try {
@@ -394,6 +409,41 @@ function PasskeyModal({ onClose }) {
             ))}
         </div>
         <button onClick={add} disabled={busy} className="btn-primary w-full !text-sm disabled:opacity-50">{busy ? 'Bekleniyor…' : '＋ Geçiş anahtarı ekle'}</button>
+
+        {onlyPk && (
+          <div className="mt-4 pt-4 border-t border-brand-border/70">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm text-gray-200">Yalnızca geçiş anahtarıyla giriş</div>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Açıkken e-posta+şifre girişi reddedilir. Şifre tahmin saldırıları
+                  tamamen anlamsızlaşır.
+                </p>
+              </div>
+              <button
+                onClick={toggleOnly}
+                disabled={busy || (!onlyPk.enabled && (onlyPk.passkey_count || 0) < 1)}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 ${
+                  onlyPk.enabled
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : 'bg-brand-input/60 text-gray-400 border-brand-border'
+                }`}
+              >
+                {onlyPk.enabled ? 'Açık' : 'Kapalı'}
+              </button>
+            </div>
+            {(onlyPk.passkey_count || 0) < 1 && !onlyPk.enabled && (
+              <p className="text-[11px] text-amber-300/80 mt-2">
+                Açmak için önce en az bir geçiş anahtarı ekle.
+              </p>
+            )}
+            {onlyPk.enabled && (
+              <p className="text-[11px] text-gray-600 mt-2">
+                Kilitlenirsen sunucudan geri alınır — Claude'a “passkey kilidini aç” de.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

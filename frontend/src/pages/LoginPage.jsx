@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { passkeySupported } from '../lib/webauthn'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -58,6 +58,15 @@ export default function LoginPage() {
   const { login, loginWithPasskey, verifyTwoFactor } = useAuth()
   const navigate = useNavigate()
 
+  // Self-servis kayıt kapalıysa "Kayıt ol" bağlantısı hiç gösterilmez.
+  // Varsayılan false -> kapalıyken bir an bile görünüp kaybolmaz.
+  const [signupAllowed, setSignupAllowed] = useState(false)
+  useEffect(() => {
+    fetch('/api/auth/public-config')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setSignupAllowed(!!d?.signup_allowed))
+      .catch(() => {})
+  }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -197,11 +206,13 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        <div className="text-center text-xs text-gray-500 pt-3 border-t border-brand-border/70">
-          <span className="block pt-3">Hesabın yok mu?{' '}
-            <Link to="/register" className="text-accent hover:underline font-medium">Kayıt ol</Link>
-          </span>
-        </div>
+        {signupAllowed && (
+          <div className="text-center text-xs text-gray-500 pt-3 border-t border-brand-border/70">
+            <span className="block pt-3">Hesabın yok mu?{' '}
+              <Link to="/register" className="text-accent hover:underline font-medium">Kayıt ol</Link>
+            </span>
+          </div>
+        )}
       </form>
 
       <p className="text-center text-[11px] text-gray-600 mt-5 tracking-wide">

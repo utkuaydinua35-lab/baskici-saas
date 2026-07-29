@@ -167,3 +167,60 @@ def audit_meta(
         ],
         "users": sorted([u for u in users if u]),
     }
+
+
+# ─── Başarısız giriş denemeleri ───────────────────────────────
+# Panele girmeye çalışan ama giremeyenler: hangi hesap hedef alındı, nereden,
+# hangi tarayıcı/cihazla. Tenant'a bağlı DEĞİL (denemelerin çoğu var olmayan
+# hesaba yapılır), o yüzden ayrı uç.
+
+_LOGIN_REASON_LABELS: dict[str, str] = {
+    "sifre_hatali": "Şifre hatalı",
+    "hesap_yok": "Böyle bir hesap yok",
+    "engellendi": "Engellendi (çok fazla deneme)",
+    "passkey_zorunlu": "Şifre doğru ama hesap passkey'e kilitli",
+    "2fa_kod_hatali": "2FA kodu hatalı",
+}
+
+
+@router.get("/login-attempts", response_model=dict)
+def list_login_attempts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    days: int = Query(30, ge=1, le=365),
+    user: User = Depends(require_permission("ayarlar")),
+    db: Session = Depends(get_db),
+):
+    from app.models import LoginAttempt
+    from app.services.ua import summary as _ua_summary
+
+    since = datetime.now(_TR) - timedelta(days=days)
+    base = select(LoginAttempt).where(LoginAttempt.created_at >= since)
+
+    total = db.scalar(
+        select(sql_func.count()).select_from(base.subquery())
+    ) or 0
+    rows = db.scalars(
+        base.order_by(desc(LoginAttempt.created_at))
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+
+    return {
+        "total": int(total),
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": str(r.id),
+                "email": r.email,
+                "ip": r.ip,
+                "cihaz": _ua_summary(r.user_agent or ""),
+                "user_agent": r.user_agent,
+                "reason": r.reason,
+                "reason_label": _LOGIN_REASON_LABELS.get(r.reason, r.reason),
+                "hesap_var": r.user_id is not None,
+                "created_at": r.created_at.astimezone(_TR).isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }

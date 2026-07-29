@@ -112,6 +112,14 @@ class User(Base):
     signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     signup_user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
 
+    # Yalnızca geçiş anahtarı (passkey) ile giriş. True iken e-posta+şifre girişi
+    # REDDEDİLİR -> şifre tahmini (brute-force) tamamen anlamsızlaşır.
+    # Kilitlenmeye karşı: en az 1 passkey yoksa açılamaz; sunucudan geri alınabilir
+    # (UPDATE users SET password_login_disabled=false WHERE email='...').
+    password_login_disabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -1188,6 +1196,29 @@ class WebAuthnCredential(Base):
     name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LoginAttempt(Base):
+    """Başarısız giriş denemesi kaydı — "kim, hangi hesabı, nereden, neyle deniyor".
+
+    Tenant'a bağlı DEĞİL: deneme çoğu zaman var olmayan bir hesaba yapılır.
+    Yalnızca BAŞARISIZ denemeler yazılır (başarılı giriş users.last_login_at'te).
+    """
+    __tablename__ = "login_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    # sifre_hatali | hesap_yok | engellendi (rate limit) | passkey_zorunlu
+    reason: Mapped[str] = mapped_column(String(30), index=True)
+    # Deneme var olan bir hesabaysa o hesap (yoksa NULL) — hedef kim, görünsün.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
 
 class Note(Base):

@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from jose import jwt
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -70,6 +70,42 @@ def list_passkeys(user: User = Depends(get_current_user), db: Session = Depends(
         .order_by(WebAuthnCredential.created_at.desc())
     ).all()
     return [_ser(c) for c in rows]
+
+
+class PasskeyOnlyIn(BaseModel):
+    enabled: bool
+
+
+@router.get("/only", response_model=dict)
+def get_passkey_only(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    n = db.scalar(
+        select(sa_func.count()).select_from(WebAuthnCredential)
+        .where(WebAuthnCredential.user_id == user.id)
+    ) or 0
+    return {"enabled": bool(user.password_login_disabled), "passkey_count": int(n)}
+
+
+@router.post("/only", response_model=dict)
+def set_passkey_only(body: PasskeyOnlyIn, user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """Yalnızca geçiş anahtarı ile giriş. Açıkken e-posta+şifre girişi reddedilir.
+
+    KİLİTLENME KORUMASI: en az 1 passkey kayıtlı değilse açılamaz. Yine de
+    kilitlenirsen sunucudan geri alınır:
+      UPDATE users SET password_login_disabled = false WHERE email = '...';
+    """
+    if body.enabled:
+        n = db.scalar(
+            select(sa_func.count()).select_from(WebAuthnCredential)
+            .where(WebAuthnCredential.user_id == user.id)
+        ) or 0
+        if n < 1:
+            raise HTTPException(
+                400, "Önce en az bir geçiş anahtarı ekle — yoksa hesabına giremezsin.",
+            )
+    user.password_login_disabled = bool(body.enabled)
+    db.commit()
+    return {"ok": True, "enabled": user.password_login_disabled}
 
 
 @router.post("/register/begin", response_model=dict)

@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 gün
     session_secret: str = Field(..., alias="SESSION_SECRET")
 
+    # Self-servis kayıt (üye ol). VARSAYILAN KAPALI: panel tek atölye için
+    # kullanılıyorsa açık kayıt ekranı gereksiz bir saldırı yüzeyi (yabancılar
+    # onay bekleyen hesap bırakabiliyordu). Kiralamaya açılacaksa .env'de
+    # ALLOW_PUBLIC_SIGNUP=true yap.
+    allow_public_signup: bool = Field(False, alias="ALLOW_PUBLIC_SIGNUP")
+
     # Environment
     env: str = Field("development", alias="ENV")
     host: str = Field("127.0.0.1", alias="HOST")

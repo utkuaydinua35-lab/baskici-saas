@@ -41,6 +41,65 @@ function detailText(h) {
   return ''
 }
 
+// Başarısız giriş denemeleri — "kim panele girmeye çalıştı"
+function LoginAttemptsPanel() {
+  const [data, setData] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    api.get('/api/audit/login-attempts?days=30&page_size=50')
+      .then(setData).catch(e => setErr(e?.detail || 'Yüklenemedi'))
+  }, [])
+  const total = data?.total ?? 0
+  return (
+    <div className="card mb-4">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between text-left">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-200">🔒 Başarısız giriş denemeleri</h2>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            {err ? err
+              : data === null ? 'Yükleniyor…'
+              : total === 0 ? 'Son 30 günde deneme yok — temiz.'
+              : `Son 30 günde ${total} deneme · hangi hesap, nereden, hangi cihazla`}
+          </p>
+        </div>
+        <span className="text-gray-500 text-xs shrink-0 ml-3">{open ? '▲ gizle' : '▼ göster'}</span>
+      </button>
+      {open && data?.items?.length > 0 && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-gray-500 border-b border-brand-border/70">
+              <tr>
+                <th className="text-left font-medium py-1.5 pr-3 whitespace-nowrap">Tarih</th>
+                <th className="text-left font-medium py-1.5 pr-3">Denenen hesap</th>
+                <th className="text-left font-medium py-1.5 pr-3">Sonuç</th>
+                <th className="text-left font-medium py-1.5 pr-3 whitespace-nowrap">IP</th>
+                <th className="text-left font-medium py-1.5">Cihaz</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map(r => (
+                <tr key={r.id} className="border-b border-brand-border/40">
+                  <td className="py-1.5 pr-3 text-gray-400 whitespace-nowrap">
+                    {r.created_at ? new Date(r.created_at).toLocaleString('tr-TR') : '—'}
+                  </td>
+                  <td className="py-1.5 pr-3 text-gray-200">
+                    {r.email || '—'}
+                    {r.hesap_var && <span className="ml-1.5 text-[10px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded">gerçek hesap</span>}
+                  </td>
+                  <td className="py-1.5 pr-3 text-gray-400">{r.reason_label}</td>
+                  <td className="py-1.5 pr-3 font-mono text-[10px] text-gray-400 break-all">{r.ip || '—'}</td>
+                  <td className="py-1.5 text-gray-400">{r.cihaz || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AuditPage() {
   const navigate = useNavigate()
   const [data, setData] = useState({ items: [], total: 0, page: 1, pages: 1 })
@@ -98,6 +157,8 @@ export default function AuditPage() {
           Sipariş üzerinde kim, ne zaman, hangi değişikliği yaptı — {data.total} kayıt
         </p>
       </div>
+
+      <LoginAttemptsPanel />
 
       {/* Filtreler */}
       <div className="card mb-4">

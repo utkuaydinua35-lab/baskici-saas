@@ -34,7 +34,7 @@ from app.auth.security import (
 )
 from app.config import get_settings
 from app.database import get_db
-from app.models import Tenant, User
+from app.models import LoginAttempt, Tenant, User, WebAuthnCredential
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -54,6 +54,12 @@ def _issue_token(user: User) -> TokenResponse:
     )
 
 
+@router.get("/public-config", response_model=dict)
+def public_config():
+    """Giriş ekranının bilmesi gereken açık ayarlar (auth GEREKTİRMEZ)."""
+    return {"signup_allowed": bool(settings.allow_public_signup)}
+
+
 @router.post("/register", response_model=None, status_code=status.HTTP_201_CREATED)
 def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """
@@ -65,6 +71,12 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
     Email zaten kayıtlıysa 409 Conflict.
     Tenant slug çakışırsa otomatik suffix eklenir.
     """
+    # Self-servis kayıt kapalıysa hiç başlama (varsayılan KAPALI).
+    if not settings.allow_public_signup:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Yeni kayıt kapalı. Hesap açılması için yöneticiyle iletişime geçin.",
+        )
     # Email zaten var mı?
     existing = db.scalar(select(User).where(User.email == req.email.lower()))
     if existing:
@@ -164,19 +176,49 @@ def _login_client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
-def _login_rate_limit(request: Request) -> None:
+def _record_attempt(db, request: Request, email: str | None, reason: str,
+                    user_id=None) -> None:
+    """Basarisiz denemeyi kalici kaydet (kim, hangi hesap, nereden, neyle).
+
+    ASLA giris akisini bozmaz — kayit hatasi yutulur. Tenant'a bagli degildir;
+    denemelerin cogu var olmayan bir hesaba yapiliyor.
+    """
+    if db is None:
+        return
+    try:
+        db.add(LoginAttempt(
+            email=((email or "").strip().lower()[:200] or None),
+            ip=_login_client_ip(request),
+            user_agent=((request.headers.get("user-agent") or "")[:400] or None),
+            reason=reason,
+            user_id=user_id,
+        ))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _login_rate_limit(request: Request, db=None, email: str | None = None) -> None:
     """Basarisiz giris denemelerini IP basina sinirla (brute-force korumasi)."""
     import time as _t
     ip = _login_client_ip(request)
     now = _t.time()
     arr = [x for x in _login_hits.get(ip, []) if now - x < _LOGIN_WINDOW]
     if len(arr) >= _LOGIN_MAX:
+        _record_attempt(db, request, email, "engellendi")
         # Brute-force tespiti — platform yoneticilerine anlik uyari (throttle'li)
         try:
             from app.services import security_alert
+            from app.services.ua import summary as _ua_summary
+            _cihaz = _ua_summary(request.headers.get("user-agent") or "")
+            _hedef = f"\nDenenen hesap: {email.strip().lower()}" if email else ""
             security_alert.alert(
                 f"bruteforce:{ip}", "Şüpheli giriş denemeleri (brute-force)",
-                f"IP {ip} — son 5 dk içinde {len(arr)} başarısız giriş; erişim geçici engellendi.",
+                f"IP {ip} · {_cihaz}{_hedef}\n"
+                f"Son 5 dk içinde {len(arr)} başarısız giriş; erişim geçici engellendi.",
             )
         except Exception:  # noqa: BLE001
             pass
@@ -187,8 +229,10 @@ def _login_rate_limit(request: Request) -> None:
             _login_hits.pop(k, None)
 
 
-def _login_record_fail(request: Request) -> None:
+def _login_record_fail(request: Request, db=None, email: str | None = None,
+                       reason: str = "sifre_hatali", user_id=None) -> None:
     import time as _t
+    _record_attempt(db, request, email, reason, user_id)
     ip = _login_client_ip(request)
     now = _t.time()
     _login_hits.setdefault(ip, []).append(now)
@@ -211,24 +255,34 @@ def _login_record_fail(request: Request) -> None:
 
 @router.post("/login", response_model=None)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    _login_rate_limit(request)
+    _login_rate_limit(request, db, req.email)
     """Email + şifre ile giriş. Yanlış bilgi → 401."""
     user = db.scalar(select(User).where(User.email == req.email.lower()))
     if not user or not user.password_hash:
         # password_hash null = sadece OAuth user, email/şifre giriş yok.
         # Zamanlama esitleme: email yoksa da bcrypt calistir (enumeration onle).
         dummy_verify(req.password)
-        _login_record_fail(request)
+        _login_record_fail(request, db, req.email, "hesap_yok")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email veya şifre hatalı",
         )
 
     if not verify_password(req.password, user.password_hash):
-        _login_record_fail(request)
+        _login_record_fail(request, db, req.email, "sifre_hatali", user.id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email veya şifre hatalı",
+        )
+
+    # Yalnızca-passkey modu: şifre DOĞRU olsa bile giriş verilmez.
+    # (Kontrol şifre doğrulamasından SONRA — yanlış şifreye farklı cevap dönerse
+    #  hesabın var olduğu ele verilir.)
+    if user.password_login_disabled:
+        _login_record_fail(request, db, req.email, "passkey_zorunlu", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu hesap yalnızca geçiş anahtarı (passkey) ile giriş yapabilir.",
         )
 
     if not user.is_active:
@@ -518,7 +572,7 @@ def twofa_verify_login(
 ) -> TokenResponse:
     """Login'in 2. adımı: mfa_token + kod (veya yedek kod) → gerçek JWT."""
     from app.services import totp_service
-    _login_rate_limit(request)
+    _login_rate_limit(request, db)
     try:
         data = _mfa_serializer().loads(req.mfa_token, max_age=_MFA_MAX_AGE)
     except SignatureExpired:
@@ -542,7 +596,7 @@ def twofa_verify_login(
             ok = True
 
     if not ok:
-        _login_record_fail(request)
+        _login_record_fail(request, db, user.email, "2fa_kod_hatali", user.id)
         raise HTTPException(401, "Kod hatalı.")
 
     user.last_login_at = datetime.now(UTC)

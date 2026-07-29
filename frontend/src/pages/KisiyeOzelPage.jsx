@@ -14,6 +14,25 @@ const KALIP_TIPLERI = [
 
 const KILIF_VARYASYONLARI = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
 
+// Varyasyon elle seçilmediğinde hangi kaynaktan geldiğini gösterir.
+// "Tasarımda siyah yazıyordu ama beyaz basıldı" durumunun sebebi burada görünür.
+const VARYASYON_KAYNAK = {
+  elle: { t: 'Elle seçildi', c: 'text-emerald-300' },
+  ozellik: { t: 'Müşteri seçimi', c: 'text-sky-300' },
+  urun_adi: { t: 'Ürün adından', c: 'text-amber-300' },
+  tasarim: { t: 'Tasarımın varsayılanı', c: 'text-gray-400' },
+}
+function VaryasyonKaynak({ value, source }) {
+  if (!value) return <span className="text-[10px] text-red-300">⚠ Varyasyon çözülemedi — kalıba giremez</span>
+  const k = VARYASYON_KAYNAK[source]
+  if (!k) return null
+  return (
+    <span className="text-[10px] text-gray-500">
+      Üretime giden: <b className="text-gray-300">{value}</b> · <span className={k.c}>{k.t}</span>
+    </span>
+  )
+}
+
 // Ürün adındaki kılıf varyasyonunu yakala (örn "... BERNZ Special Parlak Telefon Kılıfı").
 // Operatör gözden kaçırıp yanlış varyasyonla bastırmasın diye formda ÖN-DOLDURULUR.
 function varyasyonFromTitle(...texts) {
@@ -722,6 +741,9 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
                   <option value="">Kılıf varyasyonu (otomatik)</option>
                   {KILIF_VARYASYONLARI.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
+                <VaryasyonKaynak
+                  value={slot === 2 ? item.efektif_varyasyon_2 : item.efektif_varyasyon}
+                  source={slot === 2 ? item.varyasyon_kaynak_2 : item.varyasyon_kaynak} />
                 <div className="flex justify-end">{renderDesign(design, slot)}</div>
               </div>
             )
@@ -731,7 +753,8 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
 
       {!isCouple && (
         <div className="mt-2 flex items-center justify-end gap-2 border-t border-brand-border/40 pt-2">
-          <span className="text-[11px] text-gray-400">Kılıf varyasyonu:</span>
+          <VaryasyonKaynak value={item.efektif_varyasyon} source={item.varyasyon_kaynak} />
+          <span className="text-[11px] text-gray-400 ml-1">Kılıf varyasyonu:</span>
           <select key={item.kilif_varyasyon || ''} defaultValue={item.kilif_varyasyon || ''}
             onChange={e => saveVaryasyon(1, e.target.value)} className="input !text-xs !py-1 w-48">
             <option value="">Otomatik (renge göre)</option>

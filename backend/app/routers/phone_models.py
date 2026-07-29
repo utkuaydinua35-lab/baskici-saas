@@ -131,13 +131,22 @@ def list_models(
                 s = search.lower()
                 if s not in bkey.lower() and s not in disp.lower():
                     continue
-            out.append({
+            row = {
                 "id": f"baseline:{bkey}",
                 "spec_key": bkey,
                 "display_name": disp,
                 "brand": None,
                 "is_baseline": True,
-            })
+            }
+            # Baseline ölçüleri ticari değerimiz — KİRACIYA gösterilmez. Ama platform
+            # sahibi kendi kataloğunu görmeli ve gerektiğinde düzeltebilmeli.
+            if user.is_platform_admin:
+                _spec = cd.get_spec(bkey)
+                if _spec:
+                    row["width_cm"], row["height_cm"], row["radius_cm"] = (
+                        _spec[0], _spec[1], _spec[2],
+                    )
+            out.append(row)
 
     return {
         "items": out,

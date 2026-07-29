@@ -146,6 +146,7 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
     # Telefon modeli: ELLE DEĞİŞTİRİLEN (override) önce gelir — model değiştirildiğinde
     # kişiye özel listesi de güncellensin (eskiden yalnız variant_title okunuyordu, bu
     # yüzden değişiklik burada hiç görünmüyordu). Sonra kanonik çıkarım, en son variant.
+    from app.services import mold_planner
     from app.services.mold_planner import extract_phone_model
     _m1 = (li.device_model_override or "").strip() or (extract_phone_model(li) or "") or (li.variant_title or "")
     if is_couple:
@@ -182,6 +183,18 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
         "device_model_override_2": li.device_model_override_2,
         "kilif_varyasyon": li.kilif_varyasyon,
         "kilif_varyasyon_2": li.kilif_varyasyon_2,
+        # ÜRETİME GİDEN varyasyon + NEREDEN geldiği. Elle seçim boş olsa bile
+        # ürün adı/özellik/tasarım zincirinden bir değer gelebiliyor; hangisinin
+        # kazandığı görünmezse "tasarımda siyah yazıyor ama beyaz basıldı" olur.
+        **(lambda d1, d2: {
+            "efektif_varyasyon": d1[0], "varyasyon_kaynak": d1[1],
+            "efektif_varyasyon_2": d2[0], "varyasyon_kaynak_2": d2[1],
+        })(
+            mold_planner.resolve_line_variation_detail(
+                li, li.assigned_design if li.assigned_design_id else None, slot=1),
+            mold_planner.resolve_line_variation_detail(
+                li, li.assigned_design_2 if li.assigned_design_id_2 else None, slot=2),
+        ),
         "birincil_renk": li.birincil_renk,
         "ikincil_renk": li.ikincil_renk,
         "ucuncu_renk": li.ucuncu_renk,

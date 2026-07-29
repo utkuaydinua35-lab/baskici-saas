@@ -110,21 +110,40 @@ def resolve_line_variation(line_item, design=None, slot: int = 1) -> str | None:
     Üretim (kalıp), müşteri onay görseli ve panel aynı sonucu görsün diye HER YERDE
     bu fonksiyon kullanılır.
     """
+    return resolve_line_variation_detail(line_item, design, slot)[0]
+
+
+# Kaynak etiketi -> panelde gösterilecek Türkçe açıklama
+VARIATION_SOURCE_LABELS = {
+    "elle": "Elle seçildi",
+    "ozellik": "Müşteri seçimi (ürün özelliği)",
+    "urun_adi": "Ürün adından okundu",
+    "tasarim": "Tasarımın varsayılanı",
+}
+
+
+def resolve_line_variation_detail(line_item, design=None, slot: int = 1) -> tuple:
+    """(varyasyon, kaynak) — kaynak: elle | ozellik | urun_adi | tasarim | None.
+
+    Varyasyonun NEREDEN geldiği panelde gösterilebilsin diye ayrı fonksiyon:
+    "tasarımda siyah yazıyordu ama beyaz kalıba girdi" tipi durumlarda hangi
+    kaynağın kazandığı tek bakışta görünsün.
+    """
     from app.services import placement_rules as _pr
     _attr = "kilif_varyasyon_2" if slot == 2 else "kilif_varyasyon"
     manual = (getattr(line_item, _attr, None) or "").strip()
     if manual:
-        return _pr.normalize_variation(manual)
+        return _pr.normalize_variation(manual), "elle"
     v = variation_from_props(line_item)
     if v:
-        return v
+        return v, "ozellik"
     v = variation_from_title(line_item)
     if v:
-        return v
+        return v, "urun_adi"
     dkt = ((getattr(design, "kalip_tipi", None) or "").strip() if design is not None else "")
     if dkt:
-        return _pr.normalize_variation(dkt)
-    return None
+        return _pr.normalize_variation(dkt), "tasarim"
+    return None, None
 
 
 def _li_property_values(line_item) -> list[str]:

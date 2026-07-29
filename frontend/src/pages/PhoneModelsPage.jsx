@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 
 const EMPTY = {
-  display_name: '', brand: '', width_cm: '', height_cm: '', radius_cm: '', notes: '',
+  display_name: '', brand: '', width_cm: '', height_cm: '', radius_cm: '', notes: '', spec_key: '',
 }
 
 export default function PhoneModelsPage() {
@@ -30,6 +30,8 @@ export default function PhoneModelsPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
+      // Baseline katalogdaki tum modeller de listelensin (kendi kaydin varsa o kazanir).
+      params.set('include_baseline', '1')
       const r = await api.get(`/api/phone-models?${params}`)
       setItems(r.items || [])
       setTotal(r.db_total || 0)
@@ -59,8 +61,12 @@ export default function PhoneModelsPage() {
       height_cm: m.height_cm ?? '',
       radius_cm: m.radius_cm ?? '',
       notes: m.notes || '',
+      spec_key: m.spec_key || '',
     })
-    setEditId(m.id); setShowForm(true); setMsg(null)
+    // Baseline satiri DB kaydi degil -> PATCH edilemez. Ayni anahtarla kendi
+    // kaydini olustururuz; o kayit baseline'i EZER (olcu duzeltmesi boyle yapilir).
+    setEditId(m.is_baseline ? null : m.id)
+    setShowForm(true); setMsg(null)
   }
 
   const save = async () => {
@@ -72,6 +78,7 @@ export default function PhoneModelsPage() {
       height_cm: form.height_cm === '' ? null : parseFloat(form.height_cm),
       radius_cm: form.radius_cm === '' ? null : parseFloat(form.radius_cm),
       notes: form.notes.trim() || null,
+      spec_key: (form.spec_key || '').trim() || null,
     }
     if (!payload.display_name) {
       setMsg({ ok: false, text: 'Model adı zorunlu.' })
@@ -287,32 +294,46 @@ export default function PhoneModelsPage() {
             <tbody className="divide-y divide-brand-border/50">
               {items.map(m => (
                 <tr key={m.id} className={`hover:bg-brand-input/30 ${!m.is_active ? 'opacity-50' : ''}`}>
-                  <td className="px-3 py-2 text-gray-200">{m.display_name}</td>
+                  <td className="px-3 py-2 text-gray-200">
+                    {m.display_name}
+                    {m.is_baseline && (
+                      <span className="ml-2 text-[10px] bg-brand-input/70 text-gray-400 border border-brand-border px-1.5 py-0.5 rounded"
+                            title="Hazır katalogdan geliyor. Ölçüyü düzenlersen kendi kaydın oluşur ve katalogdakini ezer.">
+                        katalog
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-gray-400 text-xs">{m.brand || '—'}</td>
                   <td className="px-3 py-2 font-mono text-[11px] text-accent">{m.spec_key}</td>
                   <td className="px-3 py-2 text-right text-gray-200 whitespace-nowrap">
-                    {m.width_cm} × {m.height_cm}
+                    {m.width_cm != null ? `${m.width_cm} × ${m.height_cm}` : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-400">{m.radius_cm}</td>
+                  <td className="px-3 py-2 text-right text-gray-400">{m.radius_cm ?? '—'}</td>
                   <td className="px-3 py-2 text-center">
-                    {m.is_active
-                      ? <span className="text-emerald-400">●</span>
-                      : <span className="text-gray-600">○</span>}
+                    {m.is_baseline
+                      ? <span className="text-gray-600" title="Katalog modeli">—</span>
+                      : m.is_active
+                        ? <span className="text-emerald-400">●</span>
+                        : <span className="text-gray-600">○</span>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-400 max-w-[180px] truncate" title={m.notes || ''}>
                     {m.notes || '—'}
                   </td>
                   <td className="px-2 py-2">
                     <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => setMockupModel(m)}
-                        className={`w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-accent/10 ${m.mockup_template_url ? 'text-emerald-400' : 'text-gray-500 hover:text-accent'}`}
-                        title="Mockup şablonu">🖼</button>
+                      {!m.is_baseline && (
+                        <button onClick={() => setMockupModel(m)}
+                          className={`w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-accent/10 ${m.mockup_template_url ? 'text-emerald-400' : 'text-gray-500 hover:text-accent'}`}
+                          title="Mockup şablonu">🖼</button>
+                      )}
                       <button onClick={() => openEdit(m)}
                         className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-accent hover:bg-accent/10 rounded transition-colors"
-                        title="Düzenle">✎</button>
-                      <button onClick={() => remove(m)}
-                        className="w-7 h-7 flex items-center justify-center text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
-                        title="Sil">🗑</button>
+                        title={m.is_baseline ? 'Ölçüyü düzenle (kendi kaydın oluşur)' : 'Düzenle'}>✎</button>
+                      {!m.is_baseline && (
+                        <button onClick={() => remove(m)}
+                          className="w-7 h-7 flex items-center justify-center text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+                          title="Sil">🗑</button>
+                      )}
                     </div>
                   </td>
                 </tr>

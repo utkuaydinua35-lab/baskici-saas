@@ -116,22 +116,47 @@ export default function MoldGeneratorPage() {
     finally { setRecovering(false) }
   }
 
+  // Hangi kalıplar oluşturulacak — boş küme = TÜMÜ (varsayılan davranış korunur).
+  const [secili, setSecili] = useState(null)   // null = hepsi, Set = seçilenler
+  const planImzalar = (plan?.molds || []).map(m => m.imza)
+  const seciliSet = secili === null ? new Set(planImzalar) : secili
+  const toggleSecim = (imza) => {
+    const n = new Set(seciliSet)
+    if (n.has(imza)) n.delete(imza); else n.add(imza)
+    setSecili(n)
+  }
+  const hepsiSecili = planImzalar.length > 0 && planImzalar.every(i => seciliSet.has(i))
+  const toggleHepsi = () => setSecili(hepsiSecili ? new Set() : new Set(planImzalar))
+
   const handleCreate = async () => {
-    const canGo = plan?.can_create || (skipMissing && plan?.mold_count > 0)
+    const kismi = seciliSet.size > 0 && seciliSet.size < planImzalar.length
+    const canGo = (plan?.can_create || (skipMissing && plan?.mold_count > 0) || kismi)
+      && seciliSet.size > 0
     if (!canGo) return
-    const cm = (skipMissing && plan.eksik_count > 0)
-      ? `${plan.eksik_count} eksik kalem ATLANACAK. Sadece çözülen ${plan.mold_count} kalıp (${plan.total_units} kılıf) oluşturulacak. Onaylıyor musun?`
-      : `${plan.mold_count} kalıp oluşturulacak (${plan.total_units} kılıf). Onaylıyor musun?`
+    const secKilif = (plan?.molds || [])
+      .filter(m => seciliSet.has(m.imza))
+      .reduce((t, m) => t + (m.count || 0), 0)
+    const cm = kismi
+      ? `Seçtiğin ${seciliSet.size} kalıp oluşturulacak (${secKilif} kılıf).\n\n` +
+        `Seçmediğin ${planImzalar.length - seciliSet.size} kalıp BEKLEMEDE kalacak — ` +
+        `kalemleri serbest kalır, sonraki planda yine çıkar.\n\nOnaylıyor musun?`
+      : (skipMissing && plan.eksik_count > 0)
+        ? `${plan.eksik_count} eksik kalem ATLANACAK. Sadece çözülen ${plan.mold_count} kalıp (${plan.total_units} kılıf) oluşturulacak. Onaylıyor musun?`
+        : `${plan.mold_count} kalıp oluşturulacak (${plan.total_units} kılıf). Onaylıyor musun?`
     if (!confirm(cm)) return
     setCreating(true); setError(''); setMsg(null)
     try {
-      const hq = `&harfler=${encodeURIComponent((harfler || 'GHJ').toUpperCase())}`
+      const kismiSecim = seciliSet.size > 0 && seciliSet.size < planImzalar.length
+      const sq = kismiSecim
+        ? `&secili=${encodeURIComponent([...seciliSet].join(','))}` : ''
+      const hq = `&harfler=${encodeURIComponent((harfler || 'GHJ').toUpperCase())}${sq}`
       const url = storeId
         ? `/api/molds/create?store_id=${storeId}&skip_missing=${skipMissing}${hq}`
         : `/api/molds/create?skip_missing=${skipMissing}${hq}`
       const r = await api.post(url, {})
       if (r.success) {
         setMsg({ ok: true, text: r.message })
+        setSecili(null)   // yeni planda yine hepsi seçili başlasın
         loadPlan(storeId); loadExisting(storeId)
         setTab('existing')
       } else {
@@ -267,8 +292,37 @@ export default function MoldGeneratorPage() {
 
               {plan.molds.length > 0 && (
                 <div className="space-y-3">
-                  <h2 className="text-sm font-medium text-gray-300">Kalıp Önizlemesi ({plan.mold_count})</h2>
-                  {plan.molds.map(m => <MoldCard key={m.sira} mold={m} preview harfler={harfler} labelSettings={labelSettings} />)}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <h2 className="text-sm font-medium text-gray-300">
+                      Kalıp Önizlemesi ({plan.mold_count})
+                      {seciliSet.size !== planImzalar.length && (
+                        <span className="ml-2 text-[11px] text-amber-300">
+                          {seciliSet.size} seçili · {planImzalar.length - seciliSet.size} beklemede kalacak
+                        </span>
+                      )}
+                    </h2>
+                    <button onClick={toggleHepsi}
+                            className="text-[11px] text-accent hover:underline shrink-0">
+                      {hepsiSecili ? 'Hiçbirini seçme' : 'Hepsini seç'}
+                    </button>
+                  </div>
+                  {plan.molds.map(m => {
+                    const sec = seciliSet.has(m.imza)
+                    return (
+                      <div key={m.imza || m.sira}
+                           className={`rounded-xl transition-opacity ${sec ? '' : 'opacity-45'}`}>
+                        <label className="flex items-center gap-2 mb-1 cursor-pointer w-fit">
+                          <input type="checkbox" checked={sec}
+                                 onChange={() => toggleSecim(m.imza)}
+                                 className="w-4 h-4 accent-emerald-400" />
+                          <span className="text-[11px] text-gray-400">
+                            {sec ? 'Bu kalıp oluşturulacak' : 'Beklemede kalacak (kalemler serbest)'}
+                          </span>
+                        </label>
+                        <MoldCard mold={m} preview harfler={harfler} labelSettings={labelSettings} />
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 

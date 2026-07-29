@@ -112,6 +112,18 @@ export default function MoldDetailPage() {
     finally { setKilitBusy(false) }
   }
 
+  const [undoBusy, setUndoBusy] = useState(null)
+  const undoHistory = async (h) => {
+    if (!confirm('Bu slot kalıba geri konsun mu?\n\n' + (h.note || ''))) return
+    setUndoBusy(h.id)
+    try {
+      await api.post(`/api/molds/${moldId}/history/${h.id}/undo`, {})
+      toast.success('Slot geri kondu')
+      load()
+    } catch (e) { alert(e?.detail || 'Geri alınamadı') }
+    finally { setUndoBusy(null) }
+  }
+
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
@@ -327,7 +339,16 @@ export default function MoldDetailPage() {
                   {history.map(h => (
                     <div key={h.id} className="text-xs border-l-2 border-brand-border pl-2">
                       <div className="text-gray-300">{actionLabel(h)}</div>
-                      <div className="text-[10px] text-gray-500">{h.created_by} · {fmtDate(h.created_at)}</div>
+                      <div className="text-[10px] text-gray-500 flex items-center gap-2 flex-wrap">
+                        <span>{h.created_by} · {fmtDate(h.created_at)}</span>
+                        {h.can_undo && (
+                          <button onClick={() => undoHistory(h)} disabled={undoBusy === h.id}
+                                  className="text-accent hover:underline disabled:opacity-50">
+                            {undoBusy === h.id ? '…' : '↩ GERİ AL'}
+                          </button>
+                        )}
+                        {h.undone && <span className="text-emerald-400/80">↩ geri alındı</span>}
+                      </div>
                     </div>
                   ))}
                 </div>

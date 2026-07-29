@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from sqlalchemy import desc, func as sql_func, or_ as sa_or, select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.auth.dependencies import get_current_user, require_any_permission
 
@@ -80,12 +81,38 @@ def create_molds(
     store_id: uuid.UUID | None = Query(None),
     skip_missing: bool = Query(False),
     harfler: str = Query("GHJ"),
+    secili: str | None = Query(None, description="Virgüllü kalıp imzaları; boşsa TÜMÜ"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Planı hesapla ve kalıpları DB'ye yaz. Eksik varsa reddeder."""
+    """Planı hesapla ve kalıpları DB'ye yaz. Eksik varsa reddeder.
+
+    `secili` verilirse yalnızca o imzalı kalıplar oluşturulur; seçilmeyenler
+    planda BEKLEMEDE kalır (kalemleri serbest, sonraki planda yine çıkar).
+    İmza kalıbın içeriğinden türetilir — plan bu arada değiştiyse eşleşmez ve
+    o kalıp oluşturulmaz (yanlış kalıbı basmaktansa uyarmak doğrusu).
+    """
     plan = mold_planner.plan_molds(db, tenant_id=user.tenant_id, store_id=store_id)
-    if plan["eksik_count"] > 0 and not skip_missing:
+
+    _secili = {x.strip() for x in (secili or "").split(",") if x.strip()}
+    if _secili:
+        _bulunan = {m.get("imza") for m in plan["molds"]}
+        _kayip = _secili - _bulunan
+        plan = dict(plan)
+        plan["molds"] = [m for m in plan["molds"] if m.get("imza") in _secili]
+        plan["mold_count"] = len(plan["molds"])
+        if not plan["molds"]:
+            return {
+                "success": False, "reason": "secim_eslesmedi",
+                "message": ("Seçtiğin kalıplar artık planda yok — plan bu arada değişmiş. "
+                            "Sayfayı yenileyip tekrar seç."),
+            }
+    else:
+        _kayip = set()
+
+    # Eksik kalemler seçilen kalıplarda DEĞİL (zaten hiçbir kalıba giremediler);
+    # kullanıcı açıkça kalıp seçtiyse bu kapı onu engellememeli.
+    if plan["eksik_count"] > 0 and not skip_missing and not _secili:
         return {
             "success": False,
             "reason": "eksik_var",
@@ -161,12 +188,18 @@ def create_molds(
         )
 
     db.commit()
+    _adet = sum(m["count"] for m in plan["molds"])
+    _msg = f"{len(created)} kalıp oluşturuldu ({_adet} kılıf)."
+    if _kayip:
+        _msg += (f" {len(_kayip)} seçim planda bulunamadı (plan değişmiş) — "
+                 "onlar oluşturulmadı, beklemede kaldı.")
     return {
         "success": True,
         "created_count": len(created),
         "molds": created,
-        "total_units": plan["total_units"],
-        "message": f"{len(created)} kalıp oluşturuldu ({plan['total_units']} kılıf).",
+        "total_units": _adet,
+        "eslesmeyen": sorted(_kayip),
+        "message": _msg,
     }
 
 
@@ -274,11 +307,11 @@ def _mold_progress(stage):
     return round((max(0, min(stage, 5)) / 5) * 100)
 
 
-def _log_mold(db, mold, user, action, from_stage=None, to_stage=None, note=None):
+def _log_mold(db, mold, user, action, from_stage=None, to_stage=None, note=None, payload=None):
     db.add(MoldStatusHistory(
         tenant_id=mold.tenant_id, mold_id=mold.id,
         from_stage=from_stage, to_stage=to_stage, action=action, note=note,
-        created_by=user.full_name or user.email,
+        payload=payload, created_by=user.full_name or user.email,
     ))
 
 
@@ -537,8 +570,94 @@ def mold_history(mold_id: uuid.UUID, user: User = Depends(get_current_user), db:
             "from_label": _stage_info(h.from_stage)["label"] if h.from_stage else None,
             "to_label": _stage_info(h.to_stage)["label"] if h.to_stage else None,
             "created_at": h.created_at.isoformat() if h.created_at else None,
+            # Geri alinabilir mi: onarim verisi var, daha once geri alinmamis
+            "can_undo": bool(
+                h.action in ("item_replan", "item_cancel")
+                and (h.payload or {}).get("item")
+                and not (h.payload or {}).get("undone")
+            ),
+            "undone": bool((h.payload or {}).get("undone")),
         } for h in rows
     ]}
+
+
+@router.post("/{mold_id}/history/{hist_id}/undo", response_model=None)
+def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalıptan çıkarılan bir slotu GERİ AL — slotu aynı yerine geri koyar.
+
+    Güvenlik kontrolleri (yanlışlıkla çift baskı üretmemek için):
+      - Kalem şu an BAŞKA bir kalıptaysa geri alınmaz (aynı ürün 2 kalıba giremez).
+      - Hedef slot doluysa geri alınmaz (üstüne yazmak sessiz kayıp olurdu).
+      - Aynı kayıt iki kez geri alınamaz.
+    """
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    h = db.scalar(select(MoldStatusHistory).where(
+        MoldStatusHistory.id == hist_id,
+        MoldStatusHistory.mold_id == mold_id,
+        MoldStatusHistory.tenant_id == user.tenant_id,
+    ))
+    if not h:
+        raise HTTPException(404, "Geçmiş kaydı bulunamadı")
+    if h.action not in ("item_replan", "item_cancel"):
+        raise HTTPException(400, "Bu işlem geri alınamaz.")
+    pl = dict(h.payload or {})
+    itd = pl.get("item")
+    if not itd:
+        raise HTTPException(400, "Bu kayıt geri alma verisi içermiyor (özellik eklenmeden önce yapılmış).")
+    if pl.get("undone"):
+        raise HTTPException(400, "Bu işlem zaten geri alındı.")
+
+    _li_id = itd.get("line_item_id")
+    if _li_id:
+        _baska = db.scalar(
+            select(MoldItem.id).join(Mold, Mold.id == MoldItem.mold_id)
+            .where(Mold.tenant_id == user.tenant_id,
+                   MoldItem.line_item_id == uuid.UUID(_li_id))
+            .limit(1)
+        )
+        if _baska:
+            raise HTTPException(
+                400,
+                "Bu ürün şu anda BAŞKA bir kalıpta — geri alınırsa aynı ürün iki kalıba "
+                "girer ve çift basılır. Önce diğer kalıptan çıkar.",
+            )
+
+    _slot = itd.get("slot_index")
+    if any((x.slot_index == _slot) for x in mo.items):
+        raise HTTPException(
+            400, f"#{_slot} numaralı slot şu an dolu — geri almak için önce o slotu boşalt.")
+
+    db.add(MoldItem(
+        tenant_id=user.tenant_id, mold_id=mo.id,
+        line_item_id=uuid.UUID(_li_id) if _li_id else None,
+        design_id=uuid.UUID(itd["design_id"]) if itd.get("design_id") else None,
+        store_id=uuid.UUID(itd["store_id"]) if itd.get("store_id") else None,
+        slot_index=_slot, kalip_kodu=itd.get("kalip_kodu"),
+        design_code=itd.get("design_code"), model=itd.get("model"),
+        order_number=itd.get("order_number"), is_hazir=bool(itd.get("is_hazir")),
+    ))
+    mo.kilif_sayisi = (mo.kilif_sayisi or 0) + 1
+    if itd.get("kalip_kodu") and itd["kalip_kodu"] not in (mo.kalip_kodlari or []):
+        mo.kalip_kodlari = list(mo.kalip_kodlari or []) + [itd["kalip_kodu"]]
+
+    # Kalemin bayraklarını çıkarma ANINDAKİ haline döndür
+    lib = pl.get("li_before")
+    if lib and lib.get("id"):
+        li = db.scalar(select(LineItem).where(LineItem.id == uuid.UUID(lib["id"])))
+        if li:
+            li.is_kaliba_eklendi = bool(lib.get("is_kaliba_eklendi"))
+            li.is_hazir = bool(lib.get("is_hazir"))
+            li.is_hazir_2 = bool(lib.get("is_hazir_2"))
+
+    pl["undone"] = True
+    h.payload = pl
+    flag_modified(h, "payload")
+    _log_mold(db, mo, user, action="item_undo",
+              note=f"Geri alındı — slot #{_slot} · {itd.get('kalip_kodu') or ''} · {itd.get('design_code') or ''}")
+    db.commit()
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    return _serialize_mold_detail(mo, db)
 
 
 @router.post("/_resync-flags", response_model=None)
@@ -652,17 +771,40 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
     li = db.scalar(select(LineItem).where(LineItem.id == it.line_item_id)) if it.line_item_id else None
     note = f"slot #{it.slot_index} · {it.kalip_kodu} · {it.design_code or ''}"
+    # GERİ ALMA için onarım verisi: silinen slotun tüm alanları + kalemin şu anki
+    # bayrakları. Not metni tek başına yetmiyor (line_item/design/model yok).
+    _undo = {
+        "action": payload.action,
+        "undone": False,
+        "item": {
+            "line_item_id": str(it.line_item_id) if it.line_item_id else None,
+            "design_id": str(it.design_id) if it.design_id else None,
+            "store_id": str(it.store_id) if it.store_id else None,
+            "slot_index": it.slot_index,
+            "kalip_kodu": it.kalip_kodu,
+            "design_code": it.design_code,
+            "model": it.model,
+            "order_number": it.order_number,
+            "is_hazir": bool(it.is_hazir),
+        },
+        "li_before": None if li is None else {
+            "id": str(li.id),
+            "is_kaliba_eklendi": bool(li.is_kaliba_eklendi),
+            "is_hazir": bool(li.is_hazir),
+            "is_hazir_2": bool(getattr(li, "is_hazir_2", False)),
+        },
+    }
 
     if payload.action == "replan":
         # line item tekrar kalıba eklenmemiş -> sonraki planda çıkar
         # (line_item_id yoksa order_number+design_code fallback'i ile esle)
         _replan_mold_item(db, user.tenant_id, it)
-        _log_mold(db, mo, user, action="item_replan", note=note)
+        _log_mold(db, mo, user, action="item_replan", note=note, payload=_undo)
     elif payload.action == "cancel":
         # Kalıptan çıkar ve plana DÖNMESİN — kalemi kalıcı 'hazır/hariç' işaretle
         # (yoksa "🔧 Kayıp siparişleri tara" bunları yanlışlıkla geri planlıyordu).
         _replan_mold_item(db, user.tenant_id, it, cancel=True)
-        _log_mold(db, mo, user, action="item_cancel", note=note)
+        _log_mold(db, mo, user, action="item_cancel", note=note, payload=_undo)
     else:
         raise HTTPException(status_code=400, detail="Geçersiz işlem")
 

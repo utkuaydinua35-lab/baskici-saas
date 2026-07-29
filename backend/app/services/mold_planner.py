@@ -8,6 +8,7 @@ her slot'un kendi store_id'si üzerinden ayrılır.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
 
@@ -609,7 +610,14 @@ def plan_molds(
             line_item_ids.add(it["line_item_id"])
             if it.get("store_id"):
                 store_ids_in_mold.add(it["store_id"])
+        # İÇERİK İMZASI: kalıbın hangi kalemlerden oluştuğunu belirler. Plan her
+        # istekte yeniden hesaplandığı için sıra numarası güvenilir değil; kullanıcı
+        # "şunu oluştur" derken bu imzayı gönderir, içerik değiştiyse eşleşmez.
+        _imza = hashlib.sha1(
+            "|".join(sorted(line_item_ids)).encode("utf-8")
+        ).hexdigest()[:12]
         molds.append({
+            "imza": _imza,
             "sira": idx,
             "variation": b["variation"],
             "kodlar": sorted(b["kodlar"], key=lambda c: pr.kod_to_group_priority(c, k)),

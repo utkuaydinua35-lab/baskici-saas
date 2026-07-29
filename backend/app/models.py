@@ -792,6 +792,10 @@ class MoldStatusHistory(Base):
     to_stage: Mapped[int | None] = mapped_column(Integer, nullable=True)
     action: Mapped[str] = mapped_column(String(40))           # stage_change | hatali | iptal ...
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Geri alinabilir eylemler icin onarim verisi (slot cikarma -> silinen MoldItem
+    # alanlari + kalemin onceki bayraklari). {"item": {...}, "li_before": {...},
+    # "action": "replan|cancel", "undone": bool}
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

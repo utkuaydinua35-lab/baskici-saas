@@ -76,6 +76,12 @@ class Settings(BaseSettings):
 
     # Panel taban URL (Telegram deep-link icin)
     panel_base_url: str = Field("https://baskici.bernzcompany.com", alias="PANEL_BASE_URL")
+    # Passkey (WebAuthn) — RP ID tüm panellerin ORTAK üst alan adı olmalı
+    # (bernzcompany.com), yoksa baskici./magazapanel. ayrı ayrı kayıt ister.
+    # Boşsa panel_base_url'in host'u kullanılır (yerel geliştirme).
+    webauthn_rp_id: str = Field("", alias="WEBAUTHN_RP_ID")
+    # Passkey kullanacak panellerin origin listesi (virgülle) — boşsa yalnız panel_base_url
+    webauthn_origins: str = Field("", alias="WEBAUTHN_ORIGINS")
 
     # Claude API (AI destek taslak yaniti). Bos ise AI taslak ozelligi kapali.
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")

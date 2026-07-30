@@ -29,7 +29,15 @@ router = APIRouter(prefix="/api/auth/passkey", tags=["passkey"])
 
 _s = get_settings()
 _ORIGIN = (_s.panel_base_url or "http://localhost:5173").rstrip("/")
-_RP_ID = urlparse(_ORIGIN).hostname or "localhost"
+# RP ID: tüm panellerin ORTAK üst alan adı (bernzcompany.com) — böylece
+# baskici.* ve magazapanel.* aynı geçiş anahtarını kullanır. Boşsa panel host'u.
+_RP_ID = (_s.webauthn_rp_id or "").strip() or urlparse(_ORIGIN).hostname or "localhost"
+# Doğrulanacak origin listesi: WEBAUTHN_ORIGINS (virgüllü) + panel_base_url
+_EXPECTED_ORIGINS = [
+    o.strip().rstrip("/") for o in (_s.webauthn_origins or "").split(",") if o.strip()
+] or [_ORIGIN]
+if _ORIGIN not in _EXPECTED_ORIGINS:
+    _EXPECTED_ORIGINS.append(_ORIGIN)
 _RP_NAME = "BERNZ"
 
 
@@ -148,7 +156,7 @@ def register_finish(body: RegisterFinishIn, user: User = Depends(get_current_use
             credential=json.dumps(body.credential),
             expected_challenge=base64url_to_bytes(st["c"]),
             expected_rp_id=_RP_ID,
-            expected_origin=_ORIGIN,
+            expected_origin=_EXPECTED_ORIGINS,
         )
     except Exception as e:  # noqa: BLE001
         raise HTTPException(400, f"Passkey doğrulanamadı: {str(e)[:150]}")
@@ -224,7 +232,7 @@ def login_finish(body: LoginFinishIn, db: Session = Depends(get_db)):
             credential=json.dumps(body.credential),
             expected_challenge=base64url_to_bytes(st["c"]),
             expected_rp_id=_RP_ID,
-            expected_origin=_ORIGIN,
+            expected_origin=_EXPECTED_ORIGINS,
             credential_public_key=base64url_to_bytes(cred.public_key),
             credential_current_sign_count=cred.sign_count,
             require_user_verification=False,

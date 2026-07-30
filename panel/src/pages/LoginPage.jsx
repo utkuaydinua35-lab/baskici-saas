@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { BRAND, TAGLINE } from '../lib/brand'
 import BrandMark from '../components/BrandMark'
+import { loginPasskey, passkeySupported } from '../lib/webauthn'
+import { setToken } from '../lib/api'
 
 // Giriş — Baskıcı ile aynı hesaplar (2FA destekli).
 export default function LoginPage() {
@@ -14,6 +16,23 @@ export default function LoginPage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pkBusy, setPkBusy] = useState(false)
+
+  // Geçiş anahtarı (passkey) ile giriş — şifre/2FA gerekmez, phishing-dirençli.
+  // Aynı anahtar Baskıcı panelinde de geçerlidir (ortak RP ID).
+  const passkeyLogin = async () => {
+    setPkBusy(true); setError('')
+    try {
+      const data = await loginPasskey()
+      setToken(data.access_token)
+      window.location.href = '/'   // auth context'i taze token'la kursun
+    } catch (e2) {
+      const msg = typeof e2?.detail === 'string' ? e2.detail
+        : e2?.name === 'NotAllowedError' ? 'Geçiş anahtarı iptal edildi'
+        : 'Geçiş anahtarıyla giriş yapılamadı'
+      setError(msg)
+    } finally { setPkBusy(false) }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -68,6 +87,20 @@ export default function LoginPage() {
           <button disabled={busy} className="btn-primary w-full">
             {busy ? 'Giriş yapılıyor…' : mfaToken ? 'Doğrula' : 'Giriş Yap'}
           </button>
+
+          {!mfaToken && passkeySupported() && (
+            <>
+              <div className="flex items-center gap-2 pt-1">
+                <div className="h-px flex-1 bg-panel-border" />
+                <span className="text-[11px] text-panel-muted">veya</span>
+                <div className="h-px flex-1 bg-panel-border" />
+              </div>
+              <button type="button" onClick={passkeyLogin} disabled={pkBusy}
+                className="btn-ghost w-full !py-2.5 text-sm">
+                {pkBusy ? 'Bekleniyor…' : '🔑 Geçiş anahtarı ile giriş'}
+              </button>
+            </>
+          )}
         </form>
         <p className="mt-4 text-center text-xs text-panel-muted">
           Hesaplar Baskıcı Paneli ile ortaktır.

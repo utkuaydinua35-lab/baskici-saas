@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
+import { passkeySupported, registerPasskey } from '../lib/webauthn'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'eposta', label: 'E-posta', icon: '🔔' },
   { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
   { key: 'destek', label: 'Destek', icon: '🎧' },
+  { key: 'guvenlik', label: 'Güvenlik', icon: '🔐' },
   { key: 'yayin', label: 'Yayın & Domain', icon: '🌐' },
   { key: 'yasal', label: 'Yasal', icon: '📄' },
 ]
@@ -377,6 +379,8 @@ export default function AyarlarPage() {
       </Section>
       )}
 
+      {tab === 'guvenlik' && <PasskeySection toast={toast} />}
+
       {tab === 'yayin' && (<>
       <Section title="Yayın Öncesi Kilit" icon="🔒">
         <Field label="Mağaza şifresi (boş = koruma kapalı)">
@@ -448,6 +452,111 @@ function Field({ label, children }) {
 }
 
 // Özel domain DNS doğrulaması — kaydedilmiş custom_domain üzerinden çalışır.
+// Geçiş anahtarları (passkey) — parmak izi / Face ID / güvenlik anahtarı ile
+// şifresiz giriş. Anahtarlar Baskıcı paneliyle ORTAKTIR (aynı hesap).
+function PasskeySection({ toast }) {
+  const [keys, setKeys] = useState(null)
+  const [only, setOnly] = useState(null)   // {enabled, passkey_count}
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      const [k, o] = await Promise.all([
+        api.get('/api/auth/passkey'),
+        api.get('/api/auth/passkey/only'),
+      ])
+      setKeys(k); setOnly(o)
+    } catch { setKeys([]) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const add = async () => {
+    setBusy(true)
+    try {
+      const name = window.prompt('Bu cihaza bir ad verin', 'MacBook / iPhone')
+      if (name === null) return
+      await registerPasskey(name.trim() || 'Passkey')
+      toast.success('Geçiş anahtarı eklendi ✓')
+      load()
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail
+        : e?.name === 'NotAllowedError' ? 'İşlem iptal edildi' : 'Eklenemedi')
+    } finally { setBusy(false) }
+  }
+
+  const remove = async (k) => {
+    if (!window.confirm(`"${k.name}" silinecek. Emin misiniz?`)) return
+    try { await api.del(`/api/auth/passkey/${k.id}`); toast.success('Silindi'); load() }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Silinemedi') }
+  }
+
+  const toggleOnly = async (enabled) => {
+    try {
+      const r = await api.post('/api/auth/passkey/only', { enabled })
+      setOnly(o => ({ ...o, enabled: r.enabled }))
+      toast.success(enabled ? 'Artık yalnızca geçiş anahtarıyla giriliyor'
+        : 'Şifreyle giriş yeniden açıldı')
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Değiştirilemedi')
+    }
+  }
+
+  return (
+    <Section title="Geçiş Anahtarları (Passkey)" icon="🔑">
+      <p className="text-[11px] text-panel-muted -mt-1">
+        Parmak izi, Face ID veya güvenlik anahtarıyla şifresiz giriş yapın.
+        Şifre çalınamaz ve sahte siteye kaptırılamaz. Eklediğiniz anahtarlar
+        Baskıcı panelinde de geçerlidir.
+      </p>
+      {!passkeySupported() && (
+        <p className="text-xs text-amber-300">
+          Bu tarayıcı geçiş anahtarını desteklemiyor (güncel Chrome/Safari/Edge gerekir).
+        </p>
+      )}
+      {keys === null ? (
+        <p className="text-sm text-panel-muted">Yükleniyor…</p>
+      ) : keys.length === 0 ? (
+        <p className="text-sm text-panel-muted">Henüz geçiş anahtarı yok.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {keys.map(k => (
+            <div key={k.id} className="flex items-center gap-2 border border-panel-border rounded-xl px-3 py-2 text-sm">
+              <span>🔑</span>
+              <span className="font-medium">{k.name}</span>
+              <span className="text-xs text-panel-muted">
+                {k.last_used_at
+                  ? `son kullanım ${new Date(k.last_used_at).toLocaleDateString('tr-TR')}`
+                  : 'hiç kullanılmadı'}
+              </span>
+              <button onClick={() => remove(k)}
+                className="ml-auto text-xs text-red-400 hover:text-red-400">Sil</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={add} disabled={busy || !passkeySupported()}
+        className="btn-ghost !py-1.5 text-xs">
+        {busy ? 'Bekleniyor…' : '+ Bu cihazı ekle'}
+      </button>
+
+      {only && (
+        <label className="flex items-start gap-2 text-sm border-t border-panel-border pt-3 mt-1">
+          <input type="checkbox" className="mt-0.5" checked={!!only.enabled}
+            disabled={!only.enabled && (only.passkey_count || 0) < 1}
+            onChange={e => toggleOnly(e.target.checked)} />
+          <span>
+            Yalnızca geçiş anahtarıyla giriş
+            <span className="block text-xs text-panel-muted">
+              Açıkken e-posta + şifre girişi reddedilir (en güvenli mod).
+              {(only.passkey_count || 0) < 1 && ' Önce en az bir anahtar ekleyin.'}
+            </span>
+          </span>
+        </label>
+      )}
+    </Section>
+  )
+}
+
 function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)

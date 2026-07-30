@@ -8,6 +8,7 @@ import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import { useAutoQuote } from "@/lib/useAutoQuote";
 import { useTexts } from "@/lib/texts";
+import CartSuggestions from "@/components/CartSuggestions";
 
 export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: string | null }) {
   const { items, subtotal, coupon, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
@@ -88,6 +89,8 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
               </div>
             </div>
           ))}
+          {/* Cross-sell — ortalama sepeti büyütür */}
+          <CartSuggestions onNavigate={() => setDrawerOpen(false)} />
         </div>
 
         {items.length > 0 && (

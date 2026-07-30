@@ -1413,6 +1413,8 @@ class CatalogProduct(Base):
     )
     # Kişiye özel alanlar: [{key, label, type: text|image|color, required, options}]
     custom_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Sepette 'bunu da ekleyin' önerileri — panelden elle seçilen ürün slug'ları
+    cross_sell_slugs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # Ürün başına seçilecek model sayısı (couple kılıflar = 2)
     models_per_item: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1")

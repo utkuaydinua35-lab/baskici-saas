@@ -323,6 +323,8 @@ export default function UrunDetayPage() {
         <CustomFieldsEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
 
+      <CrossSellEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
+
       <section className="card space-y-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Varyantlar ({p.variants.length})</h2>
@@ -652,6 +654,82 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
 }
 
 // Kişiye özel alanlar — müşteriden checkout'ta istenecek girdiler.
+// Sepette "bunu da ekleyin" — bu ürün sepetteyken önerilecek ürünler.
+// Boş bırakılırsa sistem birlikte satılanlardan otomatik seçer.
+function CrossSellEditor({ product, onChanged, setMsg }) {
+  const { storeId } = useStore()
+  const [all, setAll] = useState([])
+  const [picked, setPicked] = useState(product.cross_sell_slugs || [])
+  const [q, setQ] = useState('')
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => { setPicked(product.cross_sell_slugs || []); setDirty(false) }, [product.id])
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+      .then(r => setAll(r.filter(x => x.id !== product.id))).catch(() => {})
+  }, [storeId, product.id])
+
+  const toggle = (slug) => {
+    setPicked(p => p.includes(slug) ? p.filter(s => s !== slug) : [...p, slug].slice(0, 6))
+    setDirty(true)
+  }
+
+  const save = async () => {
+    try {
+      await api.patch(`/api/catalog/products/${product.id}`, { cross_sell_slugs: picked })
+      setMsg({ ok: true, text: 'Öneriler kaydedildi' })
+      setDirty(false); onChanged()
+    } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
+  }
+
+  const results = q.trim()
+    ? all.filter(p => p.title.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
+    : []
+  const bySlug = Object.fromEntries(all.map(p => [p.slug, p]))
+
+  return (
+    <section className="card space-y-2.5">
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-semibold">✨ Sepette Öner (Cross-sell)</h2>
+        {dirty && <button onClick={save} className="ml-auto btn-primary !py-1 text-xs">Kaydet</button>}
+      </div>
+      <p className="text-[11px] text-panel-muted -mt-1">
+        Bu ürün sepetteyken müşteriye önerilecek ürünler. Boş bırakırsanız sistem
+        <b> birlikte satılanlardan</b> otomatik seçer.
+      </p>
+      {picked.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {picked.map(slug => (
+            <span key={slug}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 text-xs">
+              {bySlug[slug]?.title?.slice(0, 30) || slug}
+              <button onClick={() => toggle(slug)} className="hover:text-red-400">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {picked.length < 6 && (
+        <>
+          <input className="input" value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Ürün ara ve ekle…" />
+          {results.length > 0 && (
+            <div className="space-y-1">
+              {results.map(p => (
+                <button key={p.id} onClick={() => { toggle(p.slug); setQ('') }}
+                  className="w-full flex items-center gap-2 text-left text-sm px-3 py-1.5 rounded-lg hover:bg-panel-input">
+                  <span className="truncate">{p.title}</span>
+                  <span className="ml-auto text-xs text-panel-muted">+ ekle</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 function CustomFieldsEditor({ product, onChanged, setMsg }) {
   const { storeId } = useStore()
   const [fields, setFields] = useState(product.custom_fields || [])

@@ -1798,6 +1798,105 @@ def account_address(
     return {"default_address": customer.default_address}
 
 
+@router.get("/{store_slug}/cart-suggestions")
+def cart_suggestions(
+    store_slug: str,
+    slugs: str = Query("", max_length=2000),   # sepetteki ürün slug'ları (virgüllü)
+    limit: int = Query(3, ge=1, le=6),
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Sepette 'bunu da ekleyin' önerileri (cross-sell).
+
+    Sıralama: (1) panelden ürüne özel seçilen öneriler, (2) BİRLİKTE SATILAN
+    ürünler (geçmiş siparişlerden öğrenilir), (3) aynı koleksiyondan çok
+    satanlar. Sepettekiler ve stoksuzlar elenir."""
+    from collections import Counter
+
+    from app.models import CatalogCollection, LineItem, Order
+
+    store = _resolve_store(db, store_slug)
+    in_cart = {s.strip() for s in slugs.split(",") if s.strip()}
+
+    picked: list[str] = []
+
+    def _add(slug_list) -> None:
+        for s in slug_list:
+            if s and s not in in_cart and s not in picked:
+                picked.append(s)
+
+    products = {
+        p.slug: p for p in db.scalars(
+            select(CatalogProduct).where(
+                CatalogProduct.store_id == store.id,
+                CatalogProduct.status == "active",
+            ).options(selectinload(CatalogProduct.images), selectinload(CatalogProduct.variants))
+        ).all()
+    }
+
+    # 1) Panelden elle seçilen öneriler (ürün.cross_sell_slugs)
+    for slug in in_cart:
+        p = products.get(slug)
+        if p:
+            _add(p.cross_sell_slugs or [])
+
+    # 2) Birlikte satılanlar — aynı siparişte geçmiş ürünler
+    if in_cart and len(picked) < limit:
+        cart_ids = [str(products[s].id) for s in in_cart if s in products]
+        if cart_ids:
+            order_ids = db.scalars(
+                select(LineItem.order_id).join(Order, LineItem.order_id == Order.id)
+                .where(Order.store_id == store.id,
+                       LineItem.product_id.in_(cart_ids)).limit(500)
+            ).all()
+            if order_ids:
+                together = db.scalars(
+                    select(LineItem.product_id).where(
+                        LineItem.order_id.in_(order_ids),
+                        LineItem.product_id.isnot(None),
+                        LineItem.product_id.notin_(cart_ids),
+                    ).limit(2000)
+                ).all()
+                by_id = {str(p.id): p.slug for p in products.values()}
+                _add([by_id.get(str(pid)) for pid, _ in Counter(together).most_common(20)])
+
+    # 3) Aynı koleksiyondan tamamlayıcılar, yoksa en yeni ürünler
+    if len(picked) < limit:
+        coll_slugs: list[str] = []
+        for slug in in_cart:
+            p = products.get(slug)
+            if p:
+                coll_slugs += [c.slug for c in (p.collections or [])]
+        if coll_slugs:
+            same = db.scalars(
+                select(CatalogProduct).join(CatalogProduct.collections)
+                .where(CatalogProduct.store_id == store.id,
+                       CatalogProduct.status == "active",
+                       CatalogCollection.slug.in_(coll_slugs))
+                .order_by(CatalogProduct.position).limit(30)
+            ).all()
+            _add([p.slug for p in same])
+        _add(sorted(products, key=lambda s: products[s].position)[:20])
+
+    out = []
+    for slug in picked[:limit]:
+        p = products.get(slug)
+        if not p:
+            continue
+        if p.variants and not any(
+                (not v.track_stock) or v.quantity > 0 for v in p.variants if v.is_active):
+            continue   # tamamen stoksuz ürünü önerme
+        out.append({
+            "slug": p.slug,
+            "title": p.title,
+            "price": str(p.base_price),
+            "compare_at_price": str(p.compare_at_price) if p.compare_at_price else None,
+            "currency": "TRY",
+            "cover_image": f"/storage/{p.images[0].file_path}" if p.images else None,
+        })
+    return {"items": out}
+
+
 # ─── Canlı görünüm (live view) presence ping'i ───────────────
 
 class PresenceIn(BaseModel):

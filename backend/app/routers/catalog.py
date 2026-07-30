@@ -76,6 +76,8 @@ class ProductUpdate(BaseModel):
     position: int | None = None
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
     custom_fields: list[dict] | None = None   # kişiye özel alanlar (aşağıda temizlenir)
+    # Sepette 'bunu da ekleyin' önerileri — ürün slug listesi (en fazla 6)
+    cross_sell_slugs: list[str] | None = None
     models_per_item: int | None = Field(None, ge=1, le=2)
     video_url: str | None = Field(None, max_length=500)
 
@@ -210,6 +212,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
         "position": p.position,
         "variant_set_id": str(p.variant_set_id) if p.variant_set_id else None,
         "custom_fields": p.custom_fields or [],
+        "cross_sell_slugs": p.cross_sell_slugs or [],
         "models_per_item": p.models_per_item or 1,
         "video_url": p.video_url,
         "publish_at": p.publish_at.isoformat() if p.publish_at else None,

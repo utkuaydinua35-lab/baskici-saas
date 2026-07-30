@@ -976,16 +976,31 @@ def delete_mold(
 
 
 def _delete_mold_inner(db: Session, mold, user) -> tuple[str, int]:
-    """Kalip silme cekirdek mantigi (commit yapMAZ). delete_mold + toplu silme paylasir."""
+    """Kalip silme cekirdek mantigi (commit yapMAZ). delete_mold + toplu silme paylasir.
+
+    ★ ÇİFT BASKI KORUMASI ★ Kalip BASILMISSA icindeki kalemler URETILMISTIR;
+    plana geri DONMEZLER, 'uretildi' isaretlenir. Eskiden basili/basisiz ayrimi
+    YOKTU: basilmis bir kalibi silmek tum kalemleri plana geri donduruyor ve
+    ayni urunler ikinci kez basiliyordu.
+    Basilmamis kalipta eski davranis aynen surer (kalemler plana doner).
+    Slot bazinda 'hazir' isaretli kalemler de uretilmis sayilir.
+    """
     kalip_kodu = mold.kod
     stage_at_delete = mold.current_stage
     items_count = len(mold.items)
+    _basildi = (mold.print_status == "basildi") or ((mold.current_stage or 0) >= 5)
+    _uretildi = 0
     for mi in list(mold.items):
-        _replan_mold_item(db, user.tenant_id, mi)
+        _c = _basildi or bool(mi.is_hazir)
+        if _c:
+            _uretildi += 1
+        _replan_mold_item(db, user.tenant_id, mi, cancel=_c)
+    _not = (f"Kalip '{kalip_kodu}' silindi — {_uretildi} slot URETILDI sayildi, "
+            f"{items_count - _uretildi} slot plana dondu")
     db.add(MoldStatusHistory(
         tenant_id=user.tenant_id, mold_id=mold.id,
         from_stage=stage_at_delete, to_stage=None, action="deleted",
-        note=f"Kalip '{kalip_kodu}' silindi ({items_count} slot geri planlandi)",
+        note=_not,
         created_by=user.email if hasattr(user, "email") else None,
     ))
     db.flush()

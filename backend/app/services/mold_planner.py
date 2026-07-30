@@ -373,14 +373,6 @@ def plan_molds(
             pid = str(li.product_id) if li.product_id else None
             if pid and (order_store_id, pid) in acc_keys:
                 continue  # aksesuar — kalipa da eksik listesine de girmez
-            # ★ İKİNCİ KORUMA ★ Siparişin üretimi zaten bitmişse (Baskı Tamam ve
-            # sonrası) kalemi SESSİZCE plana alma. Bayraklar bir şekilde sıfırlanmış
-            # olabilir (silinen kalıp, elle müdahale); o zaman ürün ikinci kez
-            # basılıyordu. Atmıyoruz — EKSİKLER listesinde görünür kılıyoruz ki
-            # gerçekten basılması gerekiyorsa fark edip elle ekleyebilesin.
-            if (getattr(order, "current_stage", 0) or 0) >= 6:
-                add_eksik("siparis_uretimi_bitmis", li, order, extract_phone_model(li))
-                continue
             # Couple (cift kilif): 2 ayri tasarim, 2 birim — YARI BAZINDA ele alinir
             couple = couple_map.get((order_store_id, pid)) if pid else None
 

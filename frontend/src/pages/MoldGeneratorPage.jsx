@@ -23,7 +23,6 @@ const REASON_LABELS = {
   model_taninmadi: 'Model tanınmadı',
   baski_dosyasi_yok: 'Baskı dosyası yüklenmemiş (hazır mockup)',
   varyasyon_eksik: 'Varyasyon eksik — kalıp oluşturmadan önce tamamlanmalı',
-  siparis_uretimi_bitmis: 'Siparişin üretimi bitmiş (Baskı Tamam ve sonrası) — tekrar basılmasın diye plana alınmadı',
 }
 
 export default function MoldGeneratorPage() {

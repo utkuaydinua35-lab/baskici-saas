@@ -325,7 +325,7 @@ def _get_mold(db, mold_id, tenant_id):
     return mo
 
 
-def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> None:
+def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> bool:
     """Kalip slot'unu plana geri dondur (cancel=False) YA DA 'geri dönmesin' diye kalıcı
     hariç işaretle (cancel=True -> ilgili yarı is_hazir; planlayıcı ve resync bunu atlar).
     line_item_id varsa onu; YOKSA order_number + design_code/model ile esle.
@@ -352,12 +352,12 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> No
         li = db.scalar(select(LineItem).where(LineItem.id == mi.line_item_id))
         if li:
             _apply(li)
-            return
+            return True
         # li yok (sync sildi/yeniden olusturdu) -> asagidaki fallback ile yeniden bul
     # 2) Fallback: order_number ile o siparisin KALIBA EKLENMIS line item'lari
     # (KRITIK: eskiden design_code YOKSA hic sifirlanmiyor, urun kalici KAYBOLUYORDU.)
     if not mi.order_number:
-        return
+        return False
     cands = db.scalars(
         select(LineItem)
         .join(Order, LineItem.order_id == Order.id)
@@ -368,7 +368,7 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> No
         )
     ).all()
     if not cands:
-        return
+        return False
     # ★ ÇİFT BASKI KORUMASI ★ — Hâlâ BAŞKA bir fiziksel kalıp slotu olan kalemi ASLA
     # serbest bırakma. Aksi halde: bu slotun kalemi bulunamayınca tahminle kardeş kalem
     # seçiliyor, onun bayrağı sıfırlanıyor, planlayıcı onu YENİ bir kalıba ekliyor ve
@@ -384,7 +384,7 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> No
     ).all())
     cands = [c for c in cands if c.id not in _busy]
     if not cands:
-        return
+        return False
     from app.services.phone_models import normalize_key
     pick = cands
     # 3) Modele gore daralt (bir slot = bir line item; yanlis kardesi geri planlama)
@@ -398,9 +398,17 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> No
         _dm = [c for c in pick if c.assigned_design and c.assigned_design.code == str(mi.design_code)]
         if _dm:
             pick = _dm
-    # En az BIR kalem her zaman geri planlanir (kayip onlenir). Plandaki cift-planlama
-    # korumasi zaten hala kalipta olan kardesi tekrar eklemez.
+    # ★ TAHMİN SINIRI ★
+    # cancel=False (plana geri döndür): belirsizlikte tahmin GÜVENLİ — yanlış kardeşi
+    #   plana döndürsek bile çift-planlama koruması onu tekrar kalıba eklemez.
+    # cancel=True (üretildi işaretle): belirsizlikte tahmin TEHLİKELİ — yanlış kardeşi
+    #   "basıldı" sayarsak o ürün hiç basılmaz ve sipariş EKSİK gider. Bu yüzden
+    #   kesin eşleşme yoksa HİÇBİR kaleme dokunmayız; slot yine de kalıptan silinir,
+    #   kalem plandaki yerinde kalır ve basılır.
+    if cancel and len(pick) != 1:
+        return False
     _apply(pick[0])
+    return True
 
 
 def _serialize_mold_detail(mo, db):
@@ -803,7 +811,12 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     elif payload.action == "cancel":
         # Kalıptan çıkar ve plana DÖNMESİN — kalemi kalıcı 'hazır/hariç' işaretle
         # (yoksa "🔧 Kayıp siparişleri tara" bunları yanlışlıkla geri planlıyordu).
-        _replan_mold_item(db, user.tenant_id, it, cancel=True)
+        _cancel_ok = _replan_mold_item(db, user.tenant_id, it, cancel=True)
+        if not _cancel_ok:
+            # Slotun hangi kaleme ait oldugu KESIN degil (bag kopuk + kardes kalemler
+            # ayirt edilemiyor). Yanlis kalemi "basildi" saymaktansa hicbirine
+            # dokunmuyoruz: kalem planda kalir ve basilir. Eksik siparis riski yok.
+            note += " · ⚠ hangi kaleme ait olduğu kesin değil — kalem üretildi İŞARETLENMEDİ"
         _log_mold(db, mo, user, action="item_cancel", note=note, payload=_undo)
     else:
         raise HTTPException(status_code=400, detail="Geçersiz işlem")
@@ -990,13 +1003,21 @@ def _delete_mold_inner(db: Session, mold, user) -> tuple[str, int]:
     items_count = len(mold.items)
     _basildi = (mold.print_status == "basildi") or ((mold.current_stage or 0) >= 5)
     _uretildi = 0
+    _belirsiz = 0
     for mi in list(mold.items):
         _c = _basildi or bool(mi.is_hazir)
-        if _c:
+        _ok = _replan_mold_item(db, user.tenant_id, mi, cancel=_c)
+        if _c and _ok:
             _uretildi += 1
-        _replan_mold_item(db, user.tenant_id, mi, cancel=_c)
+        elif _c and not _ok:
+            # Hangi kaleme ait oldugu KESIN degil -> "uretildi" DEMEYIZ. Kalem
+            # planda kalir ve basilir; eksik siparis riskini almayiz.
+            _belirsiz += 1
     _not = (f"Kalip '{kalip_kodu}' silindi — {_uretildi} slot URETILDI sayildi, "
-            f"{items_count - _uretildi} slot plana dondu")
+            f"{items_count - _uretildi - _belirsiz} slot plana dondu")
+    if _belirsiz:
+        _not += (f", {_belirsiz} slot hangi kaleme ait oldugu KESIN OLMADIGI icin "
+                 "dokunulmadi (planda kalir)")
     db.add(MoldStatusHistory(
         tenant_id=user.tenant_id, mold_id=mold.id,
         from_stage=stage_at_delete, to_stage=None, action="deleted",

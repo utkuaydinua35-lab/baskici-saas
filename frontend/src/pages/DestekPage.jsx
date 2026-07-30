@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 
 const STATUS_LABEL = { acik: 'Açık', cevaplandi: 'Cevaplandı', kapali: 'Kapalı' }
@@ -295,7 +296,18 @@ export default function DestekPage() {
               {active.order_detail?.found && (
                 <div className="mb-3 rounded-lg bg-brand-input/30 border border-brand-border/60 px-3 py-2">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-semibold text-gray-300">📦 Sipariş detayı · {active.order_detail.total_qty} ürün</span>
+                    <span className="text-[11px] font-semibold text-gray-300 flex items-center gap-2 flex-wrap">
+                      <span>📦 Sipariş detayı · {active.order_detail.total_qty} ürün</span>
+                      {(active.order_detail.id || active.order_detail.order_number) && (
+                        <Link
+                          to={`/orders/${active.order_detail.id || active.order_detail.order_number}`}
+                          className="text-accent hover:underline font-normal"
+                          title="Bu siparişin detay sayfasını aç"
+                        >
+                          sipariş detayı →
+                        </Link>
+                      )}
+                    </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${active.order_detail.cancelled ? 'bg-red-500/15 text-red-300' : (active.order_detail.fulfillment_status === 'fulfilled' || (active.order_detail.stage || 0) >= 8) ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-400'}`}>
                       {active.order_detail.cancelled ? 'İptal' : (active.order_detail.stage_label || '—')}
                     </span>

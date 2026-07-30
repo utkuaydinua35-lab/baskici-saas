@@ -120,6 +120,9 @@ def _order_detail_for_thread(db: Session, t: SupportThread) -> dict | None:
     _ki = o.kargo_info or {}
     return {
         "found": True,
+        # Panel içi bağlantı için sipariş kimliği — order_number mağazalar arasında
+        # tekrar edebiliyor, UUID tek anlamlı.
+        "id": str(o.id),
         "order_number": o.order_number,
         "customer_name": o.customer_name,
         "stage": o.current_stage,

@@ -12,6 +12,7 @@ export default function TerkSepetlerPage() {
   const [page, setPage] = useState(1)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState(null)
+  const [detailId, setDetailId] = useState(null)   // açık sepet detayı
 
   const storefrontUrl = (store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : '')).replace(/\/$/, '')
@@ -24,14 +25,16 @@ export default function TerkSepetlerPage() {
   }, [storeId, page, tab])
   useEffect(() => { load() }, [load])
 
-  const copyLink = async (s) => {
+  const copyLink = async (s, e) => {
+    e?.stopPropagation?.()
     try {
       await navigator.clipboard.writeText(`${storefrontUrl}/sepet?restore=${s.lookup_token}`)
       toast.success('Ödeme linki kopyalandı')
     } catch { toast.error('Kopyalanamadı') }
   }
 
-  const sendReminder = async (s) => {
+  const sendReminder = async (s, e) => {
+    e?.stopPropagation?.()   // satır tıklaması detayı açmasın
     setBusyId(s.id); setError('')
     try { await api.post(`/api/checkout-sessions/${s.id}/reminder`, {}); await load() }
     catch (e) { setError(typeof e?.detail === 'string' ? e.detail : 'Hatırlatma gönderilemedi') }
@@ -82,7 +85,8 @@ export default function TerkSepetlerPage() {
             {data.items.map(s => {
               const [label, cls] = STATUS[s.status] || [s.status, 'text-panel-muted']
               return (
-                <tr key={s.id} className="border-t border-panel-border">
+                <tr key={s.id} onClick={() => setDetailId(s.id)}
+                  className="border-t border-panel-border hover:bg-panel-input/50 cursor-pointer transition">
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{s.customer_name || '—'}</div>
                     <div className="text-xs text-panel-muted">{s.email}</div>
@@ -104,13 +108,13 @@ export default function TerkSepetlerPage() {
                     {s.status === 'draft' ? (
                       <div className="flex items-center gap-1.5">
                         {s.reminder_sent_at && <span className="text-xs text-emerald-300" title="Ödeme linki e-postalandı">✉✓</span>}
-                        <button onClick={() => copyLink(s)} className="btn-ghost !py-1 text-xs">🔗 Linki Kopyala</button>
+                        <button onClick={e => copyLink(s, e)} className="btn-ghost !py-1 text-xs">🔗 Linki Kopyala</button>
                       </div>
                     ) : s.reminder_sent_at ? (
                       <span className="text-xs text-emerald-300"
                         title={new Date(s.reminder_sent_at).toLocaleString('tr-TR')}>✓ Gönderildi</span>
                     ) : (
-                      <button onClick={() => sendReminder(s)} disabled={busyId === s.id}
+                      <button onClick={e => sendReminder(s, e)} disabled={busyId === s.id}
                         className="btn-ghost !py-1 text-xs">
                         {busyId === s.id ? 'Gönderiliyor…' : '✉ Hatırlat'}
                       </button>
@@ -139,9 +143,132 @@ export default function TerkSepetlerPage() {
       )}
 
       <p className="text-xs text-panel-muted max-w-2xl">
-        Hatırlatma sepet başına <b>1 kez</b> gönderilebilir (KVKK). Otomatik gönderim
-        Ayarlar sayfasından açılır.
+        Satıra tıklayarak sepetin içeriğini, müşteri bilgilerini ve
+        <b> müşterinin hangi aşamada vazgeçtiğini</b> görebilirsiniz.
+        Hatırlatma sepet başına <b>1 kez</b> gönderilebilir (KVKK).
       </p>
+
+      {detailId && (
+        <AbandonedDetail id={detailId} storefrontUrl={storefrontUrl}
+          onClose={() => setDetailId(null)} />
+      )}
+    </div>
+  )
+}
+
+// Terk edilen sepetin dökümü + NEREDE VAZGEÇTİ analizi
+function AbandonedDetail({ id, storefrontUrl, onClose }) {
+  const [d, setD] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    api.get(`/api/checkout-sessions/${id}`).then(setD)
+      .catch(e => setErr(typeof e?.detail === 'string' ? e.detail : 'Yüklenemedi'))
+  }, [id])
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="card w-full max-w-2xl max-h-[88vh] overflow-y-auto space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-semibold">🛒 Terk Edilen Sepet</h2>
+          <button onClick={onClose} className="ml-auto text-panel-muted hover:text-panel-ink">×</button>
+        </div>
+        {err && <p className="text-sm text-red-400">{err}</p>}
+        {!d ? <p className="text-sm text-panel-muted">Yükleniyor…</p> : (
+          <>
+            {/* NEREDE VAZGEÇTİ — huni şeridi */}
+            <div className="rounded-xl bg-panel-input/60 p-3 space-y-2">
+              <div className="flex items-center gap-1">
+                {d.funnel.steps.map((st, i) => (
+                  <div key={st.key} className="flex-1 flex items-center gap-1">
+                    <div className={`flex-1 h-1.5 rounded-full ${
+                      st.done ? 'bg-emerald-500/100' : 'bg-panel-border'}`}
+                      title={st.label} />
+                    {i === d.funnel.steps.length - 1 && (
+                      <span className="text-[10px] text-panel-muted whitespace-nowrap">ödeme</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="text-sm">
+                <b>Son aşama: {d.funnel.label}</b>
+                <span className="text-panel-muted"> — burada vazgeçti</span>
+              </div>
+              {d.funnel.reason && (
+                <p className="text-xs text-panel-muted">🔍 {d.funnel.reason}</p>
+              )}
+              {d.funnel.action && (
+                <p className="text-xs text-emerald-300">💡 {d.funnel.action}</p>
+              )}
+            </div>
+
+            {/* Müşteri */}
+            <div className="grid sm:grid-cols-2 gap-3 text-sm">
+              <div className="space-y-1">
+                <div className="text-xs text-panel-muted">Müşteri</div>
+                <div className="font-medium">{d.customer.name || '—'}</div>
+                {d.customer.email && (
+                  <a href={`mailto:${d.customer.email}`} className="block text-xs text-panel-accent hover:underline">
+                    ✉️ {d.customer.email}
+                  </a>
+                )}
+                {d.customer.phone && (
+                  <a href={`https://wa.me/9${d.customer.phone.replace(/\D/g, '')}`}
+                    target="_blank" rel="noreferrer"
+                    className="block text-xs text-emerald-300 hover:underline">
+                    💬 WhatsApp: {d.customer.phone}
+                  </a>
+                )}
+                {(d.customer.city || d.customer.province) && (
+                  <div className="text-xs text-panel-muted">
+                    📍 {[d.customer.province, d.customer.city].filter(Boolean).join(' / ')}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-panel-muted">Tutar</div>
+                <div className="font-medium tabular-nums">{fmt(d.amount)}</div>
+                <div className="text-xs text-panel-muted">
+                  kargo {fmt(d.shipping_amount)}
+                  {Number(d.discount_amount) > 0 && ` · indirim ${fmt(d.discount_amount)}`}
+                  {d.discount_code && ` (${d.discount_code})`}
+                </div>
+                <div className="text-xs text-panel-muted">
+                  {d.created_at && new Date(d.created_at).toLocaleString('tr-TR')}
+                </div>
+              </div>
+            </div>
+
+            {/* Sepet içeriği */}
+            <div>
+              <div className="text-xs text-panel-muted mb-1">Sepetteki ürünler</div>
+              <div className="space-y-1">
+                {d.items.map((it, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm border border-panel-border rounded-xl px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="truncate">{it.title}</div>
+                      <div className="text-xs text-panel-muted">
+                        {[it.model, it.variation].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <div className="ml-auto text-xs text-panel-muted whitespace-nowrap">
+                      {it.quantity} × {fmt(it.unit_price)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => {
+                navigator.clipboard.writeText(`${storefrontUrl}${d.restore_url}`)
+              }} className="btn-ghost !py-1.5 text-xs">🔗 Sepeti geri yükleme linkini kopyala</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

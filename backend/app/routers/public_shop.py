@@ -493,6 +493,13 @@ def create_checkout(
             500, "Ödeme sistemi şu an hizmet veremiyor. Lütfen daha sonra tekrar deneyin "
                  "ya da WhatsApp üzerinden bize ulaşın.")
 
+    # Müşteri formu doldurdu ve sağlayıcıya yönlendi — buradan sonra
+    # dönmezse sebep genelde kart/3D/POS kaynaklıdır (terk analizi)
+    from datetime import datetime as _dt, timezone as _tz
+    session.last_stage = "provider_redirect"
+    session.last_stage_at = _dt.now(_tz.utc)
+    db.commit()
+
     return {
         "token": session.token,
         "mode": init.mode,          # redirect | iframe
@@ -1833,6 +1840,13 @@ def presence_ping(
     row.last_seen = now
     row.last_path = (body.path or "")[:300] or None
     row.cart_items = body.cart_items
+    # Ulaşılan en ileri huni aşaması — "nerede vazgeçti" analizi
+    from app.services import funnel
+    new_stage = funnel.merge_stage(
+        row.stage, funnel.stage_from_path(body.path, body.cart_items))
+    if new_stage != row.stage:
+        row.stage = new_stage
+        row.stage_at = now
     db.commit()
     return {"ok": True}
 

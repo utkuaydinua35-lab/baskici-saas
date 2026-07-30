@@ -86,6 +86,86 @@ def list_abandoned(
             "items": [_serialize(s) for s in rows]}
 
 
+@router.get("/{session_id}", response_model=dict)
+def abandoned_detail(
+    session_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Terk edilen sepetin tam dökümü + NEREDE VAZGEÇTİĞİ analizi.
+
+    Aşama, ziyaretçi ping'leri (presence) ve ödeme oturumundan birleştirilir;
+    her aşamanın tipik sebebi ve önerilen aksiyon döner."""
+    from app.models import StorefrontPresence
+    from app.services import funnel
+
+    s = db.scalar(select(CheckoutSession).where(
+        CheckoutSession.id == session_id,
+        CheckoutSession.tenant_id == user.tenant_id))
+    if not s:
+        raise HTTPException(404, "Sepet bulunamadı")
+
+    # Aşama: oturumun kendi ilerlemesi + (varsa) ziyaretçi ping'i
+    stage = s.last_stage or "checkout_opened"   # kayıt varsa en az form açılmış
+    if s.status == "failed":
+        stage = funnel.merge_stage(stage, "payment_failed")
+    presence = db.scalar(
+        select(StorefrontPresence).where(
+            StorefrontPresence.store_id == s.store_id,
+            StorefrontPresence.stage.isnot(None),
+        ).order_by(StorefrontPresence.last_seen.desc()).limit(1)
+    ) if not s.last_stage else None
+    if presence:
+        stage = funnel.merge_stage(stage, presence.stage)
+
+    cust = s.customer or {}
+    info = funnel.describe(stage)
+    # Huni: hangi adımlar tamamlandı (panelde görsel şerit)
+    steps = [
+        {"key": k, "label": funnel.STAGE_LABEL[k],
+         "done": funnel.STAGE_ORDER[k] <= funnel.STAGE_ORDER.get(stage, 0)}
+        for k in ("browsing", "cart", "checkout_opened", "form_completed",
+                  "provider_redirect")
+    ]
+    return {
+        "id": str(s.id),
+        "status": s.status,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "last_stage_at": (s.last_stage_at or s.created_at).isoformat()
+                         if (s.last_stage_at or s.created_at) else None,
+        "amount": str(s.amount),
+        "shipping_amount": str(s.shipping_amount or 0),
+        "discount_code": s.discount_code,
+        "discount_amount": str(s.discount_amount or 0),
+        "reminder_sent_at": s.reminder_sent_at.isoformat() if s.reminder_sent_at else None,
+        "restore_url": f"/sepet?restore={s.lookup_token}",
+        # Müşteri — iletişim kurabilmek için (KVKK: 90 günde temizlenir)
+        "customer": {
+            "name": f"{cust.get('first_name','')} {cust.get('last_name','')}".strip(),
+            "email": cust.get("email"),
+            "phone": cust.get("phone"),
+            "city": cust.get("city"),
+            "province": cust.get("province"),
+            "address1": cust.get("address1"),
+            "note": cust.get("note"),
+        },
+        # Sepet içeriği
+        "items": [
+            {
+                "title": i.get("title"),
+                "model": i.get("model_display"),
+                "variation": i.get("variation"),
+                "quantity": i.get("quantity", 1),
+                "unit_price": i.get("unit_price"),
+                "product_slug": i.get("product_slug"),
+            }
+            for i in (s.cart_snapshot or [])
+        ],
+        # NEREDE VAZGEÇTİ
+        "funnel": {**info, "steps": steps},
+    }
+
+
 @router.post("/{session_id}/reminder", response_model=dict)
 def send_reminder(
     session_id: uuid.UUID,

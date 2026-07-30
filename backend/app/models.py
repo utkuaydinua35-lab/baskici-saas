@@ -1571,6 +1571,11 @@ class CheckoutSession(Base):
         UUID(as_uuid=True), ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Ödeme akışında ulaşılan son aşama — "nerede vazgeçti" analizi
+    # (form_started | form_completed | provider_redirect | provider_returned)
+    last_stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    last_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Terk edilmiş sepet hatırlatması — session başına EN FAZLA 1 e-posta
     reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -1598,6 +1603,9 @@ class StorefrontPresence(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
     cart_items: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # Ulaşılan EN İLERİ huni aşaması (geri gitmez) — "nerede vazgeçti" analizi
+    stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class DiscountCode(Base):

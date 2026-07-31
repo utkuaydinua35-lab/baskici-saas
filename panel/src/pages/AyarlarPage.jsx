@@ -245,6 +245,8 @@ export default function AyarlarPage() {
           ['terk_sepet', 'Terk sepet hatırlatması', 'Sepetinizdeki ürünler sizi bekliyor 🛒'],
           ['odeme_linki', 'Ödeme linki (taslak sipariş)', 'Siparişiniz için ödeme bağlantınız 🧾'],
           ['stok', 'Stok bildirimi', '{Ürün} yeniden stokta 🔔'],
+          ['hosgeldin', 'Hoş geldin (bülten kaydı)', 'Aramıza hoş geldiniz — %10 indirim 🎁'],
+          ['yorum_daveti', 'Yorum daveti (teslimden 7 gün sonra)', 'Siparişinizi değerlendirir misiniz? ⭐'],
         ].map(([key, label, ph]) => {
           const t = (cfg.email_texts || {})[key] || {}
           const setT = (field) => (e) => setCfg(c => ({
@@ -384,6 +386,42 @@ export default function AyarlarPage() {
           ne soruyorsa buraya ekleyin — asistan yazılan mesajı anahtar
           kelimelerle bu listeden eşleştirir.
         </p>
+      </Section>
+      )}
+
+      {tab === 'eposta' && (
+      <Section title="Otomatik E-posta Akışları" icon="⚡">
+        <p className="text-[11px] text-panel-muted -mt-1">
+          Shopify'da ayrı uygulama gerektiren akışlar — burada yerleşik.
+        </p>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5"
+            checked={cfg.welcome_email_enabled !== false}
+            onChange={e => setCfg(c => ({ ...c, welcome_email_enabled: e.target.checked }))} />
+          <span>
+            🎁 Hoş geldin e-postası
+            <span className="block text-xs text-panel-muted">
+              Bültene abone olana anında kişiye özel, tek kullanımlık indirim kodu gider.
+            </span>
+          </span>
+        </label>
+        <Field label="Hoş geldin indirimi (%)">
+          <input className="input mt-1 !w-28" type="number" min="1" max="50"
+            value={cfg.welcome_discount_percent ?? ''} onChange={set('welcome_discount_percent')}
+            placeholder="10" />
+        </Field>
+        <label className="flex items-start gap-2 text-sm border-t border-panel-border pt-3">
+          <input type="checkbox" className="mt-0.5"
+            checked={cfg.review_invite_enabled !== false}
+            onChange={e => setCfg(c => ({ ...c, review_invite_enabled: e.target.checked }))} />
+          <span>
+            ⭐ Yorum daveti
+            <span className="block text-xs text-panel-muted">
+              Sipariş teslim edildikten 7 gün sonra değerlendirme daveti gönderilir
+              (sipariş başına tek sefer).
+            </span>
+          </span>
+        </label>
       </Section>
       )}
 

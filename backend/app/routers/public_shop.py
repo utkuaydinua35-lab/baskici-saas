@@ -1541,10 +1541,18 @@ def newsletter_subscribe(
     if not customer:
         customer = Customer(tenant_id=store.tenant_id, email=email)
         db.add(customer)
-    if not customer.accepts_marketing:
+    fresh = not customer.accepts_marketing
+    if fresh:
         customer.accepts_marketing = True
         customer.marketing_opted_at = datetime.now(timezone.utc)
     db.commit()
+    # Yeni aboneye hoş geldin + indirim kodu (tek sefer, best-effort)
+    if fresh:
+        try:
+            from app.services.email_flows import send_welcome
+            send_welcome(db, store, customer)
+        except Exception as e:  # noqa: BLE001 — kayıt başarılı sayılır
+            print(f"[flows] hoş geldin gönderilemedi: {e}")
     return {"ok": True, "message": "Aboneliğiniz alındı 🎉"}
 
 

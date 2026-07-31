@@ -47,11 +47,12 @@ _SECRET_CFG_KEYS = {
     "meta_capi_token",
 }
 _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled",
-              "support_chat_enabled"}
+              "support_chat_enabled", "welcome_email_enabled", "review_invite_enabled"}
 # E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
-_EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok"}
+_EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok",
+                     "hosgeldin", "yorum_daveti"}
 ALLOWED_KEYS = (_MONEY_KEYS | _TAX_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
-                | {"email_texts", "support_faq"})
+                | {"email_texts", "support_faq", "welcome_discount_percent"})
 
 
 def _sanitize_support_faq(value) -> list:

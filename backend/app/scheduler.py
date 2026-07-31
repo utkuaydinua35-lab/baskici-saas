@@ -185,6 +185,20 @@ def _instagram_daily_job():
         db.close()
 
 
+def _review_invite_job():
+    """Teslimden N gün sonra yorum daveti — günde bir."""
+    from app.database import SessionLocal
+    from app.services.email_flows import send_review_invites
+    db = SessionLocal()
+    try:
+        res = send_review_invites(db)
+        logger.info("[scheduler] yorum daveti: %s", res)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[scheduler] yorum daveti hatasi: %s", e)
+    finally:
+        db.close()
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -214,6 +228,8 @@ def start_scheduler():
     _scheduler.add_job(lambda: _cleanup_uploads(14), "interval", hours=24,
                        id="cleanup_support_uploads", max_instances=1, coalesce=True)
     # Asama otomasyonu — her 10 dk (zaman bazli gecisler)
+    _scheduler.add_job(_review_invite_job, "cron", hour=11, minute=0,
+                       id="review_invite", replace_existing=True)
     _scheduler.add_job(_stage_job, "interval", minutes=10,
                        id="stage_automation", max_instances=1, coalesce=True)
     # Sabah ozeti — her gun 08:00 (Europe/Istanbul)

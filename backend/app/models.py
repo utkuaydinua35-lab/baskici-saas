@@ -410,6 +410,10 @@ class Order(Base):
         JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
     )
     barkod_kodu: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Yorum daveti e-postası (teslimden N gün sonra) — sipariş başına TEK sefer
+    review_invite_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # ─── Telafiler: hatali model/yanlis hazirlama yuzunden tekrar gonderilecek siparisler ───
     is_telafi: Mapped[bool] = mapped_column(
@@ -1700,6 +1704,10 @@ class Customer(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Bülten aboneliği (KVKK: açık rıza — opt-in zamanı saklanır)
+    # Hoş geldin e-postası (bülten kaydı) — müşteri başına TEK sefer
+    welcome_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     accepts_marketing: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )

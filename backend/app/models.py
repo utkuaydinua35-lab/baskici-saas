@@ -1967,8 +1967,15 @@ class ProductReview(Base):
     )
 
     author_name: Mapped[str] = mapped_column(String(60))
-    rating: Mapped[int] = mapped_column(Integer)          # 1-5
+    # review = yıldızlı yorum (satın alma şartlı) | question = ürün sorusu
+    kind: Mapped[str] = mapped_column(
+        String(20), default="review", server_default=text("'review'")
+    )
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)   # 1-5 (soruda yok)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Soru-cevap: mağazanın yanıtı (yalnız yanıtlanmış sorular vitrinde görünür)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), default="pending", server_default=text("'pending'"), index=True
     )

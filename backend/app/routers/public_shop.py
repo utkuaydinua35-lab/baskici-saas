@@ -1197,7 +1197,8 @@ def list_reviews(
         raise HTTPException(404, "Ürün bulunamadı")
 
     base = select(ProductReview).where(
-        ProductReview.product_id == product.id, ProductReview.status == "approved")
+        ProductReview.product_id == product.id, ProductReview.status == "approved",
+        ProductReview.kind == "review")
     total = db.scalar(select(sql_func.count()).select_from(base.subquery())) or 0
     rows = db.scalars(base.order_by(ProductReview.created_at.desc())
                       .offset((page - 1) * 10).limit(10)).all()
@@ -1216,6 +1217,81 @@ def list_reviews(
             for r in rows
         ],
     }
+
+
+class QuestionIn(BaseModel):
+    product_slug: str = Field(..., max_length=200)
+    author_name: str = Field(..., min_length=2, max_length=60)
+    question: str = Field(..., min_length=5, max_length=1000)
+
+
+@router.get("/{store_slug}/products/{product_slug}/questions")
+def list_questions(
+    store_slug: str,
+    product_slug: str,
+    response: Response,
+    _rl: None = Depends(read_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Ürün soru-cevapları — YALNIZCA yanıtlanmış ve onaylanmış olanlar."""
+    from app.models import ProductReview
+
+    store = _resolve_store(db, store_slug)
+    product = db.scalar(select(CatalogProduct).where(
+        CatalogProduct.store_id == store.id, CatalogProduct.slug == product_slug))
+    if not product:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    rows = db.scalars(
+        select(ProductReview).where(
+            ProductReview.product_id == product.id,
+            ProductReview.kind == "question",
+            ProductReview.status == "approved",
+            ProductReview.answer.isnot(None),
+        ).order_by(ProductReview.answered_at.desc()).limit(20)
+    ).all()
+    response.headers["Cache-Control"] = "public, max-age=120"
+    return {"items": [
+        {
+            "author": _mask_author(r.author_name),
+            "question": r.comment,
+            "answer": r.answer,
+            "answered_at": r.answered_at.date().isoformat() if r.answered_at else None,
+        }
+        for r in rows
+    ]}
+
+
+@router.post("/{store_slug}/questions", status_code=201)
+def create_question(
+    store_slug: str,
+    body: QuestionIn,
+    request: Request,
+    _rl: None = Depends(status_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Ürün sorusu — satın alma şartı YOK (yorumdan farkı bu), ama yanıt
+    verilene ve onaylanana kadar vitrinde görünmez (spam koruması)."""
+    from app.models import ProductReview
+
+    store = _resolve_store(db, store_slug)
+    product = db.scalar(select(CatalogProduct).where(
+        CatalogProduct.store_id == store.id, CatalogProduct.slug == body.product_slug))
+    if not product:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    db.add(ProductReview(
+        tenant_id=store.tenant_id,
+        product_id=product.id,
+        kind="question",
+        author_name=body.author_name.strip()[:60],
+        comment=body.question.strip()[:1000],
+        rating=None,
+        status="pending",
+    ))
+    db.commit()
+    return {"ok": True,
+            "message": "Sorunuz iletildi — yanıtladığımızda ürün sayfasında görünecek"}
 
 
 @router.post("/{store_slug}/reviews", status_code=201)

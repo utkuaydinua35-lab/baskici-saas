@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -1671,6 +1671,7 @@ def shopify_images_status(
 def list_all_reviews(
     store_id: uuid.UUID,
     status_f: str = Query("pending", alias="status"),
+    kind: str = Query("review", pattern="^(review|question)$"),
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
@@ -1681,7 +1682,8 @@ def list_all_reviews(
         select(ProductReview, CatalogProduct.title, CatalogProduct.slug)
         .join(CatalogProduct, CatalogProduct.id == ProductReview.product_id)
         .where(CatalogProduct.store_id == store_id,
-               ProductReview.status == status_f)
+               ProductReview.status == status_f,
+               ProductReview.kind == kind)
         .order_by(ProductReview.created_at.desc()).limit(200)
     ).all()
     return {"items": [
@@ -1692,6 +1694,8 @@ def list_all_reviews(
             "author_name": r.ProductReview.author_name,
             "rating": r.ProductReview.rating,
             "comment": r.ProductReview.comment,
+            "kind": r.ProductReview.kind,
+            "answer": r.ProductReview.answer,
             "status": r.ProductReview.status,
             "verified": r.ProductReview.checkout_session_id is not None,
             "created_at": r.ProductReview.created_at.isoformat()
@@ -1711,12 +1715,22 @@ def moderate_review(
     from app.models import ProductReview
 
     action = (body or {}).get("action")
-    if action not in ("approve", "reject"):
-        raise HTTPException(422, "action approve|reject olmalı")
+    if action not in ("approve", "reject", "answer"):
+        raise HTTPException(422, "action approve|reject|answer olmalı")
     review = db.scalar(select(ProductReview).where(
         ProductReview.id == review_id, ProductReview.tenant_id == user.tenant_id))
     if not review:
-        raise HTTPException(404, "Yorum bulunamadı")
-    review.status = "approved" if action == "approve" else "rejected"
+        raise HTTPException(404, "Kayıt bulunamadı")
+
+    if action == "answer":
+        # Soruyu yanıtla — yanıtlanan soru otomatik yayına girer
+        text_ = str((body or {}).get("answer") or "").strip()[:2000]
+        if not text_:
+            raise HTTPException(422, "Yanıt boş olamaz")
+        review.answer = text_
+        review.answered_at = datetime.now(timezone.utc)
+        review.status = "approved"
+    else:
+        review.status = "approved" if action == "approve" else "rejected"
     db.commit()
-    return {"id": str(review.id), "status": review.status}
+    return {"id": str(review.id), "status": review.status, "answer": review.answer}

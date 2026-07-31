@@ -6,6 +6,7 @@ import Reveal from "@/components/Reveal";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
+import ProductQuestions from "@/components/ProductQuestions";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import TrustBadges from "@/components/TrustBadges";
 import FavButton from "@/components/FavButton";
@@ -186,6 +187,9 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </section>
       )}
+
+      {/* Ürün soru-cevap — satın alma şartı yok, yanıtlananlar yayınlanır */}
+      <ProductQuestions productSlug={product.slug} />
 
       <RecentlyViewed
         current={{

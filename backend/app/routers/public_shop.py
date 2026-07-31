@@ -672,6 +672,22 @@ def order_lookup(
             "takip_url": kargo.get("takip_url"),
             "firma": kargo.get("handler_name"),
         } if kargo.get("takip_no") else None,
+        # Kısmi kargolama: sipariş parça parça gönderildiyse her gönderi ayrı
+        # (müşteri "hangi ürünüm nerede" sorusunu buradan yanıtlar)
+        "gonderiler": [
+            {
+                "takip_no": s.takip_no,
+                "takip_url": s.takip_url,
+                "firma": s.kargo_firma,
+                "tarih": s.created_at.isoformat() if s.created_at else None,
+                "urunler": [
+                    {"title": i.get("title"), "variant_title": i.get("variant_title"),
+                     "quantity": i.get("quantity")}
+                    for i in (s.items or [])
+                ],
+            }
+            for s in (order.shipments or [])
+        ],
         "items": [
             {
                 "title": li.title,

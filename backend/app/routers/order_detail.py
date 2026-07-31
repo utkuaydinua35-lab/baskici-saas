@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -17,7 +17,7 @@ from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
-from app.services import mold_planner, storage
+from app.services import mold_planner, shipments as shipments_svc, storage
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
 router = APIRouter(prefix="/api/orders", tags=["order_detail"],
@@ -68,6 +68,7 @@ def _resolve_order(db: Session, order_ref: str, tenant_id, *, with_rels=True) ->
             selectinload(Order.status_history),
             selectinload(Order.customer_requests),
             selectinload(Order.email_logs),
+            selectinload(Order.shipments),
         ]
 
     order = None
@@ -527,6 +528,15 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         "invoice": raw.get("invoice") or None,
 
         "line_items": _li_list,
+        # Kargo: tek gönderi bilgisi (Basit Kargo/Shopify takip no) — panelin
+        # kargo kartı bunu okur; yanıtta yoktu, takip no hiç görünmüyordu
+        "kargo_info": ({
+            "takip_no": (order.kargo_info or {}).get("takip_no"),
+            "takip_url": (order.kargo_info or {}).get("takip_url"),
+            "handler_name": (order.kargo_info or {}).get("handler_name"),
+        } if (order.kargo_info or {}).get("takip_no") else None),
+        # Kısmi kargolama: gönderiler + kalem başına bekleyen adet
+        "shipping": shipments_svc.serialize(order),
         "status_history": [
             {
                 "id": str(h.id),
@@ -580,6 +590,65 @@ def get_order_detail(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    return _serialize_detail(order, db)
+
+
+# ─── Kısmi kargolama (Shopify fulfillment) ──────────────────
+
+class ShipmentItemIn(BaseModel):
+    line_item_id: uuid.UUID
+    quantity: int = Field(..., ge=1, le=1000)
+
+
+class ShipmentCreate(BaseModel):
+    items: list[ShipmentItemIn] = Field(..., min_length=1, max_length=100)
+    takip_no: str | None = Field(None, max_length=100)
+    kargo_firma: str | None = Field(None, max_length=100)
+    takip_url: str | None = Field(None, max_length=500)
+    note: str | None = Field(None, max_length=500)
+    send_email: bool = True
+
+
+@router.post("/{order_ref}/shipments", response_model=None)
+def create_shipment(
+    order_ref: str,
+    payload: ShipmentCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparişin bir bölümünü kargola. Tümü gönderildiyse aşama kargoda olur."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    try:
+        shipments_svc.create_shipment(
+            db, order,
+            items=[{"line_item_id": str(i.line_item_id), "quantity": i.quantity}
+                   for i in payload.items],
+            takip_no=payload.takip_no, kargo_firma=payload.kargo_firma,
+            takip_url=payload.takip_url, note=payload.note,
+            user_label=user.email, send_email=payload.send_email,
+        )
+    except shipments_svc.ShipmentError as e:
+        raise HTTPException(422, str(e))
+    db.commit()
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    return _serialize_detail(order, db)
+
+
+@router.delete("/{order_ref}/shipments/{shipment_id}", response_model=None)
+def remove_shipment(
+    order_ref: str,
+    shipment_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yanlış girilen gönderiyi geri al (adetler bekleyene döner)."""
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    try:
+        shipments_svc.delete_shipment(db, order, shipment_id, user_label=user.email)
+    except shipments_svc.ShipmentError as e:
+        raise HTTPException(404, str(e))
+    db.commit()
     order = _resolve_order(db, order_ref, user.tenant_id)
     return _serialize_detail(order, db)
 

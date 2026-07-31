@@ -14,6 +14,11 @@ interface OrderStatus {
   created_at: string | null;
   durum: { key: string; label: string; progress: number };
   kargo: { takip_no: string; takip_url: string | null; firma: string | null } | null;
+  gonderiler?: {
+    takip_no: string | null; takip_url: string | null; firma: string | null;
+    tarih: string | null;
+    urunler: { title: string; variant_title: string | null; quantity: number }[];
+  }[];
   items: { title: string; variant_title: string | null; quantity: number; product_slug?: string | null }[];
   amount: string;
   shipping_amount: string;
@@ -94,7 +99,44 @@ export default async function OrderTrackPage({
             );
           })}
         </div>
-        {order.kargo && (
+        {/* Kısmi kargolama: sipariş parça parça gittiyse her gönderi ayrı listelenir */}
+        {order.gonderiler && order.gonderiler.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            {order.gonderiler.map((g, i) => (
+              <div key={i} className="text-sm border border-zinc-200 rounded-xl px-3 py-2">
+                <div className="text-zinc-700">
+                  📦 {order.gonderiler!.length > 1 ? `${i + 1}. gönderi` : "Kargo"}
+                  {g.firma && <span className="text-zinc-500"> · {g.firma}</span>}
+                  {g.takip_no && (
+                    <>
+                      {" · "}
+                      {g.takip_url ? (
+                        <a href={g.takip_url} className="underline" target="_blank" rel="noopener">
+                          {g.takip_no}
+                        </a>
+                      ) : (
+                        <span className="font-mono">{g.takip_no}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <ul className="mt-1 text-xs text-zinc-500">
+                  {g.urunler.map((u, j) => (
+                    <li key={j}>
+                      {u.title}
+                      {u.variant_title ? ` — ${u.variant_title}` : ""} × {u.quantity}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {order.gonderiler.length > 1 && (
+              <p className="text-xs text-zinc-500">
+                Siparişiniz birden fazla pakette gönderildi.
+              </p>
+            )}
+          </div>
+        ) : order.kargo ? (
           <div className="mt-4 text-sm">
             <span className="text-zinc-500">Kargo:</span>{" "}
             {order.kargo.firma && <span>{order.kargo.firma} — </span>}
@@ -106,7 +148,7 @@ export default async function OrderTrackPage({
               <span className="font-mono">{order.kargo.takip_no}</span>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="mt-4 bg-white border border-zinc-200 rounded-2xl p-5">

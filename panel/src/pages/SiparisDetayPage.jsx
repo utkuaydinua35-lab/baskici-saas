@@ -180,37 +180,8 @@ export default function SiparisDetayPage() {
             </div>
           )}
 
-          {/* Kargo */}
-          <div className="card">
-            <h2 className="text-sm font-semibold mb-2">Kargo</h2>
-            {d.kargo_info?.takip_no ? (
-              <div className="text-sm space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">🚚</span>
-                  <div>
-                    {d.kargo_info.handler_name && (
-                      <div className="text-xs text-panel-muted">{d.kargo_info.handler_name}</div>
-                    )}
-                    {d.kargo_info.takip_url ? (
-                      <a href={d.kargo_info.takip_url} target="_blank" rel="noopener noreferrer"
-                        className="font-mono text-panel-accent hover:underline">
-                        {d.kargo_info.takip_no}
-                      </a>
-                    ) : (
-                      <span className="font-mono">{d.kargo_info.takip_no}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-panel-muted">Henüz kargoya verilmedi.</p>
-            )}
-            {d.kargo_deadline && (
-              <div className="mt-2 text-[11px] text-panel-muted">
-                Kargo sözü: {new Date(d.kargo_deadline).toLocaleDateString('tr-TR')}
-              </div>
-            )}
-          </div>
+          {/* Kargo — kısmi gönderiler dahil */}
+          <ShippingCard d={d} onChanged={load} />
 
           {/* Üretim durumu */}
           {!d.cancelled_at && (
@@ -793,6 +764,190 @@ function RequestsCard({ orderId }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ─── Kargo kartı — kısmi kargolama (Shopify fulfillment) ───────
+// Sipariş tek seferde de, parça parça da gönderilebilir. Kalan adet
+// sunucuda hesaplanır; buradaki adetler yalnızca öneridir, sunucu doğrular.
+function ShippingCard({ d, onChanged }) {
+  const [acik, setAcik] = useState(false)
+  const sh = d.shipping || { shipments: [], remaining: {}, fully_shipped: false }
+  const bekleyen = (d.line_items || [])
+    .map(li => ({ ...li, kalan: sh.remaining?.[li.id] ?? li.quantity }))
+    .filter(li => li.kalan > 0)
+  const ki = d.kargo_info || {}
+
+  const geriAl = async (sid) => {
+    if (!window.confirm('Bu gönderi kaydı silinecek, ürünler tekrar "bekliyor" olacak. Emin misiniz?')) return
+    try { await api.del(`/api/orders/${d.id}/shipments/${sid}`); onChanged() }
+    catch { window.alert('Gönderi geri alınamadı') }
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-2">
+        <h2 className="text-sm font-semibold">Kargo</h2>
+        {sh.partial && <Badge cls="bg-amber-50 text-amber-700">Kısmi</Badge>}
+        {sh.fully_shipped && <Badge cls="bg-emerald-50 text-emerald-700">Tümü gönderildi</Badge>}
+      </div>
+
+      {/* Gönderiler */}
+      {sh.shipments?.length > 0 ? (
+        <div className="space-y-2">
+          {sh.shipments.map((s, i) => (
+            <div key={s.id} className="text-xs border border-panel-border rounded-xl px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <span>🚚</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-panel-muted">
+                    {i + 1}. gönderi{s.kargo_firma ? ` · ${s.kargo_firma}` : ''}
+                    {s.created_at && ` · ${new Date(s.created_at).toLocaleDateString('tr-TR')}`}
+                  </div>
+                  {s.takip_no && (
+                    s.takip_url
+                      ? <a href={s.takip_url} target="_blank" rel="noopener noreferrer"
+                          className="font-mono text-panel-accent hover:underline">{s.takip_no}</a>
+                      : <span className="font-mono">{s.takip_no}</span>
+                  )}
+                </div>
+                <button onClick={() => geriAl(s.id)}
+                  className="text-panel-muted hover:text-red-600 text-[11px]">geri al</button>
+              </div>
+              <ul className="mt-1 text-panel-muted space-y-0.5">
+                {(s.items || []).map((it, j) => (
+                  <li key={j} className="truncate">
+                    · {it.title}{it.variant_title ? ` — ${it.variant_title}` : ''} × {it.quantity}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : ki.takip_no ? (
+        <div className="text-sm flex items-center gap-2">
+          <span className="text-lg">🚚</span>
+          <div>
+            {ki.handler_name && <div className="text-xs text-panel-muted">{ki.handler_name}</div>}
+            {ki.takip_url
+              ? <a href={ki.takip_url} target="_blank" rel="noopener noreferrer"
+                  className="font-mono text-panel-accent hover:underline">{ki.takip_no}</a>
+              : <span className="font-mono">{ki.takip_no}</span>}
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-panel-muted">Henüz kargoya verilmedi.</p>
+      )}
+
+      {bekleyen.length > 0 && !d.cancelled_at && (
+        <>
+          <div className="mt-2.5 pt-2.5 border-t border-panel-border text-xs text-panel-muted">
+            Bekleyen: {bekleyen.map(li => `${li.title} × ${li.kalan}`).join(' · ')}
+          </div>
+          <button onClick={() => setAcik(true)} className="btn-ghost text-xs mt-2 w-full">
+            📦 {sh.shipments?.length ? 'Kalanı kargola' : 'Kargola'}
+          </button>
+        </>
+      )}
+
+      {d.kargo_deadline && (
+        <div className="mt-2 text-[11px] text-panel-muted">
+          Kargo sözü: {new Date(d.kargo_deadline).toLocaleDateString('tr-TR')}
+        </div>
+      )}
+
+      {acik && (
+        <ShipmentModal orderId={d.id} bekleyen={bekleyen}
+          onClose={() => setAcik(false)}
+          onSaved={() => { setAcik(false); onChanged() }} />
+      )}
+    </div>
+  )
+}
+
+function ShipmentModal({ orderId, bekleyen, onClose, onSaved }) {
+  const [adet, setAdet] = useState(() =>
+    Object.fromEntries(bekleyen.map(li => [li.id, li.kalan])))
+  const [takipNo, setTakipNo] = useState('')
+  const [firma, setFirma] = useState('')
+  const [mail, setMail] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const secili = bekleyen.filter(li => Number(adet[li.id]) > 0)
+  const kaydet = async (e) => {
+    e.preventDefault()
+    setBusy(true); setErr('')
+    try {
+      await api.post(`/api/orders/${orderId}/shipments`, {
+        items: secili.map(li => ({ line_item_id: li.id, quantity: Number(adet[li.id]) })),
+        takip_no: takipNo.trim() || null,
+        kargo_firma: firma.trim() || null,
+        send_email: mail,
+      })
+      onSaved()
+    } catch (e2) {
+      setErr(typeof e2?.detail === 'string' ? e2.detail : 'Kaydedilemedi')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="absolute inset-0 bg-black/30" />
+      <form onSubmit={kaydet}
+        className="relative bg-panel-card rounded-2xl shadow-xl w-full max-w-md p-4 space-y-3">
+        <h3 className="text-sm font-semibold">Kargoya Ver</h3>
+        <p className="text-xs text-panel-muted -mt-1.5">
+          Yalnız hazır olanları gönderin; kalanlar için sonra ikinci gönderi
+          oluşturabilirsiniz. Müşteri her gönderiyi ayrı takip eder.
+        </p>
+
+        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+          {bekleyen.map(li => (
+            <div key={li.id} className="flex items-center gap-2 text-sm">
+              <input type="number" min="0" max={li.kalan} value={adet[li.id]}
+                onChange={e => setAdet(a => ({ ...a, [li.id]: e.target.value }))}
+                className="input !py-1 !w-16 text-center" />
+              <span className="text-panel-muted text-xs">/ {li.kalan}</span>
+              <span className="truncate flex-1 text-xs">
+                {li.title}{li.variant_title ? ` — ${li.variant_title}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Takip numarası</span>
+            <input className="input mt-1 font-mono" value={takipNo}
+              onChange={e => setTakipNo(e.target.value)} maxLength={100} />
+          </label>
+          <label className="block text-sm">
+            <span className="text-panel-muted text-xs">Kargo firması</span>
+            <input className="input mt-1" value={firma} onChange={e => setFirma(e.target.value)}
+              maxLength={100} placeholder="örn. Yurtiçi" list="kargo-firmalari" />
+            <datalist id="kargo-firmalari">
+              {['Yurtiçi', 'Aras', 'MNG', 'Sürat', 'PTT', 'UPS', 'Trendyol Express'].map(k =>
+                <option key={k} value={k} />)}
+            </datalist>
+          </label>
+        </div>
+
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={mail} onChange={e => setMail(e.target.checked)} />
+          Müşteriye kargo bilgilendirme e-postası gönder
+        </label>
+
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
+          <button disabled={busy || secili.length === 0} className="btn-primary">
+            {busy ? 'Kaydediliyor…' : `${secili.reduce((t, li) => t + Number(adet[li.id]), 0)} ürünü gönder`}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

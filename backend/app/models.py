@@ -474,6 +474,45 @@ class Order(Base):
         back_populates="order", cascade="all, delete-orphan",
         order_by="desc(DesignApproval.created_at)",
     )
+    shipments: Mapped[list["OrderShipment"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan",
+        order_by="OrderShipment.created_at",
+    )
+
+
+class OrderShipment(Base):
+    """Kısmi kargolama — bir siparişin parça parça gönderilmesi.
+
+    Shopify'daki "fulfillment" karşılığı: hangi kalemlerden kaç adedi hangi
+    takip numarasıyla gitti. Sipariş TAMAMEN gönderildiğinde çağıran akış
+    aşamayı kargoda'ya çeker; o ana kadar sipariş açık kalır.
+
+    kargo_info (tek gönderi alanı) DOKUNULMAZ — Basit Kargo entegrasyonu,
+    webhook eşleşmesi ve arama onu kullanmaya devam eder; ilk gönderinin
+    takip numarası oraya da kopyalanır.
+    """
+    __tablename__ = "order_shipments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+
+    takip_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kargo_firma: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    takip_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # [{line_item_id, quantity, title}] — hangi kalemden kaç adet gitti
+    items: Mapped[list] = mapped_column(JSONB, default=list)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    order: Mapped[Order] = relationship(back_populates="shipments")
 
 
 class LineItem(Base):

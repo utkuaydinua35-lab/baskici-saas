@@ -32,6 +32,7 @@ export default function UrunDetayPage() {
       const base = {
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
+        cost_price: prod.cost_price || '',
         description: prod.description || '', tags: prod.tags || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
       }
@@ -91,6 +92,7 @@ export default function UrunDetayPage() {
         title: form.title, slug: form.slug || null,
         base_price: Number(form.base_price),
         compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
+        cost_price: form.cost_price ? Number(form.cost_price) : null,
         description: form.description || null, tags: form.tags || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
@@ -207,6 +209,16 @@ export default function UrunDetayPage() {
           </Field>
           <Field label="URL (slug)">
             <input className="input mt-1 font-mono text-xs" value={form.slug} onChange={set('slug')} />
+          </Field>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Birim maliyet (₺, ops.)">
+            <input className="input mt-1" type="number" step="0.01" min="0"
+              value={form.cost_price} onChange={set('cost_price')} placeholder="kâr raporu için" />
+            <span className="block text-[11px] text-panel-muted mt-0.5">
+              Müşteriye görünmez. Boşsa Ayarlar'daki varsayılan birim maliyet kullanılır.
+              {form.cost_price && form.base_price ? ` Marj: %${Math.round(100*(form.base_price-form.cost_price)/form.base_price)}` : ''}
+            </span>
           </Field>
         </div>
         <Field label="Açıklama">

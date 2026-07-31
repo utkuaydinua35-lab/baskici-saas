@@ -60,6 +60,7 @@ class ProductCreate(BaseModel):
     seo_description: str | None = Field(None, max_length=400)
     base_price: Decimal = Field(..., ge=0)
     compare_at_price: Decimal | None = Field(None, ge=0)
+    cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
     tags: str | None = Field(None, max_length=500)
     position: int = 0
 
@@ -73,6 +74,7 @@ class ProductUpdate(BaseModel):
     seo_description: str | None = Field(None, max_length=400)
     base_price: Decimal | None = Field(None, ge=0)
     compare_at_price: Decimal | None = Field(None, ge=0)
+    cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
     tags: str | None = Field(None, max_length=500)
     position: int | None = None
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
@@ -208,6 +210,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
         "status": p.status,
         "base_price": str(p.base_price),
         "compare_at_price": str(p.compare_at_price) if p.compare_at_price is not None else None,
+        "cost_price": str(p.cost_price) if p.cost_price is not None else None,
         "currency": p.currency,
         "tags": p.tags,
         "position": p.position,
@@ -282,6 +285,7 @@ def create_product(
         seo_description=body.seo_description,
         base_price=body.base_price,
         compare_at_price=body.compare_at_price,
+        cost_price=body.cost_price,
         tags=body.tags,
         position=body.position,
     )
@@ -960,7 +964,7 @@ def bulk_edit(
 # ─── CSV Export / Import ─────────────────────────────────────
 
 CSV_COLUMNS = [
-    "urun_slug", "urun_adi", "durum", "fiyat", "indirim_oncesi", "aciklama",
+    "urun_slug", "urun_adi", "durum", "fiyat", "indirim_oncesi", "maliyet", "aciklama",
     "etiketler", "koleksiyonlar", "seo_baslik", "seo_aciklama",
     "model_key", "model_adi", "renk", "sku", "varyant_fiyat", "stok", "varyant_aktif",
 ]
@@ -1438,6 +1442,7 @@ def export_csv(
         base = [
             p.slug, p.title, p.status, str(p.base_price),
             str(p.compare_at_price) if p.compare_at_price is not None else "",
+            str(p.cost_price) if p.cost_price is not None else "",
             p.description or "", p.tags or "",
             ", ".join(c.title for c in p.collections),
             p.seo_title or "", p.seo_description or "",
@@ -1558,6 +1563,9 @@ async def import_csv(
             cmp_ = _dec(row.get("indirim_oncesi"), n, "indirim_oncesi")
             if cmp_ is not None:
                 product.compare_at_price = cmp_
+            maliyet = _dec(row.get("maliyet"), n, "maliyet")
+            if maliyet is not None:
+                product.cost_price = maliyet
             for csv_key, attr, maxlen in (
                 ("aciklama", "description", 20000), ("etiketler", "tags", 500),
                 ("seo_baslik", "seo_title", 200), ("seo_aciklama", "seo_description", 400),

@@ -16,6 +16,7 @@ export default function AnalitikPage() {
   const { storeId } = useStore()
   const [range, setRange] = useState('30')
   const [data, setData] = useState(null)
+  const [profit, setProfit] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -24,8 +25,12 @@ export default function AnalitikPage() {
     const r = RANGES.find(r => r.key === range)
     setLoading(true); setError('')
     try {
-      setData(await api.get(
-        `/api/analytics/summary?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`))
+      const q = `start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`
+      const [ozet, kar] = await Promise.all([
+        api.get(`/api/analytics/summary?${q}`),
+        api.get(`/api/analytics/profit?${q}`).catch(() => null),
+      ])
+      setData(ozet); setProfit(kar)
     } catch (e) {
       setError(typeof e?.detail === 'string' ? e.detail : 'Analitik yüklenemedi')
     } finally { setLoading(false) }
@@ -79,6 +84,8 @@ export default function AnalitikPage() {
             <BarCard title="En Çok Satan Modeller"
               rows={data.top_models.map(m => ({ label: m.model, value: m.quantity, suffix: ' adet' }))} />
           </div>
+
+          {profit && <ProfitCard p={profit} />}
 
           <FunnelCard funnel={data.funnel} />
         </div>
@@ -206,6 +213,123 @@ function FunnelCard({ funnel }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// Kâr marjı — ciro eksi (ürün maliyeti + komisyon + kargo + paketleme).
+// Maliyetler Ayarlar → Kargo ve Sepet → "Kâr hesabı" bölümünden gelir;
+// ürün bazlı maliyet girilmişse o önceliklidir.
+function ProfitCard({ p }) {
+  const [acik, setAcik] = useState(false)
+  const kurulmamis = p.costs.total === 0
+  const kalemler = [
+    ['Ürün maliyeti', p.costs.cogs],
+    ['Ödeme komisyonu', p.costs.commission],
+    ['Kargo gideri', p.costs.shipping],
+    ['Paketleme', p.costs.packaging],
+  ].filter(([, v]) => v > 0)
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] text-panel-muted uppercase tracking-wide">Kâr Marjı</span>
+        {p.fallback_units > 0 && !kurulmamis && (
+          <span className="text-[11px] text-amber-700">
+            {fmtNum(p.fallback_units)} adet varsayılan maliyetle hesaplandı
+          </span>
+        )}
+      </div>
+
+      {kurulmamis ? (
+        <p className="text-sm text-panel-muted">
+          Maliyet bilgisi girilmemiş. <b>Ayarlar → Kargo ve Sepet → Kâr hesabı</b>'ndan
+          varsayılan birim maliyet, komisyon ve kargo giderini yazın; ürün bazlı maliyeti
+          ürün sayfasından (veya CSV'deki <span className="font-mono">maliyet</span> sütunuyla toplu)
+          girebilirsiniz.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <div className="text-[11px] text-panel-muted">Ciro</div>
+              <div className="text-lg font-semibold tabular-nums">{fmtTl(p.revenue)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-panel-muted">Giderler</div>
+              <div className="text-lg font-semibold tabular-nums text-red-600">−{fmtTl(p.costs.total)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-panel-muted">Net kâr</div>
+              <div className={`text-lg font-semibold tabular-nums ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                {fmtTl(p.profit)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-panel-muted">Marj</div>
+              <div className={`text-lg font-semibold tabular-nums ${p.margin_pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                %{p.margin_pct}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-1.5">
+            {kalemler.map(([ad, v]) => (
+              <div key={ad}>
+                <div className="flex justify-between text-xs mb-0.5">
+                  <span>{ad}</span>
+                  <span className="text-panel-muted tabular-nums">{fmtTl(v)}</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-panel-input overflow-hidden">
+                  <div className="h-full rounded-full bg-red-400/60"
+                    style={{ width: `${Math.min(100, (v / (p.revenue || 1)) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 text-xs text-panel-muted">
+            Sipariş başına kâr: <b className="text-panel-ink tabular-nums">{fmtTl(p.profit_per_order)}</b>
+            {' · '}{fmtNum(p.units)} adet satıldı
+          </div>
+
+          {p.top_cost_products?.length > 0 && (
+            <>
+              <button onClick={() => setAcik(a => !a)}
+                className="mt-2 text-xs text-panel-muted hover:text-panel-ink">
+                {acik ? '▾' : '▸'} Ürün bazlı maliyet dökümü
+              </button>
+              {acik && (
+                <table className="w-full mt-2 text-xs">
+                  <thead className="text-panel-muted">
+                    <tr>
+                      <th className="text-left font-normal py-1">Ürün</th>
+                      <th className="text-right font-normal">Adet</th>
+                      <th className="text-right font-normal">Birim</th>
+                      <th className="text-right font-normal">Maliyet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.top_cost_products.map((r, i) => (
+                      <tr key={i} className="border-t border-panel-border">
+                        <td className="py-1 pr-2 truncate max-w-[220px]">
+                          {r.title}
+                          {r.cost_source === 'varsayilan' && (
+                            <span className="ml-1 text-amber-700" title="Ürün maliyeti girilmemiş">*</span>
+                          )}
+                        </td>
+                        <td className="text-right tabular-nums">{fmtNum(r.quantity)}</td>
+                        <td className="text-right tabular-nums">{fmtTl(r.unit_cost)}</td>
+                        <td className="text-right tabular-nums">{fmtTl(r.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </>
+      )}
     </div>
   )
 }

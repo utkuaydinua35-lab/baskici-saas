@@ -161,6 +161,36 @@ export default function AyarlarPage() {
           <input className="input mt-1 !w-32" type="number" min="1"
             value={cfg.sla_days || ''} onChange={set('sla_days')} placeholder="3" />
         </Field>
+
+        <div className="pt-3 mt-2 border-t border-panel-border">
+          <h3 className="text-sm font-semibold">💰 Kâr hesabı (yalnız rapor)</h3>
+          <p className="text-[11px] text-panel-muted mt-0.5 mb-2">
+            Bu değerler müşteriye hiçbir yerde görünmez; Analitik → Kâr Marjı
+            raporunda net kârı hesaplamak için kullanılır.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Varsayılan birim maliyet (₺)">
+              <input className="input mt-1" type="number" step="0.01" min="0"
+                value={cfg.profit_default_unit_cost || ''}
+                onChange={set('profit_default_unit_cost')} placeholder="ürün maliyeti boşsa" />
+            </Field>
+            <Field label="Ödeme komisyonu (%)">
+              <input className="input mt-1" type="number" step="0.01" min="0" max="100"
+                value={cfg.profit_commission_pct || ''}
+                onChange={set('profit_commission_pct')} placeholder="örn 2.99" />
+            </Field>
+            <Field label="Sipariş başına kargo gideri (₺)">
+              <input className="input mt-1" type="number" step="0.01" min="0"
+                value={cfg.profit_shipping_cost || ''}
+                onChange={set('profit_shipping_cost')} placeholder="örn 45" />
+            </Field>
+            <Field label="Sipariş başına paketleme (₺)">
+              <input className="input mt-1" type="number" step="0.01" min="0"
+                value={cfg.profit_packaging_cost || ''}
+                onChange={set('profit_packaging_cost')} placeholder="örn 5" />
+            </Field>
+          </div>
+        </div>
         <label className="flex items-center gap-2 text-sm mt-1">
           <input type="checkbox" checked={!!cfg.abandoned_reminder_enabled}
             onChange={set('abandoned_reminder_enabled')} />

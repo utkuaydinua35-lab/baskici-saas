@@ -1431,6 +1431,9 @@ class CatalogProduct(Base):
 
     base_price: Mapped[float] = mapped_column(Numeric(12, 2))
     compare_at_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Birim maliyet (KDV hariç alış/üretim) — kâr marjı raporunda kullanılır.
+    # Boşsa mağaza ayarındaki varsayılan birim maliyete düşülür.
+    cost_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="TRY", server_default=text("'TRY'"))
 
     tags: Mapped[str | None] = mapped_column(String(500), nullable=True)

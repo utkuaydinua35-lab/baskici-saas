@@ -166,6 +166,147 @@ def analytics_summary(
     }
 
 
+# ─── Kâr marjı raporu ────────────────────────────────────────
+# Shopify'da yalnız "Ürün maliyeti" (COGS) girilir; burada gerçek net kâra
+# ulaşmak için komisyon, kargo ve paketleme de düşülür. Maliyet kaynağı:
+# ürünün cost_price'ı → yoksa mağaza ayarındaki varsayılan birim maliyet.
+
+COST_KEYS = {
+    "unit": "profit_default_unit_cost",     # adet başına varsayılan maliyet
+    "ship": "profit_shipping_cost",         # sipariş başına kargo gideri
+    "pack": "profit_packaging_cost",        # sipariş başına paketleme
+    "commission": "profit_commission_pct",  # ciro üzerinden ödeme komisyonu %
+}
+
+
+def _cost_settings(db: Session, tid, store_id) -> dict:
+    """Maliyet ayarları — mağaza config'inden (store_id verilmemişse ilk vitrin)."""
+    q = select(Store).where(Store.tenant_id == tid)
+    q = q.where(Store.id == store_id) if store_id else q.where(Store.platform == "storefront")
+    store = db.scalar(q.limit(1))
+    config = (store.config if store else None) or {}
+
+    def num(key, default="0"):
+        try:
+            return float(str(config.get(key, default) or default).replace(",", "."))
+        except ValueError:
+            return 0.0
+
+    return {
+        "unit_cost": num(COST_KEYS["unit"]),
+        "shipping_cost": num(COST_KEYS["ship"]),
+        "packaging_cost": num(COST_KEYS["pack"]),
+        "commission_pct": num(COST_KEYS["commission"]),
+    }
+
+
+@router.get("/profit")
+def profit_report(
+    start: date = Query(...),
+    end: date = Query(...),
+    store_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("dashboard")),
+    db: Session = Depends(get_db),
+):
+    """Kâr marjı raporu: ciro − (ürün maliyeti + komisyon + kargo + paketleme).
+
+    Ürün maliyeti eşleşmesi ADA göre (LineItem.title ↔ CatalogProduct.title);
+    eşleşmeyen kalemlerde varsayılan birim maliyet kullanılır ve kaç kalemin
+    varsayılana düştüğü raporda ayrıca bildirilir (körlük yaratmasın)."""
+    if end < start:
+        raise HTTPException(422, "Bitiş tarihi başlangıçtan önce olamaz")
+    if (end - start).days > MAX_RANGE_DAYS:
+        raise HTTPException(422, f"Aralık en fazla {MAX_RANGE_DAYS} gün olabilir")
+
+    from app.models import CatalogProduct
+
+    tid = user.tenant_id
+    start_dt = datetime.combine(start, time.min, tzinfo=timezone.utc)
+    end_dt = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    ayar = _cost_settings(db, tid, store_id)
+
+    base_conds = [
+        Order.tenant_id == tid,
+        Order.is_telafi.is_(False),
+        Order.cancelled_at.is_(None),
+        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
+        Order.created_at_platform >= start_dt,
+        Order.created_at_platform < end_dt,
+    ]
+    if store_id:
+        base_conds.append(Order.store_id == store_id)
+
+    total_price = cast(Order.raw["total_price"].astext, Numeric)
+    row = db.execute(
+        select(sql_func.coalesce(sql_func.sum(total_price), 0), sql_func.count(Order.id))
+        .where(*base_conds)
+    ).one()
+    revenue = float(row[0] or 0)
+    orders_count = int(row[1] or 0)
+
+    # Ürün adı → birim maliyet (yalnız maliyeti girilmiş ürünler)
+    cost_map = {
+        (t or "").strip().casefold(): float(c)
+        for t, c in db.execute(
+            select(CatalogProduct.title, CatalogProduct.cost_price)
+            .where(CatalogProduct.tenant_id == tid, CatalogProduct.cost_price.isnot(None))
+        ).all()
+    }
+
+    # Satılan kalemler: ada göre grupla (adet + maliyet + ciro payı)
+    li_rows = db.execute(
+        select(LineItem.title, sql_func.sum(LineItem.quantity))
+        .join(Order, LineItem.order_id == Order.id)
+        .where(*base_conds).group_by(LineItem.title)
+    ).all()
+
+    cogs = 0.0
+    units = 0
+    varsayilana_dusen = 0
+    urunler = []
+    for title, adet in li_rows:
+        adet = int(adet or 0)
+        key = (title or "").strip().casefold()
+        birim = cost_map.get(key)
+        if birim is None:
+            birim = ayar["unit_cost"]
+            varsayilana_dusen += adet
+        cogs += birim * adet
+        units += adet
+        urunler.append({"title": title or "—", "quantity": adet,
+                        "unit_cost": round(birim, 2), "cost": round(birim * adet, 2),
+                        "cost_source": "urun" if key in cost_map else "varsayilan"})
+
+    commission = revenue * ayar["commission_pct"] / 100
+    shipping = ayar["shipping_cost"] * orders_count
+    packaging = ayar["packaging_cost"] * orders_count
+    giderler = cogs + commission + shipping + packaging
+    profit = revenue - giderler
+
+    urunler.sort(key=lambda x: x["cost"], reverse=True)
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "revenue": round(revenue, 2),
+        "orders_count": orders_count,
+        "units": units,
+        "costs": {
+            "cogs": round(cogs, 2),
+            "commission": round(commission, 2),
+            "shipping": round(shipping, 2),
+            "packaging": round(packaging, 2),
+            "total": round(giderler, 2),
+        },
+        "profit": round(profit, 2),
+        "margin_pct": round(100 * profit / revenue, 1) if revenue else 0.0,
+        "profit_per_order": round(profit / orders_count, 2) if orders_count else 0.0,
+        "settings": ayar,
+        # Maliyeti girilmemiş kalemler varsayılana düştü — panelde uyarı çıkar
+        "fallback_units": varsayilana_dusen,
+        "top_cost_products": urunler[:15],
+    }
+
+
 @router.get("/export.csv")
 def analytics_export(
     start: date = Query(...),

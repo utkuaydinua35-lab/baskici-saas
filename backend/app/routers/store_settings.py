@@ -29,7 +29,10 @@ router = APIRouter(
 )
 
 # Panelden yönetilebilen config anahtarları (whitelist — serbest yazım yok)
-_MONEY_KEYS = {"shipping_fee", "free_shipping_over", "min_order_amount"}
+_MONEY_KEYS = {"shipping_fee", "free_shipping_over", "min_order_amount",
+               # Kâr marjı raporu girdileri (yalnız rapor — müşteri yüzeyine çıkmaz)
+               "profit_default_unit_cost", "profit_shipping_cost",
+               "profit_packaging_cost", "profit_commission_pct"}
 # KDV oranı (%) — fiyatlar KDV DAHİL, fatura için içindeki vergi ayrıştırılır
 _TAX_KEYS = {"tax_rate"}
 _TEXT_KEYS = {

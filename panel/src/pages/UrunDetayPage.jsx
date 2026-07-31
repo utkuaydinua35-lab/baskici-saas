@@ -283,6 +283,18 @@ export default function UrunDetayPage() {
           <div className="flex gap-2 flex-wrap items-center">
             {collections.map(c => {
               const active = (p.collection_ids || []).includes(c.id)
+              // Akıllı koleksiyon üyeliği kuralın sonucudur — elle değiştirilemez
+              if (c.is_smart) {
+                return (
+                  <span key={c.id}
+                    title="Akıllı koleksiyon — üyelik kurala göre otomatik belirlenir"
+                    className={`px-3 py-1 rounded-full text-xs border ${active
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      : 'border-panel-border text-panel-muted opacity-60'}`}>
+                    ⚙️ {c.title}
+                  </span>
+                )
+              }
               return (
                 <button key={c.id} disabled={busy}
                   onClick={async () => {

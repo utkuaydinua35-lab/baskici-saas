@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -38,6 +38,7 @@ from app.models import (
     Store,
     User,
 )
+from app.services import smart_collections
 from app.services import storage as storage_svc
 from app.services.sanitize import sanitize_rich_text
 
@@ -287,6 +288,8 @@ def create_product(
     db.add(product)
     db.commit()
     db.refresh(product)
+    smart_collections.sync_product(db, product)   # kurala uyan akıllı koleksiyonlara gir
+    db.commit()
     return _serialize_product(product, full=True)
 
 
@@ -325,6 +328,8 @@ def update_product(
         setattr(product, k, v)
     db.commit()
     db.refresh(product)
+    smart_collections.sync_product(db, product)   # fiyat/etiket değişmiş olabilir
+    db.commit()
     return _serialize_product(product, full=True)
 
 
@@ -557,12 +562,35 @@ def delete_image(
 
 # ─── Koleksiyonlar ───────────────────────────────────────────
 
+class SmartRule(BaseModel):
+    field: str = Field(..., max_length=20)
+    op: str = Field(..., max_length=20)
+    value: str | None = Field(None, max_length=200)
+
+    @field_validator("field")
+    @classmethod
+    def _field_ok(cls, v: str) -> str:
+        if v not in smart_collections.FIELDS:
+            raise ValueError(f"Bilinmeyen kural alanı: {v}")
+        return v
+
+    @field_validator("op")
+    @classmethod
+    def _op_ok(cls, v: str) -> str:
+        if v not in smart_collections.OPS:
+            raise ValueError(f"Bilinmeyen kural işleci: {v}")
+        return v
+
+
 class CollectionCreate(BaseModel):
     store_id: uuid.UUID
     title: str = Field(..., min_length=1, max_length=200)
     slug: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=2000)
     position: int = 0
+    is_smart: bool = False
+    rules: list[SmartRule] = Field(default_factory=list, max_length=smart_collections.MAX_RULES)
+    rules_match: str = "all"
 
 
 class CollectionUpdate(BaseModel):
@@ -571,6 +599,15 @@ class CollectionUpdate(BaseModel):
     image_path: str | None = Field(None, max_length=500)  # /storage/... URL'inden path
     position: int | None = None
     is_active: bool | None = None
+    is_smart: bool | None = None
+    rules: list[SmartRule] | None = Field(None, max_length=smart_collections.MAX_RULES)
+    rules_match: str | None = None
+
+
+class SmartPreviewRequest(BaseModel):
+    store_id: uuid.UUID
+    rules: list[SmartRule] = Field(default_factory=list, max_length=smart_collections.MAX_RULES)
+    rules_match: str = "all"
 
 
 class ProductCollectionsUpdate(BaseModel):
@@ -587,6 +624,9 @@ def _serialize_collection(c, product_count: int | None = None) -> dict:
         "image_url": f"/storage/{c.image_path}" if c.image_path else None,
         "position": c.position,
         "is_active": c.is_active,
+        "is_smart": c.is_smart,
+        "rules": c.rules or [],
+        "rules_match": c.rules_match or "all",
     }
     if product_count is not None:
         data["product_count"] = product_count
@@ -634,11 +674,16 @@ def create_collection(
     collection = CatalogCollection(
         tenant_id=user.tenant_id, store_id=body.store_id, slug=slug,
         title=body.title, description=body.description, position=body.position,
+        is_smart=body.is_smart,
+        rules=[r.model_dump() for r in body.rules] if body.is_smart else None,
+        rules_match="any" if body.rules_match == "any" else "all",
     )
     db.add(collection)
     db.commit()
     db.refresh(collection)
-    return _serialize_collection(collection, 0)
+    sayi = smart_collections.sync_collection(db, collection) if collection.is_smart else 0
+    db.commit()
+    return _serialize_collection(collection, sayi)
 
 
 @router.patch("/collections/{collection_id}", response_model=dict)
@@ -657,11 +702,19 @@ def update_collection(
     updates = body.model_dump(exclude_unset=True)
     if updates.get("image_path"):
         updates["image_path"] = updates["image_path"].removeprefix("/storage/")
+    if "rules_match" in updates:
+        updates["rules_match"] = "any" if updates["rules_match"] == "any" else "all"
     for k, v in updates.items():
         setattr(collection, k, v)
     db.commit()
+    # Kural/tür değiştiyse üyelik baştan kurulur. Akıllıdan normale dönerse
+    # o anki üyelik dondurulur (elle düzenlenebilir hale gelir).
+    sayi = None
+    if collection.is_smart:
+        sayi = smart_collections.sync_collection(db, collection)
+        db.commit()
     db.refresh(collection)
-    return _serialize_collection(collection)
+    return _serialize_collection(collection, sayi)
 
 
 @router.delete("/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -680,6 +733,40 @@ def delete_collection(
     db.commit()
 
 
+@router.post("/collections/preview", response_model=dict)
+def preview_smart_collection(
+    body: SmartPreviewRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Kaydetmeden önce kaç ürünün eşleştiğini göster (panel önizlemesi)."""
+    _get_storefront_store(db, user.tenant_id, body.store_id)
+    return smart_collections.preview(
+        db, body.store_id, [r.model_dump() for r in body.rules],
+        "any" if body.rules_match == "any" else "all",
+    )
+
+
+@router.post("/collections/{collection_id}/sync", response_model=dict)
+def sync_smart_collection(
+    collection_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Akıllı koleksiyonu şimdi yeniden hesapla (ürünler dışarıdan değişmişse)."""
+    from app.models import CatalogCollection
+
+    collection = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.id == collection_id, CatalogCollection.tenant_id == user.tenant_id))
+    if not collection:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    if not collection.is_smart:
+        raise HTTPException(422, "Bu koleksiyon kural bazlı değil")
+    sayi = smart_collections.sync_collection(db, collection)
+    db.commit()
+    return {"product_count": sayi}
+
+
 @router.put("/products/{product_id}/collections", response_model=dict)
 def set_product_collections(
     product_id: uuid.UUID,
@@ -694,8 +781,11 @@ def set_product_collections(
         CatalogCollection.id.in_(body.collection_ids),
         CatalogCollection.tenant_id == user.tenant_id,
         CatalogCollection.store_id == product.store_id,
+        CatalogCollection.is_smart.is_(False),   # akıllı üyelik elle değişmez
     )).all() if body.collection_ids else []
-    product.collections = list(collections)
+    # Akıllı koleksiyon üyelikleri kuralın sonucudur — burada korunur
+    akilli = [c for c in product.collections if c.is_smart]
+    product.collections = list(collections) + akilli
     db.commit()
     return {"product_id": str(product.id),
             "collection_ids": [str(c.id) for c in product.collections]}
@@ -847,6 +937,8 @@ def bulk_edit(
             if body.compare_at_from_old and new_price < old_price:
                 p.compare_at_price = old_price  # indirim rozeti otomatik doğar
             p.base_price = new_price
+        if collection and collection.is_smart:
+            raise HTTPException(422, "Akıllı koleksiyona ürün elle eklenemez — kuralı düzenleyin")
         if collection and collection not in p.collections:
             p.collections.append(collection)
         if body.add_tags:
@@ -857,6 +949,10 @@ def bulk_edit(
                     existing.append(t)
             p.tags = ", ".join(existing)
         updated += 1
+    db.commit()
+    # Fiyat/etiket değişti — akıllı koleksiyon üyelikleri tazelenir
+    for p in products:
+        smart_collections.sync_product(db, p)
     db.commit()
     return {"updated": updated}
 
@@ -1532,6 +1628,12 @@ async def import_csv(
     else:
         db.commit()
         stats["dry_run"] = False
+        # İçe aktarılan ürünler akıllı koleksiyon kurallarına göre yerleşsin
+        for c in db.scalars(select(CatalogCollection).where(
+                CatalogCollection.store_id == store_id,
+                CatalogCollection.is_smart.is_(True))).all():
+            smart_collections.sync_collection(db, c)
+        db.commit()
     if shopify_note:
         stats["note"] = shopify_note
     return stats

@@ -1924,6 +1924,17 @@ class CatalogCollection(Base):
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
+    # Akıllı koleksiyon: ürünler elle değil KURALLA seçilir. Üyelik yine aynı
+    # M2M tablosunda maddileşir (services/smart_collections.py) — vitrin,
+    # filtreler, kuponlar ve feed hiç değişmeden çalışır.
+    is_smart: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    rules: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    rules_match: Mapped[str] = mapped_column(
+        String(4), default="all", server_default=text("'all'")
+    )  # all = tüm kurallar, any = herhangi biri
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

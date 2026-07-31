@@ -11,6 +11,7 @@ const UrunlerPage = lazy(() => import('./pages/UrunlerPage'))
 const UrunDetayPage = lazy(() => import('./pages/UrunDetayPage'))
 const UrunYeniPage = lazy(() => import('./pages/UrunYeniPage'))
 const KoleksiyonlarPage = lazy(() => import('./pages/KoleksiyonlarPage'))
+const AktivitePage = lazy(() => import('./pages/AktivitePage'))
 const EnvanterPage = lazy(() => import('./pages/EnvanterPage'))
 const KuponlarPage = lazy(() => import('./pages/KuponlarPage'))
 const TerkSepetlerPage = lazy(() => import('./pages/TerkSepetlerPage'))
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="/yorumlar" element={<YorumlarPage />} />
             <Route path="/tasarim-talepleri" element={<TasarimTalepleriPage />} />
             <Route path="/uygulamalar" element={<UygulamalarPage />} />
+            <Route path="/aktivite" element={<AktivitePage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
           </Route>
           {/* Tam ekran tema editörü — sol menüsüz (Shopify tarzı) */}

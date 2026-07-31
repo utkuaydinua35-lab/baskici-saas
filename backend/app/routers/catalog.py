@@ -38,7 +38,7 @@ from app.models import (
     Store,
     User,
 )
-from app.services import smart_collections
+from app.services import activity, smart_collections
 from app.services import storage as storage_svc
 from app.services.sanitize import sanitize_rich_text
 
@@ -293,6 +293,8 @@ def create_product(
     db.commit()
     db.refresh(product)
     smart_collections.sync_product(db, product)   # kurala uyan akıllı koleksiyonlara gir
+    activity.record(db, user, "urun_ekle", store_id=product.store_id,
+                    entity_type="urun", entity_id=product.id, entity_label=product.title)
     db.commit()
     return _serialize_product(product, full=True)
 
@@ -328,11 +330,18 @@ def update_product(
         ))
         if clash:
             raise HTTPException(status.HTTP_409_CONFLICT, "Bu slug zaten kullanılıyor")
+    onceki = {k: getattr(product, k, None) for k in updates}
     for k, v in updates.items():
         setattr(product, k, v)
     db.commit()
     db.refresh(product)
     smart_collections.sync_product(db, product)   # fiyat/etiket değişmiş olabilir
+    izlenen = ("title", "status", "base_price", "compare_at_price", "cost_price", "tags", "slug")
+    degisen = activity.diff(onceki, updates, tuple(k for k in izlenen if k in updates))
+    if degisen:
+        activity.record(db, user, "urun_guncelle", store_id=product.store_id,
+                        entity_type="urun", entity_id=product.id,
+                        entity_label=product.title, detail=degisen)
     db.commit()
     return _serialize_product(product, full=True)
 
@@ -346,6 +355,8 @@ def delete_product(
     product = _get_product(db, user.tenant_id, product_id, eager=True)
     for im in product.images:
         storage_svc.delete_catalog_image(im.file_path)
+    activity.record(db, user, "urun_sil", store_id=product.store_id,
+                    entity_type="urun", entity_id=product.id, entity_label=product.title)
     db.delete(product)
     db.commit()
 
@@ -686,6 +697,10 @@ def create_collection(
     db.commit()
     db.refresh(collection)
     sayi = smart_collections.sync_collection(db, collection) if collection.is_smart else 0
+    activity.record(db, user, "koleksiyon_ekle", store_id=collection.store_id,
+                    entity_type="koleksiyon", entity_id=collection.id,
+                    entity_label=collection.title,
+                    detail={"akilli": collection.is_smart} if collection.is_smart else None)
     db.commit()
     return _serialize_collection(collection, sayi)
 
@@ -716,7 +731,10 @@ def update_collection(
     sayi = None
     if collection.is_smart:
         sayi = smart_collections.sync_collection(db, collection)
-        db.commit()
+    activity.record(db, user, "koleksiyon_guncelle", store_id=collection.store_id,
+                    entity_type="koleksiyon", entity_id=collection.id,
+                    entity_label=collection.title, detail={"alanlar": list(updates)})
+    db.commit()
     db.refresh(collection)
     return _serialize_collection(collection, sayi)
 
@@ -733,6 +751,9 @@ def delete_collection(
         CatalogCollection.id == collection_id, CatalogCollection.tenant_id == user.tenant_id))
     if not collection:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    activity.record(db, user, "koleksiyon_sil", store_id=collection.store_id,
+                    entity_type="koleksiyon", entity_id=collection.id,
+                    entity_label=collection.title)
     db.delete(collection)
     db.commit()
 
@@ -957,6 +978,10 @@ def bulk_edit(
     # Fiyat/etiket değişti — akıllı koleksiyon üyelikleri tazelenir
     for p in products:
         smart_collections.sync_product(db, p)
+    activity.record(db, user, "urun_toplu", store_id=products[0].store_id,
+                    entity_type="urun", entity_label=f"{updated} ürün",
+                    detail={"fiyat_modu": body.price_mode, "deger": str(body.price_value or ""),
+                            "etiket": body.add_tags, "koleksiyon": str(body.add_collection_id or "")})
     db.commit()
     return {"updated": updated}
 
@@ -1641,6 +1666,10 @@ async def import_csv(
                 CatalogCollection.store_id == store_id,
                 CatalogCollection.is_smart.is_(True))).all():
             smart_collections.sync_collection(db, c)
+        activity.record(db, user, "urun_ice_aktar", store_id=store_id, entity_type="urun",
+                        entity_label=f"{stats['products_created']} yeni / "
+                                     f"{stats['products_updated']} güncel",
+                        detail={k: v for k, v in stats.items() if k != "errors"})
         db.commit()
     if shopify_note:
         stats["note"] = shopify_note

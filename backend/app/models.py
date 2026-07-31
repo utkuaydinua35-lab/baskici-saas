@@ -686,6 +686,37 @@ class EmailLog(Base):
     order: Mapped[Order] = relationship(back_populates="email_logs")
 
 
+class ActivityLog(Base):
+    """Mağaza aktivite günlüğü — "kim, ne zaman, neyi değiştirdi".
+
+    Sipariş aşamaları OrderStatusHistory'de tutulur; burası KATALOG/AYAR
+    tarafı içindir: ürün fiyatı değişti, kupon silindi, tema yayınlandı,
+    para iadesi yapıldı… Yazma yolları services/activity.py üzerinden
+    kaydeder ve hata asla çağıran işlemi bozmaz.
+    """
+    __tablename__ = "activity_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
+    user_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    action: Mapped[str] = mapped_column(String(40), index=True)   # urun_guncelle, kupon_sil…
+    entity_type: Mapped[str | None] = mapped_column(String(30), nullable=True)  # urun, kupon…
+    entity_id: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    entity_label: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Serbest ayrıntı: {"alan": ["eski", "yeni"]} gibi — panelde satır altında
+    detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════
 # PIPELINE (eski)
 # ═════════════════════════════════════════════════════════════════════

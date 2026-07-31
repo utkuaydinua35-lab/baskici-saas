@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import require_permission
 from app.database import get_db
 from app.models import DiscountCode, Store, User
+from app.services import activity
 
 router = APIRouter(
     prefix="/api/discounts", tags=["discounts"],
@@ -158,6 +159,11 @@ def create_discount(
 
     dc = DiscountCode(tenant_id=user.tenant_id, **body.model_dump())
     db.add(dc)
+    db.flush()
+    activity.record(db, user, "kupon_ekle", store_id=dc.store_id, entity_type="kupon",
+                    entity_id=dc.id, entity_label=dc.code,
+                    detail={"tur": dc.kind, "deger": str(dc.value),
+                            "otomatik": dc.is_automatic, "birlesir": dc.combinable})
     db.commit()
     db.refresh(dc)
     return _serialize(dc)
@@ -178,8 +184,12 @@ def update_discount(
     updates = body.model_dump(exclude_unset=True)
     if "value" in updates and updates["value"] is not None:
         _validate_kind_value(dc.kind, updates["value"])
+    onceki = {k: getattr(dc, k, None) for k in updates}
     for k, v in updates.items():
         setattr(dc, k, v)
+    degisen = activity.diff(onceki, updates, tuple(updates))
+    activity.record(db, user, "kupon_guncelle", store_id=dc.store_id, entity_type="kupon",
+                    entity_id=dc.id, entity_label=dc.code, detail=degisen or None)
     db.commit()
     db.refresh(dc)
     return _serialize(dc)
@@ -195,5 +205,7 @@ def delete_discount(
         DiscountCode.id == discount_id, DiscountCode.tenant_id == user.tenant_id))
     if not dc:
         raise HTTPException(404, "Kupon bulunamadı")
+    activity.record(db, user, "kupon_sil", store_id=dc.store_id, entity_type="kupon",
+                    entity_id=dc.id, entity_label=dc.code)
     db.delete(dc)
     db.commit()

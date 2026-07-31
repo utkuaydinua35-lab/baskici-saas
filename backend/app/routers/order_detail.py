@@ -17,7 +17,7 @@ from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
-from app.services import mold_planner, shipments as shipments_svc, storage
+from app.services import activity, mold_planner, shipments as shipments_svc, storage
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
 router = APIRouter(prefix="/api/orders", tags=["order_detail"],
@@ -630,6 +630,10 @@ def create_shipment(
         )
     except shipments_svc.ShipmentError as e:
         raise HTTPException(422, str(e))
+    activity.record(db, user, "kargo_gonderi", store_id=order.store_id, entity_type="siparis",
+                    entity_id=order.id, entity_label=order.name or order.order_number,
+                    detail={"takip_no": payload.takip_no, "firma": payload.kargo_firma,
+                            "adet": sum(i.quantity for i in payload.items)})
     db.commit()
     order = _resolve_order(db, order_ref, user.tenant_id)
     return _serialize_detail(order, db)
@@ -648,6 +652,8 @@ def remove_shipment(
         shipments_svc.delete_shipment(db, order, shipment_id, user_label=user.email)
     except shipments_svc.ShipmentError as e:
         raise HTTPException(404, str(e))
+    activity.record(db, user, "kargo_geri", store_id=order.store_id, entity_type="siparis",
+                    entity_id=order.id, entity_label=order.name or order.order_number)
     db.commit()
     order = _resolve_order(db, order_ref, user.tenant_id)
     return _serialize_detail(order, db)

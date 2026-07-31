@@ -36,6 +36,9 @@ const NAV_GROUPS = [
     { to: '/blog', label: 'Blog', icon: '✍️' },
     { to: '/uygulamalar', label: 'Uygulamalar', icon: '🧩' },
   ]},
+  { label: 'Yönetim', items: [
+    { to: '/aktivite', label: 'Aktivite', icon: '🕘' },
+  ]},
 ]
 
 export default function Layout() {

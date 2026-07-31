@@ -49,6 +49,7 @@ from app.routers.design_requests import router as design_requests_router
 from app.routers.customers import router as customers_router
 from app.routers.analytics import router as analytics_router
 from app.routers.checkout_admin import router as checkout_admin_router
+from app.routers.store_activity import router as store_activity_router
 from app.routers.store_settings import router as store_settings_router
 from app.routers.audit import router as audit_router
 from app.routers.search import router as search_router
@@ -159,6 +160,7 @@ app.include_router(customers_router)
 app.include_router(analytics_router)
 app.include_router(checkout_admin_router)
 app.include_router(store_settings_router)
+app.include_router(store_activity_router)
 app.include_router(public_shop_router)
 
 

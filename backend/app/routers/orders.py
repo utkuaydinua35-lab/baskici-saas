@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission, require_permission
 from app.database import get_db
+from app.services import activity
 from app.models import LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User
 from app.stages import is_valid_stage
 
@@ -1634,6 +1635,10 @@ def create_refund(
                  + (f" — {body.reason}" if body.reason else ""),
             created_by=user.full_name or user.email,
         ))
+        activity.record(db, user, "iade", store_id=order.store_id, entity_type="siparis",
+                        entity_id=order.id, entity_label=order.name or order.order_number,
+                        detail={"tutar": str(amount), "tam": full,
+                                "sebep": (body.reason or "")[:120] or None})
     db.commit()
 
     if result.status != "succeeded":

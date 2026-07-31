@@ -22,6 +22,7 @@ from app.auth.dependencies import require_permission
 from app.database import get_db
 from app.models import Store, User
 from app.routers.stores import _SECRET_KEYS, _mask_config
+from app.services import activity
 
 router = APIRouter(
     prefix="/api/store-settings", tags=["store-settings"],
@@ -174,6 +175,11 @@ def patch_settings(
 
     store.config = config
     flag_modified(store, "config")
+    # Hangi ayarların değiştiği günlüğe düşer (gizli anahtar DEĞERLERİ yazılmaz)
+    activity.record(db, user, "ayar_guncelle", store_id=store.id, entity_type="ayar",
+                    entity_label=store.name,
+                    detail={"alanlar": sorted(k for k in body.config
+                                              if k not in (_SECRET_CFG_KEYS | _SECRET_KEYS))})
     db.commit()
     db.refresh(store)
     return {
@@ -613,6 +619,8 @@ def publish_theme_draft(
     config.pop("theme_preview", None)  # bayat önizleme kalmasın
     store.config = config
     flag_modified(store, "config")
+    activity.record(db, user, "tema_yayinla", store_id=store.id, entity_type="tema",
+                    entity_label=draft.get("name") or draft_key)
     db.commit()
     db.refresh(store)
     _revalidate_storefront(store)

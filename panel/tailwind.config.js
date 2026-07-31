@@ -6,15 +6,17 @@ export default {
       colors: {
         // Baskıcı (studio) ile AYNI koyu tema — Cryptix stili yeşil-siyah.
         // Kaynak: frontend/tailwind.config.js brand.* paleti.
+        // SOFT tema — Shopify admin'in açık, yumuşak paleti.
+        // Göz yormayan kırık beyaz zemin + beyaz kartlar + koyu lacivert metin.
         panel: {
-          bg: '#070d0a',       // sayfa arka planı (koyu yeşil-siyah)
-          card: '#0e1612',     // kart / panel arka planı
-          border: '#21302a',   // ince kenarlık
-          input: '#16201b',    // input arka planı
-          ink: '#f3f4f6',      // ana metin (gray-100)
-          muted: '#8aa096',    // ikincil metin (yeşilimsi gri)
-          accent: '#14b8a6',   // teal — Baskıcı accent'iyle aynı
-          accent2: '#818cf8',  // indigo-400
+          bg: '#f6f6f7',       // sayfa arka planı (kırık beyaz)
+          card: '#ffffff',     // kart / panel arka planı
+          border: '#e1e3e5',   // ince kenarlık
+          input: '#f1f2f4',    // input / ikincil yüzey
+          ink: '#202223',      // ana metin (koyu gri-siyah)
+          muted: '#6d7175',    // ikincil metin
+          accent: '#008060',   // Shopify yeşili — birincil aksiyon
+          accent2: '#5c6ac4',  // indigo — ikincil vurgu
         },
       },
       fontFamily: {

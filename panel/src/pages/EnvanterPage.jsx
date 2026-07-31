@@ -65,8 +65,8 @@ export default function EnvanterPage() {
         <h1 className="text-xl font-semibold">Envanter</h1>
         <span className="text-sm text-panel-muted">
           {data.total} varyant
-          {data.low_stock > 0 && <span className="text-amber-300"> · {data.low_stock} az stok</span>}
-          {data.out_of_stock > 0 && <span className="text-red-400"> · {data.out_of_stock} stoksuz</span>}
+          {data.low_stock > 0 && <span className="text-amber-700"> · {data.low_stock} az stok</span>}
+          {data.out_of_stock > 0 && <span className="text-red-600"> · {data.out_of_stock} stoksuz</span>}
         </span>
         <input value={q} onChange={e => setQ(e.target.value)}
           placeholder="Ürün, model veya SKU ara…" className="input !w-64 ml-auto" />
@@ -99,7 +99,7 @@ export default function EnvanterPage() {
               const changed = !!edits[row.variant_id]
               return (
                 <tr key={row.variant_id}
-                  className={`border-t border-panel-border ${changed ? 'bg-sky-500/10' : ''}`}>
+                  className={`border-t border-panel-border ${changed ? 'bg-sky-50' : ''}`}>
                   <td className="px-4 py-2">
                     <Link to={`/urunler/${row.product_id}`} className="font-medium hover:underline">
                       {row.product_title}
@@ -107,12 +107,12 @@ export default function EnvanterPage() {
                     <div className="text-xs text-panel-muted">
                       {row.model_display}{row.variation ? ` · ${row.variation}` : ''}
                       {row.product_status !== 'active' && (
-                        <span className="ml-1.5 text-[10px] bg-slate-500/15 text-slate-500 px-1.5 py-0.5 rounded-full">
+                        <span className="ml-1.5 text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
                           {row.product_status === 'draft' ? 'taslak' : 'arşiv'}
                         </span>
                       )}
                       {!row.is_active && (
-                        <span className="ml-1.5 text-[10px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded-full">
+                        <span className="ml-1.5 text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded-full">
                           varyant pasif
                         </span>
                       )}

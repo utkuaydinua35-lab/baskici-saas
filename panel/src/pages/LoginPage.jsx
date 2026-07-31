@@ -83,7 +83,7 @@ export default function LoginPage() {
                 required autoFocus maxLength={10} onChange={e => setCode(e.target.value)} />
             </label>
           )}
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-red-600">{error}</p>}
           <button disabled={busy} className="btn-primary w-full">
             {busy ? 'Giriş yapılıyor…' : mfaToken ? 'Doğrula' : 'Giriş Yap'}
           </button>

@@ -107,7 +107,7 @@ export default function AyarlarPage() {
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-3.5 py-2 text-[13px] whitespace-nowrap rounded-t-xl border-b-2 transition-all duration-150 ${
               tab === t.key
-                ? 'border-panel-accent text-emerald-300 font-semibold bg-emerald-500/10'
+                ? 'border-panel-accent text-emerald-700 font-semibold bg-emerald-50'
                 : 'border-transparent text-panel-muted hover:text-panel-ink hover:bg-panel-input'}`}>
             <span className="mr-1.5">{t.icon}</span>{t.label}
           </button>
@@ -248,7 +248,7 @@ export default function AyarlarPage() {
               <summary className="text-sm font-medium cursor-pointer flex items-center gap-2">
                 {label}
                 {(t.subject || t.intro) && (
-                  <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">özel</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">özel</span>
                 )}
               </summary>
               <div className="mt-2 space-y-2">
@@ -356,7 +356,7 @@ export default function AyarlarPage() {
                     support_faq: c.support_faq.map((x, j) => j === i ? { ...x, q: e.target.value } : x) }))} />
                 <button onClick={() => setCfg(c => ({ ...c,
                   support_faq: c.support_faq.filter((_, j) => j !== i) }))}
-                  className="text-red-400 hover:text-red-400 text-sm">×</button>
+                  className="text-red-600 hover:text-red-600 text-sm">×</button>
               </div>
               <textarea className="input" rows={2} maxLength={2000} value={f.a}
                 placeholder="Asistanın vereceği yanıt"
@@ -509,7 +509,7 @@ function PasskeySection({ toast }) {
         Baskıcı panelinde de geçerlidir.
       </p>
       {!passkeySupported() && (
-        <p className="text-xs text-amber-300">
+        <p className="text-xs text-amber-700">
           Bu tarayıcı geçiş anahtarını desteklemiyor (güncel Chrome/Safari/Edge gerekir).
         </p>
       )}
@@ -529,7 +529,7 @@ function PasskeySection({ toast }) {
                   : 'hiç kullanılmadı'}
               </span>
               <button onClick={() => remove(k)}
-                className="ml-auto text-xs text-red-400 hover:text-red-400">Sil</button>
+                className="ml-auto text-xs text-red-600 hover:text-red-600">Sil</button>
             </div>
           ))}
         </div>
@@ -593,7 +593,7 @@ function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
           {busy ? 'Kontrol ediliyor…' : '🔍 DNS Doğrula'}
         </button>
         {result && (
-          <span className={`text-xs ${result.verified ? 'text-emerald-300' : 'text-amber-300'}`}>
+          <span className={`text-xs ${result.verified ? 'text-emerald-700' : 'text-amber-700'}`}>
             {result.message}
           </span>
         )}

@@ -287,9 +287,9 @@ export default function TemaEditorPage() {
               : set('name', e.target.value)} />
           <div className="text-[10px] leading-none">
             {draftKey ? (
-              <span className="text-slate-500 bg-slate-500/15 px-1.5 py-0.5 rounded-full">Taslak — yayını etkilemez</span>
+              <span className="text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">Taslak — yayını etkilemez</span>
             ) : (
-              <span className="text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">● Yayında</span>
+              <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">● Yayında</span>
             )}
           </div>
         </div>
@@ -370,7 +370,7 @@ export default function TemaEditorPage() {
                   {(SECTION_TYPES[activeSec.type] || { label: activeSec.type }).label}
                 </span>
                 {activeSec.hidden && (
-                  <span className="text-[10px] bg-slate-500/20 text-slate-300 px-1.5 py-0.5 rounded-full">gizli</span>
+                  <span className="text-[10px] bg-slate-500/20 text-slate-600 px-1.5 py-0.5 rounded-full">gizli</span>
                 )}
               </div>
               <div className="flex items-center gap-1.5 text-xs">
@@ -383,14 +383,14 @@ export default function TemaEditorPage() {
                 <button onClick={() => moveSec(activeIdx, 1)} disabled={activeIdx === theme.sections.length - 1}
                   className="w-7 h-7 rounded-lg border border-panel-border disabled:opacity-30">↓</button>
                 <button onClick={() => removeSec(activeSec.id)}
-                  className="ml-auto text-red-400 hover:text-red-400">Bölümü Sil</button>
+                  className="ml-auto text-red-600 hover:text-red-600">Bölümü Sil</button>
               </div>
               <div className="flex items-center gap-2 text-xs text-panel-muted">
                 Zemin:
                 {[['none', 'Sayfa rengi'], ['band', 'Beyaz bant']].map(([v, l]) => (
                   <button key={v} onClick={() => patchSectionMeta(activeSec.id, { scheme: v })}
                     className={`px-2 py-0.5 rounded-full border ${(activeSec.scheme || 'none') === v
-                      ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
+                      ? 'border-panel-accent bg-emerald-50 text-emerald-700'
                       : 'border-panel-border'}`}>{l}</button>
                 ))}
               </div>
@@ -405,7 +405,7 @@ export default function TemaEditorPage() {
               {/* Hazır şablonlar bilinçli olarak editörde YOK — şablondan
                   başlamak Tema kütüphanesindeki "Yeni taslak oluştur"dan yapılır */}
               {pageScope !== 'home' && (
-                <p className="text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-xl px-3 py-2">
+                <p className="text-[11px] text-sky-700 bg-sky-50 border border-sky-500/30 rounded-xl px-3 py-2">
                   {pageScope === 'sepet' ? '🛒 Sepet sayfası ayarları gösteriliyor.'
                     : pageScope === 'tesekkur' ? '🧾 Sipariş onayı ekranı ayarları gösteriliyor.'
                     : 'ℹ️ Bu sayfa genel tema ayarlarını (renk, menü, footer…) kullanır.'}
@@ -460,7 +460,7 @@ export default function TemaEditorPage() {
                       <button key={v}
                         onClick={() => set(`collection_pages.${collectionSlug}.position`, v)}
                         className={`px-2.5 py-1 rounded-full border ${(collectionBlock.position || 'ust') === v
-                          ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
+                          ? 'border-panel-accent bg-emerald-50 text-emerald-700'
                           : 'border-panel-border text-panel-muted'}`}>{l}</button>
                     ))}
                   </div>
@@ -657,7 +657,7 @@ export default function TemaEditorPage() {
                           <span>{meta.icon}</span>
                           <span className="truncate">{meta.label}</span>
                           {sec.hidden && (
-                            <span className="text-[10px] bg-slate-500/20 text-slate-300 px-1.5 py-0.5 rounded-full shrink-0">gizli</span>
+                            <span className="text-[10px] bg-slate-500/20 text-slate-600 px-1.5 py-0.5 rounded-full shrink-0">gizli</span>
                           )}
                           <span className="text-panel-muted text-xs ml-auto shrink-0">Düzenle ›</span>
                         </button>
@@ -707,7 +707,7 @@ export default function TemaEditorPage() {
               </Section>
 
               <Section title="Özel Kod (Gelişmiş)" icon="⚡">
-                <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
                   ⚠️ Buraya eklenen kod vitrininizde aynen çalışır — yalnızca güvendiğiniz
                   kodu ekleyin. Özel kod temadan bağımsızdır (taslakta da kaydedilse yayına yansır).
                 </p>
@@ -830,7 +830,7 @@ function NavLinkRow({ link, index, count, collections, products, pages, onChange
           title="Aşağı taşı (menüde sağa)"
           className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
         <button onClick={onRemove}
-          className="text-red-400 hover:text-red-400 px-1">×</button>
+          className="text-red-600 hover:text-red-600 px-1">×</button>
       </div>
       {isCustom && (
         <input className="input !py-1.5 text-xs font-mono" value={link.url} maxLength={300}
@@ -848,7 +848,7 @@ function NavLinkRow({ link, index, count, collections, products, pages, onChange
               return (
                 <button key={c.slug} onClick={() => toggleSlug(c.slug)}
                   className={`px-2 py-0.5 rounded-full text-[11px] border transition ${on
-                    ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
+                    ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
                     : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                   {c.title}
                 </button>

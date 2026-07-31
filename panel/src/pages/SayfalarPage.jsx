@@ -172,7 +172,7 @@ export default function SayfalarPage() {
                 <span className="text-panel-muted text-xs ml-2">/sayfa/{pg.slug || '…'}</span>
               </button>
               <button onClick={() => removePage(i)}
-                className="text-xs text-red-400 hover:text-red-400 px-1">Sil</button>
+                className="text-xs text-red-600 hover:text-red-600 px-1">Sil</button>
             </div>
             {openIdx === i && (
               <div className="p-3 bg-panel-card space-y-2">

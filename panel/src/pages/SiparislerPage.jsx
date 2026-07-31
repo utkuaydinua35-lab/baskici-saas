@@ -90,7 +90,7 @@ export default function SiparislerPage() {
         <span className="text-sm text-panel-muted">{data.total ?? 0} sipariş</span>
         <button onClick={() => { setShowArchive(a => !a); setSelected(new Set()) }}
           className={`px-2.5 py-1 rounded-full text-xs border transition ${showArchive
-            ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
+            ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
             : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
           📦 Arşiv
         </button>
@@ -102,7 +102,7 @@ export default function SiparislerPage() {
 
       {draftOpen && <DraftOrderModal storeId={storeId} onClose={() => setDraftOpen(false)} />}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Toplu işlem çubuğu — seçim varken belirir (Shopify bulk bar) */}
       {selected.size > 0 && (
@@ -118,7 +118,7 @@ export default function SiparislerPage() {
           <button disabled={bulkBusy}
             onClick={() => bulk('delete', null,
               `${selected.size} sipariş çöp kutusuna taşınacak (geri alınabilir). Emin misiniz?`)}
-            className="px-3 py-1.5 rounded-xl text-xs border border-red-500/30 text-red-300 bg-panel-card hover:bg-red-500/15 disabled:opacity-50">
+            className="px-3 py-1.5 rounded-xl text-xs border border-red-500/30 text-red-700 bg-panel-card hover:bg-red-50 disabled:opacity-50">
             🗑 Sil
           </button>
           <button onClick={() => setSelected(new Set())}
@@ -145,7 +145,7 @@ export default function SiparislerPage() {
           <tbody>
             {visible.map(o => (
               <tr key={o.id} className={`border-t border-panel-border hover:bg-panel-input/50 ${
-                selected.has(o.id) ? 'bg-emerald-500/10' : ''}`}>
+                selected.has(o.id) ? 'bg-emerald-50' : ''}`}>
                 <td className="px-3 py-2.5">
                   <input type="checkbox" checked={selected.has(o.id)}
                     onChange={() => toggleOne(o.id)} />
@@ -170,7 +170,7 @@ export default function SiparislerPage() {
                 <td className="px-4 py-2.5"><FinancialBadge status={o.financial_status} /></td>
                 <td className="px-4 py-2.5 text-xs">
                   {o.cancelled_at
-                    ? <span className="text-red-400">İptal</span>
+                    ? <span className="text-red-600">İptal</span>
                     : <span>{STAGE_LABELS[o.current_stage] || '—'}</span>}
                 </td>
                 <td className="px-2 py-2.5 text-panel-muted">
@@ -202,11 +202,11 @@ export default function SiparislerPage() {
 
 export function FinancialBadge({ status }) {
   const map = {
-    paid: ['Ödendi', 'bg-emerald-500/15 text-emerald-300'],
-    refunded: ['İade Edildi', 'bg-red-500/15 text-red-300'],
-    partially_refunded: ['Kısmi İade', 'bg-amber-500/15 text-amber-300'],
+    paid: ['Ödendi', 'bg-emerald-50 text-emerald-700'],
+    refunded: ['İade Edildi', 'bg-red-50 text-red-700'],
+    partially_refunded: ['Kısmi İade', 'bg-amber-50 text-amber-700'],
   }
-  const [label, cls] = map[status] || [status || '—', 'bg-slate-500/15 text-slate-300']
+  const [label, cls] = map[status] || [status || '—', 'bg-slate-100 text-slate-600']
   return <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{label}</span>
 }
 
@@ -338,7 +338,7 @@ function DraftOrderModal({ storeId, onClose }) {
                 <span className="tabular-nums text-panel-muted">×{l.quantity}</span>
                 <span className="tabular-nums font-medium">{fmtTL(l.unit_price * l.quantity)}</span>
                 <button type="button" onClick={() => setLines(ls => ls.filter((_, j) => j !== i))}
-                  className="text-red-400 hover:text-red-400 px-1">×</button>
+                  className="text-red-600 hover:text-red-600 px-1">×</button>
               </div>
             ))}
             <div className="flex justify-between px-3 py-2 text-sm font-semibold">

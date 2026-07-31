@@ -43,10 +43,10 @@ export default function TerkSepetlerPage() {
 
   const lastPage = Math.max(1, Math.ceil(data.total / data.per_page))
   const STATUS = {
-    pending: ['Beklemede', 'text-amber-300'],
+    pending: ['Beklemede', 'text-amber-700'],
     expired: ['Süresi doldu', 'text-panel-muted'],
-    failed: ['Başarısız', 'text-red-400'],
-    draft: ['Taslak', 'text-sky-600'],
+    failed: ['Başarısız', 'text-red-600'],
+    draft: ['Taslak', 'text-sky-700'],
   }
 
   return (
@@ -67,7 +67,7 @@ export default function TerkSepetlerPage() {
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -94,7 +94,7 @@ export default function TerkSepetlerPage() {
                   <td className="px-4 py-2.5 text-right tabular-nums font-medium">
                     {fmt(s.amount)}
                     {s.discount_code && (
-                      <div className="text-[10px] text-emerald-300 font-mono">{s.discount_code}</div>
+                      <div className="text-[10px] text-emerald-700 font-mono">{s.discount_code}</div>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{s.item_count}</td>
@@ -107,11 +107,11 @@ export default function TerkSepetlerPage() {
                   <td className="px-4 py-2.5">
                     {s.status === 'draft' ? (
                       <div className="flex items-center gap-1.5">
-                        {s.reminder_sent_at && <span className="text-xs text-emerald-300" title="Ödeme linki e-postalandı">✉✓</span>}
+                        {s.reminder_sent_at && <span className="text-xs text-emerald-700" title="Ödeme linki e-postalandı">✉✓</span>}
                         <button onClick={e => copyLink(s, e)} className="btn-ghost !py-1 text-xs">🔗 Linki Kopyala</button>
                       </div>
                     ) : s.reminder_sent_at ? (
-                      <span className="text-xs text-emerald-300"
+                      <span className="text-xs text-emerald-700"
                         title={new Date(s.reminder_sent_at).toLocaleString('tr-TR')}>✓ Gönderildi</span>
                     ) : (
                       <button onClick={e => sendReminder(s, e)} disabled={busyId === s.id}
@@ -175,7 +175,7 @@ function AbandonedDetail({ id, storefrontUrl, onClose }) {
           <h2 className="font-semibold">🛒 Terk Edilen Sepet</h2>
           <button onClick={onClose} className="ml-auto text-panel-muted hover:text-panel-ink">×</button>
         </div>
-        {err && <p className="text-sm text-red-400">{err}</p>}
+        {err && <p className="text-sm text-red-600">{err}</p>}
         {!d ? <p className="text-sm text-panel-muted">Yükleniyor…</p> : (
           <>
             {/* NEREDE VAZGEÇTİ — huni şeridi */}
@@ -184,7 +184,7 @@ function AbandonedDetail({ id, storefrontUrl, onClose }) {
                 {d.funnel.steps.map((st, i) => (
                   <div key={st.key} className="flex-1 flex items-center gap-1">
                     <div className={`flex-1 h-1.5 rounded-full ${
-                      st.done ? 'bg-emerald-500/100' : 'bg-panel-border'}`}
+                      st.done ? 'bg-emerald-600' : 'bg-panel-border'}`}
                       title={st.label} />
                     {i === d.funnel.steps.length - 1 && (
                       <span className="text-[10px] text-panel-muted whitespace-nowrap">ödeme</span>
@@ -200,7 +200,7 @@ function AbandonedDetail({ id, storefrontUrl, onClose }) {
                 <p className="text-xs text-panel-muted">🔍 {d.funnel.reason}</p>
               )}
               {d.funnel.action && (
-                <p className="text-xs text-emerald-300">💡 {d.funnel.action}</p>
+                <p className="text-xs text-emerald-700">💡 {d.funnel.action}</p>
               )}
             </div>
 
@@ -217,7 +217,7 @@ function AbandonedDetail({ id, storefrontUrl, onClose }) {
                 {d.customer.phone && (
                   <a href={`https://wa.me/9${d.customer.phone.replace(/\D/g, '')}`}
                     target="_blank" rel="noreferrer"
-                    className="block text-xs text-emerald-300 hover:underline">
+                    className="block text-xs text-emerald-700 hover:underline">
                     💬 WhatsApp: {d.customer.phone}
                   </a>
                 )}

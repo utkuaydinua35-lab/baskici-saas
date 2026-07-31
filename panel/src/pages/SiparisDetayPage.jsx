@@ -30,7 +30,7 @@ export default function SiparisDetayPage() {
   }, [orderId])
   useEffect(() => { load() }, [load])
 
-  if (error) return <p className="text-sm text-red-400">{error}</p>
+  if (error) return <p className="text-sm text-red-600">{error}</p>
   if (!d) return <SkeletonDetail />
 
   const fin = d.financial || {}
@@ -48,9 +48,9 @@ export default function SiparisDetayPage() {
             <h1 className="text-xl font-semibold font-mono">{d.name || `#${d.order_number}`}</h1>
             <FinancialBadge status={fin.payment_status} />
             {d.cancelled_at
-              ? <Badge cls="bg-red-500/15 text-red-300">İptal Edildi</Badge>
-              : <Badge cls="bg-indigo-500/10 text-indigo-300">{STAGE_LABELS[stage] || '—'}</Badge>}
-            {d.is_acil && <Badge cls="bg-amber-500/15 text-amber-300">⚡ Acil</Badge>}
+              ? <Badge cls="bg-red-50 text-red-700">İptal Edildi</Badge>
+              : <Badge cls="bg-indigo-50 text-indigo-700">{STAGE_LABELS[stage] || '—'}</Badge>}
+            {d.is_acil && <Badge cls="bg-amber-50 text-amber-700">⚡ Acil</Badge>}
           </div>
           <div className="text-xs text-panel-muted mt-0.5">
             {d.created_at_platform && new Date(d.created_at_platform).toLocaleString('tr-TR', {
@@ -90,7 +90,7 @@ export default function SiparisDetayPage() {
               <Row label="Ara toplam" value={fin.subtotal != null ? fmt(fin.subtotal) : '—'} />
               {Number(fin.total_discount) > 0 && (
                 <Row label={`İndirim${d.raw?.discount?.code ? ` (${d.raw.discount.code})` : ''}`}
-                  value={`−${fmt(fin.total_discount)}`} cls="text-emerald-300" />
+                  value={`−${fmt(fin.total_discount)}`} cls="text-emerald-700" />
               )}
               <Row label="Kargo"
                 value={fin.shipping != null ? (Number(fin.shipping) > 0 ? fmt(fin.shipping) : 'Ücretsiz') : '—'} />
@@ -118,7 +118,7 @@ export default function SiparisDetayPage() {
           <div className="card">
             <h2 className="text-sm font-semibold mb-1.5">Notlar</h2>
             {d.note ? (
-              <p className="text-xs text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl px-2.5 py-2 whitespace-pre-line">
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-500/30 rounded-xl px-2.5 py-2 whitespace-pre-line">
                 {d.note}
               </p>
             ) : (
@@ -130,7 +130,7 @@ export default function SiparisDetayPage() {
           <div className="card">
             <h2 className="text-sm font-semibold mb-2.5">Müşteri</h2>
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full bg-emerald-500/15 text-emerald-300 flex items-center justify-center text-sm font-semibold shrink-0">
+              <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center text-sm font-semibold shrink-0">
                 {(d.customer_name || '?').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
@@ -229,7 +229,7 @@ export default function SiparisDetayPage() {
                   <li key={no} className={`flex items-center gap-2 text-[11px] ${
                     no <= stage ? 'text-panel-ink' : 'text-panel-muted/60'}`}>
                     <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${
-                      no < stage ? 'bg-emerald-500/15 text-emerald-300'
+                      no < stage ? 'bg-emerald-50 text-emerald-700'
                         : no === stage ? 'bg-panel-accent text-white'
                         : 'bg-panel-input'}`}>
                       {no < stage ? '✓' : no}
@@ -260,12 +260,12 @@ function Badge({ cls, children }) {
 
 export function FinancialBadge({ status }) {
   const map = {
-    paid: ['● Ödendi', 'bg-emerald-500/15 text-emerald-300'],
-    refunded: ['İade Edildi', 'bg-red-500/15 text-red-300'],
-    partially_refunded: ['Kısmi İade', 'bg-amber-500/15 text-amber-300'],
-    pending: ['Ödeme Bekliyor', 'bg-slate-500/15 text-slate-300'],
+    paid: ['● Ödendi', 'bg-emerald-50 text-emerald-700'],
+    refunded: ['İade Edildi', 'bg-red-50 text-red-700'],
+    partially_refunded: ['Kısmi İade', 'bg-amber-50 text-amber-700'],
+    pending: ['Ödeme Bekliyor', 'bg-slate-100 text-slate-600'],
   }
-  const [label, cls] = map[status] || [status || 'Bilinmiyor', 'bg-slate-500/15 text-slate-300']
+  const [label, cls] = map[status] || [status || 'Bilinmiyor', 'bg-slate-100 text-slate-600']
   return <Badge cls={cls}>{label}</Badge>
 }
 
@@ -424,7 +424,7 @@ function ItemsCard({ d, isStorefront, stage, onChanged }) {
                     className="w-6 h-6 rounded-lg border border-panel-border text-xs">+</button>
                   <button onClick={() => setEdits(x => ({ ...x, [li.id]: { remove: true } }))}
                     title="Kalemi çıkar"
-                    className="w-6 h-6 rounded-lg text-xs text-red-400 hover:text-red-300">×</button>
+                    className="w-6 h-6 rounded-lg text-xs text-red-600 hover:text-red-700">×</button>
                 </div>
               ) : (
                 <div className="text-right text-sm whitespace-nowrap">
@@ -442,21 +442,21 @@ function ItemsCard({ d, isStorefront, stage, onChanged }) {
           )
         })}
         {added.map((a, i) => (
-          <div key={`add-${i}`} className="flex items-center gap-3 px-4 py-2 bg-emerald-500/10">
-            <span className="text-xs text-emerald-300 flex-1 truncate">+ {a.label} ×{a.qty}</span>
-            <span className="text-xs text-emerald-300">{fmt(a.price * a.qty)}</span>
+          <div key={`add-${i}`} className="flex items-center gap-3 px-4 py-2 bg-emerald-50">
+            <span className="text-xs text-emerald-700 flex-1 truncate">+ {a.label} ×{a.qty}</span>
+            <span className="text-xs text-emerald-700">{fmt(a.price * a.qty)}</span>
             <button onClick={() => setAdded(x => x.filter((_, j) => j !== i))}
-              className="text-xs text-red-400">×</button>
+              className="text-xs text-red-600">×</button>
           </div>
         ))}
       </div>
       {editing && <AddItemRow storeId={d.store_id} onAdd={a => setAdded(x => [...x, a])} />}
       {msg && (
         <div className={`px-4 py-2.5 text-xs border-t border-panel-border ${
-          msg.ok ? 'text-emerald-300' : 'text-red-400'}`}>
+          msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>
           {msg.text}
           {msg.ok && fark != null && fark !== 0 && (
-            <span className="block mt-1 text-amber-300">
+            <span className="block mt-1 text-amber-700">
               {fark < 0
                 ? `İade önerilir: ${fmt(Math.abs(fark))} — aşağıdaki Para İadesi bölümünü kullanın.`
                 : `Ek tahsilat gerekir: ${fmt(fark)} — Siparişler → "Sipariş Oluştur" ile fark için ödeme linki gönderin.`}
@@ -558,7 +558,7 @@ function CommentBox({ orderId, onSent }) {
           {busy ? '…' : 'Gönder'}
         </button>
       </div>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
       <p className="text-[10px] text-panel-muted mt-1 text-right">
         Yorumları yalnızca siz ve diğer personel görebilir.
       </p>
@@ -606,12 +606,12 @@ function TagsCard({ orderId, initial }) {
               border border-panel-border rounded-full px-2 py-0.5">
               {t}
               <button onClick={() => persist(tags.filter(x => x !== t))} disabled={busy}
-                className="text-panel-muted hover:text-red-400">×</button>
+                className="text-panel-muted hover:text-red-600">×</button>
             </span>
           ))}
         </div>
       )}
-      {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
+      {error && <p className="text-xs text-red-600 mt-1.5">{error}</p>}
     </div>
   )
 }
@@ -661,7 +661,7 @@ function RefundBlock({ orderId, onDone }) {
         <div className="space-y-1 mb-2">
           {info.refunds.map(r => (
             <div key={r.id} className="text-[11px] flex justify-between">
-              <span className={r.status === 'succeeded' ? 'text-emerald-300' : 'text-red-400'}>
+              <span className={r.status === 'succeeded' ? 'text-emerald-700' : 'text-red-600'}>
                 {r.status === 'succeeded' ? '✓ İade' : '✗ Başarısız iade'}: {r.amount} ₺
                 {r.reason && <span className="text-panel-muted"> — {r.reason}</span>}
               </span>
@@ -672,7 +672,7 @@ function RefundBlock({ orderId, onDone }) {
           ))}
         </div>
       )}
-      {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-300' : 'text-red-400'}`}>{msg.text}</p>}
+      {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
 
       {refundable > 0 ? (
         !confirming ? (
@@ -686,13 +686,13 @@ function RefundBlock({ orderId, onDone }) {
               const n = Number(amount)
               if (!n || n <= 0 || n > refundable) { setMsg({ ok: false, text: `Tutar 0 ile ${refundable} arasında olmalı` }); return }
               setConfirming(true)
-            }} className="px-3 py-1.5 rounded-xl text-xs bg-panel-card border border-red-500/30 text-red-300 whitespace-nowrap hover:bg-red-500/15">
+            }} className="px-3 py-1.5 rounded-xl text-xs bg-panel-card border border-red-500/30 text-red-700 whitespace-nowrap hover:bg-red-50">
               İade Et
             </button>
           </div>
         ) : (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-2.5 flex items-center gap-3">
-            <p className="text-xs text-red-300 flex-1">
+          <div className="bg-red-50 border border-red-500/30 rounded-xl p-2.5 flex items-center gap-3">
+            <p className="text-xs text-red-700 flex-1">
               <b>{Number(amount).toFixed(2)} ₺</b> müşteriye iade edilecek. Geri alınamaz.
             </p>
             <button onClick={doRefund} disabled={busy}
@@ -738,9 +738,9 @@ function SkeletonDetail() {
 
 // Müşteri talepleri — vitrindeki takip sayfasından gelen iade/değişim/sorun
 // kayıtları; çözülünce işaretlenir.
-const REQ_LABELS = { iade: ['İade', 'bg-red-500/10 text-red-300'],
-  degisim: ['Değişim', 'bg-amber-500/10 text-amber-300'],
-  sorun: ['Sorun', 'bg-sky-500/10 text-sky-300'] }
+const REQ_LABELS = { iade: ['İade', 'bg-red-50 text-red-700'],
+  degisim: ['Değişim', 'bg-amber-50 text-amber-700'],
+  sorun: ['Sorun', 'bg-sky-50 text-sky-700'] }
 
 function RequestsCard({ orderId }) {
   const [reqs, setReqs] = useState(null)
@@ -765,14 +765,14 @@ function RequestsCard({ orderId }) {
   return (
     <div className="card border-amber-500/30">
       <h2 className="text-sm font-semibold mb-3">
-        📨 Müşteri Talepleri {open > 0 && <span className="text-amber-300">({open} açık)</span>}
+        📨 Müşteri Talepleri {open > 0 && <span className="text-amber-700">({open} açık)</span>}
       </h2>
       <div className="space-y-2.5">
         {reqs.map(r => {
-          const [label, cls] = REQ_LABELS[r.request_type] || [r.request_type, 'bg-slate-500/15 text-slate-300']
+          const [label, cls] = REQ_LABELS[r.request_type] || [r.request_type, 'bg-slate-100 text-slate-600']
           return (
             <div key={r.id} className={`rounded-xl border p-3 text-sm ${
-              r.status === 'acik' ? 'border-amber-500/30 bg-amber-500/10' : 'border-panel-border opacity-70'}`}>
+              r.status === 'acik' ? 'border-amber-500/30 bg-amber-50' : 'border-panel-border opacity-70'}`}>
               <div className="flex items-center gap-2">
                 <span className={`text-[11px] px-2 py-0.5 rounded-full ${cls}`}>{label}</span>
                 <span className="text-xs text-panel-muted">
@@ -785,7 +785,7 @@ function RequestsCard({ orderId }) {
                     {busyId === r.id ? '…' : '✓ Çözüldü işaretle'}
                   </button>
                 ) : (
-                  <span className="ml-auto text-xs text-emerald-300">✓ Çözüldü</span>
+                  <span className="ml-auto text-xs text-emerald-700">✓ Çözüldü</span>
                 )}
               </div>
               <p className="mt-1.5 text-panel-ink whitespace-pre-line">{r.message}</p>

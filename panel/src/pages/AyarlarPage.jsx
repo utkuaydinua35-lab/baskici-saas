@@ -149,6 +149,14 @@ export default function AyarlarPage() {
               value={cfg.min_order_amount || ''} onChange={set('min_order_amount')} placeholder="boş = yok" />
           </Field>
         </div>
+        <Field label="KDV oranı (%)">
+          <input className="input mt-1 !w-32" type="number" min="0" max="100" step="1"
+            value={cfg.tax_rate ?? ''} onChange={set('tax_rate')} placeholder="20" />
+          <p className="text-[11px] text-panel-muted mt-1">
+            Vitrin fiyatları <b>KDV dahil</b> gösterilir; siparişte fatura için
+            tutarın içindeki KDV ayrıştırılıp kaydedilir. Boş = %20.
+          </p>
+        </Field>
         <Field label="Kargo sözü (gün)">
           <input className="input mt-1 !w-32" type="number" min="1"
             value={cfg.sla_days || ''} onChange={set('sla_days')} placeholder="3" />

@@ -22,7 +22,31 @@ def _next_order_number(db: Session) -> int:
     return int(db.execute(sa_text("SELECT nextval('storefront_order_number_seq')")).scalar())
 
 
-def _build_raw(session: CheckoutSession, order_number: int) -> dict:
+# TR standardı: vitrin fiyatları KDV DAHİL. Fatura/muhasebe için tutarın
+# içindeki vergi ayrıştırılır. Oran mağaza ayarından (varsayılan %20).
+DEFAULT_TAX_RATE = Decimal("20")
+
+
+def _tax_rate(store: Store | None) -> Decimal:
+    try:
+        raw = ((store.config or {}).get("tax_rate") if store else None)
+        return Decimal(str(raw)) if raw not in (None, "") else DEFAULT_TAX_RATE
+    except Exception:  # noqa: BLE001 — bozuk ayar varsayılana düşsün
+        return DEFAULT_TAX_RATE
+
+
+def _tax_included(session: CheckoutSession, store: Store | None) -> Decimal:
+    """Toplam tutarın İÇİNDEKİ KDV: tutar - (tutar / (1 + oran/100))."""
+    rate = _tax_rate(store)
+    if rate <= 0:
+        return Decimal("0.00")
+    total = Decimal(str(session.amount or 0))
+    net = (total / (Decimal("1") + rate / Decimal("100")))
+    return (total - net).quantize(Decimal("0.01"))
+
+
+def _build_raw(session: CheckoutSession, order_number: int,
+               store: Store | None = None) -> dict:
     """adapters/base.py'de belgelenen Shopify dict şemasına normalize et."""
     cust = session.customer or {}
     full_name = f"{cust.get('first_name', '')} {cust.get('last_name', '')}".strip()
@@ -106,6 +130,10 @@ def _build_raw(session: CheckoutSession, order_number: int) -> dict:
             Decimal(str(session.amount)) - Decimal(str(session.shipping_amount or 0))
         ),
         "total_discounts": str(session.discount_amount or 0),
+        # KDV — TR'de vitrin fiyatları KDV DAHİL gösterilir; fatura için
+        # tutarın içindeki vergi ayrıştırılır: kdv = tutar - (tutar / (1+oran))
+        "total_tax": str(_tax_included(session, store)),
+        "taxes_included": True,
         # Ek anahtarlar raw JSONB'de zararsız — denetim için ödeme özeti
         "payment": {
             "provider": session.provider,
@@ -238,7 +266,7 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
 
     store = db.get(Store, session.store_id)
     order_number = _next_order_number(db)
-    raw = _build_raw(session, order_number)
+    raw = _build_raw(session, order_number, store)
 
     order, _, _ = _upsert_order(
         db, tenant_id=session.tenant_id, store_id=session.store_id, raw=raw,

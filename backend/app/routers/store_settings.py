@@ -30,6 +30,8 @@ router = APIRouter(
 
 # Panelden yönetilebilen config anahtarları (whitelist — serbest yazım yok)
 _MONEY_KEYS = {"shipping_fee", "free_shipping_over", "min_order_amount"}
+# KDV oranı (%) — fiyatlar KDV DAHİL, fatura için içindeki vergi ayrıştırılır
+_TAX_KEYS = {"tax_rate"}
 _TEXT_KEYS = {
     "payment_provider", "storefront_url", "custom_domain", "shop_domain",
     "contact_email", "contact_phone", "contact_address", "contact_instagram",
@@ -48,7 +50,7 @@ _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap
               "support_chat_enabled"}
 # E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
 _EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok"}
-ALLOWED_KEYS = (_MONEY_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
+ALLOWED_KEYS = (_MONEY_KEYS | _TAX_KEYS | _TEXT_KEYS | _SECRET_CFG_KEYS | _BOOL_KEYS
                 | {"email_texts", "support_faq"})
 
 

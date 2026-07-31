@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { SNIPPETS } from '../lib/snippets'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import {
@@ -713,25 +714,37 @@ export default function TemaEditorPage() {
                 </p>
                 {customCode && (
                   <>
-                    <label className="block text-sm">
-                      <span className="text-panel-muted text-xs">Özel CSS</span>
-                      <textarea className="input mt-1 font-mono text-xs" rows={4} maxLength={20000}
-                        value={customCode.css}
-                        onChange={e => setCustomCode(c => ({ ...c, css: e.target.value }))}
-                        placeholder=".urun-karti { border-radius: 0; }" />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="text-panel-muted text-xs">Üst kod (sayfa başı — script/HTML)</span>
-                      <textarea className="input mt-1 font-mono text-xs" rows={3} maxLength={20000}
-                        value={customCode.head_html}
-                        onChange={e => setCustomCode(c => ({ ...c, head_html: e.target.value }))} />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="text-panel-muted text-xs">Alt kod (sayfa sonu — script/HTML)</span>
-                      <textarea className="input mt-1 font-mono text-xs" rows={3} maxLength={20000}
-                        value={customCode.body_html}
-                        onChange={e => setCustomCode(c => ({ ...c, body_html: e.target.value }))} />
-                    </label>
+                    {/* Hazır parçacıklar — çark, çıkış pop-up'ı, CSS örnekleri */}
+                    <div className="space-y-1.5">
+                      <span className="text-panel-muted text-xs">Hazır ekle</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {SNIPPETS.map(sn => (
+                          <button key={sn.key} type="button" title={sn.hint}
+                            onClick={() => {
+                              if (!window.confirm(`${sn.label} kodu eklenecek.\n\n${sn.hint}\n\nDevam?`)) return
+                              setCustomCode(c => ({
+                                ...c,
+                                [sn.target]: ((c[sn.target] || '').trim()
+                                  ? (c[sn.target] + '\n\n') : '') + sn.code,
+                              }))
+                              toast.info(`${sn.label} eklendi — kodu düzenleyip Kaydet'e basın`)
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-xs border border-panel-border
+                              hover:border-panel-accent hover:text-panel-ink text-panel-muted transition">
+                            {sn.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <CodeArea label="Özel CSS" value={customCode.css} rows={8}
+                      placeholder=".urun-karti { border-radius: 0; }"
+                      onChange={v => setCustomCode(c => ({ ...c, css: v }))} />
+                    <CodeArea label="Üst kod (sayfa başı — script/HTML)" rows={5}
+                      value={customCode.head_html}
+                      onChange={v => setCustomCode(c => ({ ...c, head_html: v }))} />
+                    <CodeArea label="Alt kod (sayfa sonu — script/HTML)" rows={10}
+                      value={customCode.body_html}
+                      onChange={v => setCustomCode(c => ({ ...c, body_html: v }))} />
                   </>
                 )}
               </Section>
@@ -861,5 +874,39 @@ function NavLinkRow({ link, index, count, collections, products, pages, onChange
         </div>
       )}
     </div>
+  )
+}
+
+
+// Kod alanı — satır numarası, karakter sayacı ve Tab girintisi.
+// (Tam sözdizimi vurgusu için harici kütüphane gerekirdi; panel hafif kalsın.)
+function CodeArea({ label, value, onChange, rows = 6, placeholder = '' }) {
+  const v = value || ''
+  const lines = v ? v.split('\n').length : 1
+  const LIMIT = 20000
+  return (
+    <label className="block text-sm">
+      <span className="text-panel-muted text-xs flex items-center gap-2">
+        {label}
+        <span className="ml-auto tabular-nums">
+          {lines} satır · {v.length.toLocaleString('tr-TR')}/{LIMIT.toLocaleString('tr-TR')}
+        </span>
+      </span>
+      <textarea
+        className={`input mt-1 font-mono text-xs leading-relaxed ${
+          v.length > LIMIT ? 'border-red-500' : ''}`}
+        rows={rows} maxLength={LIMIT} spellCheck={false} value={v}
+        placeholder={placeholder}
+        onKeyDown={e => {
+          if (e.key !== 'Tab') return
+          e.preventDefault()   // Tab odak değiştirmesin, girinti eklesin
+          const el = e.target
+          const s0 = el.selectionStart, s1 = el.selectionEnd
+          const next = v.slice(0, s0) + '  ' + v.slice(s1)
+          onChange(next)
+          requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s0 + 2 })
+        }}
+        onChange={e => onChange(e.target.value)} />
+    </label>
   )
 }

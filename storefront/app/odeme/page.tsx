@@ -47,8 +47,9 @@ export default function CheckoutPage() {
   }, []);
 
   // Tahmini kargo/toplam — kesin tutar yine sunucuda hesaplanır
-  const discountAmt = coupon && !coupon.freeShipping
-    ? Number(coupon.discountAmount)
+  // Kupon kargo bedava İLE birleşmiş olabilir — para indirimi ayrı tutulur
+  const discountAmt = coupon
+    ? Number(coupon.discountAmount) || 0
     : autoQuote ? autoQuote.discount : 0;
   const estShipping = shipCfg == null ? null
     : (coupon?.freeShipping || autoQuote?.freeShipping) ? 0
@@ -267,7 +268,7 @@ export default function CheckoutPage() {
             <span>Ara toplam</span>
             <span className="font-semibold">{formatPrice(subtotal)}</span>
           </div>
-          {coupon && !coupon.freeShipping && (
+          {coupon && Number(coupon.discountAmount) > 0 && (
             <div className="flex justify-between text-sm text-emerald-600">
               <span>İndirim ({coupon.code})</span>
               <span>−{formatPrice(coupon.discountAmount)}</span>

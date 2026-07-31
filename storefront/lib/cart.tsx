@@ -43,6 +43,9 @@ export interface AppliedCoupon {
   kind: string;
   discountAmount: string; // gösterim — sunucu ödeme anında yeniden doğrular
   freeShipping: boolean;
+  // Kupon "birleşebilir" ise otomatik indirim de eklenmiş olabilir; tutarlar
+  // yukarıdaki toplamlara zaten dahildir, bu liste yalnız gösterim içindir
+  combined?: { code: string; label: string }[];
 }
 
 interface CartContextValue {

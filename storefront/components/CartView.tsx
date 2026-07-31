@@ -252,11 +252,14 @@ function CartInner({
           <span className="text-zinc-500">Ara toplam</span>
           <span className="font-semibold">{formatPrice(subtotal)}</span>
         </div>
-        {coupon && !coupon.freeShipping && (
+        {coupon && Number(coupon.discountAmount) > 0 && (
           <div className="flex justify-between text-sm text-emerald-600">
             <span>İndirim ({coupon.code})</span>
             <span>−{formatPrice(coupon.discountAmount)}</span>
           </div>
+        )}
+        {coupon?.freeShipping && (
+          <div className="text-sm text-emerald-600">🎟️ Kargo ücretsiz</div>
         )}
         {!coupon && autoQuote && autoQuote.discount > 0 && (
           <>

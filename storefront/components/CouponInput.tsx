@@ -56,6 +56,10 @@ export default function CouponInput({ email }: { email?: string }) {
           kind: data.kind,
           discountAmount: data.discount_amount,
           freeShipping: data.free_shipping,
+          // Kodla birleşen otomatik indirimler (varsa) — rozette gösterilir
+          combined: (data.applied || [])
+            .filter((a: { code: string }) => a.code !== data.code)
+            .map((a: { code: string; label: string }) => ({ code: a.code, label: a.label })),
         });
         setCode("");
       } else {
@@ -73,9 +77,13 @@ export default function CouponInput({ email }: { email?: string }) {
       <div className="flex items-center justify-between gap-2 text-sm bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
         <span className="text-emerald-700">
           🎟️ <b className="font-mono">{coupon.code}</b>
-          {coupon.freeShipping
-            ? " — ücretsiz kargo"
-            : ` — ${formatPrice(coupon.discountAmount)} indirim`}
+          {Number(coupon.discountAmount) > 0 && ` — ${formatPrice(coupon.discountAmount)} indirim`}
+          {coupon.freeShipping && " — ücretsiz kargo"}
+          {coupon.combined?.length ? (
+            <span className="block text-xs text-emerald-600">
+              + {coupon.combined.map((c) => c.label).join(" + ")} (kampanya)
+            </span>
+          ) : null}
         </span>
         <button onClick={() => setCoupon(null)} className="text-xs text-emerald-600 underline">
           Kaldır

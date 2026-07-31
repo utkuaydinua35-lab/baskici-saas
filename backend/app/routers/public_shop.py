@@ -369,29 +369,41 @@ def validate_discount_code(
     _rl: None = Depends(status_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """Kupon kodunu ödeme öncesi doğrula (hiçbir kayıt yaratmaz — UX için)."""
+    """Kupon kodunu ödeme öncesi doğrula (hiçbir kayıt yaratmaz — UX için).
+
+    Kupon 'birleşebilir' işaretliyse uygun otomatik indirim de eklenir; yanıt
+    ödemede tahsil edilecek tutarın AYNISINI gösterir (fiyat sunucuda)."""
     from decimal import Decimal
 
     store = _resolve_store(db, store_slug)
+    items_count = sum(i.quantity for i in body.items)
     try:
         _snapshot, items_total = checkout_svc.validate_and_snapshot(
             db, store,
             [{"variant_id": str(i.variant_id), "quantity": i.quantity} for i in body.items])
-        dc, discount, free_shipping = checkout_svc.apply_discount(
+        base_shipping = checkout_svc._shipping_fee(store, items_total)
+        plan = checkout_svc.resolve_discounts(
             db, store, body.code, items_total, body.email,
-            sum(i.quantity for i in body.items), _snapshot)
+            base_shipping, items_count, _snapshot)
     except checkout_svc.CheckoutError as e:
         return {"valid": False, "message": str(e)}
 
-    shipping = Decimal("0") if free_shipping else checkout_svc._shipping_fee(store, items_total)
+    dc = plan.primary
+    discount = plan.total
+    shipping = Decimal("0") if plan.free_shipping else base_shipping
+    extra = [r for r in plan.breakdown() if r["code"] != (body.code or "").strip().upper()]
     return {
         "valid": True,
-        "code": dc.code,
-        "kind": dc.kind,
+        "code": dc.code if dc else body.code,
+        "kind": dc.kind if dc else None,
         "discount_amount": str(discount),
-        "free_shipping": free_shipping,
+        "free_shipping": plan.free_shipping,
         "new_total": str(items_total - discount + shipping),
-        "message": "Kupon uygulandı",
+        "applied": plan.breakdown(),
+        "message": (
+            "Kupon uygulandı — " + " + ".join(r["label"] for r in extra) + " ile birleşti"
+            if extra else "Kupon uygulandı"
+        ),
     }
 
 
@@ -423,23 +435,20 @@ def checkout_quote(
         return {"valid": False, "message": str(e)}
 
     shipping = checkout_svc._shipping_fee(store, items_total)
-    auto = checkout_svc.best_automatic_discount(
-        db, store, items_total, body.email, shipping,
+    plan = checkout_svc.resolve_discounts(
+        db, store, None, items_total, body.email, shipping,
         sum(i.quantity for i in body.items), snapshot)
-    discount = Decimal("0")
-    code = None
-    free_shipping = False
-    if auto:
-        dc, discount, free_shipping = auto
-        code = dc.code
-    if free_shipping:
+    discount = plan.total
+    dc = plan.primary
+    if plan.free_shipping:
         shipping = Decimal("0")
     return {
         "valid": True,
         "items_total": str(items_total),
         "discount_amount": str(discount),
-        "discount_code": code,
-        "free_shipping": free_shipping,
+        "discount_code": dc.code if dc else None,
+        "free_shipping": plan.free_shipping,
+        "applied": plan.breakdown(),
         "shipping": str(shipping),
         "total": str(items_total - discount + shipping),
     }

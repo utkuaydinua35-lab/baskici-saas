@@ -143,7 +143,9 @@ def _build_raw(session: CheckoutSession, order_number: int,
             "currency": session.currency,
         },
         **({"discount": {"code": session.discount_code,
-                         "amount": str(session.discount_amount)}}
+                         "amount": str(session.discount_amount),
+                         # Birleşik indirimde uygulanan tüm kuponlar
+                         "applied": session.discount_breakdown or None}}
            if session.discount_code else {}),
         # Kurumsal fatura bilgisi (checkout'ta opsiyonel) — panel detayda gösterilir
         **({"invoice": {
@@ -221,13 +223,24 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
             f"<tr><td style='padding:6px 0;color:#374151;font-size:14px'>Kargo</td>"
             f"<td align='right' style='padding:6px 0;font-size:14px'>{session.shipping_amount} ₺</td></tr>"
         )
+    # İndirim satır(lar)ı — birleşik indirimde her kupon ayrı satırda
     discount_row = ""
-    if session.discount_code and Decimal(str(session.discount_amount or 0)) > 0:
-        discount_row = (
+    rows = [r for r in (session.discount_breakdown or [])
+            if Decimal(str(r.get("amount") or 0)) > 0]
+    if not rows and session.discount_code and Decimal(str(session.discount_amount or 0)) > 0:
+        rows = [{"code": session.discount_code, "amount": str(session.discount_amount)}]
+    for r in rows:
+        discount_row += (
             f"<tr><td style='padding:6px 0;color:#059669;font-size:14px'>"
-            f"İndirim ({session.discount_code})</td>"
+            f"İndirim ({r.get('code')})</td>"
             f"<td align='right' style='padding:6px 0;color:#059669;font-size:14px'>"
-            f"−{session.discount_amount} ₺</td></tr>"
+            f"−{r.get('amount')} ₺</td></tr>"
+        )
+    if any(r.get("free_shipping") for r in (session.discount_breakdown or [])):
+        discount_row += (
+            "<tr><td style='padding:6px 0;color:#059669;font-size:14px'>Kargo</td>"
+            "<td align='right' style='padding:6px 0;color:#059669;font-size:14px'>"
+            "Ücretsiz</td></tr>"
         )
 
     config = store.config or {}
@@ -291,11 +304,15 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
     _decrement_stock(db, session, order)
     session.order_id = order.id
 
-    # Kupon kullanım sayacı YALNIZCA burada (doğrulanmış ödeme) artar — atomik
+    # Kupon kullanım sayacı YALNIZCA burada (doğrulanmış ödeme) artar — atomik.
+    # Birleşik indirimde (kupon + otomatik kargo) HER İKİSİ de sayılır.
+    used_ids = {row.get("id") for row in (session.discount_breakdown or []) if row.get("id")}
     if session.discount_code_id:
+        used_ids.add(str(session.discount_code_id))
+    if used_ids:
         db.execute(
             update(DiscountCode)
-            .where(DiscountCode.id == session.discount_code_id)
+            .where(DiscountCode.id.in_(list(used_ids)))
             .values(usage_count=DiscountCode.usage_count + 1)
         )
 

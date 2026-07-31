@@ -57,6 +57,10 @@ export default function KuponlarPage() {
                     <span className="ml-1.5 text-[10px] font-sans font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full"
                       title="Kod gerekmez — koşulu sağlayan sepete otomatik uygulanır">⚡ otomatik</span>
                   )}
+                  {c.combinable && (
+                    <span className="ml-1.5 text-[10px] font-sans font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full"
+                      title="Birleşebilir işaretli bir kargo/sepet indirimiyle aynı anda uygulanabilir">🔗 birleşir</span>
+                  )}
                 </td>
                 <td className="px-4 py-2.5">{kindLabel(c)}</td>
                 <td className="px-4 py-2.5 text-panel-muted text-xs">
@@ -128,6 +132,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
     usage_limit: coupon?.usage_limit || '',
     once_per_customer: coupon?.once_per_customer || false,
     is_automatic: coupon?.is_automatic || false,
+    combinable: coupon?.combinable || false,
     promo_message: coupon?.promo_message || '',
     collection_id: coupon?.collection_id || '',
     buy_x: coupon?.buy_x || '',
@@ -156,6 +161,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
       usage_limit: form.usage_limit ? num(form.usage_limit) : null,
       once_per_customer: form.once_per_customer,
       is_automatic: form.is_automatic,
+      combinable: form.combinable,
       promo_message: form.promo_message.trim() || null,
       collection_id: form.collection_id || null,
       buy_x: form.kind === 'bxgy' ? Number(form.buy_x) : null,
@@ -274,6 +280,18 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
             ⚡ Otomatik uygula (kod gerekmez)
             <span className="block text-xs text-panel-muted">
               Koşulu sağlayan sepete kendiliğinden uygulanır; müşteri kod girerse girilen kod geçerli olur.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={form.combinable} onChange={set('combinable')} />
+          <span>
+            🔗 Diğer indirimlerle birleşebilsin
+            <span className="block text-xs text-panel-muted">
+              {form.kind === 'free_shipping'
+                ? 'Bu kargo indirimi, birleşebilir işaretli bir sepet indirimiyle (kupon veya otomatik) aynı anda uygulanır.'
+                : 'Bu sepet indirimi, birleşebilir işaretli bir kargo indirimiyle aynı anda uygulanır. '
+                  + 'İki sepet indirimi asla üst üste binmez — en kazançlı olan geçerlidir.'}
             </span>
           </span>
         </label>

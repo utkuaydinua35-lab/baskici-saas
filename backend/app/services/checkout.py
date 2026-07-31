@@ -277,13 +277,23 @@ def evaluate_discount(
     return discount, free_shipping
 
 
+def bucket_of(dc: DiscountCode) -> str:
+    """İndirim kovası: 'kargo' (kargo bedava) | 'sepet' (%/TL/XalYöde).
+
+    Aynı kovadan yalnız bir indirim uygulanır; farklı kovalar — iki taraf da
+    'combinable' ise — birlikte uygulanabilir."""
+    return "kargo" if dc.kind == "free_shipping" else "sepet"
+
+
 def best_automatic_discount(
     db: Session, store: Store, items_total: Decimal, email: str | None,
     shipping_fee: Decimal, items_count: int | None = None,
-    snapshot: list[dict] | None = None,
+    snapshot: list[dict] | None = None, *,
+    bucket: str | None = None, combinable_only: bool = False,
 ) -> tuple[DiscountCode, Decimal, bool] | None:
-    """Kod girilmemiş sepette koşulu sağlayan otomatik indirimlerden en
-    kazançlısını seç (Shopify gibi: otomatikler birleşmez, tek kazanan olur).
+    """Koşulu sağlayan otomatik indirimlerden en kazançlısını seç.
+
+    Aynı kovada otomatikler birleşmez (Shopify davranışı) — tek kazanan olur.
     Kazanç = indirim tutarı + (kargo bedavaysa kargo ücreti)."""
     candidates = db.scalars(select(DiscountCode).where(
         DiscountCode.store_id == store.id,
@@ -294,6 +304,10 @@ def best_automatic_discount(
     best: tuple[DiscountCode, Decimal, bool] | None = None
     best_saving = Decimal("0")
     for dc in candidates:
+        if bucket and bucket_of(dc) != bucket:
+            continue
+        if combinable_only and not dc.combinable:
+            continue
         try:
             discount, free_shipping = evaluate_discount(
                 db, dc, items_total, email, items_count, snapshot)
@@ -304,6 +318,126 @@ def best_automatic_discount(
             best = (dc, discount, free_shipping)
             best_saving = saving
     return best
+
+
+class DiscountPlan:
+    """Sepete uygulanan indirimlerin sonucu (tek veya birleşik).
+
+    total: para indirimi (kargo hariç — kargo free_shipping ile sıfırlanır)
+    applied: [(DiscountCode, tutar, kargo_bedava)] — uygulanma sırasıyla
+    """
+
+    def __init__(self, applied: list[tuple[DiscountCode, Decimal, bool]]):
+        self.applied = applied
+
+    @property
+    def total(self) -> Decimal:
+        return sum((a for _, a, _ in self.applied), Decimal("0"))
+
+    @property
+    def free_shipping(self) -> bool:
+        return any(fs for _, _, fs in self.applied)
+
+    @property
+    def primary(self) -> DiscountCode | None:
+        """Sipariş/oturum kaydına yazılacak ana kupon: para indirimi varsa o,
+        yoksa ilk uygulanan (kargo)."""
+        for dc, amount, _ in self.applied:
+            if amount > 0:
+                return dc
+        return self.applied[0][0] if self.applied else None
+
+    @property
+    def codes(self) -> list[str]:
+        return [dc.code for dc, _, _ in self.applied]
+
+    def breakdown(self) -> list[dict]:
+        return [
+            {
+                "id": str(dc.id),
+                "code": dc.code,
+                "kind": dc.kind,
+                "amount": str(amount),
+                "free_shipping": fs,
+                "automatic": bool(dc.is_automatic),
+                "label": describe_discount(dc),
+            }
+            for dc, amount, fs in self.applied
+        ]
+
+
+def describe_discount(dc: DiscountCode) -> str:
+    """Müşteriye gösterilecek kısa etiket ('%10 indirim', 'Ücretsiz kargo')."""
+    if dc.promo_message:
+        return dc.promo_message
+    if dc.kind == "percent":
+        return f"%{Decimal(str(dc.value)).normalize():f} indirim"
+    if dc.kind == "amount":
+        return f"{Decimal(str(dc.value)):.2f} TL indirim"
+    if dc.kind == "free_shipping":
+        return "Ücretsiz kargo"
+    if dc.kind == "bxgy":
+        return f"{dc.buy_x} Al {dc.pay_y} Öde"
+    return dc.code
+
+
+def resolve_discounts(
+    db: Session, store: Store, code: str | None, items_total: Decimal,
+    email: str | None, shipping_fee: Decimal, items_count: int | None = None,
+    snapshot: list[dict] | None = None,
+) -> DiscountPlan:
+    """Sepete uygulanacak indirimleri belirle — TEK KAYNAK.
+
+    Kurallar (Shopify "Combinations" mantığı):
+    1. Kod girildiyse kod her zaman uygulanır (geçersizse hata fırlatır).
+    2. Kod 'birleşebilir' ise, DİĞER kovadan (kod sepet indirimiyse kargo,
+       kargo indirimiyse sepet) birleşebilir en iyi otomatik de eklenir.
+    3. Kod yoksa: her kovanın en iyi otomatiği bulunur; ikisi de birleşebilir
+       ise ikisi birden, değilse yalnız kazancı yüksek olan uygulanır.
+    4. Toplam para indirimi sepeti MIN_CHARGE altına düşüremez (kırpılır).
+    """
+    applied: list[tuple[DiscountCode, Decimal, bool]] = []
+
+    if code:
+        dc, discount, free_shipping = apply_discount(
+            db, store, code, items_total, email, items_count, snapshot)
+        applied.append((dc, discount, free_shipping))
+        if dc.combinable:
+            other = "kargo" if bucket_of(dc) == "sepet" else "sepet"
+            extra = best_automatic_discount(
+                db, store, items_total, email, shipping_fee, items_count, snapshot,
+                bucket=other, combinable_only=True)
+            if extra and extra[0].id != dc.id:
+                applied.append(extra)
+    else:
+        sepet = best_automatic_discount(
+            db, store, items_total, email, shipping_fee, items_count, snapshot,
+            bucket="sepet")
+        kargo = best_automatic_discount(
+            db, store, items_total, email, shipping_fee, items_count, snapshot,
+            bucket="kargo")
+        if sepet and kargo and sepet[0].combinable and kargo[0].combinable:
+            applied = [sepet, kargo]
+        else:
+            best, best_saving = None, Decimal("0")
+            for cand in (sepet, kargo):
+                if not cand:
+                    continue
+                saving = cand[1] + (shipping_fee if cand[2] else Decimal("0"))
+                if saving > best_saving:
+                    best, best_saving = cand, saving
+            if best:
+                applied = [best]
+
+    # Güvenlik tabanı: birleşik indirim sepeti sağlayıcının kabul etmeyeceği
+    # tutara indirmesin — son indirim kırpılır (kırpma sunucuda, istemcide değil)
+    total = sum((a for _, a, _ in applied), Decimal("0"))
+    if applied and total > items_total - MIN_CHARGE:
+        fazla = total - (items_total - MIN_CHARGE)
+        dc, amount, fs = applied[-1]
+        applied[-1] = (dc, max(Decimal("0"), amount - fazla), fs)
+
+    return DiscountPlan(applied)
 
 
 def create_session(
@@ -333,21 +467,14 @@ def create_session(
                 f"sepetinize ürün ekleyerek devam edebilirsiniz"
             )
 
-    dc = None
-    discount = Decimal("0")
-    free_shipping = False
     email = (customer or {}).get("email")
     items_count = sum(int(i.get("quantity", 1)) for i in snapshot)
-    if discount_code:
-        # Kod girildiyse kod kazanır (otomatikle birleşmez — Shopify davranışı)
-        dc, discount, free_shipping = apply_discount(
-            db, store, discount_code, items_total, email, items_count, snapshot)
-    else:
-        auto = best_automatic_discount(
-            db, store, items_total, email, _shipping_fee(store, items_total),
-            items_count, snapshot)
-        if auto:
-            dc, discount, free_shipping = auto
+    plan = resolve_discounts(
+        db, store, discount_code, items_total, email,
+        _shipping_fee(store, items_total), items_count, snapshot)
+    dc = plan.primary
+    discount = plan.total
+    free_shipping = plan.free_shipping
 
     shipping = Decimal("0") if free_shipping else _shipping_fee(store, items_total)
 
@@ -368,6 +495,7 @@ def create_session(
         discount_code=dc.code if dc else None,
         discount_amount=discount,
         discount_code_id=dc.id if dc else None,
+        discount_breakdown=plan.breakdown() or None,
         expires_at=datetime.now(timezone.utc) + SESSION_TTL,
     )
     db.add(session)

@@ -1576,6 +1576,10 @@ class CheckoutSession(Base):
     discount_code_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("discount_codes.id", ondelete="SET NULL"), nullable=True
     )
+    # Birden fazla indirim uygulandıysa dökümü — [{id, code, kind, amount,
+    # free_shipping, automatic, label}]. Tekil indirimde de doldurulur;
+    # kullanım sayacı ödemede buradaki TÜM kuponlar için artar.
+    discount_breakdown: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Ödeme akışında ulaşılan son aşama — "nerede vazgeçti" analizi
     # (form_started | form_completed | provider_redirect | provider_returned)
@@ -1659,6 +1663,12 @@ class DiscountCode(Base):
     # Otomatik: kod girmeden koşulu sağlayan sepete kendiliğinden uygulanır
     # (kod girilirse kod kazanır; otomatikler birleşmez, en kazançlısı seçilir)
     is_automatic: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    # Birleşebilir: sepet indirimi (%/TL/XalYöde) ile kargo indirimi AYNI
+    # anda uygulanabilir — yalnız iki tarafın da bu bayrağı açıksa
+    # (Shopify "Combinations"). Kapalıysa tek indirim kazanır.
+    combinable: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
     # Vitrinde (sepet/duyuru) gösterilecek özel kampanya mesajı — boşsa

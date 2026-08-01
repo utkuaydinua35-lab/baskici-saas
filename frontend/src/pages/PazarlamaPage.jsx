@@ -83,6 +83,26 @@ function SubscribersTab({ toast }) {
     } catch { toast.error('İndirilemedi') }
   }
 
+  // Vitrin bültenine kayıtlı ama kampanya listesinde olmayan müşterileri taşı
+  // (eşitleme eklenmeden önce abone olanlar kampanyalarda atlanıyordu)
+  const backfill = async () => {
+    try {
+      const kuru = await api.post('/api/marketing/subscribers/backfill', {})
+      if (!kuru.eklenecek) {
+        toast.success(`Taşınacak abone yok (${kuru.zaten_vardi} kayıt zaten listede)`)
+        return
+      }
+      if (!window.confirm(
+        `Vitrin bültenine kayıtlı ${kuru.eklenecek} müşteri kampanya listesinde yok.
+
+` +
+        'Onlar da abone olarak eklensin mi? (Rıza tarihleri kendi kayıtlarından taşınır.)')) return
+      const r = await api.post('/api/marketing/subscribers/backfill?apply=true', {})
+      toast.success(`${r.eklendi} abone eklendi`)
+      load()
+    } catch { toast.error('Taşıma başarısız') }
+  }
+
   const copyLink = () => {
     if (!publicUrl) return
     navigator.clipboard?.writeText(publicUrl).then(() => toast.success('Link kopyalandı')).catch(() => {})
@@ -131,6 +151,7 @@ function SubscribersTab({ toast }) {
         <div className="flex-1" />
         <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()} placeholder="E-posta ara..." className="input !text-sm w-48" />
         <button onClick={load} className="btn-secondary !text-sm">Ara</button>
+        <button onClick={backfill} className="btn-secondary !text-sm" title="Vitrin bültenine kayıtlı müşterileri kampanya listesine taşı">⇄ Vitrinle eşitle</button>
         <button onClick={exportCsv} className="btn-secondary !text-sm">⬇ CSV</button>
       </div>
 

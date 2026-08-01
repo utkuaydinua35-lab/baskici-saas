@@ -58,6 +58,20 @@ def list_subscribers(
     return {"counts": marketing.counts(db, user.tenant_id), "subscribers": [_ser(s) for s in rows]}
 
 
+@router.post("/subscribers/backfill", response_model=dict)
+def backfill_subscribers(
+    apply: bool = False,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vitrin bültenine kayıtlı müşterileri kampanya listesine taşı.
+
+    Bu eşitleme eklenmeden önce vitrinden abone olanlar yalnızca müşteri
+    kaydında duruyordu ve kampanyalarda ATLANIYORDU. apply=false önce ne
+    olacağını raporlar (kuru çalışma)."""
+    return marketing.backfill_from_customers(db, user.tenant_id, dry_run=not apply)
+
+
 class _AddRequest(BaseModel):
     email: str
     name: str = ""

@@ -303,6 +303,20 @@ def _bos_slot_index(mo, tercih: int, kapasite: int = 27) -> int:
     raise HTTPException(400, "Kalıpta boş slot kalmadı.")
 
 
+def _slot_urun_adi(db, mi) -> str:
+    """Slotun müşteriye gösterilecek tanımı — örn 'Beyaz iPhone 14 Pro'.
+
+    Varyasyon kalıp kodundan (GRUP|RENK), model adı katalog görünümünden gelir.
+    """
+    try:
+        _var = (pr.kod_to_renk(mi.kalip_kodu) or "").strip()
+    except Exception:  # noqa: BLE001
+        _var = ""
+    _model = pm.canonical_model_name(mi.model or "") or (mi.model or "")
+    _var_okunur = _var.capitalize() if _var else ""
+    return f"{_var_okunur} {_model}".strip() or (_model or "ürün")
+
+
 def _mold_progress(stage):
     return round((max(0, min(stage, 5)) / 5) * 100)
 
@@ -766,6 +780,9 @@ def resync_kalip_flags(user: User = Depends(get_current_user), db: Session = Dep
 
 class RemoveItemRequest(BaseModel):
     action: str  # "replan" (geri planla) | "cancel" (iptal et)
+    # Yalnızca "replan" ile anlamlı: müşteriye "bu ürün stokta yok, tedarik
+    # ediliyor" bildirimi gönderilsin mi.
+    musteriye_mail: bool = False
 
 
 @router.post("/{mold_id}/items/{item_id}/remove", response_model=None)
@@ -803,10 +820,32 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
         },
     }
 
+    _mail_sonuc = None
     if payload.action == "replan":
         # line item tekrar kalıba eklenmemiş -> sonraki planda çıkar
         # (line_item_id yoksa order_number+design_code fallback'i ile esle)
         _replan_mold_item(db, user.tenant_id, it)
+        # Eksik stok bildirimi — istege bagli. Mail hatasi cikarma islemini BOZMAZ.
+        if payload.musteriye_mail:
+            try:
+                from app.services import stock_email
+                _urun = _slot_urun_adi(db, it)
+                _ord = (db.scalar(select(Order).where(Order.id == li.order_id))
+                        if li is not None else None)
+                if _ord is None and it.order_number:
+                    _ord = db.scalar(select(Order).where(
+                        Order.tenant_id == user.tenant_id,
+                        Order.order_number == str(it.order_number),
+                    ))
+                if _ord is None:
+                    _mail_sonuc = "Sipariş bulunamadı — bildirim gönderilmedi"
+                else:
+                    _gonderildi, _mesaj = stock_email.send_stok_eksik(db, _ord, _urun)
+                    _mail_sonuc = _mesaj
+                    if _gonderildi:
+                        note += f" · 📧 {_urun} için müşteriye bildirim gönderildi"
+            except Exception as e:  # noqa: BLE001
+                _mail_sonuc = f"Bildirim gönderilemedi: {str(e)[:120]}"
         _log_mold(db, mo, user, action="item_replan", note=note, payload=_undo)
     elif payload.action == "cancel":
         # Kalıptan çıkar ve plana DÖNMESİN — kalemi kalıcı 'hazır/hariç' işaretle
@@ -841,7 +880,10 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)
-    return _serialize_mold_detail(mo, db)
+    _out = _serialize_mold_detail(mo, db)
+    if _mail_sonuc:
+        _out["mail_sonuc"] = _mail_sonuc
+    return _out
 
 
 @router.get("/{mold_id}/pdf", response_model=None)

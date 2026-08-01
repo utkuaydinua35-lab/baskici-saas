@@ -101,11 +101,40 @@ def run_time_based(db) -> dict:
     db.commit()
     return res
 
+def _baski_gerekmez_pids(db, tenant_id) -> set:
+    """Aksesuar urun id'leri — bunlar basilmaz, 'Baski Tamam' hesabina girmez."""
+    from app.models import AccessoryProduct, Store
+    return {
+        str(pid) for (pid,) in db.execute(
+            select(AccessoryProduct.product_id)
+            .join(Store, Store.id == AccessoryProduct.store_id)
+            .where(Store.tenant_id == tenant_id, AccessoryProduct.product_id.isnot(None))
+        ).all()
+    }
+
+
+def _couple_pids(db, tenant_id) -> set:
+    """Cift kilif urun id'leri — bir kalem = 2 basilacak kilif."""
+    from app.models import CoupleProduct, Store
+    return {
+        str(pid) for (pid,) in db.execute(
+            select(CoupleProduct.product_id)
+            .join(Store, Store.id == CoupleProduct.store_id)
+            .where(Store.tenant_id == tenant_id, CoupleProduct.product_id.isnot(None))
+        ).all()
+    }
+
+
 def run_mold_based(db) -> dict:
     """Kalip durumlarindan siparis asamasini turet (sadece ileri).
     - >=1 kalemi kaliba eklendi -> Kaliba Alindi (4)
     - >=1 kalemi baskidaki kalipta (mold stage 4) -> Baskida (5)
-    - TUM kaliba eklenmis kalemlerin kaliplari tamamlandi (mold stage 5) -> Baski Tamam (6)
+    - SIPARISTEKI TUM baskilik kalemler uretildi -> Baski Tamam (6)
+
+    'Baski Tamam' kosulu kritik: eskiden yalnizca KALIBA EKLENMIS kalemlere
+    bakiliyordu. 6 urunlu bir siparisin 2'si kaliba girip basilinca, kalan 4'u
+    hala planda beklerken siparis "Baski Tamam" oluyordu. Artik henuz kaliba
+    girmemis kalemler de sayilir; hepsi bitene kadar siparis "Baskida" kalir.
     """
     res = {"kaliba_alindi": 0, "baskida": 0, "baski_tamam": 0}
 
@@ -161,13 +190,32 @@ def run_mold_based(db) -> dict:
         if kalemler_baskida and hedef < 5:
             hedef = 5
 
-        # (6) Baski Tamam — TUM kaliba eklenmis kalemlerin kaliplari tamamlandi (mold stage 5)
-        # Kosul: her kaliba eklenmis kalemin bir kalibi olmali VE o kalip stage 5 olmali
-        tum_tamam = (
-            len(kaliba_eklenenler) > 0
-            and all(li.id in li_to_mold for li in kaliba_eklenenler)
-            and all(mold_stage.get(li_to_mold[li.id]) == 5 for li in kaliba_eklenenler)
-        )
+        # (6) Baski Tamam — SIPARISTEKI TUM baskilik kalemler uretilmis olmali.
+        # Bir kalem 'uretilmis' sayilir: elle hazir isaretli VEYA beklenen sayida
+        # kalip slotu var ve hepsinin kalibi tamamlanmis (stage 5).
+        # Aksesuarlar basilmaz, hesaba girmez.
+        _acc = _baski_gerekmez_pids(db, o.tenant_id)
+        _cpl = _couple_pids(db, o.tenant_id)
+        _slots_by_li: dict = {}
+        for mi in mold_items:
+            if mi.line_item_id:
+                _slots_by_li.setdefault(mi.line_item_id, []).append(mi.mold_id)
+
+        def _uretildi(li) -> bool:
+            _is_cpl = bool(li.product_id and str(li.product_id) in _cpl)
+            if _is_cpl:
+                if getattr(li, "is_hazir", False) and getattr(li, "is_hazir_2", False):
+                    return True
+            elif getattr(li, "is_hazir", False):
+                return True
+            _qty = max(1, int(getattr(li, "quantity", 1) or 1))
+            _beklenen = _qty * (2 if _is_cpl else 1)
+            _sl = _slots_by_li.get(li.id, [])
+            return len(_sl) >= _beklenen and all(mold_stage.get(m) == 5 for m in _sl)
+
+        _baskilik = [li for li in lis
+                     if not (li.product_id and str(li.product_id) in _acc)]
+        tum_tamam = bool(_baskilik) and all(_uretildi(li) for li in _baskilik)
         if tum_tamam and hedef < 6:
             hedef = 6
 

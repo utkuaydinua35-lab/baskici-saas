@@ -74,13 +74,17 @@ export default function MoldDetailPage() {
   }
 
   const [removeTarget, setRemoveTarget] = useState(null)
+  const [stokMaili, setStokMaili] = useState(false)
   const removeItem = async (itemId, action) => {
     try {
-      const d = await api.post(`/api/molds/${moldId}/items/${itemId}/remove`, { action })
+      const d = await api.post(`/api/molds/${moldId}/items/${itemId}/remove`,
+        { action, musteriye_mail: action === 'replan' && stokMaili })
       setMold(d)
       const h = await api.get(`/api/molds/${moldId}/history`)
       setHistory(h.items || [])
       setRemoveTarget(null)
+      setStokMaili(false)
+      if (d?.mail_sonuc) toast.success(d.mail_sonuc)
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Çıkarılamadı') }
   }
 
@@ -388,11 +392,25 @@ export default function MoldDetailPage() {
                 className="w-full text-left px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20">
                 ↩ Geri planla <span className="block text-[11px] text-gray-400 mt-0.5">Kalemi tekrar kalıba eklenmemiş yap, sonraki planda çıksın</span>
               </button>
+              {/* Stok yoklugu nedeniyle cikariliyorsa musteriyi bilgilendir */}
+              <label className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-input/30 border border-brand-border/60 cursor-pointer">
+                <input type="checkbox" checked={stokMaili}
+                       onChange={e => setStokMaili(e.target.checked)}
+                       className="mt-0.5 w-4 h-4 accent-accent shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-[12px] text-gray-200">Müşteriye eksik stok maili gönderilsin</span>
+                  <span className="block text-[10px] text-gray-500 mt-0.5">
+                    “{[(removeTarget.kilif_rengi || '').toLowerCase().replace(/^./, c => c.toUpperCase()),
+                       removeTarget.model].filter(Boolean).join(' ') || 'Ürün'}” stokta yok, tedarik ediliyor
+                    bilgisi gider. Yalnızca <b>Geri planla</b> ile birlikte çalışır.
+                  </span>
+                </span>
+              </label>
               <button onClick={() => removeItem(removeTarget.id, 'cancel')}
                 className="w-full text-left px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20">
                 ✕ İptal et <span className="block text-[11px] text-gray-400 mt-0.5">Kalemi plandan tamamen çıkar, geri dönmesin</span>
               </button>
-              <button onClick={() => setRemoveTarget(null)}
+              <button onClick={() => { setRemoveTarget(null); setStokMaili(false) }}
                 className="w-full px-3 py-2 rounded-lg border border-brand-border text-gray-400 hover:text-gray-200">
                 Vazgeç
               </button>

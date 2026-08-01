@@ -175,9 +175,55 @@ def unsubscribe(db: Session, token: str) -> MarketingSubscriber | None:
         return None
     sub.status = "unsubscribed"
     sub.unsubscribed_at = datetime.now(UTC)
+    sync_customer_flag(db, sub.tenant_id, sub.email, False)
     db.commit()
     db.refresh(sub)
     return sub
+
+
+# ─── Vitrin müşteri kaydıyla eşitleme ────────────────────────
+# Vitrin bülten formu Customer.accepts_marketing'e yazar, kampanyalar ise
+# marketing_subscribers'tan gönderir. İki liste eşitlenmezse vitrinden
+# abone olan müşteri hiçbir kampanyayı ALMAZ (ya da abonelikten çıkan
+# müşteriye kampanya GİTMEYE devam eder).
+
+def sync_customer_flag(db: Session, tenant_id, email: str, subscribed: bool) -> None:
+    """Abone durumunu Customer.accepts_marketing'e yansıt (commit etmez)."""
+    from app.models import Customer
+
+    email = _norm_email(email)
+    if not email:
+        return
+    customer = db.scalar(select(Customer).where(
+        Customer.tenant_id == tenant_id, Customer.email == email))
+    if not customer:
+        return
+    customer.accepts_marketing = subscribed
+    if subscribed and not customer.marketing_opted_at:
+        customer.marketing_opted_at = datetime.now(UTC)
+    elif not subscribed:
+        customer.marketing_opted_at = None
+
+
+def sync_from_customer(db: Session, tenant_id, email: str, name: str | None,
+                       subscribed: bool, ip: str | None = None,
+                       source: str = "vitrin") -> None:
+    """Vitrin tarafındaki abonelik değişikliğini kampanya listesine yansıt.
+
+    Vitrin formunda KVKK onayı açıkça alındığı için doğrudan 'subscribed'
+    kabul edilir (ikinci bir onay maili istenmez); rıza kanıtı yazılır.
+    """
+    try:
+        if subscribed:
+            subscribe_confirmed(db, tenant_id, email, name or "", source, ip)
+        else:
+            sub = _get(db, tenant_id, _norm_email(email))
+            if sub and sub.status != "unsubscribed":
+                sub.status = "unsubscribed"
+                sub.unsubscribed_at = datetime.now(UTC)
+                db.commit()
+    except Exception:  # noqa: BLE001 — eşitleme hatası vitrin akışını bozmaz
+        logger.warning("[marketing] abone eşitlenemedi: %s", email)
 
 
 def counts(db: Session, tenant_id) -> dict:
@@ -451,3 +497,54 @@ def record_click(db: Session, send_id: str, signed_url: str | None = None) -> st
         target = camp.button_url
     return target or None
 
+
+
+def backfill_from_customers(db: Session, tenant_id, *, dry_run: bool = True) -> dict:
+    """Vitrinden abone olmuş müşterileri kampanya listesine taşı.
+
+    Bu özellik eklenmeden ÖNCE bültene kaydolanlar yalnızca Customer
+    tablosundaydı; kampanya gönderiminde atlanıyorlardı. Rıza kanıtı olarak
+    müşterinin kendi opt-in tarihi (marketing_opted_at) yazılır — yeni bir
+    rıza uydurulmaz, var olan kayıt taşınır.
+    """
+    from app.models import Customer
+
+    aday = db.scalars(select(Customer).where(
+        Customer.tenant_id == tenant_id,
+        Customer.accepts_marketing.is_(True),
+        Customer.email.isnot(None),
+    )).all()
+
+    eklenecek, mevcut, atlanan = [], 0, 0
+    for c in aday:
+        email = _norm_email(c.email)
+        if not email or "@" not in email:
+            atlanan += 1
+            continue
+        sub = _get(db, tenant_id, email)
+        if sub:
+            mevcut += 1
+            continue
+        eklenecek.append((email, c.name, c.marketing_opted_at))
+
+    if not dry_run:
+        for email, name, opted_at in eklenecek:
+            sub = MarketingSubscriber(
+                tenant_id=tenant_id, email=email, name=name or None,
+                source="vitrin_bulten", status="subscribed",
+                confirmed_at=opted_at or datetime.now(UTC),
+                consent_at=opted_at or datetime.now(UTC),
+                consent_text=CONSENT_TEXT,
+            )
+            _ensure_unsub(sub)
+            db.add(sub)
+        db.commit()
+
+    return {
+        "aday": len(aday),
+        "eklendi": 0 if dry_run else len(eklenecek),
+        "eklenecek": len(eklenecek),
+        "zaten_vardi": mevcut,
+        "gecersiz_email": atlanan,
+        "dry_run": dry_run,
+    }

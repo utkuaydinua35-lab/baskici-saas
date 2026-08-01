@@ -1571,6 +1571,12 @@ def newsletter_subscribe(
         customer.accepts_marketing = True
         customer.marketing_opted_at = datetime.now(timezone.utc)
     db.commit()
+    # Kampanya listesine de yaz — yoksa vitrinden abone olan müşteri hiçbir
+    # e-posta kampanyasını almaz (iki liste ayrı tablolarda tutuluyor)
+    from app.services import marketing as marketing_svc
+    marketing_svc.sync_from_customer(
+        db, store.tenant_id, email, customer.name, True,
+        ip=None, source="vitrin_bulten")
     # Yeni aboneye hoş geldin + indirim kodu (tek sefer, best-effort)
     if fresh:
         try:
@@ -1887,6 +1893,10 @@ def account_marketing(
     subscribed = bool(body.get("subscribed"))
     customer.accepts_marketing = subscribed
     customer.marketing_opted_at = datetime.now(timezone.utc) if subscribed else None
+    from app.services import marketing as marketing_svc
+    marketing_svc.sync_from_customer(
+        db, customer.tenant_id, customer.email, customer.name, subscribed,
+        source="vitrin_hesap")
     db.commit()
     return {"ok": True, "accepts_marketing": subscribed}
 

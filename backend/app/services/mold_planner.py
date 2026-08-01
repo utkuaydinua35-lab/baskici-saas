@@ -384,15 +384,11 @@ def plan_molds(
                 # Bu kalemin FİZİKSEL kalıp slotu varsa tekrar planlanamaz.
                 if _molded_by_li.get(li.id, 0) > 0:
                     continue
-            else:
-                # Çift kılıf: iki yarı da ele alınmışsa (elle hazır ya da fiziksel
-                # slotu var) kalem tamamen atlanır; biri eksikse SADECE o yarı planlanır.
-                _h1 = bool(getattr(li, "is_hazir", False)) or \
-                    _molded_by_slot.get((li.id, li.assigned_design_id), 0) > 0
-                _h2 = bool(getattr(li, "is_hazir_2", False)) or \
-                    _molded_by_slot.get((li.id, li.assigned_design_id_2), 0) > 0
-                if _h1 and _h2:
-                    continue
+            # Çift kılıfta 'hangi yarı ele alınmış' kontrolü, tasarımlar ÇÖZÜLDÜKTEN
+            # sonra yapılır (aşağıda): kişiye özel olmayan couple'da tasarımlar
+            # CoupleProduct'tan gelir, kalemin assigned_design_id'si BOŞTUR — buraya
+            # bakmak "hiçbir yarı ele alınmamış" sonucu veriyor ve zaten kalıptaki
+            # yarı ikinci kez planlanıyordu.
             model = extract_phone_model(li)
 
             if couple is not None:
@@ -424,13 +420,32 @@ def plan_molds(
                     add_eksik("model_belirsiz", li, order, model)
                     continue
                 qty = li.quantity or 1
+                # ★ YARI BAZINDA İHTİYAÇ ★ Her yarı için kaç slot GEREKLİ, kaçı ZATEN VAR?
+                # Anahtar GERÇEK slot tasarımı (d1/d2) — kişiye özel olmayan couple'da
+                # bunlar CoupleProduct'tan gelir, kalemin assigned_design_id'si boştur.
+                # Elle hazır işaretli yarı hiç planlanmaz.
+                _ihtiyac: dict = {}
+                for (_d, _slot_no) in ((d1, 1), (d2, 2)):
+                    _manual = (getattr(li, "is_hazir", False) if _slot_no == 1
+                               else getattr(li, "is_hazir_2", False))
+                    if _manual or _d is None:
+                        continue
+                    _ihtiyac[_d.id] = _ihtiyac.get(_d.id, 0) + qty
+                for _did in list(_ihtiyac):
+                    _ihtiyac[_did] = max(
+                        0, _ihtiyac[_did] - _molded_by_slot.get((li.id, _did), 0))
+                if not any(_ihtiyac.values()):
+                    continue   # iki yarı da ele alınmış
                 _ok = True
                 _pending = []
                 for (_cd, _cm, _slot) in ((d1, _m1, 1), (d2, _m2, 2)):
-                    # Bu yarı zaten ele alınmışsa (elle hazır ya da fiziksel kalıp
-                    # slotu var) TEKRAR PLANLAMA — yoksa basılmış yarı ikinci kez basılır.
-                    if (_slot == 1 and _h1) or (_slot == 2 and _h2):
+                    # Bu yarı için kalan ihtiyaç yoksa TEKRAR PLANLAMA — yoksa zaten
+                    # kalıptaki yarı ikinci kez basılır.
+                    _adet = _ihtiyac.get(_cd.id, 0) if _cd is not None else 0
+                    if _adet <= 0:
                         continue
+                    # Aynı tasarım iki yarıda da kullanılıyorsa ihtiyacı bir kez tüket
+                    _ihtiyac[_cd.id] = 0
                     # Slot'a özel seçilen varyasyon > property > ürün adı > tasarımın kalip_tipi
                     _var = resolve_line_variation(li, _cd, slot=_slot)
                     if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
@@ -443,11 +458,11 @@ def plan_molds(
                         add_eksik("model_taninmadi", li, order, _cm)
                         _ok = False
                         break
-                    _pending.append((_cd, _var, _kod, _cm))
+                    _pending.append((_cd, _var, _kod, _cm, _adet))
                 if not _ok or not _pending:
                     continue
-                for _ in range(qty):
-                    for (_cd, _var, _kod, _cm) in _pending:
+                for (_cd, _var, _kod, _cm, _adet) in _pending:
+                    for _ in range(_adet):
                         units.append({
                             "line_item_id": str(li.id),
                             "order_id": str(order.id),

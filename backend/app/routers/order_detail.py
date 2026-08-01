@@ -287,16 +287,29 @@ def _couple_parcalar(li: LineItem, db) -> list[dict]:
                 "basildi": (_pstat == "basildi") or (_stage == 5),
             })
 
+    # Slot tasarımları: kişiye özel couple'da kalemin kendi atamaları, DEĞİLSE
+    # CoupleProduct'taki sabit 2 tasarım. (Eskiden yalnız kalemin atamalarına
+    # bakılıyordu; kişiye özel olmayan couple'da bunlar BOŞ olduğu için kalıp
+    # eşleşmesi hiç tutmuyor, her iki yarı da "kalıba girmedi" görünüyordu.)
+    _d1 = li.assigned_design if li.assigned_design_id else None
+    _d2 = li.assigned_design_2 if li.assigned_design_id_2 else None
+    if (_d1 is None or _d2 is None) and li.product_id and db is not None:
+        from app.models import CoupleProduct as _CP, Design as _Dz
+        _cp = db.scalar(select(_CP).where(_CP.product_id == str(li.product_id)))
+        if _cp is not None:
+            if _d1 is None and _cp.design_id_1:
+                _d1 = db.scalar(select(_Dz).where(_Dz.id == _cp.design_id_1))
+            if _d2 is None and _cp.design_id_2:
+                _d2 = db.scalar(select(_Dz).where(_Dz.id == _cp.design_id_2))
+
     _pm1, _pm2 = _mp.extract_couple_models(li)
     _m1 = (li.device_model_override or "").strip() or _pm1 or (_mp.extract_phone_model(li) or "")
     _m2 = (li.device_model_override_2 or "").strip() or _pm2 or _m1
 
     out = []
     for _slot, _design, _model, _manual in (
-        (1, li.assigned_design if li.assigned_design_id else None, _m1,
-         bool(getattr(li, "is_hazir", False))),
-        (2, li.assigned_design_2 if li.assigned_design_id_2 else None, _m2,
-         bool(getattr(li, "is_hazir_2", False))),
+        (1, _d1, _m1, bool(getattr(li, "is_hazir", False))),
+        (2, _d2, _m2, bool(getattr(li, "is_hazir_2", False))),
     ):
         _var, _kaynak = _mp.resolve_line_variation_detail(li, _design, slot=_slot)
         _kaliplar = by_design.get(_design.id if _design else None, [])

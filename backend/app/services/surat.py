@@ -74,6 +74,16 @@ def _addr_parts(raw: dict) -> dict:
             if il and not (ilce or "").strip():
                 ilce = il
             resmi_il = zip_il
+    # Hâlâ yoksa: SERBEST ADRES METNİNDEN çıkar. Elle/bayii/Instagram siparişlerinde
+    # province/city boş gelip her şey adres satırına yazılabiliyor
+    # ("... No:8 Daire:7 YALOVA/MERKEZ Koza Mesken Apt.") — eskiden bu durumda
+    # il hiç çözülemiyor ve kargo oluşturulamıyordu.
+    if not resmi_il:
+        _metin = " ".join(x for x in [
+            adres, (sa.get("city") or ""), (sa.get("province") or ""),
+            (sa.get("address2") or ""), (sa.get("company") or ""),
+        ] if x)
+        resmi_il = tr_iller.il_bul(_metin)
     if resmi_il:
         il = resmi_il
     # ilce gecerli mi? degilse GENIS metinden cikarmayi dene (cozulen il ile).

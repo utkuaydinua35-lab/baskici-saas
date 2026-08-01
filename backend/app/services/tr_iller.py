@@ -70,6 +70,48 @@ def ilce_bul(adres, il_raw):
     return None
 
 
+def il_bul(metin):
+    """Serbest adres metninden İL adını çıkar (province/city boşsa son çare).
+
+    Örn "... No:8 Daire:7 YALOVA/MERKEZ Koza Mesken Apt." -> "Yalova".
+
+    Belirsizlik yönetimi:
+      - Kelime sınırı aranır; "Yalovalı" gibi eklerde yanlış eşleşme olmaz.
+      - Birden çok il geçiyorsa (adreste başka bir şehir anılmışsa) o il için
+        GEÇERLİ BİR İLÇE de metinde bulunanlar tercih edilir.
+      - Hâlâ birden çoksa metinde EN SONDA geçen kazanır; Türkçe adreslerde
+        şehir genelde sona yazılır.
+    Bulunamazsa None.
+    """
+    import re as _re
+    n = _norm(metin or "")
+    if not n:
+        return None
+    # Harf/rakam disini bosluga cevir -> kelime siniri kontrolu basitlesir
+    n = _re.sub(r"[^a-z0-9]+", " ", n)
+    n = f" {n} "
+
+    adaylar = []
+    for _key, _resmi in list(_IL_LOOKUP.items()) + list(_IL_ALIAS.items()):
+        if not _key:
+            continue
+        _poz = n.rfind(f" {_key} ")
+        if _poz >= 0:
+            _r = _resmi if _resmi in IL_ILCE else resolve_il(_resmi)
+            if _r:
+                adaylar.append((_poz, _r))
+    if not adaylar:
+        return None
+    if len(adaylar) == 1:
+        return adaylar[0][1]
+
+    # Ilcesi de metinde gecen il(ler)i one al
+    _dogrulanan = [(poz, il) for poz, il in adaylar if ilce_bul(metin, il)]
+    havuz = _dogrulanan or adaylar
+    havuz.sort(key=lambda x: x[0])       # metinde en sonda gecen kazanir
+    return havuz[-1][1]
+
+
 def gecerli_ilce_mi(ilce_raw, il_raw):
     """Verilen ilce, ilin gecerli ilcelerinden biri mi?"""
     il = resolve_il(il_raw)

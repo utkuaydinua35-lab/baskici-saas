@@ -201,7 +201,12 @@ def _serialize_image(im: CatalogImage) -> dict:
     }
 
 
-def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
+_YOK = object()   # "verilmedi" işareti (None geçerli bir kapak değeri)
+
+
+def _serialize_product(p: CatalogProduct, *, full: bool = False,
+                       variant_count: int | None = None,
+                       cover_image=_YOK) -> dict:
     data = {
         "id": str(p.id),
         "store_id": str(p.store_id),
@@ -232,8 +237,14 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
             "collection_ids": [str(c.id) for c in p.collections],
         })
     else:
-        data["variant_count"] = len(p.variants)
-        data["cover_image"] = f"/storage/{p.images[0].file_path}" if p.images else None
+        # Sayım/kapak dışarıdan verilmişse varyant ve görsel satırları HİÇ
+        # yüklenmez — 600+ ürünlü listede fark saniyeler mertebesinde
+        if variant_count is None:
+            variant_count = len(p.variants)
+        if cover_image is _YOK:
+            cover_image = f"/storage/{p.images[0].file_path}" if p.images else None
+        data["variant_count"] = variant_count
+        data["cover_image"] = cover_image
     return data
 
 
@@ -243,20 +254,53 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False) -> dict:
 def list_products(
     store_id: uuid.UUID | None = Query(None),
     status_f: str | None = Query(None, alias="status"),
+    slim: bool = Query(False, description="yalnız id/slug/ad — hızlı seçici listeleri"),
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
+    from sqlalchemy import func as sql_func
+
     q = (
         select(CatalogProduct)
         .where(CatalogProduct.tenant_id == user.tenant_id)
-        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
         .order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
     )
     if store_id:
         q = q.where(CatalogProduct.store_id == store_id)
     if status_f:
         q = q.where(CatalogProduct.status == status_f)
-    return [_serialize_product(p) for p in db.scalars(q).all()]
+    products = db.scalars(q).all()
+    if not products:
+        return []
+    pids = [p.id for p in products]
+
+    # Sadece ad/slug isteyen çağrılar (çapraz satış seçici gibi) varyant ve
+    # görsel bilgisine hiç ihtiyaç duymaz — yüzlerce ürünlü katalogda bu
+    # ayrım sayfanın saniyelerce beklemesini önler
+    if slim:
+        return [{"id": str(p.id), "slug": p.slug, "title": p.title,
+                 "status": p.status, "base_price": str(p.base_price)}
+                for p in products]
+
+    counts = dict(db.execute(
+        select(CatalogVariant.product_id, sql_func.count(CatalogVariant.id))
+        .where(CatalogVariant.product_id.in_(pids))
+        .group_by(CatalogVariant.product_id)
+    ).all())
+    # Ürün başına ilk görsel (kapak) — tüm görselleri yüklemeden
+    kapaklar = dict(db.execute(
+        select(CatalogImage.product_id, CatalogImage.file_path)
+        .where(CatalogImage.product_id.in_(pids))
+        .distinct(CatalogImage.product_id)
+        .order_by(CatalogImage.product_id, CatalogImage.position, CatalogImage.id)
+    ).all())
+    return [
+        _serialize_product(
+            p, variant_count=counts.get(p.id, 0),
+            cover_image=f"/storage/{kapaklar[p.id]}" if p.id in kapaklar else None,
+        )
+        for p in products
+    ]
 
 
 @router.post("/products", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -825,6 +869,50 @@ class ImageOrderRequest(BaseModel):
 class BulkStatusRequest(BaseModel):
     ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     status: str = Field(..., pattern="^(draft|active|archived)$")
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
+    # Kazara toplu silmeye karşı: panel bu alanı açıkça göndermek zorunda
+    confirm: bool = False
+
+
+@router.post("/products/bulk-delete", response_model=dict)
+def bulk_delete_products(
+    body: BulkDeleteRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Seçili ürünleri kalıcı sil (görselleri diskten de siler).
+
+    GERİ ALINAMAZ. Geçmiş siparişler etkilenmez — sipariş kalemleri ürün
+    adı/fiyatını kendi içinde saklar, ürüne bağlı değildir. Silmek yerine
+    'Arşivle' çoğu durumda daha doğrudur (vitrinde görünmez, kayıt durur).
+    """
+    if not body.confirm:
+        raise HTTPException(422, "Toplu silme için onay gerekli")
+
+    products = db.scalars(
+        select(CatalogProduct)
+        .where(CatalogProduct.id.in_(body.ids),
+               CatalogProduct.tenant_id == user.tenant_id)
+        .options(selectinload(CatalogProduct.images))
+    ).all()
+    if not products:
+        raise HTTPException(404, "Ürün bulunamadı")
+
+    adlar = [p.title for p in products[:5]]
+    store_id = products[0].store_id
+    for p in products:
+        for im in p.images:
+            storage_svc.delete_catalog_image(im.file_path)
+        db.delete(p)
+
+    activity.record(db, user, "urun_sil", store_id=store_id, entity_type="urun",
+                    entity_label=f"{len(products)} ürün toplu silindi",
+                    detail={"ornekler": adlar, "adet": len(products)})
+    db.commit()
+    return {"deleted": len(products)}
 
 
 @router.put("/products/{product_id}/images/order", response_model=dict)

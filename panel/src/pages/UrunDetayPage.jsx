@@ -690,7 +690,9 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
   useEffect(() => { setPicked(product.cross_sell_slugs || []); setDirty(false) }, [product.id])
   useEffect(() => {
     if (!storeId) return
-    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+    // slim=1: yalnız id/slug/ad — seçiciye varyant ve görsel gerekmiyor
+    // (600+ ürünlü katalogda tam liste sayfanın açılışını saniyelerce geciktiriyordu)
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active&slim=1`)
       .then(r => setAll(r.filter(x => x.id !== product.id))).catch(() => {})
   }, [storeId, product.id])
 

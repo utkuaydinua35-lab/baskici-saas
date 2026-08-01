@@ -72,7 +72,7 @@ export default function TemaEditorPage() {
       const [c, cc, pr] = await Promise.all([
         api.get(`/api/catalog/collections?store_id=${storeId}`),
         api.get(`/api/store-settings/${storeId}/custom-code`),
-        api.get(`/api/catalog/products?store_id=${storeId}&status=active`),
+        api.get(`/api/catalog/products?store_id=${storeId}&status=active&slim=1`),
       ])
       setCollections(c.filter(x => x.is_active))
       setProducts(pr)

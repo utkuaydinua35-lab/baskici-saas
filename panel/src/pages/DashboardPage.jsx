@@ -28,7 +28,7 @@ export default function DashboardPage() {
     // Kurulum rehberi (Shopify setup guide) — tamamlanınca kart kaybolur
     if (localStorage.getItem(`kurulum_gizle_${storeId}`)) { setGuide([]); return }
     Promise.all([
-      api.get(`/api/catalog/products?store_id=${storeId}`).catch(() => []),
+      api.get(`/api/catalog/products?store_id=${storeId}&slim=1`).catch(() => []),
       api.get(`/api/store-settings/${storeId}`).catch(() => null),
       api.get(`/api/store-settings/${storeId}/theme`).catch(() => null),
       api.get(`/api/orders?store_id=${storeId}&per_page=1`).catch(() => null),

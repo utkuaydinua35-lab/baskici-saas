@@ -57,6 +57,31 @@ export default function UrunlerPage() {
     finally { setBulkBusy(false) }
   }
 
+  // Toplu silme geri alınamaz — bu yüzden iki aşamalı onay: önce ne olacağı
+  // anlatılır, sonra ürün sayısı elle yazdırılır (kazara tıklamaya karşı).
+  const bulkDelete = async () => {
+    if (checked.size === 0) return
+    const adet = checked.size
+    if (!window.confirm(
+      `${adet} ürün KALICI olarak silinecek. Görselleri de silinir ve bu işlem geri alınamaz.\n\n` +
+      'Ürünü vitrinden kaldırmak istiyorsanız "Arşivle" daha güvenli — kayıt durur, ' +
+      'sadece görünmez olur.\n\nYine de silmek istiyor musunuz?')) return
+    const cevap = window.prompt(`Onaylamak için silinecek ürün sayısını yazın: ${adet}`)
+    if (String(cevap || '').trim() !== String(adet)) {
+      setError('Silme iptal edildi — sayı eşleşmedi')
+      return
+    }
+    setBulkBusy(true); setError('')
+    try {
+      const r = await api.post('/api/catalog/products/bulk-delete',
+        { ids: [...checked], confirm: true })
+      setChecked(new Set())
+      await load()
+      setError(`${r.deleted} ürün silindi`)
+    } catch { setError('Toplu silme başarısız') }
+    finally { setBulkBusy(false) }
+  }
+
   const toggleCheck = (id, e) => {
     e.stopPropagation()
     setChecked(prev => {
@@ -110,6 +135,8 @@ export default function UrunlerPage() {
             className="px-3 py-1 rounded-lg text-xs bg-indigo-50 text-indigo-700 disabled:opacity-50">✏️ Toplu Düzenle</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkSet(true)}
             className="px-3 py-1 rounded-lg text-xs bg-teal-50 text-teal-700 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
+          <button disabled={bulkBusy} onClick={bulkDelete}
+            className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50">🗑️ Sil</button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
         </div>
       )}

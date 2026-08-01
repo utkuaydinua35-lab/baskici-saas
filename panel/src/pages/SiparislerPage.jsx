@@ -227,7 +227,7 @@ function DraftOrderModal({ storeId, onClose }) {
   const [result, setResult] = useState(null)      // {payment_link, emailed, amount}
 
   useEffect(() => {
-    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active&slim=1`)
       .then(setProducts).catch(() => toast.error('Ürünler yüklenemedi'))
   }, [storeId])
 

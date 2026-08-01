@@ -448,7 +448,7 @@ function AddItemRow({ storeId, onAdd }) {
   const [qty, setQty] = useState(1)
 
   useEffect(() => {
-    api.get(`/api/catalog/products?store_id=${storeId}&status=active`)
+    api.get(`/api/catalog/products?store_id=${storeId}&status=active&slim=1`)
       .then(setProducts).catch(() => {})
   }, [storeId])
   useEffect(() => {

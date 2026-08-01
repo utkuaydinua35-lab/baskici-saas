@@ -128,15 +128,32 @@ def create_molds(
     # oluşturuldu, bayrak değişti). Yazmadan hemen önce fiziksel gerçeği yeniden
     # sor: planlanan kalemlerden herhangi biri zaten bir kalıptaysa HİÇBİR ŞEY
     # YAZMA. Yarım kalıp üretmektense hiç üretmemek doğrusu.
-    _already = set(db.scalars(
-        select(MoldItem.line_item_id)
+    # Karsilastirma (kalem, tasarim) BAZINDA: cift kilifin bir yarisi kaliptayken
+    # diger yariyi planlamak MESRU. Kalem bazinda bakmak bunu cift baski saniyordu.
+    _ihtiyac = plan.get("slot_ihtiyac") or {}
+    _mevcut: dict = {}
+    for _liid, _did in db.execute(
+        select(MoldItem.line_item_id, MoldItem.design_id)
         .join(Mold, Mold.id == MoldItem.mold_id)
         .where(Mold.tenant_id == user.tenant_id, MoldItem.line_item_id.isnot(None))
-    ).all())
+    ).all():
+        _mevcut[f"{_liid}|{_did}"] = _mevcut.get(f"{_liid}|{_did}", 0) + 1
+
+    _planlanan: dict = {}
+    _anahtar_siparis: dict = {}
+    for m in plan["molds"]:
+        for it in m["items"]:
+            if not it.get("line_item_id"):
+                continue
+            _k = f"{it['line_item_id']}|{it.get('design_id')}"
+            _planlanan[_k] = _planlanan.get(_k, 0) + 1
+            _anahtar_siparis[_k] = it.get("order_number")
+
     _cakisan = {
-        it.get("order_number")
-        for m in plan["molds"] for it in m["items"]
-        if it.get("line_item_id") and uuid.UUID(it["line_item_id"]) in _already
+        _anahtar_siparis[_k]
+        for _k, _adet in _planlanan.items()
+        # İhtiyaç bilinmiyorsa engelleme (yanlış alarm üretmeyelim)
+        if _k in _ihtiyac and _mevcut.get(_k, 0) + _adet > _ihtiyac[_k]
     }
     if _cakisan:
         _liste = ", ".join(sorted(str(x) for x in _cakisan if x)[:10])

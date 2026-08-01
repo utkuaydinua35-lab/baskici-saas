@@ -346,6 +346,11 @@ def plan_molds(
             _molded_left[_k] = _molded_left.get(_k, 0) + 1
 
     units: list[dict] = []
+    # "liid|design_id" -> bu kalem+tasarim icin TOPLAM kac slot gerekli.
+    # create_molds son savunmasi bunu kullanir: mevcut + planlanan > gerekli ise
+    # gercekten cift baski riski var demektir. (Kalem bazinda bakmak yanlisti:
+    # cift kilifin bir yarisi kaliptayken diger yariyi planlamak MESRU.)
+    slot_ihtiyac: dict[str, int] = {}
     eksikler: list[dict] = []
     eksik_keys: set = set()
 
@@ -432,6 +437,7 @@ def plan_molds(
                         continue
                     _ihtiyac[_d.id] = _ihtiyac.get(_d.id, 0) + qty
                 for _did in list(_ihtiyac):
+                    slot_ihtiyac[f"{li.id}|{_did}"] = _ihtiyac[_did]
                     _ihtiyac[_did] = max(
                         0, _ihtiyac[_did] - _molded_by_slot.get((li.id, _did), 0))
                 if not any(_ihtiyac.values()):
@@ -560,6 +566,7 @@ def plan_molds(
             if _mk and _molded_left.get(_mk, 0) >= qty:
                 _molded_left[_mk] -= qty
                 continue
+            slot_ihtiyac[f"{li.id}|{design.id}"] = qty
 
             for _ in range(qty):
                 units.append({
@@ -709,6 +716,7 @@ def plan_molds(
 
     return {
         "molds": molds,
+        "slot_ihtiyac": slot_ihtiyac,
         "mold_count": len(molds),
         "total_units": len(units),
         "eksikler": eksikler,

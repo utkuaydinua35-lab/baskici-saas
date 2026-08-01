@@ -1632,3 +1632,141 @@ def create_refund(
         "financial_status": order.financial_status,
         "refunded_total": str(refunded + amount),
     }
+
+
+# ─── Toplu kargo takip no içe aktarma ────────────────────────
+# Kendi kargo anlaşmasıyla çalışırken takip numaraları sisteme otomatik düşmüyor.
+# Firma panelinden alınan Excel/CSV listesi buraya YAPIŞTIRILIR; sipariş numarası
+# ve takip numarası satır satır eşlenir. Önce ÖNİZLEME, sonra uygulama.
+
+class TopluTakipIn(BaseModel):
+    metin: str = ""                 # Excel'den yapıştırılan ham metin
+    kargo_firma: str = ""
+    mail_gonder: bool = True
+    uygula: bool = False            # False -> yalnızca önizleme
+    mevcudun_uzerine_yaz: bool = False
+
+
+_TAKIP_MIN_UZUNLUK = 6
+
+
+def _satir_parcala(satir: str) -> list[str]:
+    """Satırı sütunlara ayır — Excel yapıştırması sekmeli, CSV virgüllü/noktalı virgüllü."""
+    import re as _re
+    return [p.strip().strip('"').strip() for p in _re.split(r"[\t;,|]+|\s{2,}", satir) if p.strip()]
+
+
+@router.post("/_toplu-takip", response_model=None)
+def toplu_takip_no(
+    body: TopluTakipIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yapıştırılan listeden sipariş↔takip no eşle. uygula=False ise sadece rapor.
+
+    Sütun sırası ÖNEMSİZ: her satırdaki parçalardan hangisi gerçek bir sipariş
+    numarasıysa o seçilir, kalanların en uzun/rakam içereni takip numarası sayılır.
+    Böylece kargo firmasının export düzeni ne olursa olsun çalışır.
+    """
+    satirlar = [s for s in (body.metin or "").splitlines() if s.strip()]
+    if not satirlar:
+        return {"ok": False, "message": "Liste boş — Excel'den kopyalayıp yapıştır."}
+
+    # Tüm satırlardaki aday sipariş numaralarını tek seferde çöz
+    _adaylar: set[str] = set()
+    _parcali: list[tuple[str, list[str]]] = []
+    for s in satirlar:
+        p = _satir_parcala(s)
+        _parcali.append((s, p))
+        for x in p:
+            _adaylar.add(x.lstrip("#").strip())
+
+    _bulunan: dict[str, list[Order]] = {}
+    if _adaylar:
+        for o in db.scalars(
+            select(Order).where(
+                Order.tenant_id == user.tenant_id,
+                Order.order_number.in_(list(_adaylar)),
+            ).options(selectinload(Order.line_items))
+        ).all():
+            _bulunan.setdefault(str(o.order_number), []).append(o)
+
+    from app.services import shipments as _sh
+
+    rapor = []
+    uygulanan = 0
+    for ham, parcalar in _parcali:
+        _sip_no = None
+        for x in parcalar:
+            if x.lstrip("#").strip() in _bulunan:
+                _sip_no = x.lstrip("#").strip()
+                break
+        if not _sip_no:
+            rapor.append({"satir": ham[:120], "durum": "siparis_bulunamadi",
+                          "aciklama": "Bu satırda tanınan sipariş numarası yok"})
+            continue
+        # Takip no: sipariş numarası DIŞINDAki, rakam içeren en uzun parça
+        _kalan = [x for x in parcalar if x.lstrip("#").strip() != _sip_no]
+        _takip = ""
+        for x in sorted(_kalan, key=len, reverse=True):
+            if len(x) >= _TAKIP_MIN_UZUNLUK and any(c.isdigit() for c in x):
+                _takip = x
+                break
+        if not _takip:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "durum": "takip_yok",
+                          "aciklama": "Takip numarası okunamadı"})
+            continue
+
+        _eslesme = _bulunan[_sip_no]
+        if len(_eslesme) > 1:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "belirsiz",
+                          "aciklama": f"{len(_eslesme)} mağazada aynı numara — elle gir"})
+            continue
+        o = _eslesme[0]
+        _mevcut = (o.kargo_info or {}).get("takip_no")
+        if _mevcut and not body.mevcudun_uzerine_yaz:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "zaten_var",
+                          "aciklama": f"Zaten takip no var: {_mevcut}"})
+            continue
+        _kalanlar = _sh.remaining_counts(o)
+        _items = [{"line_item_id": k, "quantity": v} for k, v in _kalanlar.items() if v > 0]
+        if not _items:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "tamamen_gonderilmis",
+                          "aciklama": "Siparişin tüm kalemleri zaten gönderilmiş"})
+            continue
+
+        if not body.uygula:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "hazir",
+                          "aciklama": f"{sum(i['quantity'] for i in _items)} ürün kargolanacak"})
+            continue
+        try:
+            _sh.create_shipment(
+                db, o, items=_items, takip_no=_takip,
+                kargo_firma=(body.kargo_firma or "").strip() or None,
+                note="Toplu takip no içe aktarma",
+                user_label=user.email, send_email=body.mail_gonder,
+            )
+            uygulanan += 1
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "uygulandi", "aciklama": "Kargolandı olarak işlendi"})
+        except Exception as e:  # noqa: BLE001
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "hata", "aciklama": str(e)[:160]})
+
+    if body.uygula:
+        db.commit()
+    _sayac: dict = {}
+    for r in rapor:
+        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
+    return {
+        "ok": True,
+        "uygulandi": body.uygula,
+        "toplam_satir": len(rapor),
+        "uygulanan": uygulanan,
+        "sayac": _sayac,
+        "rapor": rapor,
+    }

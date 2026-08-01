@@ -259,3 +259,38 @@ def _send_shipment_email(db: Session, order: Order, shipment: OrderShipment,
             created_by="sistem",
         ))
     return ok
+
+
+def set_tracking(db: Session, order: Order, shipment: OrderShipment, *,
+                 takip_no: str, kargo_firma: str | None = None,
+                 takip_url: str | None = None, send_email: bool = True) -> bool:
+    """Takip numarası SONRADAN gelen gönderiye numarayı yaz + müşteriye bildir.
+
+    Kendi kargo anlaşmasıyla çalışırken barkod firmanın sisteminde basılıyor;
+    takip numarası günün sonunda Excel ile geliyor. Gönderi kaydı zaten var,
+    yalnızca numara eklenir — İKİNCİ bir gönderi oluşturulmaz.
+    Dönüş: müşteriye mail gönderildi mi.
+    """
+    shipment.takip_no = (takip_no or "").strip() or None
+    if kargo_firma:
+        shipment.kargo_firma = kargo_firma
+    if takip_url:
+        shipment.takip_url = takip_url
+
+    # kargo_info (tek gönderi alanı) boşsa ilk takip numarasını oraya da kopyala —
+    # arama, webhook eşleşmesi ve müşteri takip sayfası burayı okuyor.
+    ki = dict(order.kargo_info or {})
+    if not ki.get("takip_no"):
+        ki["takip_no"] = shipment.takip_no
+        if kargo_firma:
+            ki["handler_name"] = kargo_firma
+        ki.setdefault("status", "kargoya_verildi")
+        ki["kaynak"] = "toplu_takip"
+        order.kargo_info = ki
+
+    if not send_email:
+        return False
+    try:
+        return _send_shipment_email(db, order, shipment, is_fully_shipped(order))
+    except Exception:  # noqa: BLE001
+        return False

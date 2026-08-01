@@ -1091,100 +1091,141 @@ function Field({ label, value }) {
 }
 
 
-// Kargo firmasından alınan Excel/CSV listesini yapıştır -> sipariş↔takip no eşle.
-// Kendi kargo anlaşmasıyla çalışırken takip numaraları sisteme otomatik düşmüyor.
+// Kargo firmasının .xlsx listesini yükle -> bekleyen gönderilerle isim+adres eşle.
+// Kendi kargo anlaşmasında barkod firmanın sisteminde basılıyor, takip numarası
+// günün sonunda Excel ile geliyor.
 function TopluTakipDialog({ onClose, onDone }) {
   const toast = useToast()
-  const [metin, setMetin] = useState('')
-  const [firma, setFirma] = useState('')
+  const [bekleyen, setBekleyen] = useState(null)
+  const [dosya, setDosya] = useState(null)
   const [mail, setMail] = useState(true)
-  const [uzerineYaz, setUzerineYaz] = useState(false)
   const [busy, setBusy] = useState(false)
   const [rapor, setRapor] = useState(null)
+  const [onayli, setOnayli] = useState(() => new Set())
 
-  const cagir = async (uygula) => {
+  const loadBekleyen = async () => {
+    try { setBekleyen(await api.get('/api/orders/_takip-bekleyen')) }
+    catch { setBekleyen({ toplam: 0, items: [] }) }
+  }
+  useEffect(() => { loadBekleyen() }, [])
+
+  const gonder = async (uygula) => {
+    if (!dosya) return
     setBusy(true)
     try {
-      const r = await api.post('/api/orders/_toplu-takip', {
-        metin, kargo_firma: firma, mail_gonder: mail,
-        uygula, mevcudun_uzerine_yaz: uzerineYaz,
-      })
+      const fd = new FormData()
+      fd.append('dosya', dosya)
+      const q = new URLSearchParams({ uygula: String(uygula), mail_gonder: String(mail) })
+      if (uygula && onayli.size) q.set('onaylananlar', [...onayli].join(','))
+      const r = await api.postForm(`/api/orders/_takip-xlsx?${q}`, fd)
       if (!r.ok) { toast.error(r.message || 'İşlenemedi'); return }
       setRapor(r)
       if (uygula) {
-        toast.success(`${r.uygulanan} sipariş kargolandı olarak işlendi`)
-        onDone?.()
+        toast.success(`${r.uygulanan} gönderiye takip no yazıldı`)
+        setOnayli(new Set()); loadBekleyen(); onDone?.()
       }
-    } catch (e) { toast.error(e?.detail || 'İşlem başarısız') }
+    } catch (e) { toast.error(e?.detail || 'Yükleme başarısız') }
     finally { setBusy(false) }
   }
 
   const DURUM = {
-    hazir: { t: 'Hazır', c: 'text-emerald-300' },
+    kesin: { t: 'Kesin eşleşti', c: 'text-emerald-300' },
+    supheli: { t: 'Şüpheli — onayla', c: 'text-amber-300' },
+    eslesmedi: { t: 'Eşleşmedi', c: 'text-gray-500' },
     uygulandi: { t: 'İşlendi', c: 'text-emerald-400' },
-    siparis_bulunamadi: { t: 'Sipariş yok', c: 'text-red-300' },
-    takip_yok: { t: 'Takip no okunamadı', c: 'text-red-300' },
-    belirsiz: { t: 'Birden fazla eşleşme', c: 'text-amber-300' },
-    zaten_var: { t: 'Zaten takip no var', c: 'text-gray-400' },
-    tamamen_gonderilmis: { t: 'Zaten gönderilmiş', c: 'text-gray-400' },
-    hata: { t: 'Hata', c: 'text-red-400' },
   }
-  const hazirSayisi = rapor?.sayac?.hazir || 0
+  const kesinSayi = rapor?.sayac?.kesin || 0
+  const islenecek = kesinSayi + onayli.size
+  const tarihGoster = (t) => t ? new Date(t).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long' }) : '—'
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
          onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-3xl p-5 max-h-[90vh] overflow-y-auto">
+      <div className="bg-brand-card border border-brand-border rounded-xl w-full max-w-4xl p-5 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold text-gray-100">📦 Toplu Takip No</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
         <p className="text-xs text-gray-500 mb-3">
-          Kargo firmasının listesini Excel'den kopyalayıp buraya yapıştır. Sütun sırası önemli değil —
-          sistem her satırda sipariş numarasını tanır, kalanlardan takip numarasını çıkarır.
+          Kargo firmasının gönderi listesini (.xlsx) yükle. Alıcı adı ve adres benzerliğiyle
+          bekleyen gönderilere eşlenir; kesin eşleşmeler otomatik, şüpheliler senin onayınla işlenir.
         </p>
 
-        <textarea
-          value={metin} onChange={e => { setMetin(e.target.value); setRapor(null) }}
-          rows={7} spellCheck={false}
-          placeholder={"11437\t7301234567890\n11448\t7301234567891"}
-          className="input !text-xs w-full font-mono" />
+        {/* Bekleyenler */}
+        <div className="rounded-lg border border-brand-border/60 mb-4">
+          <div className="px-3 py-2 text-xs font-medium text-gray-300 border-b border-brand-border/60">
+            Takip numarası bekleyen gönderiler {bekleyen ? `(${bekleyen.toplam})` : '…'}
+          </div>
+          {bekleyen === null ? (
+            <div className="px-3 py-3 text-xs text-gray-500">Yükleniyor…</div>
+          ) : bekleyen.items.length === 0 ? (
+            <div className="px-3 py-3 text-xs text-gray-500">
+              Bekleyen gönderi yok. Paketlemede “Kargoya Ver”e bastığın siparişler burada listelenir.
+            </div>
+          ) : (
+            <div className="max-h-40 overflow-y-auto">
+              <table className="w-full text-[11px]">
+                <tbody>
+                  {bekleyen.items.map(b => (
+                    <tr key={b.shipment_id} className="border-b border-brand-border/40">
+                      <td className="px-3 py-1.5 text-gray-200">{b.ad || '—'}</td>
+                      <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{tarihGoster(b.cikis_tarihi)}</td>
+                      <td className="px-2 py-1.5 text-gray-400">{b.kaynak}</td>
+                      <td className="px-2 py-1.5 text-gray-600 font-mono">#{b.order_number}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
-        <div className="flex flex-wrap items-center gap-3 mt-3">
-          <input value={firma} onChange={e => setFirma(e.target.value)}
-                 placeholder="Kargo firması (örn. Aras Kargo)"
-                 className="input !text-xs flex-1 min-w-[180px]" />
+        <div className="flex flex-wrap items-center gap-3">
+          <input type="file" accept=".xlsx"
+                 onChange={e => { setDosya(e.target.files?.[0] || null); setRapor(null); setOnayli(new Set()) }}
+                 className="text-xs text-gray-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg
+                            file:border file:border-brand-border file:bg-brand-input/60
+                            file:text-gray-200 file:text-xs file:cursor-pointer" />
           <label className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer">
             <input type="checkbox" checked={mail} onChange={e => setMail(e.target.checked)}
                    className="w-4 h-4 accent-accent" />
             Müşteriye kargo maili gönder
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer"
-                 title="Kapalıyken takip numarası olan siparişler atlanır">
-            <input type="checkbox" checked={uzerineYaz} onChange={e => setUzerineYaz(e.target.checked)}
-                   className="w-4 h-4 accent-amber-400" />
-            Mevcudun üzerine yaz
           </label>
         </div>
 
         {rapor && (
           <div className="mt-4">
             <div className="text-xs text-gray-400 mb-2">
-              {rapor.toplam_satir} satır ·{' '}
-              {Object.entries(rapor.sayac || {}).map(([k, v]) =>
-                `${DURUM[k]?.t || k}: ${v}`).join(' · ')}
+              Dosyada {rapor.dosya_satir} gönderi · bekleyen {rapor.bekleyen} ·{' '}
+              {Object.entries(rapor.sayac || {}).map(([k, v]) => `${DURUM[k]?.t || k}: ${v}`).join(' · ')}
             </div>
-            <div className="max-h-64 overflow-y-auto border border-brand-border/60 rounded-lg">
+            <div className="max-h-72 overflow-y-auto border border-brand-border/60 rounded-lg">
               <table className="w-full text-[11px]">
                 <tbody>
                   {rapor.rapor.map((r, i) => (
                     <tr key={i} className="border-b border-brand-border/40">
-                      <td className="px-2 py-1 text-gray-300 whitespace-nowrap">{r.siparis_no || '—'}</td>
-                      <td className="px-2 py-1 font-mono text-gray-400 whitespace-nowrap">{r.takip_no || '—'}</td>
-                      <td className={`px-2 py-1 whitespace-nowrap ${DURUM[r.durum]?.c || 'text-gray-400'}`}>
-                        {DURUM[r.durum]?.t || r.durum}
+                      <td className="px-2 py-1.5 w-6">
+                        {r.durum === 'supheli' && r.siparis && (
+                          <input type="checkbox" checked={onayli.has(r.siparis.shipment_id)}
+                                 onChange={() => {
+                                   const n = new Set(onayli)
+                                   n.has(r.siparis.shipment_id) ? n.delete(r.siparis.shipment_id)
+                                                                : n.add(r.siparis.shipment_id)
+                                   setOnayli(n)
+                                 }}
+                                 className="w-3.5 h-3.5 accent-amber-400" />
+                        )}
                       </td>
-                      <td className="px-2 py-1 text-gray-500">{r.aciklama}</td>
+                      <td className="px-2 py-1.5 font-mono text-gray-400 whitespace-nowrap">{r.takip_no}</td>
+                      <td className="px-2 py-1.5 text-gray-300">{r.kargo_ad}</td>
+                      <td className="px-2 py-1.5 text-gray-500">
+                        {r.siparis ? `→ ${r.siparis.ad} · ${r.siparis.kaynak}` : '—'}
+                      </td>
+                      <td className={`px-2 py-1.5 whitespace-nowrap ${DURUM[r.durum]?.c || 'text-gray-400'}`}>
+                        {DURUM[r.durum]?.t || r.durum}
+                        {r.skor > 0 && <span className="text-gray-600 ml-1">{r.skor}</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-500">{r.aciklama || ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1194,15 +1235,14 @@ function TopluTakipDialog({ onClose, onDone }) {
         )}
 
         <div className="flex items-center gap-2 mt-4">
-          <button onClick={() => cagir(false)} disabled={busy || !metin.trim()}
+          <button onClick={() => gonder(false)} disabled={busy || !dosya}
                   className="btn-secondary !text-sm disabled:opacity-50">
-            {busy ? '…' : '🔍 Önizle'}
+            {busy ? '…' : '🔍 Eşleştir (önizleme)'}
           </button>
-          <button onClick={() => cagir(true)}
-                  disabled={busy || !rapor || hazirSayisi === 0 || rapor.uygulandi}
-                  className="btn-primary !text-sm disabled:opacity-40"
-                  title={!rapor ? 'Önce önizle' : ''}>
-            {hazirSayisi > 0 ? `✓ ${hazirSayisi} siparişi işle` : '✓ İşle'}
+          <button onClick={() => gonder(true)}
+                  disabled={busy || !rapor || rapor.uygulandi || islenecek === 0}
+                  className="btn-primary !text-sm disabled:opacity-40">
+            {islenecek > 0 ? `✓ ${islenecek} gönderiyi işle` : '✓ İşle'}
           </button>
           <button onClick={onClose} className="ml-auto text-xs text-gray-500 hover:text-gray-300">Kapat</button>
         </div>

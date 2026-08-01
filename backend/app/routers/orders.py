@@ -15,7 +15,7 @@ import uuid
 from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import case, desc, func as sql_func, select
 from sqlalchemy.exc import IntegrityError
@@ -1769,4 +1769,174 @@ def toplu_takip_no(
         "uygulanan": uygulanan,
         "sayac": _sayac,
         "rapor": rapor,
+    }
+
+
+# ─── Takip no bekleyen gönderiler + xlsx eşleştirme ──────────
+# Kendi kargo anlaşmasında barkod firmanın sisteminde basılıyor; takip numarası
+# günün sonunda Excel ile geliyor. "Kargoya Ver"e basılan sipariş takip numarası
+# gelene kadar burada bekler.
+
+def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
+    """Takip numarası olmayan gönderiler. Kargo ücreti alınmayan bayiiler HARİÇ."""
+    from app.models import Dealer, OrderShipment
+
+    # Kargo ücreti 0 olan bayiiler -> onlardan ücret almıyoruz, listeye girmesinler
+    _muaf = {
+        str(_id) for (_id,) in db.execute(
+            select(Dealer.id).where(Dealer.tenant_id == tenant_id,
+                                    sql_func.coalesce(Dealer.shipping_fee, 0) == 0)
+        ).all()
+    }
+    rows = db.execute(
+        select(OrderShipment, Order)
+        .join(Order, Order.id == OrderShipment.order_id)
+        .where(
+            OrderShipment.tenant_id == tenant_id,
+            sql_func.coalesce(OrderShipment.takip_no, "") == "",
+            Order.is_iptal == False,  # noqa: E712
+        )
+        .order_by(desc(OrderShipment.created_at))
+    ).all()
+
+    _magazalar = {str(s.id): s.name for s in db.scalars(
+        select(Store).where(Store.tenant_id == tenant_id)).all()}
+    _bayiler = {str(d.id): d.name for d in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == tenant_id)).all()}
+
+    out = []
+    for sh, o in rows:
+        _raw = o.raw or {}
+        _did = str(_raw.get("dealer_id") or "") or None
+        if _did and _did in _muaf:
+            continue        # kargo ücreti almadığımız bayii
+        _sa = _raw.get("shipping_address") or {}
+        _ad = (_sa.get("name") or o.customer_name or "").strip()
+        _adres = " ".join(x for x in [(_sa.get("address1") or ""),
+                                      (_sa.get("address2") or "")] if x).strip()
+        out.append({
+            "shipment_id": str(sh.id),
+            "order_id": str(o.id),
+            "order_number": o.order_number,
+            "ad": _ad,
+            "adres": _adres,
+            # bayii siparişinde city=il, province=ilçe (dealers.py böyle yazıyor)
+            "il": (_sa.get("province") or _sa.get("city") or "").strip(),
+            "ilce": (_sa.get("city") or "").strip() if _did else (_sa.get("city") or "").strip(),
+            "cikis_tarihi": sh.created_at.isoformat() if sh.created_at else None,
+            "kaynak": (_bayiler.get(_did) if _did else _magazalar.get(str(o.store_id or ""))) or "—",
+            "kaynak_tipi": "bayii" if _did else "magaza",
+            "kargo_firma": sh.kargo_firma,
+        })
+    return out
+
+
+@router.get("/_takip-bekleyen", response_model=None)
+def takip_bekleyen(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Takip numarası bekleyen gönderiler — isim · çıkış tarihi · mağaza/bayii."""
+    items = _bekleyen_gonderiler(db, user.tenant_id)
+    return {"toplam": len(items), "items": items}
+
+
+@router.post("/_takip-xlsx", response_model=None)
+async def takip_xlsx(
+    dosya: UploadFile = File(...),
+    uygula: bool = Query(False),
+    mail_gonder: bool = Query(True),
+    onaylananlar: str = Query("", description="Şüpheli eşleşmelerden onaylananların shipment_id'leri"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kargo firmasının .xlsx listesini yükle; isim+adres ile bekleyenlere eşle.
+
+    uygula=False -> yalnızca ÖNİZLEME (hiçbir şey yazılmaz).
+    Kesin eşleşmeler (skor ≥ 0.80) uygulanır; şüpheliler (0.60–0.80) yalnızca
+    'onaylananlar' listesinde varsa uygulanır. Belirsizlikte tahmin yürütülmez.
+    """
+    from app.models import OrderShipment
+    from app.services import kargo_eslestir, shipments as _sh
+    from app.services.xlsx_reader import XlsxError, read_rows, sutun_bul
+
+    ham = await dosya.read()
+    if len(ham) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Dosya çok büyük (en fazla 10 MB).")
+    try:
+        satirlar = read_rows(ham)
+    except XlsxError as e:
+        raise HTTPException(400, str(e))
+    if not satirlar:
+        return {"ok": False, "message": "Dosyada veri satırı yok."}
+
+    kargolar = []
+    for r in satirlar:
+        _takip = sutun_bul(r, "TakipNo", "Takip No", "Takip Numarasi", "Barkod")
+        _ad = sutun_bul(r, "Alici", "Alıcı", "Alici Adi", "Alıcı Adı", "AliciUnvan")
+        if not _takip or not _ad:
+            continue
+        kargolar.append({
+            "takip_no": _takip,
+            "ad": _ad,
+            "adres": sutun_bul(r, "AliciAdres", "Alıcı Adres", "Adres", "Teslimat Adresi"),
+            "il": sutun_bul(r, "Varışİl", "Varis Il", "Il", "Şehir"),
+            "ilce": sutun_bul(r, "Varışİlçe", "Varis Ilce", "Ilce"),
+            "tarih": sutun_bul(r, "Fatura Tarihi", "Kayit Tarihi", "Islem Tarihi"),
+        })
+    if not kargolar:
+        return {"ok": False,
+                "message": "Dosyada takip no + alıcı adı sütunları bulunamadı."}
+
+    bekleyenler = _bekleyen_gonderiler(db, user.tenant_id)
+    if not bekleyenler:
+        return {"ok": False, "message": "Takip numarası bekleyen gönderi yok."}
+
+    _onay = {x.strip() for x in (onaylananlar or "").split(",") if x.strip()}
+    sonuclar = kargo_eslestir.eslestir(bekleyenler, kargolar)
+
+    rapor, uygulanan = [], 0
+    for r in sonuclar:
+        k, s = r["kargo"], r["siparis"]
+        satir = {
+            "takip_no": k["takip_no"], "kargo_ad": k["ad"],
+            "kargo_il": k.get("il"), "durum": r["durum"],
+            "skor": r["skor"], "detay": r["detay"],
+            "siparis": None if not s else {
+                "shipment_id": s["shipment_id"], "order_id": s["order_id"],
+                "order_number": s["order_number"], "ad": s["ad"],
+                "kaynak": s["kaynak"], "cikis_tarihi": s["cikis_tarihi"],
+            },
+        }
+        if not uygula or not s:
+            rapor.append(satir)
+            continue
+        if r["durum"] == "supheli" and s["shipment_id"] not in _onay:
+            satir["aciklama"] = "Şüpheli — onaylanmadı, atlandı"
+            rapor.append(satir)
+            continue
+        sh = db.scalar(select(OrderShipment).where(
+            OrderShipment.id == uuid.UUID(s["shipment_id"]),
+            OrderShipment.tenant_id == user.tenant_id))
+        o = db.scalar(select(Order).where(Order.id == uuid.UUID(s["order_id"])))
+        if not sh or not o:
+            satir["aciklama"] = "Gönderi bulunamadı (bu arada değişmiş)"
+            rapor.append(satir)
+            continue
+        _mail = _sh.set_tracking(db, o, sh, takip_no=k["takip_no"],
+                                 kargo_firma=sh.kargo_firma, send_email=mail_gonder)
+        uygulanan += 1
+        satir["durum"] = "uygulandi"
+        satir["aciklama"] = "Takip no yazıldı" + (" · müşteriye mail gitti" if _mail else "")
+        rapor.append(satir)
+
+    if uygula:
+        db.commit()
+    _sayac: dict = {}
+    for r in rapor:
+        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
+    return {
+        "ok": True, "uygulandi": uygula, "uygulanan": uygulanan,
+        "dosya_satir": len(kargolar), "bekleyen": len(bekleyenler),
+        "sayac": _sayac, "rapor": rapor,
     }

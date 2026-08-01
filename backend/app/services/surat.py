@@ -84,6 +84,16 @@ def _addr_parts(raw: dict) -> dict:
             (sa.get("address2") or ""), (sa.get("company") or ""),
         ] if x)
         resmi_il = tr_iller.il_bul(_metin)
+    # Son çare: elde il sanılan değer aslında BENZERSİZ bir ilçe adıysa
+    # (province boş, city='Kadıköy') ilini oradan türet.
+    if not resmi_il:
+        for _aday in (sa.get("city"), sa.get("province"), il):
+            _t = tr_iller.il_from_ilce(_aday)
+            if _t:
+                if not (ilce or "").strip():
+                    ilce = _aday
+                resmi_il = _t
+                break
     if resmi_il:
         il = resmi_il
     # ilce gecerli mi? degilse GENIS metinden cikarmayi dene (cozulen il ile).

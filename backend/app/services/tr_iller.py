@@ -112,6 +112,21 @@ def il_bul(metin):
     return havuz[-1][1]
 
 
+def il_from_ilce(ilce_raw):
+    """İlçe adından il'i çıkar — YALNIZCA o ad TEK bir ilde geçiyorsa.
+
+    "Kadıköy" -> "İstanbul" (benzersiz).  "Merkez" -> None (onlarca ilde var).
+    province boş gelip city'ye ilçe yazılan siparişlerde il'i kurtarır;
+    belirsizlikte tahmin yürütmez.
+    """
+    n = _norm(ilce_raw)
+    if not n:
+        return None
+    bulunan = [il for il, ilceler in IL_ILCE.items()
+               if any(_norm(x) == n for x in ilceler)]
+    return bulunan[0] if len(bulunan) == 1 else None
+
+
 def gecerli_ilce_mi(ilce_raw, il_raw):
     """Verilen ilce, ilin gecerli ilcelerinden biri mi?"""
     il = resolve_il(il_raw)

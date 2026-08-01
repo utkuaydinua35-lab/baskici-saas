@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.auth.dependencies import require_permission
 from app.database import get_db
 from app.models import CheckoutSession, Store, User
@@ -266,7 +267,7 @@ def create_draft(
 
 def _payment_link(store: Store, session: CheckoutSession) -> str:
     config = store.config or {}
-    site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     return f"{site}/sepet?restore={session.lookup_token}"
 
 
@@ -315,7 +316,7 @@ def _send_reminder_email(db: Session, session: CheckoutSession, store: Store) ->
     subj_over, intro_over = email_service.store_email_text(store, "terk_sepet")
 
     config = store.config or {}
-    site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     restore_url = f"{site}/sepet?restore={session.lookup_token}"
 
     rows = "".join(

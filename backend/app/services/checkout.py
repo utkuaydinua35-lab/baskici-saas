@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import select, update as sa_update
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import CatalogProduct, CatalogVariant, CheckoutSession, DiscountCode, Store
 from app.payments import get_payment_provider
 from app.payments.base import CheckoutInit, PaymentResult
@@ -526,7 +527,7 @@ def build_callback_url(store: Store, session: CheckoutSession) -> str:
 def storefront_result_url(store: Store, session: CheckoutSession) -> str:
     """Müşterinin döneceği vitrin sonuç sayfası."""
     config = store.config or {}
-    base = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    base = site_url(config)
     return f"{base}/odeme/sonuc?token={session.token}"
 
 

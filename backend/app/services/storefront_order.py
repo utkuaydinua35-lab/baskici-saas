@@ -14,6 +14,7 @@ from decimal import Decimal
 from sqlalchemy import text as sa_text, update
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import CatalogVariant, CheckoutSession, DiscountCode, Order, StockItem, Store
 from app.services import email_service
 
@@ -244,7 +245,7 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
         )
 
     config = store.config or {}
-    site = (config.get("storefront_url") or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     track_url = f"{site}/siparis/{session.lookup_token}"
 
     subj_over, intro_over = email_service.store_email_text(store, "siparis_onay")

@@ -44,7 +44,8 @@ def build_purchase_payload(store, session) -> dict | None:
     cust = session.customer or {}
     meta = cust.get("_meta") or {}
     snap = session.cart_snapshot or []
-    site = (config.get("storefront_url") or "").rstrip("/")
+    from app.services.site import site_url
+    site = site_url(config)
 
     user_data = {
         k: v for k, v in {

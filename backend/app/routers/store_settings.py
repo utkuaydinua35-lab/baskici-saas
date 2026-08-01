@@ -253,8 +253,11 @@ def store_readiness(
         blocker=True, to="/urunler", count=no_variant)
 
     # 4) Vitrin adresi + yayın kilidi
-    add("storefront_url", bool(config.get("storefront_url")), "Vitrin adresi tanımlı",
-        "Ayarlar → Yayın & Domain'e vitrin adresini yazın (ödeme dönüşü buna bağlı)",
+    from app.services.site import site_url
+
+    add("storefront_url", bool(site_url(store)), "Vitrin adresi tanımlı",
+        "Ayarlar → Yayın & Domain'e vitrin adresini yazın — ödeme dönüşü, "
+        "e-postalardaki takip linkleri ve piksel olayları bu adresi kullanır",
         blocker=True, to="/ayarlar")
     add("unlocked", not (config.get("storefront_password") or "").strip(),
         "Mağaza ziyaretçilere açık",
@@ -409,7 +412,9 @@ def _revalidate_storefront(store: Store) -> None:
 
     Yoksa "Kaydet ve Yayınla"dan sonra vitrin 60 sn eski temayı gösterir —
     favicon/tema değişiminde "tema karıştı" izlenimi veriyordu."""
-    base = ((store.config or {}).get("storefront_url") or "").strip().rstrip("/")
+    from app.services.site import site_url
+
+    base = site_url(store)
     if not base:
         return
     try:

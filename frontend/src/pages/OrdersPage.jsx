@@ -637,7 +637,7 @@ export default function OrdersPage() {
         }}
       />
 
-      {showTakip && <TopluTakipDialog onClose={() => setShowTakip(false)} onDone={load} />}
+      {showTakip && <TopluTakipDialog onClose={() => setShowTakip(false)} onDone={loadOrders} />}
 
       {showTrash && (
         <TrashDialog

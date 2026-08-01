@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import case, desc, func as sql_func, select, update
+from sqlalchemy import case, desc, func as sql_func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -147,11 +147,10 @@ def _compute_deadline(created_at_platform: datetime | None, sla_days: int | None
     return created_at_platform + timedelta(days=sla_days)
 
 
-# Sync sirasinda line item'lar silinip yeniden olusturuluyor. Asagidaki alanlar
-# Shopify'dan DEGIL uygulamadan gelir (elle secim, atama, uretim akisi) — sync'in
-# bunlari ezmemesi icin external_id bazinda snapshot alinip geri yazilir.
-# ⚠️ LineItem'a yeni bir app-owned alan eklendiginde BURAYA DA EKLENMELI,
-#    yoksa her saatlik sync o alani sessizce sifirlar.
+# Uygulamaya ait (Shopify'dan GELMEYEN) LineItem alanlari — elle secim, atama,
+# uretim akisi. Sync artik kalemleri silip yeniden yaratmiyor, external_id ile
+# eslesen kalemi YERINDE guncelliyor; bu yuzden bu alanlara hic dokunulmuyor.
+# Liste belge olarak duruyor: sync'in yazdigi Shopify alanlariyla karismasin.
 _LI_APP_FIELDS = (
     "assigned_design_id", "assigned_design_id_2",
     "device_model_override", "device_model_override_2",
@@ -202,9 +201,6 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
 
     _deadline = _compute_deadline(order_data["created_at_platform"], _sla_days)
 
-    _preserved_li: dict[str, dict] = {}   # external_id -> app-owned alan snapshot'i
-    _mold_links: dict[str, list] = {}     # external_id -> [mold_item.id, ...]
-
     if existing:
         is_new = False
         was_updated = False
@@ -218,27 +214,16 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         if existing.kargo_deadline is None and _deadline is not None:
             existing.kargo_deadline = _deadline
         order = existing
-        # Sync sirasinda line item'lar silinip yeniden olusturuluyor; uygulamaya ait
-        # tum alanlari (_LI_APP_FIELDS) Shopify line item id'si (external_id) bazinda koru.
-        _old_ids: dict[uuid.UUID, str] = {}   # eski line item id -> external_id
-        for _li in order.line_items:
-            if _li.external_id:
-                _preserved_li[_li.external_id] = {
-                    _f: getattr(_li, _f, None) for _f in _LI_APP_FIELDS
-                }
-                _old_ids[_li.id] = _li.external_id
-        # Kalip slotu <-> kalem bagini (mold_items.line_item_id) yakala. FK ondelete=SET NULL
-        # oldugu icin asagidaki clear() bu bagi koparir; yeni kalemler olusunca geri baglanir.
-        # Bag kopunca kalip silme/serbest birakma bulanik tahmine dusuyor ve urunler
-        # "kalibimdayim" diye takili kalip hic basilmiyordu.
-        if _old_ids:
-            for _mi_id, _li_id in db.execute(
-                select(MoldItem.id, MoldItem.line_item_id)
-                .where(MoldItem.line_item_id.in_(list(_old_ids.keys())))
-            ).all():
-                _mold_links.setdefault(_old_ids[_li_id], []).append(_mi_id)
-        order.line_items.clear()
-        db.flush()
+        # ★ KALEMLER ARTIK SILINIP YENIDEN YARATILMIYOR ★
+        # Eskiden her sync'te line_items.clear() yapiliyordu; kalemler YENI UUID
+        # aliyordu. Sonuclari: kalip slotu bagi kopuyor, acik panel sayfalarindaki
+        # kimlikler gecersizlesiyor ("Line item bulunamadi"), uygulamaya ait alanlar
+        # tek tek geri yazilmak zorunda kaliyordu. Artik external_id ile eslesen
+        # kalem YERINDE guncellenir; kimligi sabit kalir.
+        _mevcut_li = {
+            (_li.external_id or ""): _li for _li in order.line_items if _li.external_id
+        }
+        _gelen_ext: set[str] = set()
     else:
         is_new = True
         was_updated = False
@@ -277,44 +262,42 @@ def _upsert_order(db: Session, *, tenant_id, store_id, raw: dict) -> tuple[Order
         except Exception:
             pass
 
-    _new_li_by_ext: dict[str, LineItem] = {}
+    _mevcut_li = locals().get("_mevcut_li", {})
+    _gelen_ext = locals().get("_gelen_ext", set())
+    # Shopify'dan gelen alanlar — YALNIZCA bunlar guncellenir; uygulamaya ait
+    # alanlara (_LI_APP_FIELDS) DOKUNULMAZ, zaten kalemin uzerinde duruyorlar.
     for pos, li_raw in enumerate(raw.get("line_items", [])):
         _ext = str(li_raw.get("id", "")) if li_raw.get("id") else None
-        li = LineItem(
-            tenant_id=tenant_id,
-            order_id=order.id,
-            external_id=_ext,
-            product_id=str(li_raw.get("product_id", "")) if li_raw.get("product_id") else None,
-            variant_id=str(li_raw.get("variant_id", "")) if li_raw.get("variant_id") else None,
-            title=li_raw.get("title", ""),
-            variant_title=li_raw.get("variant_title"),
-            sku=li_raw.get("sku"),
-            quantity=li_raw.get("quantity", 1),
-            position=pos,
-            properties=li_raw.get("properties") or [],
-            raw=li_raw,
-        )
-        # Sync oncesi uygulamaya ait alanlari geri yaz: design baglamasi, elle secilen
-        # telefon modeli/varyasyon ve uretim akisi (is_kaliba_eklendi -> cift baski riskini onler)
-        _snap = _preserved_li.get(_ext) if _ext else None
-        if _snap:
-            for _f, _v in _snap.items():
-                setattr(li, _f, _v)
-        db.add(li)
+        _alanlar = {
+            "product_id": str(li_raw.get("product_id", "")) if li_raw.get("product_id") else None,
+            "variant_id": str(li_raw.get("variant_id", "")) if li_raw.get("variant_id") else None,
+            "title": li_raw.get("title", ""),
+            "variant_title": li_raw.get("variant_title"),
+            "sku": li_raw.get("sku"),
+            "quantity": li_raw.get("quantity", 1),
+            "position": pos,
+            "properties": li_raw.get("properties") or [],
+            "raw": li_raw,
+        }
+        li = _mevcut_li.get(_ext) if _ext else None
+        if li is not None:
+            # YERINDE guncelle — kimlik (id) korunur
+            for _f, _v in _alanlar.items():
+                if getattr(li, _f, None) != _v:
+                    setattr(li, _f, _v)
+        else:
+            li = LineItem(tenant_id=tenant_id, order_id=order.id,
+                          external_id=_ext, **_alanlar)
+            db.add(li)
         if _ext:
-            _new_li_by_ext[_ext] = li
+            _gelen_ext.add(_ext)
 
-    # Kalip slotlarini yeni kalem id'lerine geri bagla (yukarida yakalanan eslesme).
-    if _mold_links:
-        db.flush()   # yeni line item id'leri olussun
-        for _ext, _mi_ids in _mold_links.items():
-            _nli = _new_li_by_ext.get(_ext)
-            if _nli is None:
-                continue   # Shopify'dan bu kalem artik gelmiyor -> bag NULL kalir
-            db.execute(
-                update(MoldItem).where(MoldItem.id.in_(_mi_ids))
-                .values(line_item_id=_nli.id)
-            )
+    # Shopify'dan ARTIK GELMEYEN kalemler (siparis duzenlenmis, kalem silinmis) —
+    # bunlari kaldir. Kalip slotlari FK ondelete=SET NULL ile bagsiz kalir.
+    for _ext, _eski in _mevcut_li.items():
+        if _ext not in _gelen_ext:
+            db.delete(_eski)
+    db.flush()
 
     # Müşteri CRM kaydını güncelle — hata sync'i asla düşürmesin
     try:

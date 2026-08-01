@@ -62,8 +62,17 @@ def main() -> int:
     if not store:
         print(f"{KIRMIZI}Aktif vitrin mağazası yok — test çalıştırılamıyor{SIFIRLA}")
         return 1
-    user = db.scalar(select(User).where(
-        User.tenant_id == store.tenant_id, User.is_active.is_(True)))
+    # Panel uçları 'vitrin' yetkisi ister — rastgele bir personel seçilirse
+    # testler 403 yüzünden düşer ve yanlış alarm verir. Yetkili kullanıcı aranır.
+    from app.auth import permissions as _perms
+
+    adaylar = db.scalars(select(User).where(
+        User.tenant_id == store.tenant_id, User.is_active.is_(True))).all()
+    user = next((u for u in adaylar if _perms.has_permission(u, "vitrin")), None)
+    if not user:
+        print(f"{KIRMIZI}'vitrin' yetkili aktif kullanıcı yok — panel testleri "
+              f"çalıştırılamaz{SIFIRLA}")
+        return 1
     h = {"Authorization": f"Bearer {create_access_token(
         user_id=str(user.id), tenant_id=str(user.tenant_id), email=user.email)}"}
     slug = store.slug

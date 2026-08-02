@@ -182,13 +182,16 @@ def _studyo_items(db: Session, order: Order) -> list[dict]:
             d = db.scalar(select(CustomerDesign).where(CustomerDesign.id == did))
         except Exception:  # noqa: BLE001 — bozuk id kaydı onayı bozmasın
             continue
-        if not d or not d.preview_path:
+        # Rötuşlanmış numune varsa müşteri ONU görsün; yoksa stüdyo önizlemesi
+        gosterilecek = d.proof_path or d.preview_path if d else None
+        if not gosterilecek:
             continue
         out.append({
-            "image_url": _absolute(f"/storage/{d.preview_path}"),
+            "image_url": _absolute(f"/storage/{gosterilecek}"),
             "file_url": _absolute(f"/storage/{d.print_path}") if d.print_path else None,
             "file_format": "png",
-            "title": f"{d.name} (kendi tasarımı)",
+            "title": f"{d.name} (kendi tasarımı)"
+                     + ("" if d.proof_path else " — numune hazırlanmadı"),
             "quantity": 1,
             "is_mockup": True,
         })

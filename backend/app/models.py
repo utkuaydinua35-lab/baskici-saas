@@ -2244,6 +2244,9 @@ class CustomerDesign(Base):
     preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Baskıya hazır çıktı (sipariş sonrası sunucuda üretilir)
     print_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Rötuş/CMYK sonrası hazırlanan NUMUNE — müşteri onayında bu gösterilir
+    # (yoksa stüdyo önizlemesine düşülür)
+    proof_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     status: Mapped[str] = mapped_column(
         String(12), default="draft", server_default=text("'draft'"), index=True

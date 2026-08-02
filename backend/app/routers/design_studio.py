@@ -258,6 +258,8 @@ def get_design(
         "template": t.label if t else d.template_key,
         "preview_url": f"/storage/{d.preview_path}" if d.preview_path else None,
         "print_url": f"/storage/{d.print_path}" if d.print_path else None,
+        # Rötuş sonrası numune — müşteri onayında bu gösterilir
+        "proof_url": f"/storage/{d.proof_path}" if d.proof_path else None,
         "print_size": ({"px_w": round(t.print_width_mm / 25.4 * t.print_dpi),
                         "px_h": round(t.print_height_mm / 25.4 * t.print_dpi),
                         "mm": f"{t.print_width_mm}×{t.print_height_mm} mm",
@@ -294,3 +296,37 @@ def rerender_design(
         d.tenant_id, d.store_id, d.id, veri, "baski").removeprefix("/storage/")
     db.commit()
     return {"print_url": f"/storage/{d.print_path}", "bytes": len(veri)}
+
+
+@router.post("/designs/{design_id}/proof", response_model=dict)
+async def upload_proof(
+    design_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Rötuş/CMYK sonrası numune görselini yükle.
+
+    Müşteri onay ekranında ARTIK BU gösterilir — stüdyo önizlemesi değil.
+    Böylece müşteri gerçekte basılacak halini onaylar.
+    """
+    d = db.scalar(select(CustomerDesign).where(
+        CustomerDesign.id == design_id, CustomerDesign.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    data = await file.read()
+    try:
+        url, _prev, _w, _h = storage_svc.save_design_original(
+            d.tenant_id, d.store_id, data,
+            getattr(file, "filename", None) or "numune.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    d.proof_path = url.removeprefix("/storage/")
+    activity.record(db, user, "numune_yukle", store_id=d.store_id, entity_type="tasarim",
+                    entity_id=d.id, entity_label=d.name)
+    db.commit()
+    return {"proof_url": url}

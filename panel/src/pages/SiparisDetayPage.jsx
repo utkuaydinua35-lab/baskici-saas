@@ -975,6 +975,22 @@ function TasarimKarti({ li }) {
   if (err) return <div className="text-[11px] text-red-600 mt-1">{err}</div>
   if (!d) return <div className="text-[11px] text-panel-muted mt-1">Tasarım yükleniyor…</div>
 
+  const numuneYukle = async (file) => {
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/case-templates/designs/${d.id}/proof`, {
+        method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd,
+      })
+      if (!res.ok) throw new Error()
+      const r = await res.json()
+      setD(x => ({ ...x, proof_url: r.proof_url }))
+    } catch { setErr('Numune yüklenemedi') }
+    finally { setBusy(false) }
+  }
+
   const yenidenUret = async () => {
     setBusy(true); setErr('')
     try {
@@ -986,9 +1002,9 @@ function TasarimKarti({ li }) {
 
   return (
     <div className="mt-2 flex gap-2.5 items-start bg-indigo-50/60 border border-indigo-100 rounded-xl p-2">
-      {d.preview_url && (
-        <a href={d.preview_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-          <img src={d.preview_url} alt={d.name}
+      {(d.proof_url || d.preview_url) && (
+        <a href={d.proof_url || d.preview_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          <img src={d.proof_url || d.preview_url} alt={d.name}
             className="w-12 rounded-lg border border-indigo-200 bg-white" />
         </a>
       )}
@@ -996,6 +1012,9 @@ function TasarimKarti({ li }) {
         <div className="font-medium text-indigo-900">🎨 {d.name}</div>
         <div className="text-panel-muted">
           {d.template} · {d.layer_count} katman
+          {d.proof_url
+            ? <span className="text-emerald-700"> · numune hazır ✓</span>
+            : <span className="text-amber-700"> · numune yüklenmedi</span>}
           {d.print_size && ` · ${d.print_size.mm} @ ${d.print_size.dpi} DPI`}
         </div>
         <div className="flex gap-2 flex-wrap mt-1">
@@ -1009,6 +1028,11 @@ function TasarimKarti({ li }) {
           <button onClick={yenidenUret} disabled={busy} className="text-panel-muted underline">
             {busy ? 'üretiliyor…' : 'yeniden üret'}
           </button>
+          <label className="text-panel-muted underline cursor-pointer">
+            {d.proof_url ? '🔄 numuneyi değiştir' : '📤 numune yükle'}
+            <input type="file" accept="image/*" className="hidden"
+              onChange={e => numuneYukle(e.target.files?.[0])} />
+          </label>
           {(d.assets || []).map((a, i) => (
             <a key={a.id} href={a.original_url} download className="text-panel-muted underline"
               title={`${a.width}×${a.height} px${a.filename ? ` · ${a.filename}` : ''}`}>

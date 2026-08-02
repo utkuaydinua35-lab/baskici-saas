@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
@@ -18,6 +18,11 @@ export default function UrunlerPage() {
   const [showSets, setShowSets] = useState(false)
   const [showBulkSet, setShowBulkSet] = useState(false)
   const [showFixVariants, setShowFixVariants] = useState(false)
+  // Arama + filtreler (istemci tarafında — liste zaten tamamı yüklü)
+  const [q, setQ] = useState('')
+  const [durum, setDurum] = useState('')     // '' | active | draft | archived
+  const [ozel, setOzel] = useState('')       // '' | varyantsiz | gorselsiz | maliyetsiz | indirimli
+  const [sirala, setSirala] = useState('yeni')
   const noVariantCount = products.filter(p => !p.variant_count).length
 
   const exportCsv = async () => {
@@ -82,6 +87,32 @@ export default function UrunlerPage() {
     finally { setBulkBusy(false) }
   }
 
+  // Arama: ürün adı, URL (slug) ve etiketlerde geçiyor mu
+  const filtreli = useMemo(() => {
+    const ara = q.trim().toLocaleLowerCase('tr')
+    let liste = products.filter(p => {
+      if (durum && p.status !== durum) return false
+      if (ozel === 'varyantsiz' && p.variant_count) return false
+      if (ozel === 'gorselsiz' && p.cover_image) return false
+      if (ozel === 'maliyetsiz' && p.cost_price) return false
+      if (ozel === 'indirimli' &&
+          !(p.compare_at_price && Number(p.compare_at_price) > Number(p.base_price))) return false
+      if (!ara) return true
+      return (p.title || '').toLocaleLowerCase('tr').includes(ara)
+        || (p.slug || '').toLowerCase().includes(ara)
+        || (p.tags || '').toLocaleLowerCase('tr').includes(ara)
+    })
+    const say = { yeni: (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
+      ad: (a, b) => (a.title || '').localeCompare(b.title || '', 'tr'),
+      ucuz: (a, b) => Number(a.base_price) - Number(b.base_price),
+      pahali: (a, b) => Number(b.base_price) - Number(a.base_price),
+      varyant: (a, b) => (a.variant_count || 0) - (b.variant_count || 0) }
+    return [...liste].sort(say[sirala] || say.yeni)
+  }, [products, q, durum, ozel, sirala])
+
+  const filtreVar = !!(q.trim() || durum || ozel)
+  const temizle = () => { setQ(''); setDurum(''); setOzel('') }
+
   const toggleCheck = (id, e) => {
     e.stopPropagation()
     setChecked(prev => {
@@ -95,7 +126,9 @@ export default function UrunlerPage() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">Ürünler</h1>
-        <span className="text-sm text-panel-muted">{products.length} ürün</span>
+        <span className="text-sm text-panel-muted">
+          {filtreVar ? `${filtreli.length} / ${products.length} ürün` : `${products.length} ürün`}
+        </span>
         <div className="ml-auto flex gap-2">
           <button onClick={() => setShowSets(true)} className="btn-ghost text-xs">🧩 Varyant Setleri</button>
           <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
@@ -119,6 +152,60 @@ export default function UrunlerPage() {
             className="ml-auto shrink-0 px-3 py-1 rounded-lg text-xs bg-amber-50 text-amber-700">
             🧩 Hepsine set uygula
           </button>
+        </div>
+      )}
+
+      {/* Arama + filtreler — 600+ ürünlü katalogda aranan ürüne saniyede ulaşım */}
+      {products.length > 0 && (
+        <div className="card !py-3 space-y-2.5">
+          <div className="flex gap-2 flex-wrap items-center">
+            <div className="relative flex-1 min-w-[220px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-panel-muted text-sm">🔍</span>
+              <input className="input !pl-8" value={q} onChange={e => setQ(e.target.value)}
+                placeholder="Ürün adı, URL veya etikette ara…" />
+              {q && (
+                <button onClick={() => setQ('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-panel-muted hover:text-panel-ink">×</button>
+              )}
+            </div>
+            <select className="input !w-auto !py-2 text-sm" value={sirala}
+              onChange={e => setSirala(e.target.value)}>
+              <option value="yeni">Yeni eklenen</option>
+              <option value="ad">Ada göre (A→Z)</option>
+              <option value="ucuz">Fiyat (artan)</option>
+              <option value="pahali">Fiyat (azalan)</option>
+              <option value="varyant">Varyant (az→çok)</option>
+            </select>
+          </div>
+
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {[['', 'Tümü'], ['active', 'Yayında'], ['draft', 'Taslak'], ['archived', 'Arşiv']].map(([v, l]) => (
+              <button key={v} onClick={() => setDurum(v)}
+                className={`px-2.5 py-1 rounded-lg text-xs border transition ${durum === v
+                  ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+                  : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+                {l}
+                <span className="ml-1 opacity-60">
+                  {v ? products.filter(p => p.status === v).length : products.length}
+                </span>
+              </button>
+            ))}
+            <span className="w-px h-4 bg-panel-border mx-1" />
+            {[['varyantsiz', '⚠️ Varyantsız'], ['gorselsiz', '🖼️ Görselsiz'],
+              ['maliyetsiz', '💰 Maliyeti yok'], ['indirimli', '🏷️ İndirimli']].map(([v, l]) => (
+              <button key={v} onClick={() => setOzel(ozel === v ? '' : v)}
+                className={`px-2.5 py-1 rounded-lg text-xs border transition ${ozel === v
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 font-medium'
+                  : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+                {l}
+              </button>
+            ))}
+            {filtreVar && (
+              <button onClick={temizle} className="ml-auto text-xs text-panel-muted hover:text-panel-ink">
+                Filtreyi temizle
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -162,17 +249,17 @@ export default function UrunlerPage() {
       )}
 
       {/* Shopify tarzı liste görünümü — satır tıklanınca detaya gider */}
-      {products.length > 0 && (
+      {filtreli.length > 0 && (
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="text-panel-muted bg-panel-input text-xs">
             <tr>
               <th className="w-10 px-3 py-2.5">
                 <input type="checkbox" aria-label="Tümünü seç"
-                  checked={checked.size === products.length && products.length > 0}
+                  checked={filtreli.length > 0 && filtreli.every(p => checked.has(p.id))}
                   onChange={() => setChecked(
-                    checked.size === products.length
-                      ? new Set() : new Set(products.map(p => p.id)))}
+                    filtreli.every(p => checked.has(p.id))
+                      ? new Set() : new Set(filtreli.map(p => p.id)))}
                   className="w-4 h-4 accent-emerald-600 align-middle" />
               </th>
               <th className="text-left px-2 py-2.5 font-medium">Ürün</th>
@@ -182,7 +269,7 @@ export default function UrunlerPage() {
             </tr>
           </thead>
           <tbody>
-            {products.map(p => (
+            {filtreli.map(p => (
               <tr key={p.id} onClick={() => navigate(`/urunler/${p.id}`)}
                 className="border-t border-panel-border hover:bg-panel-input/50 transition cursor-pointer">
                 <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
@@ -216,6 +303,15 @@ export default function UrunlerPage() {
             Henüz ürün yok — ilk ürününü ekleyerek satışa başla.
           </p>
           <Link to="/urunler/yeni" className="btn-primary mt-4 inline-block">+ Yeni Ürün</Link>
+        </div>
+      )}
+      {!loading && products.length > 0 && filtreli.length === 0 && (
+        <div className="card text-center !p-10">
+          <div className="text-3xl">🔍</div>
+          <p className="mt-2 text-sm text-panel-muted">
+            Bu filtreyle eşleşen ürün yok.
+          </p>
+          <button onClick={temizle} className="btn-ghost mt-3">Filtreyi temizle</button>
         </div>
       )}
 

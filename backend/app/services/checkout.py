@@ -130,6 +130,27 @@ def validate_and_snapshot(
             if not custom_clean:
                 custom_clean = None
 
+        # Tasarım stüdyosu işi: tasarım gerçekten var mı, bu mağazaya mı ait?
+        # (id tahmin edilemez ama yine de sunucuda doğrulanır — istemciye güvenilmez)
+        design_bilgi = None
+        did = str(entry.get("design_id") or "")
+        if did:
+            from app.models import CustomerDesign
+            d = db.scalar(select(CustomerDesign).where(
+                CustomerDesign.id == did, CustomerDesign.store_id == store.id))
+            if not d:
+                raise CheckoutError("Seçilen tasarım bulunamadı")
+            if d.status == "ordered":
+                raise CheckoutError("Bu tasarım zaten sipariş edilmiş — kopyasını oluşturun")
+            if not (d.layers or []):
+                raise CheckoutError("Tasarım boş görünüyor — düzenleyip tekrar deneyin")
+            design_bilgi = {
+                "design_id": str(d.id),
+                "design_name": d.name,
+                "design_preview": f"/storage/{d.preview_path}" if d.preview_path else None,
+                "design_template": d.template_key,
+            }
+
         total += unit_price * qty
         snapshot.append({
             "variant_id": str(variant.id),
@@ -147,6 +168,7 @@ def validate_and_snapshot(
                 "second_model_key": second.model_key,
                 "second_model_display": second.model_display} if second else {}),
             **({"custom": custom_clean} if custom_clean else {}),
+            **(design_bilgi or {}),
             **({"custom_labels": {f["key"]: f["label"] for f in fields}} if custom_clean else {}),
         })
 

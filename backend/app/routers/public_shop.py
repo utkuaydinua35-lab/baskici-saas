@@ -327,6 +327,8 @@ class CheckoutItemIn(BaseModel):
     second_variant_id: uuid.UUID | None = None
     # Kişiye özel alanlar: {key: value} — üründeki tanıma göre doğrulanır
     custom: dict | None = None
+    # Tasarım stüdyosunda hazırlanan tasarım (varsa) — sunucuda doğrulanır
+    design_id: uuid.UUID | None = None
 
 
 class CheckoutCustomerIn(BaseModel):

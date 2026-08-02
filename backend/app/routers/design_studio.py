@@ -226,3 +226,71 @@ async def upload_template_image(
     t.image_path = url.removeprefix("/storage/")
     db.commit()
     return {"image_url": url}
+
+
+# ─── Panel: sipariş edilen tasarımlar ────────────────────────
+
+@router.get("/designs/{design_id}", response_model=dict)
+def get_design(
+    design_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Sipariş detayındaki tasarım kartı — önizleme + baskı dosyası."""
+    d = db.scalar(select(CustomerDesign).where(
+        CustomerDesign.id == design_id, CustomerDesign.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    t = db.scalar(select(CaseTemplate).where(
+        CaseTemplate.store_id == d.store_id, CaseTemplate.key == d.template_key))
+    kullanilan = [
+        {"id": str(a.id), "original_url": f"/storage/{a.original_path}",
+         "width": a.width, "height": a.height, "filename": a.filename}
+        for a in db.scalars(select(DesignAsset).where(DesignAsset.id.in_(
+            [str(l.get("asset_id")) for l in (d.layers or [])
+             if l.get("type") == "image" and l.get("asset_id")] or ["00000000-0000-0000-0000-000000000000"]
+        ))).all()
+    ]
+    return {
+        "id": str(d.id),
+        "name": d.name,
+        "status": d.status,
+        "template": t.label if t else d.template_key,
+        "preview_url": f"/storage/{d.preview_path}" if d.preview_path else None,
+        "print_url": f"/storage/{d.print_path}" if d.print_path else None,
+        "print_size": ({"px_w": round(t.print_width_mm / 25.4 * t.print_dpi),
+                        "px_h": round(t.print_height_mm / 25.4 * t.print_dpi),
+                        "mm": f"{t.print_width_mm}×{t.print_height_mm} mm",
+                        "dpi": t.print_dpi} if t else None),
+        "layer_count": len(d.layers or []),
+        # Müşterinin yüklediği ORİJİNAL dosyalar — rötuş için doğrudan indirilir
+        "assets": kullanilan,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+    }
+
+
+@router.post("/designs/{design_id}/render", response_model=dict)
+def rerender_design(
+    design_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Baskı dosyasını yeniden üret (şablon ölçüsü değiştiyse veya hata olduysa)."""
+    from app.services.design_render import render_print_file
+
+    d = db.scalar(select(CustomerDesign).where(
+        CustomerDesign.id == design_id, CustomerDesign.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    t = db.scalar(select(CaseTemplate).where(
+        CaseTemplate.store_id == d.store_id, CaseTemplate.key == d.template_key))
+    if not t:
+        raise HTTPException(422, "Tasarımın kılıf şablonu bulunamadı")
+    try:
+        veri = render_print_file(db, d, t)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    d.print_path = storage_svc.save_design_render(
+        d.tenant_id, d.store_id, d.id, veri, "baski").removeprefix("/storage/")
+    db.commit()
+    return {"print_url": f"/storage/{d.print_path}", "bytes": len(veri)}

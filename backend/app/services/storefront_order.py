@@ -59,9 +59,19 @@ def _build_raw(session: CheckoutSession, order_number: int,
         for key, val in (item.get("custom") or {}).items():
             custom_props.append({"name": labels.get(key, key), "value": val})
 
+        # Tasarım stüdyosu işi — üretimde baskı dosyası bu satırdan bulunur
+        design_props = []
+        if item.get("design_id"):
+            design_props = [
+                {"name": "Tasarım", "value": item.get("design_name") or "Müşteri tasarımı"},
+                {"name": "Tasarım No", "value": item["design_id"]},
+            ]
+            if item.get("design_preview"):
+                design_props.append({"name": "Önizleme", "value": item["design_preview"]})
+
         props = [
             {"name": "Telefon Modeli", "value": item.get("model_display") or ""},
-        ] + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []) \
+        ] + design_props + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []) \
           + ([{"name": "2. Kılıf Modeli", "value": item["second_model_display"]}]
              if item.get("second_model_display") else []) \
           + custom_props
@@ -318,8 +328,51 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
         )
 
     try:
+        _tasarimlari_isle(db, session, order, store)
+    except Exception as e:  # noqa: BLE001 — baskı dosyası hatası siparişi geri almaz
+        print(f"[stüdyo] baskı dosyası üretilemedi: {e}")
+
+    try:
         _send_confirmation_email(db, session, order, store)
     except Exception as e:  # e-posta hatası siparişi geri almaz
         print(f"[vitrin] onay e-postası gönderilemedi: {e}")
 
     return order
+
+
+def _tasarimlari_isle(db, session, order, store) -> None:
+    """Sipariş edilen tasarımları kilitle ve BASKIYA HAZIR dosyayı üret.
+
+    Baskı dosyası müşterinin ORİJİNAL yüklediği görsellerden ve editördekiyle
+    aynı font dosyalarından, şablonun fiziksel ölçüsünde (mm + DPI) üretilir —
+    ekran görüntüsü kullanılmaz. Hata olursa sipariş yine de geçerlidir;
+    dosya panelden elle yeniden üretilebilir.
+    """
+    from sqlalchemy import select
+
+    from app.models import CaseTemplate, CustomerDesign
+    from app.services import storage as storage_svc
+    from app.services.design_render import render_print_file
+
+    ids = [i["design_id"] for i in (session.cart_snapshot or []) if i.get("design_id")]
+    if not ids:
+        return
+
+    for did in ids:
+        design = db.scalar(select(CustomerDesign).where(CustomerDesign.id == did))
+        if not design:
+            continue
+        design.status = "ordered"
+        design.order_id = order.id
+        sablon = db.scalar(select(CaseTemplate).where(
+            CaseTemplate.store_id == design.store_id,
+            CaseTemplate.key == design.template_key))
+        if not sablon:
+            print(f"[stüdyo] şablon bulunamadı (tasarım {did}) — baskı dosyası atlandı")
+            continue
+        veri = render_print_file(db, design, sablon)
+        design.print_path = storage_svc.save_design_render(
+            design.tenant_id, design.store_id, design.id, veri, "baski"
+        ).removeprefix("/storage/")
+        print(f"[stüdyo] baskı dosyası hazır: {design.print_path}")
+    db.commit()

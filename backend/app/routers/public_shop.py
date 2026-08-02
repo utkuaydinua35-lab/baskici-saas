@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models import CatalogProduct, CatalogVariant, CheckoutSession, DiscountCode, Store
 from app.payments import get_payment_provider
 from app.services import checkout as checkout_svc
+from app.services import storage as storage_svc
 from app.services.rate_limit import client_ip, make_rate_limiter
 
 router = APIRouter(prefix="/api/shop", tags=["public-shop"])
@@ -2184,3 +2185,201 @@ def support_model_check(
     for m in ranked:
         m.pop("_extra", None)
     return {"models": ranked}
+
+
+# ═════════════════════════════════════════════════════════════
+# TASARIM STÜDYOSU (vitrin) — müşteri kendi kılıfını tasarlar
+# ═════════════════════════════════════════════════════════════
+# Şablon listesi herkese açık (tasarlamaya başlamak için hesap gerekmez);
+# KAYDETMEK için hesap gerekir — böylece müşteri kaldığı yerden devam eder.
+
+@router.get("/{store_slug}/studio/templates")
+def studio_templates(store_slug: str, response: Response, db: Session = Depends(get_db)):
+    """Boş kılıf seçenekleri + baskı alanı (editörün zemini)."""
+    from app.models import CaseTemplate
+
+    store = _resolve_store(db, store_slug)
+    rows = db.scalars(select(CaseTemplate).where(
+        CaseTemplate.store_id == store.id,
+        CaseTemplate.is_active.is_(True),
+        CaseTemplate.image_path.isnot(None),
+    ).order_by(CaseTemplate.position, CaseTemplate.created_at)).all()
+    response.headers["Cache-Control"] = "public, max-age=120"
+    return [
+        {
+            "key": t.key,
+            "label": t.label,
+            "description": t.description,
+            "image_url": f"/storage/{t.image_path}",
+            "area": {"x": float(t.area_x), "y": float(t.area_y),
+                     "w": float(t.area_w), "h": float(t.area_h)},
+            "print": {"width_mm": t.print_width_mm, "height_mm": t.print_height_mm,
+                      "dpi": t.print_dpi},
+        }
+        for t in rows
+    ]
+
+
+design_upload_rate_limit = make_rate_limiter(max_hits=30, window=300.0)
+MAX_DESIGN_LAYERS = 40
+
+
+def _ser_design(d, store) -> dict:
+    return {
+        "id": str(d.id),
+        "name": d.name,
+        "template_key": d.template_key,
+        "variant_id": str(d.variant_id) if d.variant_id else None,
+        "layers": d.layers or [],
+        "preview_url": f"/storage/{d.preview_path}" if d.preview_path else None,
+        "status": d.status,
+        "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+    }
+
+
+@router.get("/account/designs")
+def list_designs(request: Request, db: Session = Depends(get_db)):
+    """Müşterinin kayıtlı tasarımları — en son düzenlenen üstte."""
+    from app.models import CustomerDesign
+
+    customer, store = _get_customer_from_token(request, db)
+    rows = db.scalars(select(CustomerDesign).where(
+        CustomerDesign.customer_id == customer.id,
+        CustomerDesign.store_id == store.id,
+    ).order_by(CustomerDesign.updated_at.desc()).limit(60)).all()
+    return [_ser_design(d, store) for d in rows]
+
+
+class DesignSave(BaseModel):
+    id: uuid.UUID | None = None
+    name: str = Field("Tasarımım", max_length=120)
+    template_key: str | None = Field(None, max_length=40)
+    variant_id: uuid.UUID | None = None
+    layers: list[dict] = Field(default_factory=list, max_length=MAX_DESIGN_LAYERS)
+    status: str = Field("draft", pattern="^(draft|ready)$")
+    # Tuvalden alınan küçük önizleme (data URL) — liste ve panelde gösterilir
+    preview_data_url: str | None = Field(None, max_length=4_000_000)
+
+
+@router.post("/account/designs")
+def save_design(request: Request, body: DesignSave, db: Session = Depends(get_db)):
+    """Tasarımı kaydet/güncelle. id verilirse günceller (otomatik kayıt bunu kullanır).
+
+    Katman sayısı ve gövde boyutu sınırlıdır; tuval içeriği sunucuda saklanır
+    ki müşteri başka cihazdan girince de kaldığı yerden devam etsin.
+    """
+    from app.models import CustomerDesign
+
+    customer, store = _get_customer_from_token(request, db)
+
+    if body.id:
+        design = db.scalar(select(CustomerDesign).where(
+            CustomerDesign.id == body.id,
+            CustomerDesign.customer_id == customer.id,   # başkasının tasarımı düzenlenemez
+            CustomerDesign.store_id == store.id,
+        ))
+        if not design:
+            raise HTTPException(404, "Tasarım bulunamadı")
+        if design.status == "ordered":
+            raise HTTPException(422, "Sipariş edilmiş tasarım değiştirilemez — kopyasını oluşturun")
+    else:
+        adet = db.scalar(select(func.count()).select_from(CustomerDesign).where(
+            CustomerDesign.customer_id == customer.id,
+            CustomerDesign.store_id == store.id)) or 0
+        if adet >= 60:
+            raise HTTPException(422, "En fazla 60 tasarım saklanabilir — eskilerini silin")
+        design = CustomerDesign(tenant_id=store.tenant_id, store_id=store.id,
+                                customer_id=customer.id)
+        db.add(design)
+
+    design.name = (body.name or "Tasarımım").strip()[:120]
+    design.template_key = body.template_key
+    design.variant_id = body.variant_id
+    design.layers = body.layers
+    design.status = body.status
+
+    if body.preview_data_url and body.preview_data_url.startswith("data:image/"):
+        try:
+            import base64
+            b64 = body.preview_data_url.split(",", 1)[1]
+            ham = base64.b64decode(b64)
+            if len(ham) <= 3 * 1024 * 1024:
+                db.flush()   # design.id gerekli
+                design.preview_path = storage_svc.save_design_render(
+                    store.tenant_id, store.id, design.id, ham, "onizleme"
+                ).removeprefix("/storage/")
+        except Exception:  # noqa: BLE001 — önizleme kaydı tasarımı bloklamaz
+            pass
+
+    db.commit()
+    db.refresh(design)
+    return _ser_design(design, store)
+
+
+@router.delete("/account/designs/{design_id}", status_code=204)
+def delete_design(design_id: uuid.UUID, request: Request, db: Session = Depends(get_db)):
+    from app.models import CustomerDesign
+
+    customer, store = _get_customer_from_token(request, db)
+    design = db.scalar(select(CustomerDesign).where(
+        CustomerDesign.id == design_id,
+        CustomerDesign.customer_id == customer.id,
+        CustomerDesign.store_id == store.id,
+    ))
+    if not design:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    if design.status == "ordered":
+        raise HTTPException(422, "Sipariş edilmiş tasarım silinemez")
+    db.delete(design)
+    db.commit()
+
+
+@router.post("/{store_slug}/studio/assets")
+async def upload_design_asset(
+    store_slug: str,
+    request: Request,
+    _rl: None = Depends(design_upload_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Stüdyoya görsel yükle. ORİJİNAL saklanır (baskı bundan üretilecek),
+    tuvale hafif önizleme döner."""
+    from app.models import DesignAsset
+
+    store = _resolve_store(db, store_slug)
+    # Girişliyse varlık müşteriye bağlanır (hesabında kalır); değilse serbest
+    musteri = None
+    try:
+        musteri, _ = _get_customer_from_token(request, db)
+    except HTTPException:
+        pass
+
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    data = await file.read()
+    try:
+        orijinal, onizleme, gen, yuk = storage_svc.save_design_original(
+            store.tenant_id, store.id, data,
+            getattr(file, "filename", None) or "tasarim.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    asset = DesignAsset(
+        tenant_id=store.tenant_id, store_id=store.id,
+        customer_id=musteri.id if musteri else None,
+        original_path=orijinal.removeprefix("/storage/"),
+        preview_path=onizleme.removeprefix("/storage/"),
+        width=gen, height=yuk, bytes_size=len(data),
+        filename=(getattr(file, "filename", None) or "")[:300] or None,
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return {
+        "asset_id": str(asset.id),
+        "preview_url": onizleme,   # tuvalde bu kullanılır
+        "width": gen, "height": yuk,
+        # Baskı kalitesi uyarısı: 300 DPI'da kaç cm'e kadar net basılır
+        "print_cm": round(min(gen, yuk) / 300 * 2.54, 1),
+    }

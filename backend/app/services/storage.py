@@ -15,7 +15,9 @@ Layout:
 """
 from __future__ import annotations
 
+import io
 import os
+import secrets
 from pathlib import Path
 
 ALLOWED_EXTENSIONS = {"svg", "png", "jpg", "jpeg", "pdf"}
@@ -320,4 +322,77 @@ def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_
     fname = f"{kind}-{int(time.time())}.{ext}"
     with open(full_dir / fname, "wb") as f:
         f.write(file_data)
+    return f"/storage/{(rel_dir / fname).as_posix()}"
+
+
+# ─── Tasarım stüdyosu varlıkları ─────────────────────────────
+# Müşterinin yüklediği görsel BASKIYA gidecek: küçültülmez, yeniden
+# sıkıştırılmaz, saydamlığı korunur. Tarayıcı için ayrıca hafif bir
+# önizleme türetilir (40 MP fotoğrafı tuvalde sürüklemek imkânsızdır).
+
+DESIGN_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+MAX_DESIGN_SIZE = 40 * 1024 * 1024      # 40 MB — telefon fotoğrafı rahat sığar
+DESIGN_PREVIEW_PX = 1400
+
+
+def save_design_original(tenant_id, store_id, file_data: bytes,
+                         original_filename: str) -> tuple[str, str, int, int]:
+    """Tasarım görselini ORİJİNAL haliyle kaydet + web önizlemesi üret.
+
+    Dönüş: (orijinal_url, onizleme_url, genislik, yukseklik)
+    """
+    import time
+
+    from PIL import Image, ImageOps
+
+    ext = get_extension(original_filename)
+    if ext not in DESIGN_EXTENSIONS:
+        raise ValueError(f"İzin verilen formatlar: {', '.join(sorted(DESIGN_EXTENSIONS))}")
+    if len(file_data) > MAX_DESIGN_SIZE:
+        raise ValueError(f"Dosya çok büyük (max {MAX_DESIGN_SIZE // 1024 // 1024} MB)")
+
+    # Gerçekten görsel mi + EXIF yönü (dikey fotoğraf yan yatmasın)
+    try:
+        img = Image.open(io.BytesIO(file_data))
+        img.load()
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f"Görsel dosyası okunamadı: {e}") from e
+    img = ImageOps.exif_transpose(img)
+    genislik, yukseklik = img.size
+
+    rel_dir = Path("tenants") / str(tenant_id) / "designs" / str(store_id)
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    damga = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}"
+
+    # EXIF döndürmesi uygulanmış hali yazılır — baskıda yan yatma olmasın.
+    # Yeniden ÖLÇEKLEME YOK; JPEG'de kalite 100 + subsampling kapalı.
+    orig_name = f"{damga}.{'png' if img.mode in ('RGBA', 'LA', 'P') else 'jpg'}"
+    orig_kaydet = img
+    if orig_name.endswith(".png"):
+        orig_kaydet.save(full_dir / orig_name, "PNG", optimize=True)
+    else:
+        orig_kaydet.convert("RGB").save(
+            full_dir / orig_name, "JPEG", quality=100, subsampling=0)
+
+    onizleme = img.copy()
+    onizleme.thumbnail((DESIGN_PREVIEW_PX, DESIGN_PREVIEW_PX), Image.LANCZOS)
+    prev_name = f"{damga}-onizleme.png"
+    onizleme.save(full_dir / prev_name, "PNG", optimize=True)
+
+    return (
+        f"/storage/{(rel_dir / orig_name).as_posix()}",
+        f"/storage/{(rel_dir / prev_name).as_posix()}",
+        genislik, yukseklik,
+    )
+
+
+def save_design_render(tenant_id, store_id, design_id, data: bytes, kind: str) -> str:
+    """Tasarımın üretilmiş çıktısı: 'onizleme' (küçük) veya 'baski' (yüksek çözünürlük)."""
+    rel_dir = Path("tenants") / str(tenant_id) / "designs" / str(store_id) / str(design_id)
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"{kind}.png"
+    with open(full_dir / fname, "wb") as f:
+        f.write(data)
     return f"/storage/{(rel_dir / fname).as_posix()}"

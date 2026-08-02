@@ -2123,3 +2123,131 @@ class InstagramPost(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ═════════════════════════════════════════════════════════════════════
+# TASARIM STÜDYOSU (müşteri) — kılıfını kendi tasarlar
+# ═════════════════════════════════════════════════════════════════════
+
+class CaseTemplate(Base):
+    """Boş kılıf şablonu — müşterinin üzerine tasarım yaptığı zemin.
+
+    Görseli (mockup) panelden yüklenir. BASKI ALANI şablonun kendi
+    piksellerine göre ORANSAL tanımlanır (0-1); böylece editör hangi
+    çözünürlükte gösterirse göstersin, baskıya giden dosya aynı fiziksel
+    alana denk gelir. print_width_mm/print_height_mm gerçek baskı ölçüsüdür —
+    baskıya hazır dosya bu ölçü ve DPI'dan üretilir.
+    """
+    __tablename__ = "case_templates"
+    __table_args__ = (
+        UniqueConstraint("store_id", "key", name="uq_case_template_store_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+
+    key: Mapped[str] = mapped_column(String(40))          # seffaf | beyaz | siyah | parlak | magsafe
+    label: Mapped[str] = mapped_column(String(120))       # müşteriye görünen ad
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)  # mockup
+
+    # Baskı alanı — şablon görseline göre oran (0-1)
+    area_x: Mapped[float] = mapped_column(Numeric(6, 4), default=0.1)
+    area_y: Mapped[float] = mapped_column(Numeric(6, 4), default=0.1)
+    area_w: Mapped[float] = mapped_column(Numeric(6, 4), default=0.8)
+    area_h: Mapped[float] = mapped_column(Numeric(6, 4), default=0.8)
+    # Gerçek baskı ölçüsü (mm) + hedef çözünürlük — baskı dosyası bundan üretilir
+    print_width_mm: Mapped[int] = mapped_column(Integer, default=70)
+    print_height_mm: Mapped[int] = mapped_column(Integer, default=145)
+    print_dpi: Mapped[int] = mapped_column(Integer, default=300)
+
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DesignAsset(Base):
+    """Müşterinin stüdyoya yüklediği görsel.
+
+    ORİJİNAL dosya olduğu gibi saklanır (küçültülmez, yeniden sıkıştırılmaz) —
+    baskıya giden dosya bundan üretilecek. Ayrıca hafif bir web önizlemesi
+    tutulur; tarayıcı 40 MP'lik fotoğrafı tuvalde taşımak zorunda kalmasın.
+    """
+    __tablename__ = "design_assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+
+    original_path: Mapped[str] = mapped_column(String(500))
+    preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bytes_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CustomerDesign(Base):
+    """Müşterinin kaydettiği kılıf tasarımı — hesabına bağlı, kaldığı yerden devam.
+
+    layers: tuval içeriği [{type:'image'|'text', ...}] — konum/ölçek/dönüş
+    BASKI ALANINA göre oransal (0-1) tutulur; ekran boyutundan bağımsızdır,
+    böylece aynı tasarım hem önizlemede hem baskı dosyasında aynı yere düşer.
+
+    status: draft (düzenleniyor) | ready (sipariş için hazır) | ordered (sipariş edildi)
+    """
+    __tablename__ = "customer_designs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(120), default="Tasarımım")
+    template_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Seçilen telefon modeli (varyant) — sipariş anında da doğrulanır
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_variants.id", ondelete="SET NULL"), nullable=True
+    )
+    layers: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
+    # Tuvalde gösterilen küçük önizleme (müşteri listesi + panel için)
+    preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Baskıya hazır çıktı (sipariş sonrası sunucuda üretilir)
+    print_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    status: Mapped[str] = mapped_column(
+        String(12), default="draft", server_default=text("'draft'"), index=True
+    )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

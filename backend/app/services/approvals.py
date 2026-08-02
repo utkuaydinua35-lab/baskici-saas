@@ -157,7 +157,42 @@ def build_items(db: Session, order: Order) -> list[dict]:
         pm = _resolve_phone_model(db, order.tenant_id, li)
         variation = _variation_of(li, d)   # üretimle aynı çözüm (elle > property > ad > tasarım)
         items.append(_mk_item(li, d, pm, li.title or "Ürün", getattr(li, "quantity", 1) or 1, variation))
+
+    # Tasarım stüdyosu işleri: müşterinin KENDİ hazırladığı tasarım da onaya
+    # gider. Görsel olarak stüdyo önizlemesi gösterilir; indirilecek dosya
+    # baskıya hazır çıktıdır (siz rötuşladıktan sonra yeniden üretilebilir).
+    items += _studyo_items(db, order)
     return items
+
+
+def _studyo_items(db: Session, order: Order) -> list[dict]:
+    from app.models import CustomerDesign
+
+    ids: list[str] = []
+    for li in (order.line_items or []):
+        for prop in (li.properties or []):
+            if prop.get("name") == "Tasarım No" and prop.get("value"):
+                ids.append(str(prop["value"]))
+    if not ids:
+        return []
+
+    out = []
+    for did in dict.fromkeys(ids):          # sırayı koru, tekrarı at
+        try:
+            d = db.scalar(select(CustomerDesign).where(CustomerDesign.id == did))
+        except Exception:  # noqa: BLE001 — bozuk id kaydı onayı bozmasın
+            continue
+        if not d or not d.preview_path:
+            continue
+        out.append({
+            "image_url": _absolute(f"/storage/{d.preview_path}"),
+            "file_url": _absolute(f"/storage/{d.print_path}") if d.print_path else None,
+            "file_format": "png",
+            "title": f"{d.name} (kendi tasarımı)",
+            "quantity": 1,
+            "is_mockup": True,
+        })
+    return out
 
 
 def approval_link(token: str) -> str:

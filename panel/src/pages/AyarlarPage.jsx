@@ -157,6 +157,15 @@ export default function AyarlarPage() {
             tutarın içindeki KDV ayrıştırılıp kaydedilir. Boş = %20.
           </p>
         </Field>
+        <Field label="Tasarım stüdyosu ürünü (URL/slug)">
+          <input className="input mt-1" value={cfg.studio_product_slug || ''}
+            onChange={set('studio_product_slug')} placeholder="kendi-tasarimin" />
+          <p className="text-[11px] text-panel-muted mt-1">
+            Müşteri stüdyoda tasarımını bitirip sepete eklediğinde bu ürün eklenir —
+            <b> fiyat ve telefon modelleri</b> bu üründen gelir. Boşsa stüdyoda
+            "Sepete Ekle" çalışmaz.
+          </p>
+        </Field>
         <Field label="Kargo sözü (gün)">
           <input className="input mt-1 !w-32" type="number" min="1"
             value={cfg.sla_days || ''} onChange={set('sla_days')} placeholder="3" />

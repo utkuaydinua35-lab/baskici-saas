@@ -385,6 +385,7 @@ function ItemsCard({ d, isStorefront, stage, onChanged }) {
                   <div className="text-xs text-panel-muted">{li.variant_title}</div>
                 )}
                 {li.sku && <div className="text-[10px] text-panel-muted font-mono">{li.sku}</div>}
+                <TasarimKarti li={li} />
               </div>
               {editing ? (
                 <div className="flex items-center gap-1.5">
@@ -948,6 +949,74 @@ function ShipmentModal({ orderId, bekleyen, onClose, onSaved }) {
           </button>
         </div>
       </form>
+    </div>
+  )
+}
+
+// ─── Müşteri tasarımı kartı ───────────────────────────────────
+// Tasarım stüdyosunda hazırlanan işlerde sipariş kaleminin altında görünür:
+// önizleme, BASKIYA HAZIR dosya ve müşterinin yüklediği ORİJİNAL dosyalar
+// (CMYK/rötuş bunlardan yapılır — önizleme baskıya gitmez).
+function TasarimKarti({ li }) {
+  const [d, setD] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const tasarimId = (li.properties || [])
+    .find(p => p.name === 'Tasarım No')?.value
+
+  useEffect(() => {
+    if (!tasarimId) return
+    api.get(`/api/case-templates/designs/${tasarimId}`)
+      .then(setD).catch(() => setErr('Tasarım yüklenemedi'))
+  }, [tasarimId])
+
+  if (!tasarimId) return null
+  if (err) return <div className="text-[11px] text-red-600 mt-1">{err}</div>
+  if (!d) return <div className="text-[11px] text-panel-muted mt-1">Tasarım yükleniyor…</div>
+
+  const yenidenUret = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await api.post(`/api/case-templates/designs/${d.id}/render`, {})
+      setD(x => ({ ...x, print_url: r.print_url }))
+    } catch { setErr('Baskı dosyası üretilemedi') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="mt-2 flex gap-2.5 items-start bg-indigo-50/60 border border-indigo-100 rounded-xl p-2">
+      {d.preview_url && (
+        <a href={d.preview_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          <img src={d.preview_url} alt={d.name}
+            className="w-12 rounded-lg border border-indigo-200 bg-white" />
+        </a>
+      )}
+      <div className="min-w-0 flex-1 text-[11px]">
+        <div className="font-medium text-indigo-900">🎨 {d.name}</div>
+        <div className="text-panel-muted">
+          {d.template} · {d.layer_count} katman
+          {d.print_size && ` · ${d.print_size.mm} @ ${d.print_size.dpi} DPI`}
+        </div>
+        <div className="flex gap-2 flex-wrap mt-1">
+          {d.print_url ? (
+            <a href={d.print_url} download className="text-indigo-700 underline">
+              ⬇ Baskı dosyası{d.print_size ? ` (${d.print_size.px_w}×${d.print_size.px_h})` : ''}
+            </a>
+          ) : (
+            <span className="text-amber-700">Baskı dosyası yok</span>
+          )}
+          <button onClick={yenidenUret} disabled={busy} className="text-panel-muted underline">
+            {busy ? 'üretiliyor…' : 'yeniden üret'}
+          </button>
+          {(d.assets || []).map((a, i) => (
+            <a key={a.id} href={a.original_url} download className="text-panel-muted underline"
+              title={`${a.width}×${a.height} px${a.filename ? ` · ${a.filename}` : ''}`}>
+              ⬇ orijinal {(d.assets.length > 1 ? i + 1 : '')}
+            </a>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

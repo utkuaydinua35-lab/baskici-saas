@@ -29,13 +29,20 @@ export interface CartItem {
   secondModelDisplay?: string | null;
   // Kişiye özel alanlar {key: value} — sunucu ürün tanımına göre doğrular
   custom?: Record<string, string> | null;
+  // Tasarım stüdyosunda hazırlanan tasarım (varsa) — sunucu doğrular
+  designId?: string | null;
+  designName?: string | null;
+  designPreview?: string | null;
   // Satır kimliği: aynı varyantın farklı özel içerikleri ayrı satır olur
   lineId?: string;
 }
 
-export function cartLineId(i: Pick<CartItem, "variantId" | "secondVariantId" | "custom">): string {
-  if (!i.secondVariantId && !i.custom) return i.variantId;
-  return `${i.variantId}::${i.secondVariantId || ""}::${JSON.stringify(i.custom || {})}`;
+export function cartLineId(
+  i: Pick<CartItem, "variantId" | "secondVariantId" | "custom" | "designId">,
+): string {
+  // Her tasarım AYRI satırdır — aynı modelden iki farklı tasarım birleşmemeli
+  if (!i.secondVariantId && !i.custom && !i.designId) return i.variantId;
+  return `${i.variantId}::${i.secondVariantId || ""}::${i.designId || ""}::${JSON.stringify(i.custom || {})}`;
 }
 
 export interface AppliedCoupon {

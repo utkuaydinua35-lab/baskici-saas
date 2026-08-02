@@ -1103,6 +1103,8 @@ def get_store_theme(
             "gift_wrap_enabled": bool(config.get("gift_wrap_enabled")),
             # Güven rozeti aktif sağlayıcıyı göstersin (iyzico VEYA PayTR)
             "payment_provider": config.get("payment_provider") or "iyzico",
+            # Tasarım stüdyosu ürünü — fiyat ve telefon modelleri buradan gelir
+            "studio_product_slug": config.get("studio_product_slug") or None,
         },
         # BERNZ Support sohbet balonu — kurallı asistan ayarları
         "support": {

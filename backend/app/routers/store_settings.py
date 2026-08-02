@@ -44,6 +44,8 @@ _TEXT_KEYS = {
     "meta_pixel_id", "ga4_id", "tiktok_pixel_id",
     "meta_test_event_code",
     "storefront_password",
+    # Tasarım stüdyosu: fiyat ve telefon modelleri bu üründen alınır
+    "studio_product_slug",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",

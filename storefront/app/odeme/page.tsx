@@ -137,6 +137,7 @@ export default function CheckoutPage() {
             variant_id: i.variantId, quantity: i.quantity,
             second_variant_id: i.secondVariantId || null,
             custom: i.custom || null,
+            design_id: i.designId || null,
           })),
           customer: {
             first_name: fd.get("first_name"),

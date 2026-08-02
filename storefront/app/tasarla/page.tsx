@@ -6,6 +6,7 @@
 // Hesabı olan kaldığı yerden devam eder (tasarım sunucuda saklanır);
 // girişi olmayan da tasarlayabilir, kaydederken giriş istenir.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCart } from "@/lib/cart";
 import Link from "next/link";
 import Canvas from "@/components/studio/Canvas";
 import { FONTS, fontCss } from "@/components/studio/fonts";
@@ -17,6 +18,14 @@ import type {
 const RENKLER = ["#111111", "#ffffff", "#e11d48", "#f59e0b", "#10b981",
   "#3b82f6", "#8b5cf6", "#ec4899"];
 const TASLAK_ANAHTAR = "bernz_studyo_taslak";
+
+interface StudioUrun {
+  slug: string;
+  title: string;
+  price: string;
+  images: { url: string }[];
+  variants: { id: string; model_display: string; price: string; in_stock: boolean }[];
+}
 const yeniId = () => Math.random().toString(36).slice(2, 10);
 
 export default function TasarlaPage() {
@@ -31,6 +40,11 @@ export default function TasarlaPage() {
   const [durum, setDurum] = useState("");
   const [yukleniyor, setYukleniyor] = useState(false);
   const dosyaRef = useRef<HTMLInputElement>(null);
+  const { addItem, setDrawerOpen } = useCart();
+  // Stüdyo ürünü: fiyat ve telefon modelleri panelde secilen bu urunden gelir
+  const [urun, setUrun] = useState<StudioUrun | null>(null);
+  const [modelId, setModelId] = useState("");
+  const [sepetAcik, setSepetAcik] = useState(false);
 
   // ── Yükleme ──
   useEffect(() => {
@@ -41,6 +55,15 @@ export default function TasarlaPage() {
         if (Array.isArray(d) && d.length) setTpl(d[0]);
       })
       .catch(() => setDurum("Kılıflar yüklenemedi"));
+    fetch("/api/shop-config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        const slug = c?.settings?.studio_product_slug;
+        if (!slug) return;
+        return fetch(`/api/product/${slug}`).then((r) => (r.ok ? r.json() : null))
+          .then((p) => { if (p) setUrun(p); });
+      })
+      .catch(() => {});
     fetch("/api/account/designs")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (Array.isArray(d)) { setGirisli(true); setKayitli(d); } })
@@ -171,6 +194,50 @@ export default function TasarlaPage() {
     } finally { setYukleniyor(false); }
   };
 
+  const sepeteEkle = async () => {
+    if (!tpl || !urun) return;
+    const model = urun.variants.find((v) => v.id === modelId);
+    if (!model) { setDurum("Telefon modelini seç"); return; }
+    if (!girisli) {
+      setDurum("Sipariş için giriş yap — tasarımın hesabına kaydedilecek.");
+      return;
+    }
+    // Sepete eklenen tasarım SUNUCUDA kayıtlı olmalı; önce kaydet
+    setYukleniyor(true); setDurum("");
+    try {
+      const onizleme = await onizlemeUret(tpl, layers);
+      const res = await fetch("/api/account/designs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: designId, name: ad, template_key: tpl.key, layers,
+          status: "ready", preview_data_url: onizleme,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.detail || "Kaydedilemedi");
+      setDesignId(d.id);
+      addItem({
+        variantId: model.id,
+        productSlug: urun.slug,
+        title: urun.title,
+        modelDisplay: model.model_display,
+        variation: null,
+        price: model.price || urun.price,
+        image: d.preview_url || urun.images?.[0]?.url || null,
+        designId: d.id,
+        designName: d.name,
+        designPreview: d.preview_url || null,
+      });
+      setSepetAcik(false);
+      setDrawerOpen(true);
+      setDurum("Tasarımın sepete eklendi ✓");
+      try { localStorage.removeItem(TASLAK_ANAHTAR); } catch { /* yok */ }
+    } catch (e) {
+      setDurum(e instanceof Error ? e.message : "Sepete eklenemedi");
+    } finally { setYukleniyor(false); }
+  };
+
   const tasarimAc = (d: SavedDesign) => {
     setDesignId(d.id);
     setAd(d.name);
@@ -227,9 +294,11 @@ export default function TasarlaPage() {
             className="px-3 py-2 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
             Kaydet
           </button>
-          <button onClick={() => kaydet("ready")} disabled={yukleniyor || layers.length === 0}
+          <button onClick={() => setSepetAcik(true)}
+            disabled={yukleniyor || layers.length === 0 || !urun}
+            title={!urun ? "Stüdyo ürünü henüz ayarlanmadı" : ""}
             className="px-4 py-2 rounded-xl bg-zinc-900 text-white text-sm font-medium disabled:opacity-40">
-            Tasarımım hazır
+            🛒 Sepete Ekle
           </button>
         </div>
       </div>
@@ -417,6 +486,38 @@ export default function TasarlaPage() {
           </div>
         </div>
       </div>
+
+      {sepetAcik && urun && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={(e) => e.target === e.currentTarget && setSepetAcik(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-2xl w-full max-w-sm p-4 space-y-3">
+            <h3 className="font-semibold">Telefon modelini seç</h3>
+            <p className="text-xs text-zinc-500 -mt-2">
+              Tasarımın bu modele göre basılacak.
+            </p>
+            <select value={modelId} onChange={(e) => setModelId(e.target.value)}
+              className="w-full border border-zinc-300 rounded-xl px-3 py-2 text-sm">
+              <option value="">Model seçin…</option>
+              {urun.variants.filter((v) => v.in_stock).map((v) => (
+                <option key={v.id} value={v.id}>{v.model_display}</option>
+              ))}
+            </select>
+            <div className="text-sm">
+              Fiyat:{" "}
+              <b>{urun.variants.find((v) => v.id === modelId)?.price || urun.price} ₺</b>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSepetAcik(false)}
+                className="px-3 py-2 rounded-xl border border-zinc-300 text-sm">Vazgeç</button>
+              <button onClick={sepeteEkle} disabled={!modelId || yukleniyor}
+                className="px-4 py-2 rounded-xl bg-zinc-900 text-white text-sm disabled:opacity-40">
+                {yukleniyor ? "Ekleniyor…" : "Sepete ekle"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

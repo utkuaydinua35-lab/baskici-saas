@@ -19,6 +19,7 @@ const NAV_GROUPS = [
     { to: '/urunler', label: 'Ürünler', icon: '🛍️' },
     { to: '/koleksiyonlar', label: 'Koleksiyonlar', icon: '🗂️' },
     { to: '/envanter', label: 'Envanter', icon: '📋' },
+    { to: '/kilif-sablonlari', label: 'Kılıf Şablonları', icon: '📱' },
   ]},
   { label: 'Müşteri', items: [
     { to: '/musteriler', label: 'Müşteriler', icon: '👥' },

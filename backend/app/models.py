@@ -2161,6 +2161,11 @@ class CaseTemplate(Base):
     area_y: Mapped[float] = mapped_column(Numeric(6, 4), default=0.1)
     area_w: Mapped[float] = mapped_column(Numeric(6, 4), default=0.8)
     area_h: Mapped[float] = mapped_column(Numeric(6, 4), default=0.8)
+    # Baskı alanının köşe yuvarlaklığı (kısa kenara oran, 0-0.5)
+    area_radius: Mapped[float] = mapped_column(Numeric(6, 4), default=0.08)
+    # Basılamayan bölgeler: kamera adası, MagSafe halkası, kenar payı…
+    # [{x, y, w, h, radius, label}] — hepsi şablona ORANSAL (0-1)
+    cutouts: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
     # Gerçek baskı ölçüsü (mm) + hedef çözünürlük — baskı dosyası bundan üretilir
     print_width_mm: Mapped[int] = mapped_column(Integer, default=70)
     print_height_mm: Mapped[int] = mapped_column(Integer, default=145)

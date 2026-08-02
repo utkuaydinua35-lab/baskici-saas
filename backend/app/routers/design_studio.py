@@ -59,7 +59,9 @@ def _ser_template(t: CaseTemplate) -> dict:
         "description": t.description,
         "image_url": f"/storage/{t.image_path}" if t.image_path else None,
         "area": {"x": float(t.area_x), "y": float(t.area_y),
-                 "w": float(t.area_w), "h": float(t.area_h)},
+                 "w": float(t.area_w), "h": float(t.area_h),
+                 "radius": float(t.area_radius or 0)},
+        "cutouts": t.cutouts or [],
         "print": {"width_mm": t.print_width_mm, "height_mm": t.print_height_mm,
                   "dpi": t.print_dpi,
                   # Baskı dosyasının piksel ölçüsü — panelde bilgi olarak gösterilir
@@ -80,6 +82,16 @@ class TemplateCreate(BaseModel):
     position: int = 0
 
 
+class Cutout(BaseModel):
+    """Basılamayan bölge — kamera adası, MagSafe halkası…"""
+    x: Decimal = Field(..., ge=0, le=1)
+    y: Decimal = Field(..., ge=0, le=1)
+    w: Decimal = Field(..., gt=0, le=1)
+    h: Decimal = Field(..., gt=0, le=1)
+    radius: Decimal = Field(Decimal("0.2"), ge=0, le=0.5)
+    label: str | None = Field(None, max_length=40)
+
+
 class TemplateUpdate(BaseModel):
     label: str | None = Field(None, min_length=1, max_length=120)
     description: str | None = Field(None, max_length=300)
@@ -88,6 +100,8 @@ class TemplateUpdate(BaseModel):
     area_y: Decimal | None = Field(None, ge=0, le=1)
     area_w: Decimal | None = Field(None, gt=0, le=1)
     area_h: Decimal | None = Field(None, gt=0, le=1)
+    area_radius: Decimal | None = Field(None, ge=0, le=0.5)
+    cutouts: list[Cutout] | None = Field(None, max_length=8)
     print_width_mm: int | None = Field(None, ge=10, le=500)
     print_height_mm: int | None = Field(None, ge=10, le=500)
     print_dpi: int | None = Field(None, ge=72, le=1200)
@@ -148,6 +162,14 @@ def update_template(
     updates = body.model_dump(exclude_unset=True)
     if updates.get("image_path"):
         updates["image_path"] = updates["image_path"].removeprefix("/storage/")
+    if updates.get("cutouts") is not None:
+        temiz = []
+        for c in updates["cutouts"]:
+            if float(c["x"]) + float(c["w"]) > 1 or float(c["y"]) + float(c["h"]) > 1:
+                raise HTTPException(422, "Basılamayan bölge şablonun dışına taşıyor")
+            temiz.append({k: (float(v) if isinstance(v, Decimal) else v)
+                          for k, v in c.items() if v is not None})
+        updates["cutouts"] = temiz
     for k, v in updates.items():
         setattr(t, k, v)
     # Baskı alanı görselin dışına taşmasın (editör ve baskı hesabı bozulur)

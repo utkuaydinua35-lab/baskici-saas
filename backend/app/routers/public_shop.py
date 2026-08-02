@@ -2212,7 +2212,10 @@ def studio_templates(store_slug: str, response: Response, db: Session = Depends(
             "description": t.description,
             "image_url": f"/storage/{t.image_path}",
             "area": {"x": float(t.area_x), "y": float(t.area_y),
-                     "w": float(t.area_w), "h": float(t.area_h)},
+                     "w": float(t.area_w), "h": float(t.area_h),
+                     "radius": float(t.area_radius or 0)},
+            # Basılamayan bölgeler — editör bunların üstünü maskeler
+            "cutouts": t.cutouts or [],
             "print": {"width_mm": t.print_width_mm, "height_mm": t.print_height_mm,
                       "dpi": t.print_dpi},
         }

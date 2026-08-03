@@ -303,21 +303,21 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
 
   const kutuCiz = (kutu, renk, secili, i) => (
     <div key={i ?? 'baski'}
-      onMouseDown={secili
-        ? (e => basla(e, 'tasi'))
-        : (e => { e.preventDefault(); e.stopPropagation() })}
-      onClick={(e) => { e.stopPropagation(); setSel(i ?? 'baski') }}
+      onMouseDown={secili ? (e => basla(e, 'tasi')) : undefined}
       className={`absolute border-2 ${renk === 'yesil'
         ? 'border-emerald-500 bg-emerald-500/15' : 'border-amber-400 bg-amber-400/25'}`}
       style={{
         left: `${kutu.x * 100}%`, top: `${kutu.y * 100}%`,
         width: `${kutu.w * 100}%`, height: `${kutu.h * 100}%`,
         borderRadius: kose(kutu, imgOran),
-        cursor: secili ? 'move' : 'pointer',
-        opacity: secili ? 1 : 0.6,
+        cursor: secili ? 'move' : 'default',
+        opacity: secili ? 1 : 0.45,
+        // Seçili olmayan kutu tıklamayı YUTMAZ: çakışan alanlarda seçili
+        // kutunun kenarına/tutamağına erişim her zaman açık kalır
+        pointerEvents: secili ? 'auto' : 'none',
         // Secili olmayan kutu ustte: tiklayinca altindaki secili kutunun
         // govdesi degil kendisi yakalanir (yanlislikla tasima olmaz)
-        zIndex: secili ? 1 : 2,
+        zIndex: secili ? 2 : 1,
       }} />
   )
 

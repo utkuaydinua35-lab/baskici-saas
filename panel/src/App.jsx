@@ -45,8 +45,11 @@ class SurumSiniri extends Component {
   componentDidCatch(err) {
     const eskiParca = /Loading chunk|dynamically imported module|Importing a module script/i
       .test(String(err?.message || ''))
-    if (eskiParca && !sessionStorage.getItem('surum_yenilendi')) {
-      sessionStorage.setItem('surum_yenilendi', '1')
+    // Bayrak SÜRELİ: bir dakika içinde ikinci kez yenilemeye çalışmayız
+    // (sonsuz döngü), ama takılı da kalmaz — sonraki deploy'da yine çalışır.
+    const son = Number(sessionStorage.getItem('surum_yenilendi') || 0)
+    if (eskiParca && Date.now() - son > 60_000) {
+      sessionStorage.setItem('surum_yenilendi', String(Date.now()))
       window.location.reload()
     }
   }

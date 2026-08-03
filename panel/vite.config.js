@@ -14,6 +14,13 @@ export default defineConfig({
       '/storage': 'http://localhost:8000',
     },
   },
+  preview: {
+    port: 5177,
+    proxy: {
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/storage': 'http://localhost:8000',
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

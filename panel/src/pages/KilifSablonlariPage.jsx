@@ -228,6 +228,20 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     ? setT(p => ({ ...p, area: { ...p.area, radius: v } }))
     : setT(p => ({ ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, radius: v } : c) }))
 
+  // Düz zeminde çekilmiş ürün fotoğrafının arka planını temizler
+  const arkaPlanSil = async () => {
+    if (!window.confirm(
+      'Fotoğrafın arka planı silinip kılıfın etrafındaki boşluk kırpılacak.\n\n' +
+      'Sonuç beğenmezseniz görseli yeniden yükleyebilirsiniz. Devam edilsin mi?')) return
+    setUploading(true); setErr('')
+    try {
+      const r = await api.post(`/api/case-templates/${t.id}/remove-bg`, {})
+      setT(p => ({ ...p, image_url: r.image_url }))
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Arka plan silinemedi')
+    } finally { setUploading(false) }
+  }
+
   const gorselYukle = async (file) => {
     if (!file) return
     setUploading(true); setErr('')
@@ -404,6 +418,14 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
                 </div>
               </div>
 
+              <button onClick={arkaPlanSil} disabled={uploading}
+                className="btn-ghost !py-1.5 text-xs w-full disabled:opacity-40">
+                ✂️ {uploading ? 'İşleniyor…' : 'Arka planı sil'}
+              </button>
+              <p className="text-[11px] text-panel-muted -mt-1">
+                Düz zeminde çekilmiş fotoğraflarda çalışır: masa/fon saydamlaşır,
+                kılıfın etrafındaki boşluk kırpılır.
+              </p>
               <label className="block">
                 <span className="text-xs text-panel-muted">Görseli değiştir</span>
                 <input type="file" accept="image/*" className="block mt-1 text-xs"

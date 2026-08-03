@@ -56,3 +56,56 @@ def optimize_image(
         img = img.convert("RGB")
     img.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
     return buf.getvalue(), "jpg"
+
+
+def arka_plani_sil(data: bytes, tolerans: int = 42) -> bytes:
+    """Düz zeminde çekilmiş ürün fotoğrafının arka planını saydam yapar.
+
+    Kılıf fotoğrafları genelde tek renk masa/fon üzerinde çekilir. Kenarlardan
+    içeri doğru "taşma doldurma" (flood fill) yapılır: köşe rengine yakın ve
+    KENARA BAĞLI pikseller silinir. Ürünün içindeki benzer renkler kenara
+    bağlı olmadığı için korunur — bu yüzden basit renk eşiğinden iyidir.
+
+    Sonda saydam kenar boşluğu kırpılır, böylece kılıf çerçeveyi doldurur.
+    """
+    from collections import deque
+
+    img = Image.open(io.BytesIO(data))
+    img.load()
+    img = ImageOps.exif_transpose(img).convert("RGBA")
+    w, h = img.size
+    px = img.load()
+
+    # Zemin rengi: dört köşenin ortalaması (kenarda ürün olmadığı varsayımı)
+    koseler = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
+    zemin = tuple(sum(c[i] for c in koseler) // 4 for i in range(3))
+
+    def yakin(p) -> bool:
+        return (abs(p[0] - zemin[0]) + abs(p[1] - zemin[1]) + abs(p[2] - zemin[2])) <= tolerans * 3
+
+    gorulen = bytearray(w * h)
+    kuyruk: deque[tuple[int, int]] = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if yakin(px[x, y]):
+                kuyruk.append((x, y)); gorulen[y * w + x] = 1
+    for y in range(h):
+        for x in (0, w - 1):
+            if not gorulen[y * w + x] and yakin(px[x, y]):
+                kuyruk.append((x, y)); gorulen[y * w + x] = 1
+
+    while kuyruk:
+        x, y = kuyruk.popleft()
+        px[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not gorulen[ny * w + nx] and yakin(px[nx, ny]):
+                gorulen[ny * w + nx] = 1
+                kuyruk.append((nx, ny))
+
+    kutu = img.getbbox()          # saydam kenar boşluğunu at
+    if kutu:
+        img = img.crop(kutu)
+
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue()

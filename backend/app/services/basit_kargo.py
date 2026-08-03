@@ -152,10 +152,19 @@ def create_shipment(
         # adresiyle/anlaşmayla çıkacağını bilmek zorunda. Bu tanımlı değilken
         # gelen 500'ün sebebi genelde budur — kullanıcıya körlemesine
         # "sunucu hatası" demek yerine nereye bakacağını söyle.
-        if hc.startswith("SELF_") and not s.basit_kargo_address_id:
-            _mesaj += ("  ⚠ Kendi anlaşma gönderisi ama gönderici adresi tanımlı değil "
-                       "(.env BASIT_KARGO_ADDRESS_ID boş). Büyük ihtimalle sebep bu — "
-                       "scripts/basit_kargo_bilgi.py ile hesabındaki adres id'sini öğren.")
+        if hc.startswith("SELF_"):
+            if not s.basit_kargo_address_id:
+                _mesaj += ("  ⚠ Kendi anlaşma gönderisi ama gönderici adresi tanımlı değil "
+                           "(.env BASIT_KARGO_ADDRESS_ID boş). Büyük ihtimalle sebep bu — "
+                           "scripts/basit_kargo_bilgi.py ile hesabındaki adres id'sini öğren.")
+            elif r.status_code >= 500:
+                # Gönderici adresi tanımlı ve alıcı verisi geçerli olduğu halde 500:
+                # Basit Kargo dokümanına göre kendi anlaşma için istekte EK ALAN
+                # gerekmiyor, sözleşme hesap tarafında tanımlanıyor. Yani eksik olan
+                # bizim istek değil, hesaptaki sözleşme.
+                _mesaj += (f"  ⚠ '{handler_name(hc)} — Kendi Anlaşmam' sözleşmesi Basit Kargo "
+                           "hesabında tanımlı görünmüyor. Basit Kargo'ya sor; bu arada mağaza "
+                           "ayarından 'Basit Kargo anlaşmalı' bir seçenekle gönderebilirsin.")
         return {"ok": False, "message": _mesaj}
 
     d = r.json() if r.content else {}

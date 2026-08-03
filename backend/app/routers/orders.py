@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import case, desc, func as sql_func, select
+from sqlalchemy import case, desc, func as sql_func, or_ as sa_or, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -1778,25 +1778,47 @@ def toplu_takip_no(
 # gelene kadar burada bekler.
 
 def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
-    """Takip numarası olmayan gönderiler. Kargo ücreti alınmayan bayiiler HARİÇ."""
+    """Kargoya verilmiş ama TAKİP NUMARASI olmayan siparişler.
+
+    Kaynak sipariş bazındadır, gönderi kaydı bazında DEĞİL: Basit Kargo akışı
+    order.kargo_info + aşama yazıyor ama OrderShipment kaydı oluşturmuyor.
+    Yalnızca gönderi kayıtlarına bakmak listeyi boş bırakıyordu.
+
+    Ölçüt: iptal değil · (aşama >= Kargoda VEYA gönderi kaydı var) ·
+    hiçbir yerde takip no yok · kargo ücreti alınmayan bayii değil.
+    """
     from app.models import Dealer, OrderShipment
 
-    # Kargo ücreti 0 olan bayiiler -> onlardan ücret almıyoruz, listeye girmesinler
     _muaf = {
         str(_id) for (_id,) in db.execute(
             select(Dealer.id).where(Dealer.tenant_id == tenant_id,
                                     sql_func.coalesce(Dealer.shipping_fee, 0) == 0)
         ).all()
     }
-    rows = db.execute(
-        select(OrderShipment, Order)
-        .join(Order, Order.id == OrderShipment.order_id)
-        .where(
-            OrderShipment.tenant_id == tenant_id,
-            sql_func.coalesce(OrderShipment.takip_no, "") == "",
+
+    # Sipariş -> gönderi kayıtları (varsa)
+    _gonderiler: dict = {}
+    for sh in db.scalars(
+        select(OrderShipment).where(OrderShipment.tenant_id == tenant_id)
+    ).all():
+        _gonderiler.setdefault(sh.order_id, []).append(sh)
+
+    # Çıkış tarihi: "kargoya verildi" geçmiş kaydı en doğrusu
+    _cikis: dict = {}
+    for _oid, _t in db.execute(
+        select(OrderStatusHistory.order_id, sql_func.max(OrderStatusHistory.created_at))
+        .where(OrderStatusHistory.tenant_id == tenant_id,
+               OrderStatusHistory.action == "kargoya_verildi")
+        .group_by(OrderStatusHistory.order_id)
+    ).all():
+        _cikis[_oid] = _t
+
+    _adaylar = db.scalars(
+        select(Order).where(
+            Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
-        )
-        .order_by(desc(OrderShipment.created_at))
+            sa_or(Order.current_stage >= 8, Order.id.in_(list(_gonderiler.keys()) or [None])),
+        ).order_by(desc(Order.updated_at))
     ).all()
 
     _magazalar = {str(s.id): s.name for s in db.scalars(
@@ -1805,28 +1827,38 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
         select(Dealer).where(Dealer.tenant_id == tenant_id)).all()}
 
     out = []
-    for sh, o in rows:
+    for o in _adaylar:
+        _shs = _gonderiler.get(o.id, [])
+        # Takip no HERHANGİ bir yerde varsa bekleyen değildir
+        if (o.kargo_info or {}).get("takip_no"):
+            continue
+        if any((sh.takip_no or "").strip() for sh in _shs):
+            continue
         _raw = o.raw or {}
         _did = str(_raw.get("dealer_id") or "") or None
         if _did and _did in _muaf:
             continue        # kargo ücreti almadığımız bayii
         _sa = _raw.get("shipping_address") or {}
-        _ad = (_sa.get("name") or o.customer_name or "").strip()
-        _adres = " ".join(x for x in [(_sa.get("address1") or ""),
-                                      (_sa.get("address2") or "")] if x).strip()
+        _bos = next((sh for sh in _shs if not (sh.takip_no or "").strip()), None)
         out.append({
-            "shipment_id": str(sh.id),
+            # gönderi kaydı yoksa None — uygulama aşamasında oluşturulur
+            "shipment_id": str(_bos.id) if _bos else None,
             "order_id": str(o.id),
             "order_number": o.order_number,
-            "ad": _ad,
-            "adres": _adres,
-            # bayii siparişinde city=il, province=ilçe (dealers.py böyle yazıyor)
+            "ad": (_sa.get("name") or o.customer_name or "").strip(),
+            "adres": " ".join(x for x in [(_sa.get("address1") or ""),
+                                          (_sa.get("address2") or "")] if x).strip(),
             "il": (_sa.get("province") or _sa.get("city") or "").strip(),
-            "ilce": (_sa.get("city") or "").strip() if _did else (_sa.get("city") or "").strip(),
-            "cikis_tarihi": sh.created_at.isoformat() if sh.created_at else None,
-            "kaynak": (_bayiler.get(_did) if _did else _magazalar.get(str(o.store_id or ""))) or "—",
+            "ilce": (_sa.get("city") or "").strip(),
+            "cikis_tarihi": (_cikis.get(o.id) or (_bos.created_at if _bos else None)
+                             or o.updated_at).isoformat() if (
+                                 _cikis.get(o.id) or (_bos.created_at if _bos else None)
+                                 or o.updated_at) else None,
+            "kaynak": (_bayiler.get(_did) if _did
+                       else _magazalar.get(str(o.store_id or ""))) or "—",
             "kaynak_tipi": "bayii" if _did else "magaza",
-            "kargo_firma": sh.kargo_firma,
+            "kargo_firma": (_bos.kargo_firma if _bos
+                            else (o.kargo_info or {}).get("handler_name")),
         })
     return out
 
@@ -1915,14 +1947,37 @@ async def takip_xlsx(
             satir["aciklama"] = "Şüpheli — onaylanmadı, atlandı"
             rapor.append(satir)
             continue
-        sh = db.scalar(select(OrderShipment).where(
-            OrderShipment.id == uuid.UUID(s["shipment_id"]),
-            OrderShipment.tenant_id == user.tenant_id))
         o = db.scalar(select(Order).where(Order.id == uuid.UUID(s["order_id"])))
-        if not sh or not o:
-            satir["aciklama"] = "Gönderi bulunamadı (bu arada değişmiş)"
+        if not o:
+            satir["aciklama"] = "Sipariş bulunamadı (bu arada değişmiş)"
             rapor.append(satir)
             continue
+        sh = None
+        if s.get("shipment_id"):
+            sh = db.scalar(select(OrderShipment).where(
+                OrderShipment.id == uuid.UUID(s["shipment_id"]),
+                OrderShipment.tenant_id == user.tenant_id))
+        if sh is None:
+            # Basit Kargo akışı gönderi kaydı oluşturmuyor; takip no gelince
+            # burada açılır — kalemler, aşama ve müşteri maili tek yerden yönetilsin.
+            _kalan = _sh.remaining_counts(o)
+            _items = [{"line_item_id": _k, "quantity": _v}
+                      for _k, _v in _kalan.items() if _v > 0]
+            if not _items:
+                satir["aciklama"] = "Siparişin tüm kalemleri zaten gönderilmiş"
+                rapor.append(satir)
+                continue
+            try:
+                sh = _sh.create_shipment(
+                    db, o, items=_items, takip_no=None,
+                    kargo_firma=(o.kargo_info or {}).get("handler_name"),
+                    note="Toplu takip no içe aktarma", user_label=user.email,
+                    send_email=False,
+                )
+            except _sh.ShipmentError as e:
+                satir["aciklama"] = f"Gönderi açılamadı: {str(e)[:100]}"
+                rapor.append(satir)
+                continue
         _mail = _sh.set_tracking(db, o, sh, takip_no=k["takip_no"],
                                  kargo_firma=sh.kargo_firma, send_email=mail_gonder)
         uygulanan += 1

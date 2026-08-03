@@ -142,7 +142,7 @@ function KartOnizleme({ t }) {
     const ro = new ResizeObserver(olc)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [t.image_url, zoom])
+  }, [t.image_url])
   const kutu = (k, cls) => (
     <div className={`absolute border-2 ${cls}`}
       style={{
@@ -207,7 +207,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     const ro = new ResizeObserver(olc)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [t.image_url])
+  }, [t.image_url, zoom])
 
   const kesikler = t.cutouts || []
   const aktif = sel === 'baski' ? t.area : kesikler[sel]

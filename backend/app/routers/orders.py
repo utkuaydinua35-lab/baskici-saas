@@ -1128,6 +1128,377 @@ def remove_line_item_from_molds(
     return {"ok": True, "removed": len(targets)}
 
 
+# ⚠ SIRA ÖNEMLİ: bu uçlar '/{order_id}' rotasından ÖNCE tanımlanmalı.
+# FastAPI rotaları tanım sırasına göre eşler; sonra tanımlanırsa
+# '/api/orders/_takip-bekleyen' isteği '/{order_id}' ile eşleşip
+# '_takip-bekleyen' UUID olarak ayrıştırılmaya çalışılıyor ve hata veriyor.
+# ─── Toplu kargo takip no içe aktarma ────────────────────────
+# Kendi kargo anlaşmasıyla çalışırken takip numaraları sisteme otomatik düşmüyor.
+# Firma panelinden alınan Excel/CSV listesi buraya YAPIŞTIRILIR; sipariş numarası
+# ve takip numarası satır satır eşlenir. Önce ÖNİZLEME, sonra uygulama.
+
+class TopluTakipIn(BaseModel):
+    metin: str = ""                 # Excel'den yapıştırılan ham metin
+    kargo_firma: str = ""
+    mail_gonder: bool = True
+    uygula: bool = False            # False -> yalnızca önizleme
+    mevcudun_uzerine_yaz: bool = False
+
+
+_TAKIP_MIN_UZUNLUK = 6
+
+
+def _satir_parcala(satir: str) -> list[str]:
+    """Satırı sütunlara ayır — Excel yapıştırması sekmeli, CSV virgüllü/noktalı virgüllü."""
+    import re as _re
+    return [p.strip().strip('"').strip() for p in _re.split(r"[\t;,|]+|\s{2,}", satir) if p.strip()]
+
+
+@router.post("/_toplu-takip", response_model=None)
+def toplu_takip_no(
+    body: TopluTakipIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Yapıştırılan listeden sipariş↔takip no eşle. uygula=False ise sadece rapor.
+
+    Sütun sırası ÖNEMSİZ: her satırdaki parçalardan hangisi gerçek bir sipariş
+    numarasıysa o seçilir, kalanların en uzun/rakam içereni takip numarası sayılır.
+    Böylece kargo firmasının export düzeni ne olursa olsun çalışır.
+    """
+    satirlar = [s for s in (body.metin or "").splitlines() if s.strip()]
+    if not satirlar:
+        return {"ok": False, "message": "Liste boş — Excel'den kopyalayıp yapıştır."}
+
+    # Tüm satırlardaki aday sipariş numaralarını tek seferde çöz
+    _adaylar: set[str] = set()
+    _parcali: list[tuple[str, list[str]]] = []
+    for s in satirlar:
+        p = _satir_parcala(s)
+        _parcali.append((s, p))
+        for x in p:
+            _adaylar.add(x.lstrip("#").strip())
+
+    _bulunan: dict[str, list[Order]] = {}
+    if _adaylar:
+        for o in db.scalars(
+            select(Order).where(
+                Order.tenant_id == user.tenant_id,
+                Order.order_number.in_(list(_adaylar)),
+            ).options(selectinload(Order.line_items))
+        ).all():
+            _bulunan.setdefault(str(o.order_number), []).append(o)
+
+    from app.services import shipments as _sh
+
+    rapor = []
+    uygulanan = 0
+    for ham, parcalar in _parcali:
+        _sip_no = None
+        for x in parcalar:
+            if x.lstrip("#").strip() in _bulunan:
+                _sip_no = x.lstrip("#").strip()
+                break
+        if not _sip_no:
+            rapor.append({"satir": ham[:120], "durum": "siparis_bulunamadi",
+                          "aciklama": "Bu satırda tanınan sipariş numarası yok"})
+            continue
+        # Takip no: sipariş numarası DIŞINDAki, rakam içeren en uzun parça
+        _kalan = [x for x in parcalar if x.lstrip("#").strip() != _sip_no]
+        _takip = ""
+        for x in sorted(_kalan, key=len, reverse=True):
+            if len(x) >= _TAKIP_MIN_UZUNLUK and any(c.isdigit() for c in x):
+                _takip = x
+                break
+        if not _takip:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "durum": "takip_yok",
+                          "aciklama": "Takip numarası okunamadı"})
+            continue
+
+        _eslesme = _bulunan[_sip_no]
+        if len(_eslesme) > 1:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "belirsiz",
+                          "aciklama": f"{len(_eslesme)} mağazada aynı numara — elle gir"})
+            continue
+        o = _eslesme[0]
+        _mevcut = (o.kargo_info or {}).get("takip_no")
+        if _mevcut and not body.mevcudun_uzerine_yaz:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "zaten_var",
+                          "aciklama": f"Zaten takip no var: {_mevcut}"})
+            continue
+        _kalanlar = _sh.remaining_counts(o)
+        _items = [{"line_item_id": k, "quantity": v} for k, v in _kalanlar.items() if v > 0]
+        if not _items:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "tamamen_gonderilmis",
+                          "aciklama": "Siparişin tüm kalemleri zaten gönderilmiş"})
+            continue
+
+        if not body.uygula:
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "hazir",
+                          "aciklama": f"{sum(i['quantity'] for i in _items)} ürün kargolanacak"})
+            continue
+        try:
+            _sh.create_shipment(
+                db, o, items=_items, takip_no=_takip,
+                kargo_firma=(body.kargo_firma or "").strip() or None,
+                note="Toplu takip no içe aktarma",
+                user_label=user.email, send_email=body.mail_gonder,
+            )
+            uygulanan += 1
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "uygulandi", "aciklama": "Kargolandı olarak işlendi"})
+        except Exception as e:  # noqa: BLE001
+            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
+                          "durum": "hata", "aciklama": str(e)[:160]})
+
+    if body.uygula:
+        db.commit()
+    _sayac: dict = {}
+    for r in rapor:
+        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
+    return {
+        "ok": True,
+        "uygulandi": body.uygula,
+        "toplam_satir": len(rapor),
+        "uygulanan": uygulanan,
+        "sayac": _sayac,
+        "rapor": rapor,
+    }
+
+
+# ─── Takip no bekleyen gönderiler + xlsx eşleştirme ──────────
+# Kendi kargo anlaşmasında barkod firmanın sisteminde basılıyor; takip numarası
+# günün sonunda Excel ile geliyor. "Kargoya Ver"e basılan sipariş takip numarası
+# gelene kadar burada bekler.
+
+def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
+    """Kargoya verilmiş ama TAKİP NUMARASI olmayan siparişler.
+
+    Kaynak sipariş bazındadır, gönderi kaydı bazında DEĞİL: Basit Kargo akışı
+    order.kargo_info + aşama yazıyor ama OrderShipment kaydı oluşturmuyor.
+    Yalnızca gönderi kayıtlarına bakmak listeyi boş bırakıyordu.
+
+    Ölçüt: iptal değil · (aşama >= Kargoda VEYA gönderi kaydı var) ·
+    hiçbir yerde takip no yok · kargo ücreti alınmayan bayii değil.
+    """
+    from app.models import Dealer, OrderShipment
+
+    _muaf = {
+        str(_id) for (_id,) in db.execute(
+            select(Dealer.id).where(Dealer.tenant_id == tenant_id,
+                                    sql_func.coalesce(Dealer.shipping_fee, 0) == 0)
+        ).all()
+    }
+
+    # Sipariş -> gönderi kayıtları (varsa)
+    _gonderiler: dict = {}
+    for sh in db.scalars(
+        select(OrderShipment).where(OrderShipment.tenant_id == tenant_id)
+    ).all():
+        _gonderiler.setdefault(sh.order_id, []).append(sh)
+
+    # Çıkış tarihi: "kargoya verildi" geçmiş kaydı en doğrusu
+    _cikis: dict = {}
+    for _oid, _t in db.execute(
+        select(OrderStatusHistory.order_id, sql_func.max(OrderStatusHistory.created_at))
+        .where(OrderStatusHistory.tenant_id == tenant_id,
+               OrderStatusHistory.action == "kargoya_verildi")
+        .group_by(OrderStatusHistory.order_id)
+    ).all():
+        _cikis[_oid] = _t
+
+    _adaylar = db.scalars(
+        select(Order).where(
+            Order.tenant_id == tenant_id,
+            Order.is_iptal == False,  # noqa: E712
+            sa_or(Order.current_stage >= 8, Order.id.in_(list(_gonderiler.keys()) or [None])),
+        ).order_by(desc(Order.created_at))
+    ).all()
+
+    _magazalar = {str(s.id): s.name for s in db.scalars(
+        select(Store).where(Store.tenant_id == tenant_id)).all()}
+    _bayiler = {str(d.id): d.name for d in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == tenant_id)).all()}
+
+    out = []
+    for o in _adaylar:
+        _shs = _gonderiler.get(o.id, [])
+        # Takip no HERHANGİ bir yerde varsa bekleyen değildir.
+        # AMA: Basit Kargo gerçek kargo takip kodunu (handlerShipmentCode) dönmezse
+        # kendi BARKODUNU takip no olarak yazıyoruz. Müşteri onunla takip yapamaz —
+        # gerçek numara kargo firmasının Excel'inden gelecek, yani hâlâ BEKLİYOR.
+        _ki = o.kargo_info or {}
+        _tn = (_ki.get("takip_no") or "").strip()
+        if _tn and _tn != (_ki.get("barcode") or "").strip():
+            continue
+        if any((sh.takip_no or "").strip() for sh in _shs):
+            continue
+        _raw = o.raw or {}
+        _did = str(_raw.get("dealer_id") or "") or None
+        if _did and _did in _muaf:
+            continue        # kargo ücreti almadığımız bayii
+        _sa = _raw.get("shipping_address") or {}
+        _bos = next((sh for sh in _shs if not (sh.takip_no or "").strip()), None)
+        out.append({
+            # gönderi kaydı yoksa None — uygulama aşamasında oluşturulur
+            "shipment_id": str(_bos.id) if _bos else None,
+            "order_id": str(o.id),
+            "order_number": o.order_number,
+            "ad": (_sa.get("name") or o.customer_name or "").strip(),
+            "adres": " ".join(x for x in [(_sa.get("address1") or ""),
+                                          (_sa.get("address2") or "")] if x).strip(),
+            "il": (_sa.get("province") or _sa.get("city") or "").strip(),
+            "ilce": (_sa.get("city") or "").strip(),
+            "cikis_tarihi": (_zaman.isoformat() if (_zaman := (
+                _cikis.get(o.id) or (_bos.created_at if _bos else None)
+                or o.created_at)) else None),
+            "kaynak": (_bayiler.get(_did) if _did
+                       else _magazalar.get(str(o.store_id or ""))) or "—",
+            "kaynak_tipi": "bayii" if _did else "magaza",
+            "kargo_firma": (_bos.kargo_firma if _bos
+                            else (o.kargo_info or {}).get("handler_name")),
+        })
+    return out
+
+
+@router.get("/_takip-bekleyen", response_model=None)
+def takip_bekleyen(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Takip numarası bekleyen gönderiler — isim · çıkış tarihi · mağaza/bayii."""
+    items = _bekleyen_gonderiler(db, user.tenant_id)
+    return {"toplam": len(items), "items": items}
+
+
+@router.post("/_takip-xlsx", response_model=None)
+async def takip_xlsx(
+    dosya: UploadFile = File(...),
+    uygula: bool = Query(False),
+    mail_gonder: bool = Query(True),
+    onaylananlar: str = Query("", description="Şüpheli eşleşmelerden onaylananların shipment_id'leri"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kargo firmasının .xlsx listesini yükle; isim+adres ile bekleyenlere eşle.
+
+    uygula=False -> yalnızca ÖNİZLEME (hiçbir şey yazılmaz).
+    Kesin eşleşmeler (skor ≥ 0.80) uygulanır; şüpheliler (0.60–0.80) yalnızca
+    'onaylananlar' listesinde varsa uygulanır. Belirsizlikte tahmin yürütülmez.
+    """
+    from app.models import OrderShipment
+    from app.services import kargo_eslestir, shipments as _sh
+    from app.services.xlsx_reader import XlsxError, read_rows, sutun_bul
+
+    ham = await dosya.read()
+    if len(ham) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Dosya çok büyük (en fazla 10 MB).")
+    try:
+        satirlar = read_rows(ham)
+    except XlsxError as e:
+        raise HTTPException(400, str(e))
+    if not satirlar:
+        return {"ok": False, "message": "Dosyada veri satırı yok."}
+
+    kargolar = []
+    for r in satirlar:
+        _takip = sutun_bul(r, "TakipNo", "Takip No", "Takip Numarasi", "Barkod")
+        _ad = sutun_bul(r, "Alici", "Alıcı", "Alici Adi", "Alıcı Adı", "AliciUnvan")
+        if not _takip or not _ad:
+            continue
+        kargolar.append({
+            "takip_no": _takip,
+            "ad": _ad,
+            "adres": sutun_bul(r, "AliciAdres", "Alıcı Adres", "Adres", "Teslimat Adresi"),
+            "il": sutun_bul(r, "Varışİl", "Varis Il", "Il", "Şehir"),
+            "ilce": sutun_bul(r, "Varışİlçe", "Varis Ilce", "Ilce"),
+            "tarih": sutun_bul(r, "Fatura Tarihi", "Kayit Tarihi", "Islem Tarihi"),
+        })
+    if not kargolar:
+        return {"ok": False,
+                "message": "Dosyada takip no + alıcı adı sütunları bulunamadı."}
+
+    bekleyenler = _bekleyen_gonderiler(db, user.tenant_id)
+    if not bekleyenler:
+        return {"ok": False, "message": "Takip numarası bekleyen gönderi yok."}
+
+    _onay = {x.strip() for x in (onaylananlar or "").split(",") if x.strip()}
+    sonuclar = kargo_eslestir.eslestir(bekleyenler, kargolar)
+
+    rapor, uygulanan = [], 0
+    for r in sonuclar:
+        k, s = r["kargo"], r["siparis"]
+        satir = {
+            "takip_no": k["takip_no"], "kargo_ad": k["ad"],
+            "kargo_il": k.get("il"), "durum": r["durum"],
+            "skor": r["skor"], "detay": r["detay"],
+            "siparis": None if not s else {
+                "shipment_id": s["shipment_id"], "order_id": s["order_id"],
+                "order_number": s["order_number"], "ad": s["ad"],
+                "kaynak": s["kaynak"], "cikis_tarihi": s["cikis_tarihi"],
+            },
+        }
+        if not uygula or not s:
+            rapor.append(satir)
+            continue
+        if r["durum"] == "supheli" and s["shipment_id"] not in _onay:
+            satir["aciklama"] = "Şüpheli — onaylanmadı, atlandı"
+            rapor.append(satir)
+            continue
+        o = db.scalar(select(Order).where(Order.id == uuid.UUID(s["order_id"])))
+        if not o:
+            satir["aciklama"] = "Sipariş bulunamadı (bu arada değişmiş)"
+            rapor.append(satir)
+            continue
+        sh = None
+        if s.get("shipment_id"):
+            sh = db.scalar(select(OrderShipment).where(
+                OrderShipment.id == uuid.UUID(s["shipment_id"]),
+                OrderShipment.tenant_id == user.tenant_id))
+        if sh is None:
+            # Basit Kargo akışı gönderi kaydı oluşturmuyor; takip no gelince
+            # burada açılır — kalemler, aşama ve müşteri maili tek yerden yönetilsin.
+            _kalan = _sh.remaining_counts(o)
+            _items = [{"line_item_id": _k, "quantity": _v}
+                      for _k, _v in _kalan.items() if _v > 0]
+            if not _items:
+                satir["aciklama"] = "Siparişin tüm kalemleri zaten gönderilmiş"
+                rapor.append(satir)
+                continue
+            try:
+                sh = _sh.create_shipment(
+                    db, o, items=_items, takip_no=None,
+                    kargo_firma=(o.kargo_info or {}).get("handler_name"),
+                    note="Toplu takip no içe aktarma", user_label=user.email,
+                    send_email=False,
+                )
+            except _sh.ShipmentError as e:
+                satir["aciklama"] = f"Gönderi açılamadı: {str(e)[:100]}"
+                rapor.append(satir)
+                continue
+        _mail = _sh.set_tracking(db, o, sh, takip_no=k["takip_no"],
+                                 kargo_firma=sh.kargo_firma, send_email=mail_gonder)
+        uygulanan += 1
+        satir["durum"] = "uygulandi"
+        satir["aciklama"] = "Takip no yazıldı" + (" · müşteriye mail gitti" if _mail else "")
+        rapor.append(satir)
+
+    if uygula:
+        db.commit()
+    _sayac: dict = {}
+    for r in rapor:
+        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
+    return {
+        "ok": True, "uygulandi": uygula, "uygulanan": uygulanan,
+        "dosya_satir": len(kargolar), "bekleyen": len(bekleyenler),
+        "sayac": _sayac, "rapor": rapor,
+    }
+
+
 @router.get("/{order_id}", response_model=OrderDetail)
 def get_order(
     order_id: uuid.UUID,
@@ -1631,371 +2002,4 @@ def create_refund(
         "amount": str(amount),
         "financial_status": order.financial_status,
         "refunded_total": str(refunded + amount),
-    }
-
-
-# ─── Toplu kargo takip no içe aktarma ────────────────────────
-# Kendi kargo anlaşmasıyla çalışırken takip numaraları sisteme otomatik düşmüyor.
-# Firma panelinden alınan Excel/CSV listesi buraya YAPIŞTIRILIR; sipariş numarası
-# ve takip numarası satır satır eşlenir. Önce ÖNİZLEME, sonra uygulama.
-
-class TopluTakipIn(BaseModel):
-    metin: str = ""                 # Excel'den yapıştırılan ham metin
-    kargo_firma: str = ""
-    mail_gonder: bool = True
-    uygula: bool = False            # False -> yalnızca önizleme
-    mevcudun_uzerine_yaz: bool = False
-
-
-_TAKIP_MIN_UZUNLUK = 6
-
-
-def _satir_parcala(satir: str) -> list[str]:
-    """Satırı sütunlara ayır — Excel yapıştırması sekmeli, CSV virgüllü/noktalı virgüllü."""
-    import re as _re
-    return [p.strip().strip('"').strip() for p in _re.split(r"[\t;,|]+|\s{2,}", satir) if p.strip()]
-
-
-@router.post("/_toplu-takip", response_model=None)
-def toplu_takip_no(
-    body: TopluTakipIn,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Yapıştırılan listeden sipariş↔takip no eşle. uygula=False ise sadece rapor.
-
-    Sütun sırası ÖNEMSİZ: her satırdaki parçalardan hangisi gerçek bir sipariş
-    numarasıysa o seçilir, kalanların en uzun/rakam içereni takip numarası sayılır.
-    Böylece kargo firmasının export düzeni ne olursa olsun çalışır.
-    """
-    satirlar = [s for s in (body.metin or "").splitlines() if s.strip()]
-    if not satirlar:
-        return {"ok": False, "message": "Liste boş — Excel'den kopyalayıp yapıştır."}
-
-    # Tüm satırlardaki aday sipariş numaralarını tek seferde çöz
-    _adaylar: set[str] = set()
-    _parcali: list[tuple[str, list[str]]] = []
-    for s in satirlar:
-        p = _satir_parcala(s)
-        _parcali.append((s, p))
-        for x in p:
-            _adaylar.add(x.lstrip("#").strip())
-
-    _bulunan: dict[str, list[Order]] = {}
-    if _adaylar:
-        for o in db.scalars(
-            select(Order).where(
-                Order.tenant_id == user.tenant_id,
-                Order.order_number.in_(list(_adaylar)),
-            ).options(selectinload(Order.line_items))
-        ).all():
-            _bulunan.setdefault(str(o.order_number), []).append(o)
-
-    from app.services import shipments as _sh
-
-    rapor = []
-    uygulanan = 0
-    for ham, parcalar in _parcali:
-        _sip_no = None
-        for x in parcalar:
-            if x.lstrip("#").strip() in _bulunan:
-                _sip_no = x.lstrip("#").strip()
-                break
-        if not _sip_no:
-            rapor.append({"satir": ham[:120], "durum": "siparis_bulunamadi",
-                          "aciklama": "Bu satırda tanınan sipariş numarası yok"})
-            continue
-        # Takip no: sipariş numarası DIŞINDAki, rakam içeren en uzun parça
-        _kalan = [x for x in parcalar if x.lstrip("#").strip() != _sip_no]
-        _takip = ""
-        for x in sorted(_kalan, key=len, reverse=True):
-            if len(x) >= _TAKIP_MIN_UZUNLUK and any(c.isdigit() for c in x):
-                _takip = x
-                break
-        if not _takip:
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "durum": "takip_yok",
-                          "aciklama": "Takip numarası okunamadı"})
-            continue
-
-        _eslesme = _bulunan[_sip_no]
-        if len(_eslesme) > 1:
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "belirsiz",
-                          "aciklama": f"{len(_eslesme)} mağazada aynı numara — elle gir"})
-            continue
-        o = _eslesme[0]
-        _mevcut = (o.kargo_info or {}).get("takip_no")
-        if _mevcut and not body.mevcudun_uzerine_yaz:
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "zaten_var",
-                          "aciklama": f"Zaten takip no var: {_mevcut}"})
-            continue
-        _kalanlar = _sh.remaining_counts(o)
-        _items = [{"line_item_id": k, "quantity": v} for k, v in _kalanlar.items() if v > 0]
-        if not _items:
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "tamamen_gonderilmis",
-                          "aciklama": "Siparişin tüm kalemleri zaten gönderilmiş"})
-            continue
-
-        if not body.uygula:
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "hazir",
-                          "aciklama": f"{sum(i['quantity'] for i in _items)} ürün kargolanacak"})
-            continue
-        try:
-            _sh.create_shipment(
-                db, o, items=_items, takip_no=_takip,
-                kargo_firma=(body.kargo_firma or "").strip() or None,
-                note="Toplu takip no içe aktarma",
-                user_label=user.email, send_email=body.mail_gonder,
-            )
-            uygulanan += 1
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "uygulandi", "aciklama": "Kargolandı olarak işlendi"})
-        except Exception as e:  # noqa: BLE001
-            rapor.append({"satir": ham[:120], "siparis_no": _sip_no, "takip_no": _takip,
-                          "durum": "hata", "aciklama": str(e)[:160]})
-
-    if body.uygula:
-        db.commit()
-    _sayac: dict = {}
-    for r in rapor:
-        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
-    return {
-        "ok": True,
-        "uygulandi": body.uygula,
-        "toplam_satir": len(rapor),
-        "uygulanan": uygulanan,
-        "sayac": _sayac,
-        "rapor": rapor,
-    }
-
-
-# ─── Takip no bekleyen gönderiler + xlsx eşleştirme ──────────
-# Kendi kargo anlaşmasında barkod firmanın sisteminde basılıyor; takip numarası
-# günün sonunda Excel ile geliyor. "Kargoya Ver"e basılan sipariş takip numarası
-# gelene kadar burada bekler.
-
-def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
-    """Kargoya verilmiş ama TAKİP NUMARASI olmayan siparişler.
-
-    Kaynak sipariş bazındadır, gönderi kaydı bazında DEĞİL: Basit Kargo akışı
-    order.kargo_info + aşama yazıyor ama OrderShipment kaydı oluşturmuyor.
-    Yalnızca gönderi kayıtlarına bakmak listeyi boş bırakıyordu.
-
-    Ölçüt: iptal değil · (aşama >= Kargoda VEYA gönderi kaydı var) ·
-    hiçbir yerde takip no yok · kargo ücreti alınmayan bayii değil.
-    """
-    from app.models import Dealer, OrderShipment
-
-    _muaf = {
-        str(_id) for (_id,) in db.execute(
-            select(Dealer.id).where(Dealer.tenant_id == tenant_id,
-                                    sql_func.coalesce(Dealer.shipping_fee, 0) == 0)
-        ).all()
-    }
-
-    # Sipariş -> gönderi kayıtları (varsa)
-    _gonderiler: dict = {}
-    for sh in db.scalars(
-        select(OrderShipment).where(OrderShipment.tenant_id == tenant_id)
-    ).all():
-        _gonderiler.setdefault(sh.order_id, []).append(sh)
-
-    # Çıkış tarihi: "kargoya verildi" geçmiş kaydı en doğrusu
-    _cikis: dict = {}
-    for _oid, _t in db.execute(
-        select(OrderStatusHistory.order_id, sql_func.max(OrderStatusHistory.created_at))
-        .where(OrderStatusHistory.tenant_id == tenant_id,
-               OrderStatusHistory.action == "kargoya_verildi")
-        .group_by(OrderStatusHistory.order_id)
-    ).all():
-        _cikis[_oid] = _t
-
-    _adaylar = db.scalars(
-        select(Order).where(
-            Order.tenant_id == tenant_id,
-            Order.is_iptal == False,  # noqa: E712
-            sa_or(Order.current_stage >= 8, Order.id.in_(list(_gonderiler.keys()) or [None])),
-        ).order_by(desc(Order.created_at))
-    ).all()
-
-    _magazalar = {str(s.id): s.name for s in db.scalars(
-        select(Store).where(Store.tenant_id == tenant_id)).all()}
-    _bayiler = {str(d.id): d.name for d in db.scalars(
-        select(Dealer).where(Dealer.tenant_id == tenant_id)).all()}
-
-    out = []
-    for o in _adaylar:
-        _shs = _gonderiler.get(o.id, [])
-        # Takip no HERHANGİ bir yerde varsa bekleyen değildir.
-        # AMA: Basit Kargo gerçek kargo takip kodunu (handlerShipmentCode) dönmezse
-        # kendi BARKODUNU takip no olarak yazıyoruz. Müşteri onunla takip yapamaz —
-        # gerçek numara kargo firmasının Excel'inden gelecek, yani hâlâ BEKLİYOR.
-        _ki = o.kargo_info or {}
-        _tn = (_ki.get("takip_no") or "").strip()
-        if _tn and _tn != (_ki.get("barcode") or "").strip():
-            continue
-        if any((sh.takip_no or "").strip() for sh in _shs):
-            continue
-        _raw = o.raw or {}
-        _did = str(_raw.get("dealer_id") or "") or None
-        if _did and _did in _muaf:
-            continue        # kargo ücreti almadığımız bayii
-        _sa = _raw.get("shipping_address") or {}
-        _bos = next((sh for sh in _shs if not (sh.takip_no or "").strip()), None)
-        out.append({
-            # gönderi kaydı yoksa None — uygulama aşamasında oluşturulur
-            "shipment_id": str(_bos.id) if _bos else None,
-            "order_id": str(o.id),
-            "order_number": o.order_number,
-            "ad": (_sa.get("name") or o.customer_name or "").strip(),
-            "adres": " ".join(x for x in [(_sa.get("address1") or ""),
-                                          (_sa.get("address2") or "")] if x).strip(),
-            "il": (_sa.get("province") or _sa.get("city") or "").strip(),
-            "ilce": (_sa.get("city") or "").strip(),
-            "cikis_tarihi": (_zaman.isoformat() if (_zaman := (
-                _cikis.get(o.id) or (_bos.created_at if _bos else None)
-                or o.created_at)) else None),
-            "kaynak": (_bayiler.get(_did) if _did
-                       else _magazalar.get(str(o.store_id or ""))) or "—",
-            "kaynak_tipi": "bayii" if _did else "magaza",
-            "kargo_firma": (_bos.kargo_firma if _bos
-                            else (o.kargo_info or {}).get("handler_name")),
-        })
-    return out
-
-
-@router.get("/_takip-bekleyen", response_model=None)
-def takip_bekleyen(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Takip numarası bekleyen gönderiler — isim · çıkış tarihi · mağaza/bayii."""
-    items = _bekleyen_gonderiler(db, user.tenant_id)
-    return {"toplam": len(items), "items": items}
-
-
-@router.post("/_takip-xlsx", response_model=None)
-async def takip_xlsx(
-    dosya: UploadFile = File(...),
-    uygula: bool = Query(False),
-    mail_gonder: bool = Query(True),
-    onaylananlar: str = Query("", description="Şüpheli eşleşmelerden onaylananların shipment_id'leri"),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Kargo firmasının .xlsx listesini yükle; isim+adres ile bekleyenlere eşle.
-
-    uygula=False -> yalnızca ÖNİZLEME (hiçbir şey yazılmaz).
-    Kesin eşleşmeler (skor ≥ 0.80) uygulanır; şüpheliler (0.60–0.80) yalnızca
-    'onaylananlar' listesinde varsa uygulanır. Belirsizlikte tahmin yürütülmez.
-    """
-    from app.models import OrderShipment
-    from app.services import kargo_eslestir, shipments as _sh
-    from app.services.xlsx_reader import XlsxError, read_rows, sutun_bul
-
-    ham = await dosya.read()
-    if len(ham) > 10 * 1024 * 1024:
-        raise HTTPException(413, "Dosya çok büyük (en fazla 10 MB).")
-    try:
-        satirlar = read_rows(ham)
-    except XlsxError as e:
-        raise HTTPException(400, str(e))
-    if not satirlar:
-        return {"ok": False, "message": "Dosyada veri satırı yok."}
-
-    kargolar = []
-    for r in satirlar:
-        _takip = sutun_bul(r, "TakipNo", "Takip No", "Takip Numarasi", "Barkod")
-        _ad = sutun_bul(r, "Alici", "Alıcı", "Alici Adi", "Alıcı Adı", "AliciUnvan")
-        if not _takip or not _ad:
-            continue
-        kargolar.append({
-            "takip_no": _takip,
-            "ad": _ad,
-            "adres": sutun_bul(r, "AliciAdres", "Alıcı Adres", "Adres", "Teslimat Adresi"),
-            "il": sutun_bul(r, "Varışİl", "Varis Il", "Il", "Şehir"),
-            "ilce": sutun_bul(r, "Varışİlçe", "Varis Ilce", "Ilce"),
-            "tarih": sutun_bul(r, "Fatura Tarihi", "Kayit Tarihi", "Islem Tarihi"),
-        })
-    if not kargolar:
-        return {"ok": False,
-                "message": "Dosyada takip no + alıcı adı sütunları bulunamadı."}
-
-    bekleyenler = _bekleyen_gonderiler(db, user.tenant_id)
-    if not bekleyenler:
-        return {"ok": False, "message": "Takip numarası bekleyen gönderi yok."}
-
-    _onay = {x.strip() for x in (onaylananlar or "").split(",") if x.strip()}
-    sonuclar = kargo_eslestir.eslestir(bekleyenler, kargolar)
-
-    rapor, uygulanan = [], 0
-    for r in sonuclar:
-        k, s = r["kargo"], r["siparis"]
-        satir = {
-            "takip_no": k["takip_no"], "kargo_ad": k["ad"],
-            "kargo_il": k.get("il"), "durum": r["durum"],
-            "skor": r["skor"], "detay": r["detay"],
-            "siparis": None if not s else {
-                "shipment_id": s["shipment_id"], "order_id": s["order_id"],
-                "order_number": s["order_number"], "ad": s["ad"],
-                "kaynak": s["kaynak"], "cikis_tarihi": s["cikis_tarihi"],
-            },
-        }
-        if not uygula or not s:
-            rapor.append(satir)
-            continue
-        if r["durum"] == "supheli" and s["shipment_id"] not in _onay:
-            satir["aciklama"] = "Şüpheli — onaylanmadı, atlandı"
-            rapor.append(satir)
-            continue
-        o = db.scalar(select(Order).where(Order.id == uuid.UUID(s["order_id"])))
-        if not o:
-            satir["aciklama"] = "Sipariş bulunamadı (bu arada değişmiş)"
-            rapor.append(satir)
-            continue
-        sh = None
-        if s.get("shipment_id"):
-            sh = db.scalar(select(OrderShipment).where(
-                OrderShipment.id == uuid.UUID(s["shipment_id"]),
-                OrderShipment.tenant_id == user.tenant_id))
-        if sh is None:
-            # Basit Kargo akışı gönderi kaydı oluşturmuyor; takip no gelince
-            # burada açılır — kalemler, aşama ve müşteri maili tek yerden yönetilsin.
-            _kalan = _sh.remaining_counts(o)
-            _items = [{"line_item_id": _k, "quantity": _v}
-                      for _k, _v in _kalan.items() if _v > 0]
-            if not _items:
-                satir["aciklama"] = "Siparişin tüm kalemleri zaten gönderilmiş"
-                rapor.append(satir)
-                continue
-            try:
-                sh = _sh.create_shipment(
-                    db, o, items=_items, takip_no=None,
-                    kargo_firma=(o.kargo_info or {}).get("handler_name"),
-                    note="Toplu takip no içe aktarma", user_label=user.email,
-                    send_email=False,
-                )
-            except _sh.ShipmentError as e:
-                satir["aciklama"] = f"Gönderi açılamadı: {str(e)[:100]}"
-                rapor.append(satir)
-                continue
-        _mail = _sh.set_tracking(db, o, sh, takip_no=k["takip_no"],
-                                 kargo_firma=sh.kargo_firma, send_email=mail_gonder)
-        uygulanan += 1
-        satir["durum"] = "uygulandi"
-        satir["aciklama"] = "Takip no yazıldı" + (" · müşteriye mail gitti" if _mail else "")
-        rapor.append(satir)
-
-    if uygula:
-        db.commit()
-    _sayac: dict = {}
-    for r in rapor:
-        _sayac[r["durum"]] = _sayac.get(r["durum"], 0) + 1
-    return {
-        "ok": True, "uygulandi": uygula, "uygulanan": uygulanan,
-        "dosya_satir": len(kargolar), "bekleyen": len(bekleyenler),
-        "sayac": _sayac, "rapor": rapor,
     }

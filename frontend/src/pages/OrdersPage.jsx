@@ -1104,8 +1104,12 @@ function TopluTakipDialog({ onClose, onDone }) {
   const [onayli, setOnayli] = useState(() => new Set())
 
   const loadBekleyen = async () => {
+    // Hatayı yutup boş liste göstermek YANLIŞ: "bekleyen yok" ile "uç patladı"
+    // ekranda aynı görünüyordu ve gerçek arıza günlerce fark edilmedi.
     try { setBekleyen(await api.get('/api/orders/_takip-bekleyen')) }
-    catch { setBekleyen({ toplam: 0, items: [] }) }
+    catch (e) {
+      setBekleyen({ toplam: 0, items: [], hata: e?.detail || e?.message || 'Liste alınamadı' })
+    }
   }
   useEffect(() => { loadBekleyen() }, [])
 
@@ -1158,6 +1162,11 @@ function TopluTakipDialog({ onClose, onDone }) {
           </div>
           {bekleyen === null ? (
             <div className="px-3 py-3 text-xs text-gray-500">Yükleniyor…</div>
+          ) : bekleyen.hata ? (
+            <div className="px-3 py-3 text-xs text-red-300">
+              Liste alınamadı: {bekleyen.hata}
+              <button onClick={loadBekleyen} className="ml-2 underline hover:text-red-200">tekrar dene</button>
+            </div>
           ) : bekleyen.items.length === 0 ? (
             <div className="px-3 py-3 text-xs text-gray-500">
               Bekleyen gönderi yok. Paketlemede “Kargoya Ver”e bastığın siparişler burada listelenir.

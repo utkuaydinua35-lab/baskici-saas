@@ -166,6 +166,58 @@ app.include_router(design_studio_router)
 app.include_router(public_shop_router)
 
 
+# ─── Rota golgeleme denetimi ──────────────────────────────────
+def _golgelenen_rotalari_bul() -> list[str]:
+    """'/orders/{order_id}' gibi parametreli bir rota, KENDINDEN SONRA tanimlanan
+    '/orders/_takip-bekleyen' gibi sabit rotalari yutar — FastAPI rotalari tanim
+    sirasina gore eslestirir. Istek parametreli rotaya duser, sabit segment UUID
+    olarak ayristirilmaya calisilir ve uc sessizce hata verir.
+
+    Bu tam olarak yasandi: toplu takip listesi haftalarca bos gorundu.
+    Uygulama acilirken sinanir; bulunan her cakisma acik hatayla dusurulur."""
+    import re
+
+    param = re.compile(r"\{[^}]+\}")
+    onceki: list[tuple[str, set[str], list[str]]] = []  # (yol, metodlar, parcalar)
+    sorunlar: list[str] = []
+
+    for r in app.router.routes:
+        yol = getattr(r, "path", None)
+        metodlar = getattr(r, "methods", None)
+        if not yol or not metodlar:
+            continue
+        parcalar = yol.strip("/").split("/")
+        for e_yol, e_metodlar, e_parcalar in onceki:
+            if not (metodlar & e_metodlar) or len(parcalar) != len(e_parcalar):
+                continue
+            # Onceki rota bunu yutuyor mu? Her segmentte ya birebir ayni,
+            # ya da onceki tarafta parametre olmali. Sabit-sabit farki varsa yutmaz.
+            yutar = param_var = False
+            for p, e in zip(parcalar, e_parcalar):
+                if param.fullmatch(e):
+                    param_var = True
+                elif p != e:
+                    break
+            else:
+                yutar = param_var
+            # Yalnizca bu rota sabitken sorun: parametreli rota digerini gizler.
+            if yutar and not any(param.search(p) for p in parcalar):
+                sorunlar.append(
+                    f"{sorted(metodlar)[0]} {yol}  <-- once tanimlanan {e_yol} bunu golgeliyor"
+                )
+                break
+        onceki.append((yol, metodlar, parcalar))
+    return sorunlar
+
+
+_golge = _golgelenen_rotalari_bul()
+if _golge:
+    raise RuntimeError(
+        "Golgelenen rota(lar) var — sabit yollar parametreli yoldan ONCE tanimlanmali:\n  "
+        + "\n  ".join(_golge)
+    )
+
+
 # ─── Guvenli statik servis (SVG/HTML XSS korumasi) ────────────
 from starlette.responses import Response as _Resp
 

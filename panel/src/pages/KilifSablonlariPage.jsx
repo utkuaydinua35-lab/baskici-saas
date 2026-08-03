@@ -142,7 +142,7 @@ function KartOnizleme({ t }) {
     const ro = new ResizeObserver(olc)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [t.image_url])
+  }, [t.image_url, zoom])
   const kutu = (k, cls) => (
     <div className={`absolute border-2 ${cls}`}
       style={{
@@ -198,6 +198,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   // verilirse tarayıcı ELİPS çizer (kenarlar ortaya doğru şişer); doğrusu
   // kısa kenara oranlı sabit yarıçap.
   const [tuvalPx, setTuvalPx] = useState({ w: 0, h: 0 })
+  const [zoom, setZoom] = useState(1)
   useEffect(() => {
     const el = boxRef.current
     if (!el) return
@@ -316,8 +317,10 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
 
   const kutuCiz = (kutu, renk, secili, i) => (
     <div key={i ?? 'baski'}
-      onMouseDown={secili ? (e => basla(e, 'tasi')) : undefined}
-      onClick={() => setSel(i ?? 'baski')}
+      onMouseDown={secili
+        ? (e => basla(e, 'tasi'))
+        : (e => { e.preventDefault(); e.stopPropagation() })}
+      onClick={(e) => { e.stopPropagation(); setSel(i ?? 'baski') }}
       className={`absolute border-2 ${renk === 'yesil'
         ? 'border-emerald-500 bg-emerald-500/15' : 'border-amber-400 bg-amber-400/25'}`}
       style={{
@@ -361,13 +364,14 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
         ) : (
           <div className="grid md:grid-cols-[1fr_260px] gap-4">
             {/* Tuval */}
-            <div className="flex justify-center bg-panel-input rounded-xl p-2">
+            <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[62vh] flex justify-center">
             <div ref={boxRef} className="relative select-none inline-block"
               onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
               <img src={t.image_url} alt="" draggable={false}
                 onLoad={() => boxRef.current && setTuvalPx({
                   w: boxRef.current.clientWidth, h: boxRef.current.clientHeight })}
-                className="block pointer-events-none max-h-[58vh] w-auto" />
+                style={{ height: `${58 * zoom}vh`, width: 'auto' }}
+                className="block pointer-events-none max-w-none" />
               {kutuCiz(t.area, 'yesil', sel === 'baski')}
               {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
             </div>
@@ -376,6 +380,16 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
             {/* Ayarlar */}
             <div className="space-y-3 text-sm">
               <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-xs text-panel-muted">Yakınlaştır</span>
+                  <button onClick={() => setZoom(z => Math.max(0.6, +(z - 0.25).toFixed(2)))}
+                    className="w-7 h-7 rounded-lg border border-panel-border text-sm">−</button>
+                  <span className="text-xs tabular-nums w-10 text-center">%{Math.round(zoom * 100)}</span>
+                  <button onClick={() => setZoom(z => Math.min(3, +(z + 0.25).toFixed(2)))}
+                    className="w-7 h-7 rounded-lg border border-panel-border text-sm">+</button>
+                  <button onClick={() => setZoom(1)}
+                    className="text-[11px] text-panel-muted underline ml-1">sıfırla</button>
+                </div>
                 <div className="text-xs text-panel-muted mb-1">Düzenlenen alan</div>
                 <div className="flex flex-col gap-1">
                   <button onClick={() => setSel('baski')}

@@ -266,10 +266,29 @@ def kargo_iptal(
     stage 8->7 geri al + kargo_info temizle. Shopify/Basit hatasi akisi bloklamaz."""
     order = _resolve_order(db, order_ref, user.tenant_id)
     ki = order.kargo_info or {}
-    if not ki:
+    # Kendi kargo anlaşmasında Basit Kargo kaydı YOKTUR; gönderi yalnızca
+    # OrderShipment olarak durur (takip no bekliyor). İptal onu da tanımalı —
+    # yoksa "iptal edilecek kargo yok" deyip sipariş Kargoda'da takılı kalıyordu.
+    from app.models import OrderShipment as _OS
+    _gonderiler = db.scalars(
+        select(_OS).where(_OS.order_id == order.id, _OS.tenant_id == user.tenant_id)
+        .order_by(desc(_OS.created_at))
+    ).all()
+    if not ki and not _gonderiler:
         raise HTTPException(400, "Bu siparişte iptal edilecek kargo gönderisi yok")
 
     basit_ok = basit_kargo.cancel(ki.get("barcode")) if ki.get("barcode") else False
+
+    # Gönderi kayıtlarını geri al — kalemler tekrar "gönderilmeyi bekleyen"e döner
+    _silinen = 0
+    if _gonderiler:
+        from app.services import shipments as _sh
+        for _g in _gonderiler:
+            try:
+                _sh.delete_shipment(db, order, _g.id, user_label=user.email)
+                _silinen += 1
+            except Exception:  # noqa: BLE001
+                pass
 
     shopify_ok = False
     shopify_err = None
@@ -304,6 +323,7 @@ def kargo_iptal(
         "basit_ok": basit_ok,
         "shopify_ok": shopify_ok,
         "shopify_err": shopify_err,
+        "silinen_gonderi": _silinen,
         "current_stage": order.current_stage,
     }
 

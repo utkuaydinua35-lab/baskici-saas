@@ -141,6 +141,14 @@ export default function PackagingPage() {
       const firma = r.handler_name || 'Kargo'
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
       setManualAddr(false)
+      // KENDİ ANLAŞMAM: barkod kargo firmasının kendi sisteminde basılıyor, burada
+      // yazdırılacak etiket YOK. Etiket bekleyip takılmayalım — kaydı onaylayıp geç.
+      if (r.kendi_kargo) {
+        setLabelPending(null)
+        setMsg({ ok: true, text: `✅ ${r.message || `${firma} ile kargoya verildi olarak işlendi.`}` })
+        setTimeout(() => loadIndex(index), 2000)
+        return
+      }
       // Barkodu yazdır (svg boşsa kargo-label'dan retry ile çek). Sadece yazdırınca ilerle.
       const printed = await printKargoLabel(order.id, r.label_svg, tn)
       if (printed) {

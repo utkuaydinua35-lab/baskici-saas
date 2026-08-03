@@ -199,6 +199,8 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   // kısa kenara oranlı sabit yarıçap.
   const [tuvalPx, setTuvalPx] = useState({ w: 0, h: 0 })
   const [zoom, setZoom] = useState(1)
+  // Yakinlastirma seçimi ve devam eden sürüklemeyi etkilemesin
+  const zoomla = (v) => { drag.current = null; setZoom(v) }
   useEffect(() => {
     const el = boxRef.current
     if (!el) return
@@ -329,17 +331,27 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
         borderRadius: kose(kutu, tuvalPx),
         cursor: secili ? 'move' : 'pointer',
         opacity: secili ? 1 : 0.6,
-        // Seçili olmayan kutular üstte: tıklamak isteyince altındaki seçili
-        // kutunun tutamağı yerine kendisi yakalanır
+        // Secili olmayan kutu ustte: tiklayinca altindaki secili kutunun
+        // govdesi degil kendisi yakalanir (yanlislikla tasima olmaz)
         zIndex: secili ? 1 : 2,
-      }}>
-      {secili && TUTAMAKLAR.map(([h, lx, ly, cur]) => (
-        <div key={h} onMouseDown={e => basla(e, h)}
-          className="absolute w-3 h-3 bg-white border border-slate-600 rounded-sm shadow"
-          style={{ left: `${lx}%`, top: `${ly}%`, transform: 'translate(-50%,-50%)', cursor: cur }} />
-      ))}
-    </div>
+      }} />
   )
+
+  // Tutamaklar KUTULARIN DISINDA, en ust katmanda: iki alan ust uste
+  // bindiginde ustteki kutu alttakinin tutamagini ORTMEZ — yoksa yesil ve
+  // sari cakistiginda dikey boyutlandirma yapilamiyordu.
+  const tutamakCiz = () => {
+    if (!aktif) return null
+    return TUTAMAKLAR.map(([h, lx, ly, cur]) => (
+      <div key={h} onMouseDown={e => basla(e, h)}
+        className="absolute w-3.5 h-3.5 bg-white border border-slate-600 rounded-sm shadow"
+        style={{
+          left: `${(aktif.x + (lx / 100) * aktif.w) * 100}%`,
+          top: `${(aktif.y + (ly / 100) * aktif.h) * 100}%`,
+          transform: 'translate(-50%,-50%)', cursor: cur, zIndex: 3,
+        }} />
+    ))
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -374,6 +386,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
                 className="block pointer-events-none max-w-none" />
               {kutuCiz(t.area, 'yesil', sel === 'baski')}
               {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
+              {tutamakCiz()}
             </div>
             </div>
 
@@ -382,12 +395,12 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="text-xs text-panel-muted">Yakınlaştır</span>
-                  <button onClick={() => setZoom(z => Math.max(0.6, +(z - 0.25).toFixed(2)))}
+                  <button onClick={() => zoomla(Math.max(0.6, +(zoom - 0.25).toFixed(2)))}
                     className="w-7 h-7 rounded-lg border border-panel-border text-sm">−</button>
                   <span className="text-xs tabular-nums w-10 text-center">%{Math.round(zoom * 100)}</span>
-                  <button onClick={() => setZoom(z => Math.min(3, +(z + 0.25).toFixed(2)))}
+                  <button onClick={() => zoomla(Math.min(3, +(zoom + 0.25).toFixed(2)))}
                     className="w-7 h-7 rounded-lg border border-panel-border text-sm">+</button>
-                  <button onClick={() => setZoom(1)}
+                  <button onClick={() => zoomla(1)}
                     className="text-[11px] text-panel-muted underline ml-1">sıfırla</button>
                 </div>
                 <div className="text-xs text-panel-muted mb-1">Düzenlenen alan</div>

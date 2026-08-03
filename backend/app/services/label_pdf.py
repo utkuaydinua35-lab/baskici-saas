@@ -1,16 +1,21 @@
 """
-Basit kargo etiketi PDF'i (placeholder — Paket: Paketleme).
+Kargo etiketi PDF'i — mağaza adı + sipariş no + alıcı adresi + TARANABİLİR
+Code 128 barkod.
 
-Gerçek kargo entegrasyonu (Sürat/Yurtiçi API, taranabilir barkod, takip no)
-"Kargo paketi"nde gelecek. Şimdilik: mağaza adı + sipariş no + alıcı adresi +
-barkod değeri (metin). PyMuPDF base14 fontu Türkçe ş/ğ/İ desteklemediği için
-metin ASCII'ye çevrilir (kargo için yeterli; gerçek font embed (c)'de).
+Barkod eskiden '*KOD*' diye düz metin yazılıyordu (okutulamıyordu); artık
+gerçek Code 128-B çubukları çiziliyor. Kendi kargo anlaşmasıyla çalışırken
+paketin üzerine yapıştırılan etiket budur.
+
+PyMuPDF base14 fontu Türkçe ş/ğ/İ desteklemediği için METİN ASCII'ye çevrilir;
+barkodun kendisi zaten ASCII (Code128-B).
 """
 from __future__ import annotations
 
 import io
 
 import fitz  # PyMuPDF
+
+from app.services import barcode128
 
 CM = 28.3464567
 
@@ -51,6 +56,38 @@ def _extract_address(order) -> list[str]:
     return lines
 
 
+def _barkod_ciz(pg, code: str, m: float, y: float, w: float) -> float:
+    """Code 128 çubuklarını çiz + altına kodu yaz. Dönüş: yeni y."""
+    try:
+        genislikler = barcode128.pattern_widths(code)
+    except barcode128.BarcodeError:
+        pg.insert_textbox(fitz.Rect(m, y, w - m, y + 20), "BARKOD URETILEMEDI",
+                          fontsize=10, fontname="helv", align=1)
+        return y + 24
+
+    kullanilabilir = w - 2 * m
+    sessiz = 10                       # her iki yanda 10 modül sessiz alan (standart)
+    modul = kullanilabilir / (sum(genislikler) + 2 * sessiz)
+    yukseklik = 1.5 * CM
+
+    x = m + sessiz * modul
+    bar = True                        # ilk eleman HER ZAMAN bar
+    for g in genislikler:
+        gen = g * modul
+        if bar:
+            pg.draw_rect(fitz.Rect(x, y, x + gen, y + yukseklik),
+                         color=(0, 0, 0), fill=(0, 0, 0))
+        x += gen
+        bar = not bar
+
+    y += yukseklik + 3
+    # Kutu yüksekliği font boyutundan belirgin büyük olmalı — dar kutuda
+    # PyMuPDF metni HİÇ yazmıyor (sessizce boş kalıyordu).
+    pg.insert_textbox(fitz.Rect(m, y, w - m, y + 22), _a(code),
+                      fontsize=12, fontname="hebo", align=1)
+    return y + 22
+
+
 def render_label_pdf(order, store_name: str | None = None) -> bytes:
     w, h = 10 * CM, 15 * CM
     doc = fitz.open()
@@ -78,12 +115,13 @@ def render_label_pdf(order, store_name: str | None = None) -> bytes:
         y = box(_a(line), 11, y)
     y += 12
 
-    code = order.barkod_kodu or order.order_number or ""
-    pg.draw_rect(fitz.Rect(m, y, w - m, y + 1.4 * CM))
-    box("*" + _a(code) + "*", 18, y + 0.32 * CM, align=1, bold=True)
-    y += 1.4 * CM + 8
+    code = str(order.barkod_kodu or order.order_number or "").strip()
+    if code:
+        y = _barkod_ciz(pg, code, m, y, w)
+    else:
+        y = box("BARKOD YOK", 12, y, align=1, bold=True)
 
-    box("Baskici paneli - kargo etiketi (placeholder)", 7, y, align=1)
+    box(_a(store_name or "BASKICI") + " - kargo etiketi", 7, y + 4, align=1)
 
     buf = io.BytesIO()
     doc.save(buf)

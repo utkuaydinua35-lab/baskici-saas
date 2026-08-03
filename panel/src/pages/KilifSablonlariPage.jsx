@@ -76,22 +76,7 @@ export default function KilifSablonlariPage() {
           <div key={t.id} className="card !p-0 overflow-hidden">
             <div className="h-64 bg-panel-input relative flex items-center justify-center p-2">
               {t.image_url ? (
-                <div className="relative h-full">
-                  <img src={t.image_url} alt={t.label} className="h-full w-auto block" />
-                  {/* Kutular görselin kendi kutusuna göre — letterbox kayması olmaz */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute border-2 border-emerald-500/70 bg-emerald-500/10"
-                      style={{ left: `${t.area.x * 100}%`, top: `${t.area.y * 100}%`,
-                        width: `${t.area.w * 100}%`, height: `${t.area.h * 100}%`,
-                        borderRadius: `${(t.area.radius || 0) * 100}%` }} />
-                    {(t.cutouts || []).map((c, i) => (
-                      <div key={i} className="absolute border-2 border-amber-400/80 bg-amber-400/20"
-                        style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`,
-                          width: `${c.w * 100}%`, height: `${c.h * 100}%`,
-                          borderRadius: `${(c.radius || 0) * 100}%` }} />
-                    ))}
-                  </div>
-                </div>
+                <KartOnizleme t={t} />
               ) : (
                 <div className="text-center text-xs text-panel-muted p-4">
                   <div className="text-2xl">📱</div>
@@ -144,6 +129,54 @@ export default function KilifSablonlariPage() {
   )
 }
 
+// Kart önizlemesi — kutular EDİTÖRDEKİYLE aynı hesapla çizilir: konumlar
+// görselin kendi kutusuna oranlı, köşe yuvarlaklığı piksel (yüzde elips yapar).
+function KartOnizleme({ t }) {
+  const ref = useRef(null)
+  const [px, setPx] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const olc = () => setPx({ w: el.clientWidth, h: el.clientHeight })
+    olc()
+    const ro = new ResizeObserver(olc)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [t.image_url])
+  const kutu = (k, cls) => (
+    <div className={`absolute border-2 ${cls}`}
+      style={{
+        left: `${k.x * 100}%`, top: `${k.y * 100}%`,
+        width: `${k.w * 100}%`, height: `${k.h * 100}%`,
+        borderRadius: kose(k, px),
+      }} />
+  )
+  return (
+    <div ref={ref} className="relative h-full">
+      <img src={t.image_url} alt={t.label} className="h-full w-auto block"
+        onLoad={() => ref.current && setPx({
+          w: ref.current.clientWidth, h: ref.current.clientHeight })} />
+      <div className="absolute inset-0 pointer-events-none">
+        {kutu(t.area, 'border-emerald-500/70 bg-emerald-500/10')}
+        {(t.cutouts || []).map((c, i) => (
+          <span key={i}>{kutu(c, 'border-amber-400/80 bg-amber-400/20')}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
+// Köşe yarıçapı: kutunun KISA kenarına oranlı sabit piksel. Ölçüm henüz
+// yoksa (görsel yeni yükleniyor) yüzdeye düşülür — köşe hiç kaybolmasın.
+function kose(k, px) {
+  const w = (k.w || 0) * (px.w || 0)
+  const h = (k.h || 0) * (px.h || 0)
+  const r = k.radius || 0
+  if (!r) return 0
+  return w > 0 && h > 0 ? `${r * Math.min(w, h)}px` : `${r * 100}%`
+}
+
 // ─── Alan editörü ─────────────────────────────────────────────
 // Yeşil kutu = müşterinin tasarım yapabildiği baskı alanı.
 // Sarı kutular = basılamayan bölgeler (kamera, MagSafe halkası).
@@ -161,6 +194,19 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const boxRef = useRef(null)
   const drag = useRef(null)
+  // Kutu ölçüleri — köşe yuvarlaklığını piksele çevirmek için. Yüzde
+  // verilirse tarayıcı ELİPS çizer (kenarlar ortaya doğru şişer); doğrusu
+  // kısa kenara oranlı sabit yarıçap.
+  const [tuvalPx, setTuvalPx] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const olc = () => setTuvalPx({ w: el.clientWidth, h: el.clientHeight })
+    olc()
+    const ro = new ResizeObserver(olc)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [t.image_url])
 
   const kesikler = t.cutouts || []
   const aktif = sel === 'baski' ? t.area : kesikler[sel]
@@ -180,12 +226,6 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const basla = (e, tip) => {
     e.preventDefault(); e.stopPropagation()
     if (aktif) drag.current = { tip, bas: oran(e), kutu: { ...aktif } }
-  }
-  const yeniCiz = (e) => {
-    e.preventDefault()
-    const p = oran(e)
-    drag.current = { tip: 'yeni', bas: p }
-    setAktif({ x: p.x, y: p.y, w: 0, h: 0 })
   }
   const hareket = (e) => {
     if (!drag.current) return
@@ -227,20 +267,6 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const setYuvarlaklik = (v) => sel === 'baski'
     ? setT(p => ({ ...p, area: { ...p.area, radius: v } }))
     : setT(p => ({ ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, radius: v } : c) }))
-
-  // Düz zeminde çekilmiş ürün fotoğrafının arka planını temizler
-  const arkaPlanSil = async () => {
-    if (!window.confirm(
-      'Fotoğrafın arka planı silinip kılıfın etrafındaki boşluk kırpılacak.\n\n' +
-      'Sonuç beğenmezseniz görseli yeniden yükleyebilirsiniz. Devam edilsin mi?')) return
-    setUploading(true); setErr('')
-    try {
-      const r = await api.post(`/api/case-templates/${t.id}/remove-bg`, {})
-      setT(p => ({ ...p, image_url: r.image_url }))
-    } catch (e) {
-      setErr(typeof e?.detail === 'string' ? e.detail : 'Arka plan silinemedi')
-    } finally { setUploading(false) }
-  }
 
   const gorselYukle = async (file) => {
     if (!file) return
@@ -286,7 +312,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
       style={{
         left: `${kutu.x * 100}%`, top: `${kutu.y * 100}%`,
         width: `${kutu.w * 100}%`, height: `${kutu.h * 100}%`,
-        borderRadius: `${(kutu.radius || 0) * 100}%`,
+        borderRadius: kose(kutu, tuvalPx),
         cursor: secili ? 'move' : 'pointer',
         opacity: secili ? 1 : 0.6,
       }}>
@@ -323,9 +349,10 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
             {/* Tuval */}
             <div className="flex justify-center bg-panel-input rounded-xl p-2">
             <div ref={boxRef} className="relative select-none inline-block"
-              onMouseDown={e => { if (e.target === e.currentTarget || e.target.tagName === 'IMG') yeniCiz(e) }}
               onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
               <img src={t.image_url} alt="" draggable={false}
+                onLoad={() => boxRef.current && setTuvalPx({
+                  w: boxRef.current.clientWidth, h: boxRef.current.clientHeight })}
                 className="block pointer-events-none max-h-[58vh] w-auto" />
               {kutuCiz(t.area, 'yesil', sel === 'baski')}
               {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
@@ -418,14 +445,6 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
                 </div>
               </div>
 
-              <button onClick={arkaPlanSil} disabled={uploading}
-                className="btn-ghost !py-1.5 text-xs w-full disabled:opacity-40">
-                ✂️ {uploading ? 'İşleniyor…' : 'Arka planı sil'}
-              </button>
-              <p className="text-[11px] text-panel-muted -mt-1">
-                Düz zeminde çekilmiş fotoğraflarda çalışır: masa/fon saydamlaşır,
-                kılıfın etrafındaki boşluk kırpılır.
-              </p>
               <label className="block">
                 <span className="text-xs text-panel-muted">Görseli değiştir</span>
                 <input type="file" accept="image/*" className="block mt-1 text-xs"
@@ -436,8 +455,8 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
         )}
 
         <p className="text-[11px] text-panel-muted mt-3">
-          Boş alana basıp sürükleyerek seçili kutuyu yeniden çizebilir, kutunun
-          kenarındaki tutamaklarla boyutlandırabilirsiniz.
+Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
+          Üstteki listeden hangi alanı düzenlediğinizi seçersiniz.
         </p>
 
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}

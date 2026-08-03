@@ -109,7 +109,7 @@ export default function Canvas({
         style={{
           left: `${a.x * 100}%`, top: `${a.y * 100}%`,
           width: `${a.w * 100}%`, height: `${a.h * 100}%`,
-          borderRadius: `${(a.radius || 0) * 100}%`,
+          borderRadius: `${(a.radius || 0) * Math.min(areaPx.w, areaPx.h)}px`,
         }}>
         {layers.map((l) => {
           const secili = l.id === selected;
@@ -167,7 +167,7 @@ export default function Canvas({
               top: `${((c.y - a.y) / a.h) * 100}%`,
               width: `${(c.w / a.w) * 100}%`,
               height: `${(c.h / a.h) * 100}%`,
-              borderRadius: `${(c.radius || 0) * 100}%`,
+              borderRadius: `${(c.radius || 0) * Math.min((c.w / a.w) * areaPx.w, (c.h / a.h) * areaPx.h)}px`,
               background: "rgba(0,0,0,.55)",
               backdropFilter: "blur(2px)",
             }} />

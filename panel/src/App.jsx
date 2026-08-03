@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import {lazy, Suspense, Component } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -35,8 +35,36 @@ function Loader() {
   )
 }
 
+// Deploy sonrası eski sekmede kalan tarayıcı, artık var olmayan parça
+// dosyasını (chunk) ister ve React tüm sayfayı boş bırakır — beyaz ekran.
+// Bu sınır o hatayı yakalayıp sayfayı BİR KEZ yeniler; ikinci kez olursa
+// (gerçek bir hata) kullanıcıya mesaj gösterir.
+class SurumSiniri extends Component {
+  constructor(p) { super(p); this.state = { hata: false } }
+  static getDerivedStateFromError() { return { hata: true } }
+  componentDidCatch(err) {
+    const eskiParca = /Loading chunk|dynamically imported module|Importing a module script/i
+      .test(String(err?.message || ''))
+    if (eskiParca && !sessionStorage.getItem('surum_yenilendi')) {
+      sessionStorage.setItem('surum_yenilendi', '1')
+      window.location.reload()
+    }
+  }
+  render() {
+    if (!this.state.hata) return this.props.children
+    return (
+      <div className="p-10 text-center text-sm text-panel-muted">
+        Sayfa yüklenemedi.
+        <button onClick={() => { sessionStorage.removeItem('surum_yenilendi'); location.reload() }}
+          className="btn-primary ml-2">Yeniden dene</button>
+      </div>
+    )
+  }
+}
+
 export default function App() {
   return (
+    <SurumSiniri>
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -74,5 +102,6 @@ export default function App() {
         } />
       </Routes>
     </Suspense>
+    </SurumSiniri>
   )
 }

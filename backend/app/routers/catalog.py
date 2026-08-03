@@ -61,6 +61,8 @@ class ProductCreate(BaseModel):
     base_price: Decimal = Field(..., ge=0)
     compare_at_price: Decimal | None = Field(None, ge=0)
     cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
+    # Tasarım stüdyosu modülleri (kılıf şablonu anahtarları)
+    studio_templates: list[str] | None = Field(None, max_length=10)
     tags: str | None = Field(None, max_length=500)
     position: int = 0
 
@@ -75,6 +77,8 @@ class ProductUpdate(BaseModel):
     base_price: Decimal | None = Field(None, ge=0)
     compare_at_price: Decimal | None = Field(None, ge=0)
     cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
+    # Tasarım stüdyosu modülleri (kılıf şablonu anahtarları)
+    studio_templates: list[str] | None = Field(None, max_length=10)
     tags: str | None = Field(None, max_length=500)
     position: int | None = None
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
@@ -216,6 +220,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "base_price": str(p.base_price),
         "compare_at_price": str(p.compare_at_price) if p.compare_at_price is not None else None,
         "cost_price": str(p.cost_price) if p.cost_price is not None else None,
+        "studio_templates": p.studio_templates or [],
         "currency": p.currency,
         "tags": p.tags,
         "position": p.position,
@@ -330,6 +335,7 @@ def create_product(
         base_price=body.base_price,
         compare_at_price=body.compare_at_price,
         cost_price=body.cost_price,
+        studio_templates=body.studio_templates or [],
         tags=body.tags,
         position=body.position,
     )

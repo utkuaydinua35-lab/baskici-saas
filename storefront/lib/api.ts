@@ -69,6 +69,8 @@ export interface ProductDetail {
   slug: string;
   title: string;
   custom_fields?: CustomField[];
+  // Tasarım stüdyosu modülleri — ürün sayfasında "Kendi Tasarımını Yap"
+  studio_templates?: { key: string; label: string; description: string | null; image_url: string }[];
   models_per_item?: number;
   video_url?: string | null;
   description: string | null;

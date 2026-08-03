@@ -7,6 +7,7 @@ import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
 import ProductQuestions from "@/components/ProductQuestions";
+import StudioModules from "@/components/StudioModules";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import TrustBadges from "@/components/TrustBadges";
 import FavButton from "@/components/FavButton";
@@ -189,6 +190,8 @@ export default async function ProductPage({ params }: Props) {
       )}
 
       {/* Ürün soru-cevap — satın alma şartı yok, yanıtlananlar yayınlanır */}
+      <StudioModules modules={product.studio_templates || []} productSlug={product.slug} />
+
       <ProductQuestions productSlug={product.slug} />
 
       <RecentlyViewed

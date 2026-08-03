@@ -33,6 +33,7 @@ export default function UrunDetayPage() {
         title: prod.title, slug: prod.slug,
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
         cost_price: prod.cost_price || '',
+        studio_templates: prod.studio_templates || [],
         description: prod.description || '', tags: prod.tags || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
       }
@@ -93,6 +94,7 @@ export default function UrunDetayPage() {
         base_price: Number(form.base_price),
         compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
         cost_price: form.cost_price ? Number(form.cost_price) : null,
+        studio_templates: form.studio_templates || [],
         description: form.description || null, tags: form.tags || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
@@ -289,6 +291,8 @@ export default function UrunDetayPage() {
           Boş bırakılırsa ürün adı ve açıklamasından otomatik üretilir.
         </p>
       </section>
+
+      <StudyoModulleri form={form} setForm={setForm} storeId={storeId} />
 
       <section className="card space-y-2">
           <h2 className="text-sm font-semibold">Koleksiyonlar</h2>
@@ -878,5 +882,63 @@ function InlineCollectionCreate({ storeId, productId, currentIds, onDone, setMsg
         className="text-xs text-emerald-700 font-medium disabled:opacity-40">Oluştur</button>
       <button onClick={() => setOpen(false)} className="text-xs text-panel-muted">Vazgeç</button>
     </span>
+  )
+}
+
+// ─── Tasarım stüdyosu modülleri ───────────────────────────────
+// Ürüne bağlanan kılıf şablonları. Bağlıysa vitrindeki ürün sayfasında
+// "Kendi Tasarımını Yap" bölümü çıkar ve müşteri o kılıflarla tasarım yapar.
+function StudyoModulleri({ form, setForm, storeId }) {
+  const [sablonlar, setSablonlar] = useState([])
+  const secili = form.studio_templates || []
+
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/case-templates?store_id=${storeId}`)
+      .then(r => setSablonlar((r.templates || []).filter(t => t.is_active && t.image_url)))
+      .catch(() => {})
+  }, [storeId])
+
+  const degistir = (key) => setForm(f => {
+    const v = f.studio_templates || []
+    return { ...f, studio_templates: v.includes(key) ? v.filter(k => k !== key) : [...v, key] }
+  })
+
+  return (
+    <section className="card space-y-2">
+      <h2 className="text-sm font-semibold">🎨 Tasarım Stüdyosu Modülleri</h2>
+      <p className="text-[11px] text-panel-muted -mt-1">
+        Seçtiğiniz kılıf şablonları bu ürünün <b>vitrin sayfasında</b> görünür;
+        müşteri oradan kendi tasarımını yapıp sipariş verebilir.
+      </p>
+      {sablonlar.length === 0 ? (
+        <p className="text-xs text-panel-muted">
+          Henüz yayında kılıf şablonu yok — Katalog → Kılıf Şablonları'ndan ekleyin.
+        </p>
+      ) : (
+        <div className="flex gap-2.5 flex-wrap">
+          {sablonlar.map(t => {
+            const on = secili.includes(t.key)
+            return (
+              <button key={t.key} type="button" onClick={() => degistir(t.key)}
+                className={`rounded-xl border-2 overflow-hidden w-24 text-left transition ${on
+                  ? 'border-panel-accent' : 'border-panel-border opacity-70 hover:opacity-100'}`}>
+                <div className="h-24 bg-panel-input flex items-center justify-center">
+                  <img src={t.image_url} alt={t.label} className="h-full w-auto" />
+                </div>
+                <div className="px-1.5 py-1 text-[11px] truncate">
+                  {on ? '✓ ' : ''}{t.label}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {secili.length > 0 && (
+        <p className="text-[11px] text-emerald-700">
+          {secili.length} modül bağlı — ürün sayfasında tasarım seçenekleri görünecek.
+        </p>
+      )}
+    </section>
   )
 }

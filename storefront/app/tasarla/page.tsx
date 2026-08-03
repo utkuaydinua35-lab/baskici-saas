@@ -48,17 +48,24 @@ export default function TasarlaPage() {
 
   // ── Yükleme ──
   useEffect(() => {
+    // Ürün sayfasındaki modülden gelindiyse o kılıf ve ürün seçili açılır
+    const q = new URLSearchParams(window.location.search);
+    const kilifKey = q.get("kilif");
+    const urunSlug = q.get("urun");
+
     fetch("/api/studio/templates")
       .then((r) => r.json())
       .then((d: CaseTemplate[]) => {
         setTemplates(Array.isArray(d) ? d : []);
-        if (Array.isArray(d) && d.length) setTpl(d[0]);
+        if (Array.isArray(d) && d.length) {
+          setTpl(d.find((t) => t.key === kilifKey) || d[0]);
+        }
       })
       .catch(() => setDurum("Kılıflar yüklenemedi"));
     fetch("/api/shop-config")
       .then((r) => (r.ok ? r.json() : null))
       .then((c) => {
-        const slug = c?.settings?.studio_product_slug;
+        const slug = urunSlug || c?.settings?.studio_product_slug;
         if (!slug) return;
         return fetch(`/api/product/${slug}`).then((r) => (r.ok ? r.json() : null))
           .then((p) => { if (p) setUrun(p); });

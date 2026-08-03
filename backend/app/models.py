@@ -63,6 +63,13 @@ class Tenant(Base):
         String(20), default="opus", server_default=text("'opus'"), nullable=False
     )
 
+    # Toplu takip: bu tarihten ONCE kargoya verilmis gonderiler "takip bekleyen"
+    # listesinde gosterilmez. Sisteme gecmeden onceki birikmis gonderilerin
+    # listeyi doldurmasini engeller. NULL = tumu gosterilir.
+    takip_baslangic: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -1501,6 +1508,11 @@ class CatalogProduct(Base):
 
     base_price: Mapped[float] = mapped_column(Numeric(12, 2))
     compare_at_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Tasarım stüdyosu modülleri: bu üründe müşteri hangi kılıf şablonlarıyla
+    # kendi tasarımını yapabilir (CaseTemplate.key listesi). Boşsa ürün
+    # stüdyoya bağlı değildir.
+    studio_templates: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"))
     # Birim maliyet (KDV hariç alış/üretim) — kâr marjı raporunda kullanılır.
     # Boşsa mağaza ayarındaki varsayılan birim maliyete düşülür.
     cost_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)

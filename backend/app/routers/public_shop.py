@@ -38,6 +38,26 @@ checkout_rate_limit = make_rate_limiter(max_hits=10, window=60.0)
 status_rate_limit = make_rate_limiter(max_hits=30, window=60.0)
 
 
+def _studio_modules(db, store, product) -> list[dict]:
+    """Ürüne bağlı kılıf şablonları (yalnız yayında ve görseli olanlar)."""
+    from app.models import CaseTemplate
+
+    anahtarlar = list(product.studio_templates or [])
+    if not anahtarlar:
+        return []
+    rows = db.scalars(select(CaseTemplate).where(
+        CaseTemplate.store_id == store.id,
+        CaseTemplate.key.in_(anahtarlar),
+        CaseTemplate.is_active.is_(True),
+        CaseTemplate.image_path.isnot(None),
+    ).order_by(CaseTemplate.position)).all()
+    return [
+        {"key": t.key, "label": t.label, "description": t.description,
+         "image_url": f"/storage/{t.image_path}"}
+        for t in rows
+    ]
+
+
 def _resolve_store(db: Session, store_slug: str) -> Store:
     """Vitrin mağazasını slug ile çöz. Yalnızca platform='storefront' + aktif."""
     store = db.scalar(select(Store).where(
@@ -86,6 +106,9 @@ def _serialize_product_detail(p: CatalogProduct) -> dict:
         "slug": p.slug,
         "title": p.title,
         "custom_fields": p.custom_fields or [],
+        # Tasarım stüdyosu modülleri — müşteri bu kılıflarla kendi tasarımını
+        # yapabilir; ürün sayfasında "Kendi Tasarımını Yap" bölümü olarak çıkar
+        "studio_templates": _studio_modules(db, store, p),
         "models_per_item": p.models_per_item or 1,
         "video_url": p.video_url,
         "description": p.description,

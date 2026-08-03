@@ -133,12 +133,16 @@ def create_shipment(
         try:
             import json as _json
             import logging as _lg
-            _icerik = dict(body.get("content") or {})
+            _cl = dict(body.get("client") or {})       # ALICI burada (content DEĞİL)
             _lg.getLogger("basit_kargo").warning(
-                "[basit-kargo] HTTP %s | handler=%s | yanit=%s | gonderilen=%s",
-                r.status_code, body.get("handlerCode"), (r.text or "")[:400],
-                _json.dumps({k: _icerik.get(k) for k in
-                             ("name", "city", "town", "address", "phone", "email")},
+                "[basit-kargo] HTTP %s | handler=%s | addressId=%s brandId=%s | "
+                "yanit=%s | alici=%s",
+                r.status_code, body.get("handlerCode"),
+                "var" if body.get("addressId") else "YOK",
+                "var" if body.get("brandId") else "YOK",
+                (r.text or "")[:300],
+                _json.dumps({k: _cl.get(k) for k in
+                             ("name", "phone", "city", "town", "address")},
                             ensure_ascii=False)[:400],
             )
         except Exception:  # noqa: BLE001

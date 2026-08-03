@@ -127,6 +127,22 @@ def create_shipment(
         return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:180]}"}
 
     if r.status_code not in (200, 201):
+        # Sebebi tespit edebilmek icin GONDERDIGIMIZ veriyi de logla. 500 cogu zaman
+        # onlarin tarafidir ama bazen hatali/eksik alan da 500 olarak doner; govde ve
+        # payload yan yana olmadan ayirt edilemiyor.
+        try:
+            import json as _json
+            import logging as _lg
+            _icerik = dict(body.get("content") or {})
+            _lg.getLogger("basit_kargo").warning(
+                "[basit-kargo] HTTP %s | handler=%s | yanit=%s | gonderilen=%s",
+                r.status_code, body.get("handlerCode"), (r.text or "")[:400],
+                _json.dumps({k: _icerik.get(k) for k in
+                             ("name", "city", "town", "address", "phone", "email")},
+                            ensure_ascii=False)[:400],
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return {"ok": False, "message": f"Basit Kargo HTTP {r.status_code}: {r.text[:200]}"}
 
     d = r.json() if r.content else {}

@@ -147,34 +147,6 @@ def kargo_gonder(
 
     handler_code = (store.config or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER
 
-    # ── KENDİ ANLAŞMAM (SELF_*) ─────────────────────────────────────────────
-    # Barkod kargo firmasının kendi sisteminde basılıyor; takip numarası günün
-    # sonunda Excel ile geliyor. Basit Kargo'ya HİÇ gitmeyiz: gönderi kaydını
-    # takip numarasız açarız, sipariş "takip no bekliyor" listesine düşer.
-    # (Mail de gitmez — shipments._send_shipment_email takip no yoksa atlıyor.)
-    if str(handler_code).upper().startswith("SELF_"):
-        from app.services import shipments as _sh
-        _kalan = _sh.remaining_counts(order)
-        _items = [{"line_item_id": k, "quantity": v} for k, v in _kalan.items() if v > 0]
-        if not _items:
-            raise HTTPException(400, "Siparişin tüm kalemleri zaten gönderilmiş.")
-        _firma = basit_kargo.handler_name(handler_code)
-        try:
-            _sh.create_shipment(
-                db, order, items=_items, takip_no=None, kargo_firma=_firma,
-                note="Kendi kargo anlaşması — takip no bekleniyor",
-                user_label=user.email, send_email=False,
-            )
-        except _sh.ShipmentError as e:
-            raise HTTPException(422, str(e))
-        db.commit()
-        return {
-            "ok": True, "kendi_kargo": True, "takip_no": None,
-            "handler_name": _firma, "label_svg": None,
-            "message": (f"{_firma} ile kargoya verildi olarak işlendi. "
-                        "Takip numarası Toplu Takip No ekranından Excel ile eşlenecek."),
-        }
-
     # 1) Basit Kargo gönderi + barkod
     res = basit_kargo.create_shipment(
         order.raw or {},

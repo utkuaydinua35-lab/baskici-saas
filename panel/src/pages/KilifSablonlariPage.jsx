@@ -217,19 +217,30 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   // Fare konumunu görsele oransal (0-1) çevir
   const oran = (e) => {
     const b = boxRef.current?.getBoundingClientRect()
-    if (!b) return { x: 0, y: 0 }
+    if (!b || !b.width || !b.height) return null   // ölçüm yoksa hareket yok
     return {
       x: Math.max(0, Math.min(1, (e.clientX - b.left) / b.width)),
       y: Math.max(0, Math.min(1, (e.clientY - b.top) / b.height)),
     }
   }
+  const ESIK = 3   // px — altındaki hareket "tıklama" sayılır
   const basla = (e, tip) => {
     e.preventDefault(); e.stopPropagation()
-    if (aktif) drag.current = { tip, bas: oran(e), kutu: { ...aktif } }
+    const p0 = oran(e)
+    if (aktif && p0) drag.current = { tip, bas: p0, kutu: { ...aktif },
+                                basX: e.clientX, basY: e.clientY, basladi: false }
   }
   const hareket = (e) => {
     if (!drag.current) return
-    const p = oran(e), { tip, bas, kutu } = drag.current
+    // Eşiği aşana kadar hiçbir şey değiştirme — tıklama kutuyu bozmasın
+    if (!drag.current.basladi) {
+      if (Math.abs(e.clientX - drag.current.basX) < ESIK &&
+          Math.abs(e.clientY - drag.current.basY) < ESIK) return
+      drag.current.basladi = true
+    }
+    const p = oran(e)
+    if (!p) return
+    const { tip, bas, kutu } = drag.current
     if (tip === 'yeni') {
       setAktif({ x: Math.min(bas.x, p.x), y: Math.min(bas.y, p.y),
                  w: Math.abs(p.x - bas.x), h: Math.abs(p.y - bas.y) })
@@ -315,6 +326,9 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
         borderRadius: kose(kutu, tuvalPx),
         cursor: secili ? 'move' : 'pointer',
         opacity: secili ? 1 : 0.6,
+        // Seçili olmayan kutular üstte: tıklamak isteyince altındaki seçili
+        // kutunun tutamağı yerine kendisi yakalanır
+        zIndex: secili ? 1 : 2,
       }}>
       {secili && TUTAMAKLAR.map(([h, lx, ly, cur]) => (
         <div key={h} onMouseDown={e => basla(e, h)}

@@ -466,6 +466,17 @@ def _order_payload(db, order) -> dict:
             kisiye_ids = _get_kop_product_ids(db, order.store_id)
         except Exception:
             kisiye_ids = set()
+    # Couple ürünler: paketlemede İKİ modelin de görünmesi gerekiyor — kutuya
+    # iki farklı kılıf giriyor. Tek sorguyla siparişin couple kalemlerini bul.
+    _couple_pids: set = set()
+    _pids = {str(li.product_id) for li in (order.line_items or []) if li.product_id}
+    if _pids:
+        from app.models import CoupleProduct as _CP
+        _q = select(_CP.product_id).where(_CP.product_id.in_(_pids))
+        if order.store_id:
+            _q = _q.where(_CP.store_id == order.store_id)
+        _couple_pids = {str(p) for (p,) in db.execute(_q).all()}
+
     items = []
     _img_filled = False
     for li in (order.line_items or []):
@@ -474,10 +485,18 @@ def _order_payload(db, order) -> dict:
         thumb = _design_for_line_item(db, order, li, mi, adapter, kisiye_ids)
         if li.product_image_url and li.product_image_url != before:
             _img_filled = True
+        _is_couple = bool(li.product_id) and str(li.product_id) in _couple_pids
+        if _is_couple:
+            from app.services.mold_planner import couple_modelleri
+            _m1, _m2 = couple_modelleri(li)
+        else:
+            _m1, _m2 = _extract_model(li), None
         items.append({
             "line_item_id": str(li.id),
             "title": li.title,
-            "model": _extract_model(li),
+            "model": _m1 or None,
+            "model_2": _m2 or None,         # yalnizca couple'da dolu
+            "is_couple": _is_couple,
             "quantity": li.quantity or 1,
             "kalip_kodu": kod_label,        # "A5" / "A5 P1" / None
             "thumbnail_url": thumb,         # gorsel ya da None

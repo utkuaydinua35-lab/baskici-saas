@@ -25,7 +25,8 @@ from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission, require_permission
 from app.database import get_db
 from app.services import activity
-from app.models import LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store, User
+from app.models import (LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store,
+                        Tenant, User)
 from app.stages import is_valid_stage
 
 router = APIRouter(prefix="/api/orders", tags=["orders"],
@@ -1275,6 +1276,17 @@ def toplu_takip_no(
 # günün sonunda Excel ile geliyor. "Kargoya Ver"e basılan sipariş takip numarası
 # gelene kadar burada bekler.
 
+def _tarih_once(a, b) -> bool:
+    """a < b — biri tz'siz gelirse patlamadan karsilastir.
+
+    Kayitlar tz'li geliyor ama eski satirlarda tz'siz deger gorulebiliyor;
+    ciplak '<' bu durumda TypeError atip tum listeyi dusururdu."""
+    if (a.tzinfo is None) != (b.tzinfo is None):
+        a = a.replace(tzinfo=UTC) if a.tzinfo is None else a
+        b = b.replace(tzinfo=UTC) if b.tzinfo is None else b
+    return a < b
+
+
 def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
     """Kargoya verilmiş ama TAKİP NUMARASI olmayan siparişler.
 
@@ -1319,6 +1331,9 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
         ).order_by(desc(Order.created_at))
     ).all()
 
+    # Sisteme gecmeden onceki birikmis gonderiler listeyi doldurmasin.
+    _baslangic = db.scalar(select(Tenant.takip_baslangic).where(Tenant.id == tenant_id))
+
     _magazalar = {str(s.id): s.name for s in db.scalars(
         select(Store).where(Store.tenant_id == tenant_id)).all()}
     _bayiler = {str(d.id): d.name for d in db.scalars(
@@ -1343,6 +1358,10 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
             continue        # kargo ücreti almadığımız bayii
         _sa = _raw.get("shipping_address") or {}
         _bos = next((sh for sh in _shs if not (sh.takip_no or "").strip()), None)
+        _zaman = (_cikis.get(o.id) or (_bos.created_at if _bos else None)
+                  or o.created_at)
+        if _baslangic and _zaman and _tarih_once(_zaman, _baslangic):
+            continue        # sisteme gecmeden onceki birikmis gonderi
         out.append({
             # gönderi kaydı yoksa None — uygulama aşamasında oluşturulur
             "shipment_id": str(_bos.id) if _bos else None,
@@ -1353,9 +1372,7 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
                                           (_sa.get("address2") or "")] if x).strip(),
             "il": (_sa.get("province") or _sa.get("city") or "").strip(),
             "ilce": (_sa.get("city") or "").strip(),
-            "cikis_tarihi": (_zaman.isoformat() if (_zaman := (
-                _cikis.get(o.id) or (_bos.created_at if _bos else None)
-                or o.created_at)) else None),
+            "cikis_tarihi": _zaman.isoformat() if _zaman else None,
             "kaynak": (_bayiler.get(_did) if _did
                        else _magazalar.get(str(o.store_id or ""))) or "—",
             "kaynak_tipi": "bayii" if _did else "magaza",
@@ -1372,7 +1389,40 @@ def takip_bekleyen(
 ):
     """Takip numarası bekleyen gönderiler — isim · çıkış tarihi · mağaza/bayii."""
     items = _bekleyen_gonderiler(db, user.tenant_id)
-    return {"toplam": len(items), "items": items}
+    _bas = db.scalar(select(Tenant.takip_baslangic).where(Tenant.id == user.tenant_id))
+    return {
+        "toplam": len(items),
+        "items": items,
+        "baslangic": _bas.isoformat() if _bas else None,
+    }
+
+
+@router.post("/_takip-baslangic", response_model=None)
+def takip_baslangic_ayarla(
+    tarih: str = Query("", description="ISO tarih; boş = şu an, 'temizle' = filtreyi kaldır"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bekleyen listesinin başlangıç tarihini ayarla.
+
+    Bu tarihten ÖNCE kargoya verilmiş gönderiler listede görünmez. Eski birikmiş
+    gönderileri gizlemek için kullanılır; 'temizle' ile tümü geri gelir.
+    """
+    t = db.get(Tenant, user.tenant_id)
+    if not t:
+        raise HTTPException(404, "Kiracı bulunamadı")
+    if tarih == "temizle":
+        t.takip_baslangic = None
+    elif tarih:
+        try:
+            _d = datetime.fromisoformat(tarih)
+        except ValueError:
+            raise HTTPException(400, "Tarih okunamadı (ISO biçimi bekleniyor).")
+        t.takip_baslangic = _d if _d.tzinfo else _d.replace(tzinfo=UTC)
+    else:
+        t.takip_baslangic = datetime.now(UTC)
+    db.commit()
+    return {"ok": True, "baslangic": t.takip_baslangic.isoformat() if t.takip_baslangic else None}
 
 
 @router.post("/_takip-xlsx", response_model=None)

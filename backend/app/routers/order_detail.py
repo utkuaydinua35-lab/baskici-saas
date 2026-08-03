@@ -302,9 +302,7 @@ def _couple_parcalar(li: LineItem, db) -> list[dict]:
             if _d2 is None and _cp.design_id_2:
                 _d2 = db.scalar(select(_Dz).where(_Dz.id == _cp.design_id_2))
 
-    _pm1, _pm2 = _mp.extract_couple_models(li)
-    _m1 = (li.device_model_override or "").strip() or _pm1 or (_mp.extract_phone_model(li) or "")
-    _m2 = (li.device_model_override_2 or "").strip() or _pm2 or _m1
+    _m1, _m2 = _mp.couple_modelleri(li)
 
     out = []
     for _slot, _design, _model, _manual in (

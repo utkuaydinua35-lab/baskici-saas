@@ -269,7 +269,16 @@ export default function PackagingPage() {
                       : <div className="text-4xl opacity-30">📱</div>}
                   </div>
                   <div className="flex items-center justify-between px-2.5 py-2 gap-2">
-                    <span className="text-xs font-medium text-gray-200 truncate">{it.model || (it.title || '').slice(0, 22)}</span>
+                    {/* Couple: kutuya İKİ kılıf giriyor — iki modeli de göster */}
+                    {it.is_couple ? (
+                      <div className="min-w-0 leading-tight">
+                        <div className="text-[9px] text-accent/80 font-semibold tracking-wide">ÇİFT KILIF</div>
+                        <div className="text-xs font-medium text-gray-200 truncate">1· {it.model || '—'}</div>
+                        <div className="text-xs font-medium text-gray-200 truncate">2· {it.model_2 || '—'}</div>
+                      </div>
+                    ) : (
+                      <span className="text-xs font-medium text-gray-200 truncate">{it.model || (it.title || '').slice(0, 22)}</span>
+                    )}
                     <span className="text-[10px] px-2 py-0.5 rounded bg-accent/15 text-accent shrink-0 font-mono">
                       {it.kalip_kodu || '—'}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
                     </span>

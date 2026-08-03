@@ -1132,6 +1132,18 @@ function TopluTakipDialog({ onClose, onDone }) {
     finally { setBusy(false) }
   }
 
+  // Listeyi bir tarihten itibaren göster. Geri alınabilir olduğu için onay sormuyoruz:
+  // "tümünü göster" filtreyi kaldırır, hiçbir gönderi silinmez.
+  const baslangicAyarla = async (tarih) => {
+    setBusy(true)
+    try {
+      await api.post(`/api/orders/_takip-baslangic?tarih=${encodeURIComponent(tarih)}`)
+      await loadBekleyen()
+      toast.success(tarih === 'temizle' ? 'Tüm geçmiş gösteriliyor' : 'Liste şu andan itibaren')
+    } catch (e) { toast.error(e?.detail || 'Ayarlanamadı') }
+    finally { setBusy(false) }
+  }
+
   const DURUM = {
     kesin: { t: 'Kesin eşleşti', c: 'text-emerald-300' },
     supheli: { t: 'Şüpheli — onayla', c: 'text-amber-300' },
@@ -1157,8 +1169,27 @@ function TopluTakipDialog({ onClose, onDone }) {
 
         {/* Bekleyenler */}
         <div className="rounded-lg border border-brand-border/60 mb-4">
-          <div className="px-3 py-2 text-xs font-medium text-gray-300 border-b border-brand-border/60">
-            Takip numarası bekleyen gönderiler {bekleyen ? `(${bekleyen.toplam})` : '…'}
+          <div className="px-3 py-2 border-b border-brand-border/60 flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-gray-300">
+              Takip numarası bekleyen gönderiler {bekleyen ? `(${bekleyen.toplam})` : '…'}
+            </span>
+            {bekleyen && !bekleyen.hata && (
+              <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                {bekleyen.baslangic
+                  ? `${tarihGoster(bekleyen.baslangic)} tarihinden itibaren`
+                  : 'tüm geçmiş'}
+                <button onClick={() => baslangicAyarla('')} disabled={busy}
+                        className="ml-2 underline hover:text-gray-300 disabled:opacity-50">
+                  şu andan başlat
+                </button>
+                {bekleyen.baslangic && (
+                  <button onClick={() => baslangicAyarla('temizle')} disabled={busy}
+                          className="ml-2 underline hover:text-gray-300 disabled:opacity-50">
+                    tümünü göster
+                  </button>
+                )}
+              </span>
+            )}
           </div>
           {bekleyen === null ? (
             <div className="px-3 py-3 text-xs text-gray-500">Yükleniyor…</div>

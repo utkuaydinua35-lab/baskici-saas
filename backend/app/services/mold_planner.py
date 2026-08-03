@@ -205,6 +205,22 @@ def extract_couple_models(line_item: LineItem) -> tuple[str | None, str | None]:
     return model1, model2
 
 
+def couple_modelleri(line_item: LineItem) -> tuple[str, str]:
+    """Couple kalemin IKI telefon modeli — elle girilen override'lar uygulanmis.
+
+    Sipariş detayi, kalip ve paketleme AYNI modelleri gostermeli. Bu cozum
+    tek yerde durmazsa ekranlar birbirinden ayrisir (paketlemede eski model,
+    detayda elle duzeltilmis model gorunur).
+
+    2. model yoksa 1. model tekrarlanir: cift kilif genelde ayni telefon icin.
+    """
+    pm1, pm2 = extract_couple_models(line_item)
+    m1 = ((line_item.device_model_override or "").strip() or pm1
+          or (extract_phone_model(line_item) or ""))
+    m2 = (line_item.device_model_override_2 or "").strip() or pm2 or m1
+    return m1, m2
+
+
 def plan_molds(
     db: Session,
     *,

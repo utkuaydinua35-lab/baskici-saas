@@ -59,8 +59,12 @@ def main() -> None:
                 sebep = "iptal"
             elif not ((o.current_stage or 0) >= 8 or shs):
                 sebep = f"kargoya verilmemiş (aşama={o.current_stage})"
+            elif ki.get("takip_no") and ki.get("takip_no") == ki.get("barcode"):
+                sebep = (f"★ BEKLEYEN — takip no = Basit Kargo BARKODU "
+                         f"({ki.get('takip_no')}), gerçek kargo takip no değil")
             elif ki.get("takip_no"):
-                sebep = f"takip no VAR (kargo_info: {ki.get('takip_no')})"
+                sebep = (f"takip no VAR (takip={ki.get('takip_no')} "
+                         f"barkod={ki.get('barcode')} kaynak={ki.get('kaynak')})")
             elif any((s.takip_no or "").strip() for s in shs):
                 sebep = "takip no VAR (gönderi kaydında)"
             elif did and did in muaf:

@@ -132,30 +132,19 @@ export default function KilifSablonlariPage() {
 // Kart önizlemesi — kutular EDİTÖRDEKİYLE aynı hesapla çizilir: konumlar
 // görselin kendi kutusuna oranlı, köşe yuvarlaklığı piksel (yüzde elips yapar).
 function KartOnizleme({ t }) {
-  const ref = useRef(null)
-  const [px, setPx] = useState({ w: 0, h: 0 })
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const olc = () => setPx({ w: el.clientWidth, h: el.clientHeight })
-    olc()
-    const ro = new ResizeObserver(olc)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [t.image_url])
+  const [imgOran, setImgOran] = useState(0)
   const kutu = (k, cls) => (
     <div className={`absolute border-2 ${cls}`}
       style={{
         left: `${k.x * 100}%`, top: `${k.y * 100}%`,
         width: `${k.w * 100}%`, height: `${k.h * 100}%`,
-        borderRadius: kose(k, px),
+        borderRadius: kose(k, imgOran),
       }} />
   )
   return (
-    <div ref={ref} className="relative h-full">
+    <div className="relative h-full">
       <img src={t.image_url} alt={t.label} className="h-full w-auto block"
-        onLoad={() => ref.current && setPx({
-          w: ref.current.clientWidth, h: ref.current.clientHeight })} />
+        onLoad={(e) => setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} />
       <div className="absolute inset-0 pointer-events-none">
         {kutu(t.area, 'border-emerald-500/70 bg-emerald-500/10')}
         {(t.cutouts || []).map((c, i) => (
@@ -167,14 +156,18 @@ function KartOnizleme({ t }) {
 }
 
 
-// Köşe yarıçapı: kutunun KISA kenarına oranlı sabit piksel. Ölçüm henüz
-// yoksa (görsel yeni yükleniyor) yüzdeye düşülür — köşe hiç kaybolmasın.
-function kose(k, px) {
-  const w = (k.w || 0) * (px.w || 0)
-  const h = (k.h || 0) * (px.h || 0)
-  const r = k.radius || 0
-  if (!r) return 0
-  return w > 0 && h > 0 ? `${r * Math.min(w, h)}px` : `${r * 100}%`
+// Köşe yarıçapı — ÖLÇÜMSÜZ. borderRadius'un "yatay% / dikey%" biçimi
+// kullanılır: kutunun eni ve boyu farklı olsa da köşe DAİRE kalır. Oran
+// yalnızca görselin doğal en/boy oranına bağlı olduğundan yakınlaştırma
+// köşeyi değiştirmez (eskiden piksel ölçümü zoom sonrası geç gelip
+// yüzdeye düşüyordu; ovallik o yüzden oynuyordu).
+function kose(k, imgOran) {
+  const r = (k.radius || 0) * 100
+  if (!r || !imgOran) return 0
+  const kutuOran = ((k.w || 1) * imgOran) / (k.h || 1)   // genişlik / yükseklik
+  return kutuOran >= 1
+    ? `${r / kutuOran}% / ${r}%`
+    : `${r}% / ${r * kutuOran}%`
 }
 
 // ─── Alan editörü ─────────────────────────────────────────────
@@ -197,19 +190,10 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   // Kutu ölçüleri — köşe yuvarlaklığını piksele çevirmek için. Yüzde
   // verilirse tarayıcı ELİPS çizer (kenarlar ortaya doğru şişer); doğrusu
   // kısa kenara oranlı sabit yarıçap.
-  const [tuvalPx, setTuvalPx] = useState({ w: 0, h: 0 })
+  const [imgOran, setImgOran] = useState(0)   // görselin doğal en/boy oranı
   const [zoom, setZoom] = useState(1)
   // Yakinlastirma seçimi ve devam eden sürüklemeyi etkilemesin
   const zoomla = (v) => { drag.current = null; setZoom(v) }
-  useEffect(() => {
-    const el = boxRef.current
-    if (!el) return
-    const olc = () => setTuvalPx({ w: el.clientWidth, h: el.clientHeight })
-    olc()
-    const ro = new ResizeObserver(olc)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [t.image_url, zoom])
 
   const kesikler = t.cutouts || []
   const aktif = sel === 'baski' ? t.area : kesikler[sel]
@@ -328,7 +312,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
       style={{
         left: `${kutu.x * 100}%`, top: `${kutu.y * 100}%`,
         width: `${kutu.w * 100}%`, height: `${kutu.h * 100}%`,
-        borderRadius: kose(kutu, tuvalPx),
+        borderRadius: kose(kutu, imgOran),
         cursor: secili ? 'move' : 'pointer',
         opacity: secili ? 1 : 0.6,
         // Secili olmayan kutu ustte: tiklayinca altindaki secili kutunun
@@ -374,14 +358,13 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
               onChange={e => gorselYukle(e.target.files?.[0])} />
           </label>
         ) : (
-          <div className="grid md:grid-cols-[1fr_260px] gap-4">
+          <div className="space-y-3">
             {/* Tuval */}
             <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[62vh] flex justify-center">
             <div ref={boxRef} className="relative select-none inline-block"
               onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
               <img src={t.image_url} alt="" draggable={false}
-                onLoad={() => boxRef.current && setTuvalPx({
-                  w: boxRef.current.clientWidth, h: boxRef.current.clientHeight })}
+                onLoad={(e) => setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
                 style={{ height: `${58 * zoom}vh`, width: 'auto' }}
                 className="block pointer-events-none max-w-none" />
               {kutuCiz(t.area, 'yesil', sel === 'baski')}

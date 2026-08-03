@@ -1829,8 +1829,13 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
     out = []
     for o in _adaylar:
         _shs = _gonderiler.get(o.id, [])
-        # Takip no HERHANGİ bir yerde varsa bekleyen değildir
-        if (o.kargo_info or {}).get("takip_no"):
+        # Takip no HERHANGİ bir yerde varsa bekleyen değildir.
+        # AMA: Basit Kargo gerçek kargo takip kodunu (handlerShipmentCode) dönmezse
+        # kendi BARKODUNU takip no olarak yazıyoruz. Müşteri onunla takip yapamaz —
+        # gerçek numara kargo firmasının Excel'inden gelecek, yani hâlâ BEKLİYOR.
+        _ki = o.kargo_info or {}
+        _tn = (_ki.get("takip_no") or "").strip()
+        if _tn and _tn != (_ki.get("barcode") or "").strip():
             continue
         if any((sh.takip_no or "").strip() for sh in _shs):
             continue

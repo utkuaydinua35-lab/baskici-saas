@@ -280,7 +280,12 @@ def set_tracking(db: Session, order: Order, shipment: OrderShipment, *,
     # kargo_info (tek gönderi alanı) boşsa ilk takip numarasını oraya da kopyala —
     # arama, webhook eşleşmesi ve müşteri takip sayfası burayı okuyor.
     ki = dict(order.kargo_info or {})
-    if not ki.get("takip_no"):
+    # Mevcut takip_no Basit Kargo'nun KENDİ barkoduysa gerçek kargo numarası
+    # değildir — üzerine yaz. (Aksi halde sipariş "takip bekliyor" listesinde
+    # kalmaya devam ederdi.)
+    _mevcut = (ki.get("takip_no") or "").strip()
+    _sahte = _mevcut and _mevcut == (ki.get("barcode") or "").strip()
+    if not _mevcut or _sahte:
         ki["takip_no"] = shipment.takip_no
         if kargo_firma:
             ki["handler_name"] = kargo_firma

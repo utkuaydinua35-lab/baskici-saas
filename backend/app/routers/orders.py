@@ -1818,7 +1818,7 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
             Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
             sa_or(Order.current_stage >= 8, Order.id.in_(list(_gonderiler.keys()) or [None])),
-        ).order_by(desc(Order.updated_at))
+        ).order_by(desc(Order.created_at))
     ).all()
 
     _magazalar = {str(s.id): s.name for s in db.scalars(
@@ -1850,10 +1850,9 @@ def _bekleyen_gonderiler(db: Session, tenant_id) -> list[dict]:
                                           (_sa.get("address2") or "")] if x).strip(),
             "il": (_sa.get("province") or _sa.get("city") or "").strip(),
             "ilce": (_sa.get("city") or "").strip(),
-            "cikis_tarihi": (_cikis.get(o.id) or (_bos.created_at if _bos else None)
-                             or o.updated_at).isoformat() if (
-                                 _cikis.get(o.id) or (_bos.created_at if _bos else None)
-                                 or o.updated_at) else None,
+            "cikis_tarihi": (_zaman.isoformat() if (_zaman := (
+                _cikis.get(o.id) or (_bos.created_at if _bos else None)
+                or o.created_at)) else None),
             "kaynak": (_bayiler.get(_did) if _did
                        else _magazalar.get(str(o.store_id or ""))) or "—",
             "kaynak_tipi": "bayii" if _did else "magaza",

@@ -25,7 +25,7 @@ def main() -> None:
     db = SessionLocal()
     try:
         siparisler = db.scalars(
-            select(Order).order_by(desc(Order.updated_at)).limit(adet)
+            select(Order).order_by(desc(Order.created_at)).limit(adet)
         ).all()
         if not siparisler:
             print("Hiç sipariş yok.")

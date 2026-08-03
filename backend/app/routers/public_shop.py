@@ -101,14 +101,15 @@ def _serialize_product_card(p: CatalogProduct) -> dict:
     }
 
 
-def _serialize_product_detail(p: CatalogProduct) -> dict:
+def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
     return {
         "slug": p.slug,
         "title": p.title,
         "custom_fields": p.custom_fields or [],
         # Tasarım stüdyosu modülleri — müşteri bu kılıflarla kendi tasarımını
         # yapabilir; ürün sayfasında "Kendi Tasarımını Yap" bölümü olarak çıkar
-        "studio_templates": _studio_modules(db, store, p),
+        "studio_templates": (_studio_modules(db, store, p)
+                             if db is not None and store is not None else []),
         "models_per_item": p.models_per_item or 1,
         "video_url": p.video_url,
         "description": p.description,
@@ -307,7 +308,7 @@ def get_product(
     if not product:
         raise HTTPException(404, "Ürün bulunamadı")
 
-    detail = _serialize_product_detail(product)
+    detail = _serialize_product_detail(product, db, store)
 
     # Onaylı yorum özeti (yıldız ortalaması + sayı)
     from sqlalchemy import func as sql_func

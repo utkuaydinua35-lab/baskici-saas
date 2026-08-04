@@ -302,6 +302,7 @@ export default function OrderDetailPage() {
             <span>🏷</span> Henüz BK kargo barkodu oluşturulmadı.
           </div>
         )}
+        <TakipSatiri detail={detail} />
       </div>
 
       {/* Telafi durumu */}
@@ -967,6 +968,57 @@ function AddrField({ label, value, onChange }) {
     <div>
       <label className="text-[10px] text-gray-500 block mb-0.5">{label}</label>
       <input value={value} onChange={e => onChange(e.target.value)} className="input w-full !text-xs !py-1" />
+    </div>
+  )
+}
+
+// Kargo takip numarası — sekme açmadan, boru hattı kartında görünsün.
+// Kısmi kargolamada birden fazla gönderi olabilir; hepsi listelenir.
+function TakipSatiri({ detail }) {
+  const toast = useToast()
+  const ki = detail.kargo_info || {}
+  const gonderiler = (detail.shipping?.shipments || []).filter(s => s.takip_no)
+
+  // Gönderi kaydı yoksa tek gönderi alanındaki numara gösterilir (Basit Kargo
+  // akışı gönderi kaydı açmıyor). Aynı numara iki yerde varsa bir kez yazılır.
+  const liste = gonderiler.length
+    ? gonderiler.map(s => ({ takip_no: s.takip_no, firma: s.kargo_firma, url: s.takip_url }))
+    : (ki.takip_no ? [{ takip_no: ki.takip_no, firma: ki.handler_name, url: ki.takip_url }] : [])
+
+  const kopyala = async (v) => {
+    try { await navigator.clipboard.writeText(v); toast.success('Takip no kopyalandı') }
+    catch { toast.error('Kopyalanamadı') }
+  }
+
+  if (!liste.length) {
+    return (
+      <div className="mt-1.5 text-xs text-gray-600 flex items-center gap-2">
+        <span>📦</span> Henüz kargo takip numarası yok.
+      </div>
+    )
+  }
+  return (
+    <div className="mt-1.5 space-y-1">
+      {liste.map((t, i) => (
+        <div key={`${t.takip_no}-${i}`} className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
+          <span>📦</span> Takip No:
+          <span className="font-mono text-gray-200 select-all">{t.takip_no}</span>
+          {t.firma && <span className="text-gray-500">· {t.firma}</span>}
+          <button onClick={() => kopyala(t.takip_no)}
+                  className="text-gray-500 hover:text-gray-300" title="Kopyala">⧉</button>
+          {t.url && (
+            <a href={t.url} target="_blank" rel="noopener noreferrer"
+               className="text-accent hover:underline">takip et →</a>
+          )}
+        </div>
+      ))}
+      {/* Basit Kargo gerçek takip kodunu dönmediğinde kendi barkodunu yazıyor;
+          müşteri onunla takip yapamaz — numara sanılmasın. */}
+      {ki.takip_bekliyor && (
+        <div className="text-[11px] text-amber-400/90">
+          ⚠ Bu, Basit Kargo'nun kendi barkodu — gerçek kargo takip numarası henüz gelmedi.
+        </div>
+      )}
     </div>
   )
 }

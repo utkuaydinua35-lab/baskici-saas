@@ -545,6 +545,14 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
             "takip_no": (order.kargo_info or {}).get("takip_no"),
             "takip_url": (order.kargo_info or {}).get("takip_url"),
             "handler_name": (order.kargo_info or {}).get("handler_name"),
+            "kaynak": (order.kargo_info or {}).get("kaynak"),
+            # Basit Kargo gerçek kargo takip kodunu dönmezse KENDİ barkodunu
+            # takip no olarak yazıyoruz — müşteri onunla takip yapamaz. Panel
+            # bunu numara sanmasın diye açıkça işaretleniyor.
+            "takip_bekliyor": bool(
+                (_bk := (order.kargo_info or {}).get("barcode"))
+                and (order.kargo_info or {}).get("takip_no") == _bk
+            ),
         } if (order.kargo_info or {}).get("takip_no") else None),
         # Kısmi kargolama: gönderiler + kalem başına bekleyen adet
         "shipping": shipments_svc.serialize(order),

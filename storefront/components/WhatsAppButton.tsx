@@ -16,7 +16,7 @@ export default function WhatsAppButton({
       target="_blank"
       rel="noopener noreferrer"
       aria-label="WhatsApp ile yazın"
-      className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+      className="vitrin-yuzen fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
       style={{ background: "#25D366" }}
     >
       <svg width="30" height="30" viewBox="0 0 24 24" fill="white">

@@ -86,6 +86,11 @@ export default function TasarlaPage() {
       if (t?.layers?.length) { setLayers(t.layers); setAd(t.ad || "Tasarımım"); }
     } catch { /* bozuk taslak yok sayılır */ }
   }, []);
+  // Mobilde sabit alt eylem çubuğu var — yüzen destek balonları yukarı çıksın
+  useEffect(() => {
+    document.body.classList.add("alt-cubuk-var");
+    return () => document.body.classList.remove("alt-cubuk-var");
+  }, []);
   useEffect(() => {
     if (designId) return;   // sunucuda kayıtlıysa yerel taslağa gerek yok
     try {
@@ -289,14 +294,15 @@ export default function TasarlaPage() {
   }
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-6">
+    <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 lg:pb-6">
       <style>{fontCss}</style>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-xl font-semibold">Kendi Kılıfını Tasarla</h1>
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <h1 className="text-lg sm:text-xl font-semibold">Kendi Kılıfını Tasarla</h1>
         <input value={ad} onChange={(e) => setAd(e.target.value)} maxLength={120}
-          className="text-sm border border-zinc-300 rounded-lg px-2 py-1 w-44" />
-        <div className="ml-auto flex gap-2">
+          className="text-sm border border-zinc-300 rounded-lg px-2 py-1 flex-1 min-w-[8rem] sm:flex-none sm:w-44" />
+        {/* Mobilde ana eylemler ALT ÇUBUKTA (aşağıda) — burada gizlenir */}
+        <div className="ml-auto hidden lg:flex gap-2">
           <button onClick={() => kaydet("draft")} disabled={yukleniyor}
             className="px-3 py-2 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
             Kaydet
@@ -321,9 +327,10 @@ export default function TasarlaPage() {
 
       <div className="mt-4 grid lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Tuval */}
-        <div className="flex justify-center bg-zinc-100 rounded-2xl p-4">
+        <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4">
           <Canvas template={tpl} layers={layers} selected={secili}
-            onSelect={setSecili} onChange={guncelle} />
+            onSelect={setSecili} onChange={guncelle}
+            maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
         </div>
 
         {/* Araçlar */}
@@ -525,6 +532,20 @@ export default function TasarlaPage() {
           </div>
         </div>
       )}
+
+      {/* Mobil alt çubuk: ana eylemler parmak erişiminde sabit dursun */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur
+        border-t border-zinc-200 px-3 py-2 flex gap-2">
+        <button onClick={() => kaydet("draft")} disabled={yukleniyor}
+          className="flex-1 py-3 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
+          Kaydet
+        </button>
+        <button onClick={() => setSepetAcik(true)}
+          disabled={yukleniyor || layers.length === 0 || !urun}
+          className="flex-[2] py-3 rounded-xl bg-zinc-900 text-white text-sm font-medium disabled:opacity-40">
+          🛒 Sepete Ekle
+        </button>
+      </div>
     </main>
   );
 }

@@ -54,3 +54,11 @@ html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .page-transition { animation: none !important; }
 }
+
+/* Mobilde sayfaya ait sabit alt eylem çubuğu varsa (ör. tasarım stüdyosu)
+   yüzen WhatsApp/destek balonları çubuğun üstüne çıkar, üstünü örtmez. */
+@media (max-width: 1023px) {
+  body.alt-cubuk-var .vitrin-yuzen { bottom: 5.75rem; }
+  body.alt-cubuk-var .vitrin-yuzen.bottom-24 { bottom: 9.5rem; }
+  body.alt-cubuk-var .vitrin-yuzen-panel { bottom: 10.5rem; }
+}

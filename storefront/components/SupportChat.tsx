@@ -161,7 +161,7 @@ export default function SupportChat({
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="BERNZ Support"
-        className={`fixed right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center
+        className={`vitrin-yuzen fixed right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center
           text-2xl text-white hover:scale-105 transition-transform ${whatsappVisible ? "bottom-24" : "bottom-5"}`}
         style={{ background: "var(--c-primary)" }}
       >
@@ -169,7 +169,7 @@ export default function SupportChat({
       </button>
 
       {open && (
-        <div className={`fixed right-4 z-40 w-[min(94vw,360px)] bg-white border border-zinc-200 rounded-2xl
+        <div className={`vitrin-yuzen-panel fixed right-4 z-40 w-[min(94vw,360px)] bg-white border border-zinc-200 rounded-2xl
           shadow-2xl flex flex-col overflow-hidden ${whatsappVisible ? "bottom-40" : "bottom-[5.5rem]"}`}
           style={{ maxHeight: "min(70vh, 560px)" }}>
           <div className="px-4 py-3 text-white flex items-center gap-2"

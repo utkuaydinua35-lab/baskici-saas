@@ -97,7 +97,7 @@ export default function Header({
         <path d="M6 7h12l-1.2 11.1a2 2 0 0 1-2 1.9H9.2a2 2 0 0 1-2-1.9L6 7Z" />
         <path d="M9 7V6a3 3 0 0 1 6 0v1" />
       </svg>
-      Sepet
+      <span className="hidden sm:inline">Sepet</span>
       {count > 0 && (
         <span
           className={`absolute -top-2 -right-3 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center transition-transform duration-300 ${

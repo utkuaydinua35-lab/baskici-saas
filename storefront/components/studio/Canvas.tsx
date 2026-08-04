@@ -150,7 +150,7 @@ export default function Canvas({
         }} />
 
       {/* Baskı alanı: katmanlar buraya çizilir ve dışına taşanlar kırpılır */}
-      <div ref={areaRef}
+      <div ref={areaRef} data-baski-alani=""
         className="absolute overflow-hidden"
         style={{
           left: `${a.x * 100}%`, top: `${a.y * 100}%`,
@@ -163,7 +163,7 @@ export default function Canvas({
             const im = l as ImageLayer;
             const c = im.crop;
             return (
-              <div key={l.id}
+              <div key={l.id} data-katman={l.id}
                 onPointerDown={(e) => onPointerDown(e, l.id, "move")}
                 className={`absolute ${secili ? "outline outline-2 outline-white/90" : ""}`}
                 style={{
@@ -185,7 +185,7 @@ export default function Canvas({
           const tx = l as TextLayer;
           const f = fontByKey(tx.font);
           return (
-            <div key={l.id}
+            <div key={l.id} data-katman={l.id}
               onPointerDown={(e) => onPointerDown(e, l.id, "move")}
               className={`absolute ${secili ? "outline outline-2 outline-white/90" : ""}`}
               style={{

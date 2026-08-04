@@ -9,14 +9,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "@/lib/cart";
 import Link from "next/link";
 import Canvas from "@/components/studio/Canvas";
-import { FONTS, fontCss } from "@/components/studio/fonts";
+import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fonts";
+import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, SavedDesign, TextLayer,
 } from "@/components/studio/types";
 
-const RENKLER = ["#111111", "#ffffff", "#e11d48", "#f59e0b", "#10b981",
-  "#3b82f6", "#8b5cf6", "#ec4899"];
 const TASLAK_ANAHTAR = "bernz_studyo_taslak";
 
 interface StudioUrun {
@@ -141,7 +140,7 @@ export default function TasarlaPage() {
   const yaziEkle = () => {
     const yeni: TextLayer = {
       id: yeniId(), type: "text", text: "Yazınız", font: "poppins",
-      size: 0.1, color: "#ffffff", x: 0.1, y: 0.42, w: 0.8, rot: 0, align: "center",
+      size: 0.1, color: BASKI_BEYAZ, x: 0.1, y: 0.42, w: 0.8, rot: 0, align: "center",
     };
     setLayers((ls) => [...ls, yeni]);
     setSecili(yeni.id);
@@ -162,6 +161,45 @@ export default function TasarlaPage() {
       [kopya[i], kopya[j]] = [kopya[j], kopya[i]];
       return kopya;
     });
+  };
+
+  // ── Hizalama (Illustrator mantığı) ──
+  // Görselin yüksekliği katmanda yazılı; YAZININ yüksekliği ise metnin
+  // kendisinden doğar, o yüzden tuvaldeki gerçek kutusu ölçülür.
+  const katmanYuksekligi = (l: Layer): number => {
+    if (l.type === "image") return (l as ImageLayer).h;
+    const alan = document.querySelector("[data-baski-alani]") as HTMLElement | null;
+    const el = document.querySelector(`[data-katman="${l.id}"]`) as HTMLElement | null;
+    if (!alan || !el || !alan.clientHeight) return (l as TextLayer).size * 1.15;
+    return el.offsetHeight / alan.clientHeight;
+  };
+
+  type Hiza = "sol" | "yatay-orta" | "sag" | "ust" | "dikey-orta" | "alt" | "orta";
+  const hizala = (yon: Hiza) => {
+    if (!seciliKatman) return;
+    const l = seciliKatman;
+    const w = l.type === "image" ? (l as ImageLayer).w : (l as TextLayer).w;
+    const h = katmanYuksekligi(l);
+    const yama: LayerPatch = {};
+    if (yon === "sol" || yon === "orta" || yon === "yatay-orta" || yon === "sag") {
+      yama.x = yon === "sol" ? 0 : yon === "sag" ? 1 - w : (1 - w) / 2;
+    }
+    if (yon === "ust" || yon === "orta" || yon === "dikey-orta" || yon === "alt") {
+      yama.y = yon === "ust" ? 0 : yon === "alt" ? 1 - h : (1 - h) / 2;
+    }
+    guncelle(l.id, yama);
+  };
+
+  // Renk seçimi — saf beyaz (CMYK 0,0,0,0) baskıda görünmez, otomatik düzeltilir
+  const [hexGiris, setHexGiris] = useState("");
+  const [renkUyari, setRenkUyari] = useState("");
+  const renkUygula = (ham: string) => {
+    if (!seciliKatman) return;
+    const { renk, duzeltildi } = basilabilirRenk(ham);
+    guncelle(seciliKatman.id, { color: renk });
+    setRenkUyari(duzeltildi
+      ? "Saf beyaz (CMYK 0,0,0,0) baskı makinesinde görünmez — basılabilir beyaza (CMYK 0,0,0,5) çevrildi."
+      : "");
   };
 
   // Kılıfı tamamen kapla — taşan kısım kırpılır (en sık istenen işlem)
@@ -381,6 +419,29 @@ export default function TasarlaPage() {
                 <button onClick={sil} className="text-xs px-2 py-1 rounded-lg text-red-600">Sil</button>
               </div>
 
+              {/* Otomatik yaslama — baskı alanına göre (Illustrator mantığı) */}
+              <div>
+                <div className="text-[11px] text-zinc-500 mb-1">Yasla</div>
+                <div className="flex gap-1">
+                  {([
+                    ["sol", "⇤", "Sola yasla"],
+                    ["yatay-orta", "↔", "Yatay ortala"],
+                    ["sag", "⇥", "Sağa yasla"],
+                    ["ust", "⇡", "Üste yasla"],
+                    ["dikey-orta", "↕", "Dikey ortala"],
+                    ["alt", "⇣", "Alta yasla"],
+                    ["orta", "✛", "Tam ortala"],
+                  ] as const).map(([yon, ikon, baslik]) => (
+                    <button key={yon} onClick={() => hizala(yon)} title={baslik}
+                      aria-label={baslik}
+                      className="flex-1 text-sm py-1.5 rounded-lg border border-zinc-200
+                        hover:border-zinc-900 hover:bg-zinc-50 transition">
+                      {ikon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {seciliKatman.type === "text" && (
                 <>
                   <textarea value={(seciliKatman as TextLayer).text} rows={2} maxLength={200}
@@ -389,15 +450,63 @@ export default function TasarlaPage() {
                   <select value={(seciliKatman as TextLayer).font}
                     onChange={(e) => guncelle(seciliKatman.id, { font: e.target.value })}
                     className="w-full border border-zinc-300 rounded-lg px-2 py-1.5 text-sm">
-                    {FONTS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                  </select>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {RENKLER.map((c) => (
-                      <button key={c} onClick={() => guncelle(seciliKatman.id, { color: c })}
-                        className={`w-7 h-7 rounded-full border-2 ${
-                          (seciliKatman as TextLayer).color === c ? "border-zinc-900" : "border-zinc-200"}`}
-                        style={{ background: c }} aria-label={c} />
+                    {FONT_GRUPLARI.map((g) => (
+                      <optgroup key={g} label={g}>
+                        {FONTS.filter((f) => f.grup === g).map((f) => (
+                          <option key={f.key} value={f.key}>{f.label}</option>
+                        ))}
+                      </optgroup>
                     ))}
+                  </select>
+                  {(() => {
+                    const uyari = trUyarisi((seciliKatman as TextLayer).font,
+                      (seciliKatman as TextLayer).text || "");
+                    return uyari ? (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200
+                        rounded-lg px-2 py-1.5">⚠️ {uyari}</p>
+                    ) : null;
+                  })()}
+                  <div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {PALET.map((c) => (
+                        <button key={c.hex} onClick={() => renkUygula(c.hex)}
+                          className={`w-7 h-7 rounded-full border-2 ${
+                            (seciliKatman as TextLayer).color === c.hex
+                              ? "border-zinc-900" : "border-zinc-200"}`}
+                          style={{ background: c.hex }} title={c.ad} aria-label={c.ad} />
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <input type="color"
+                        value={hexNormalize((seciliKatman as TextLayer).color) || "#000000"}
+                        onChange={(e) => renkUygula(e.target.value)}
+                        className="w-9 h-9 rounded-lg border border-zinc-300 bg-white p-0.5 cursor-pointer"
+                        aria-label="Renk seçici" />
+                      <input value={hexGiris} placeholder="#RRGGBB"
+                        onChange={(e) => setHexGiris(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          const n = hexNormalize(hexGiris);
+                          if (!n) { setRenkUyari("Geçerli bir renk kodu gir (örn. #1a2b3c)."); return; }
+                          renkUygula(n); setHexGiris("");
+                        }}
+                        className="flex-1 border border-zinc-300 rounded-lg px-2 py-1.5 text-sm font-mono"
+                        maxLength={7} />
+                      <button
+                        onClick={() => {
+                          const n = hexNormalize(hexGiris);
+                          if (!n) { setRenkUyari("Geçerli bir renk kodu gir (örn. #1a2b3c)."); return; }
+                          renkUygula(n); setHexGiris("");
+                        }}
+                        className="text-xs px-2.5 py-2 rounded-lg border border-zinc-300">Uygula</button>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-1">
+                      Baskı değeri: {cmykYazi((seciliKatman as TextLayer).color)}
+                    </p>
+                    {renkUyari && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200
+                        rounded-lg px-2 py-1.5 mt-1">⚠️ {renkUyari}</p>
+                    )}
                   </div>
                   <label className="block text-xs text-zinc-500">
                     Yazı boyutu

@@ -29,8 +29,48 @@ FONT_FILES = {
     "dancing": "DancingScript-Bold.ttf",
     "lobster": "Lobster-Regular.ttf",
     "mono": "RobotoMono-Medium.ttf",
+    "anton": "Anton-Regular.ttf",
+    "staatliches": "Staatliches-Regular.ttf",
+    "gotik": "UnifrakturCook-Bold.ttf",
+    "pirata": "PirataOne-Regular.ttf",
+    "bangers": "Bangers-Regular.ttf",
+    "marker": "PermanentMarker-Regular.ttf",
+    "sprey": "RockSalt-Regular.ttf",
+    "bungee": "Bungee-Regular.ttf",
+    "alfaslab": "AlfaSlabOne-Regular.ttf",
+    "creepster": "Creepster-Regular.ttf",
+    "caveat": "Caveat-Regular.ttf",
+    "greatvibes": "GreatVibes-Regular.ttf",
+    "pacifico": "Pacifico-Regular.ttf",
+    "monoton": "Monoton-Regular.ttf",
+    "righteous": "Righteous-Regular.ttf",
+    "elite": "SpecialElite-Regular.ttf",
 }
 MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
+
+# BASKI RENK KURALI (storefront/components/studio/renk.ts ile aynı):
+# CMYK bileşenlerinin tamamı ~0 olan renk (saf beyaz) baskı makinesinde
+# "mürekkep yok" demektir — o alana hiç baskı yapılmaz. Beyaz her zaman
+# CMYK 0,0,0,5 ile basılır. İstemci düzeltmeyi atlarsa burada yakalanır.
+BASKI_BEYAZ = "#f2f2f2"
+
+
+def _basilabilir_renk(ham: str | None) -> str:
+    s = (ham or "").strip().lstrip("#").lower()
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s)
+    if len(s) != 6 or any(ch not in "0123456789abcdef" for ch in s):
+        return "#000000"
+    r, g, b = (int(s[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    k = 1 - max(r, g, b)
+    if k >= 1:
+        return f"#{s}"          # saf siyah — sorun yok
+    c = (1 - r - k) / (1 - k)
+    m = (1 - g - k) / (1 - k)
+    y = (1 - b - k) / (1 - k)
+    if max(c, m, y, k) < 0.02:
+        return BASKI_BEYAZ
+    return f"#{s}"
 
 
 def _font(key: str, size_px: int) -> ImageFont.FreeTypeFont:
@@ -159,7 +199,8 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     for i, s in enumerate(satirlar):
         gen = kciz.textlength(s, font=font)
         x = 0 if hiza == "left" else (kutu_gen - gen) / 2 if hiza == "center" else kutu_gen - gen
-        kciz.text((x, i * satir_yuk), s, font=font, fill=k.get("color") or "#000000")
+        kciz.text((x, i * satir_yuk), s, font=font,
+                  fill=_basilabilir_renk(k.get("color")))
 
     aci = float(k.get("rot") or 0)
     if aci:

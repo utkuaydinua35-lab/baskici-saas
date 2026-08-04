@@ -19,12 +19,14 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_permission
 from app.database import get_db
-from app.models import CaseTemplate, CustomerDesign, DesignAsset, Store, User
+from app.models import (
+    CaseTemplate, CustomerDesign, DesignAsset, DesignOverlay, Store, User,
+)
 from app.services import activity
 from app.services import storage as storage_svc
 
@@ -226,6 +228,121 @@ async def upload_template_image(
     t.image_path = url.removeprefix("/storage/")
     db.commit()
     return {"image_url": url}
+
+
+# ─── Panel: hazır tasarım şablonları (overlay) ───────────────
+# Müşterinin tasarımının ÜSTÜNE binen şeffaf PNG'ler (fotoğraf çerçevesi vb.).
+# Katman sırası her yerde aynı: görseller → overlay → yazılar.
+
+def _ser_overlay(o: DesignOverlay) -> dict:
+    return {
+        "id": str(o.id),
+        "label": o.label,
+        "case_template_id": str(o.case_template_id) if o.case_template_id else None,
+        "image_url": f"/storage/{o.image_path}",
+        "thumb_url": f"/storage/{o.thumb_path}" if o.thumb_path else f"/storage/{o.image_path}",
+        "position": o.position,
+        "is_active": o.is_active,
+    }
+
+
+@router.get("/overlays/list", response_model=dict)
+def list_overlays(
+    store_id: uuid.UUID = Query(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    _get_storefront_store(db, user.tenant_id, store_id)
+    rows = db.scalars(select(DesignOverlay).where(
+        DesignOverlay.store_id == store_id)
+        .order_by(DesignOverlay.position, DesignOverlay.created_at)).all()
+    return {"items": [_ser_overlay(o) for o in rows]}
+
+
+@router.post("/overlays", response_model=dict)
+async def create_overlay(
+    request: Request,
+    store_id: uuid.UUID = Query(...),
+    label: str = Query(..., min_length=1, max_length=120),
+    case_template_id: uuid.UUID | None = Query(None),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Hazır şablon yükle. Şeffaf PNG önerilir — saydam kısımda müşterinin
+    görseli görünür, dolu kısım (çerçeve) onun üstünü kapatır."""
+    _get_storefront_store(db, user.tenant_id, store_id)
+    if case_template_id and not db.scalar(select(CaseTemplate).where(
+            CaseTemplate.id == case_template_id, CaseTemplate.store_id == store_id)):
+        raise HTTPException(404, "Kılıf şablonu bulunamadı")
+
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    data = await file.read()
+    try:
+        # Saydamlık korunmalı → orijinal saklanır, tuval için hafif önizleme
+        url, onizleme, _w, _h = storage_svc.save_design_original(
+            user.tenant_id, store_id, data,
+            getattr(file, "filename", None) or "hazir-sablon.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    o = DesignOverlay(
+        tenant_id=user.tenant_id, store_id=store_id,
+        case_template_id=case_template_id, label=label.strip()[:120],
+        image_path=url.removeprefix("/storage/"),
+        thumb_path=(onizleme or url).removeprefix("/storage/"),
+        position=db.scalar(select(func.count()).select_from(DesignOverlay).where(
+            DesignOverlay.store_id == store_id)) or 0,
+    )
+    db.add(o)
+    activity.record(db, user, "hazir_sablon_ekle", store_id=store_id,
+                    entity_type="hazir_sablon", entity_label=o.label)
+    db.commit()
+    db.refresh(o)
+    return _ser_overlay(o)
+
+
+class OverlayUpdate(BaseModel):
+    label: str | None = Field(None, min_length=1, max_length=120)
+    case_template_id: uuid.UUID | None = None
+    position: int | None = None
+    is_active: bool | None = None
+
+
+@router.patch("/overlays/{overlay_id}", response_model=dict)
+def update_overlay(
+    overlay_id: uuid.UUID,
+    body: OverlayUpdate,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(o, k, v)
+    db.commit()
+    db.refresh(o)
+    return _ser_overlay(o)
+
+
+@router.delete("/overlays/{overlay_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_overlay(
+    overlay_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    activity.record(db, user, "hazir_sablon_sil", store_id=o.store_id,
+                    entity_type="hazir_sablon", entity_label=o.label)
+    db.delete(o)
+    db.commit()
 
 
 # ─── Panel: sipariş edilen tasarımlar ────────────────────────

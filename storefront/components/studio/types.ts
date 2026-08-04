@@ -49,7 +49,26 @@ export interface TextLayer {
   align: "left" | "center" | "right";
 }
 
-export type Layer = ImageLayer | TextLayer;
+/** Hazır tasarım şablonu (panelden yüklenen çerçeve/desen).
+ *  Baskı ALANINI tam kaplar — taşınmaz, ölçeklenmez; kılıfa bire bir otursun.
+ *  Çizim sırası: görseller → overlay → yazılar (bkz. katmanlar.ts). */
+export interface OverlayLayer {
+  id: string;
+  type: "overlay";
+  overlay_id: string;   // DesignOverlay.id — baskıda dosya BUNDAN bulunur
+  url: string;          // tuvalde gösterilen görsel
+  label?: string;
+}
+
+export type Layer = ImageLayer | TextLayer | OverlayLayer;
+
+export interface StudioOverlay {
+  id: string;
+  label: string;
+  template_key: string | null;   // null → tüm kılıflarda geçerli
+  image_url: string;
+  thumb_url: string;
+}
 
 export interface SavedDesign {
   id: string;

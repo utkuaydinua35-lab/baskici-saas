@@ -4,7 +4,8 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
-import type { CaseTemplate, ImageLayer, Layer, TextLayer } from "./types";
+import { siralanmisKatmanlar } from "./katmanlar";
+import type { CaseTemplate, ImageLayer, Layer, OverlayLayer, TextLayer } from "./types";
 
 const gorselYukle = (src: string): Promise<HTMLImageElement> =>
   new Promise((cozumle, reddet) => {
@@ -43,8 +44,14 @@ export async function onizlemeUret(
     else ctx.rect(ax, ay, aw, ah);
     ctx.clip();
 
-    for (const l of layers) {
-      if (l.type === "image") {
+    for (const l of siralanmisKatmanlar(layers)) {
+      if (l.type === "overlay") {
+        // Hazır şablon baskı alanını tam kaplar
+        try {
+          const ov = await gorselYukle((l as OverlayLayer).url);
+          ctx.drawImage(ov, ax, ay, aw, ah);
+        } catch { /* şablon yüklenemezse önizleme yine üretilir */ }
+      } else if (l.type === "image") {
         const im = l as ImageLayer;
         try {
           const g = await gorselYukle(im.url);

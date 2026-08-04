@@ -13,7 +13,8 @@ import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fo
 import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
-  CaseTemplate, ImageLayer, Layer, LayerPatch, SavedDesign, TextLayer,
+  CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, SavedDesign,
+  StudioOverlay, TextLayer,
 } from "@/components/studio/types";
 
 const TASLAK_ANAHTAR = "bernz_studyo_taslak";
@@ -41,6 +42,7 @@ export default function TasarlaPage() {
   const dosyaRef = useRef<HTMLInputElement>(null);
   const { addItem, setDrawerOpen } = useCart();
   // Stüdyo ürünü: fiyat ve telefon modelleri panelde secilen bu urunden gelir
+  const [overlays, setOverlays] = useState<StudioOverlay[]>([]);
   const [urun, setUrun] = useState<StudioUrun | null>(null);
   const [modelId, setModelId] = useState("");
   const [sepetAcik, setSepetAcik] = useState(false);
@@ -69,6 +71,10 @@ export default function TasarlaPage() {
         return fetch(`/api/product/${slug}`).then((r) => (r.ok ? r.json() : null))
           .then((p) => { if (p) setUrun(p); });
       })
+      .catch(() => {});
+    fetch("/api/studio/overlays")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setOverlays(Array.isArray(d) ? d : []))
       .catch(() => {});
     fetch("/api/account/designs")
       .then((r) => (r.ok ? r.json() : null))
@@ -188,6 +194,25 @@ export default function TasarlaPage() {
       yama.y = yon === "ust" ? 0 : yon === "alt" ? 1 - h : (1 - h) / 2;
     }
     guncelle(l.id, yama);
+  };
+
+  // ── Hazır şablonlar (overlay) ──
+  // Seçili kılıfa ait olanlar + tüm kılıflarda geçerli olanlar listelenir.
+  const uygunOverlaylar = useMemo(
+    () => overlays.filter((o) => !o.template_key || o.template_key === tpl?.key),
+    [overlays, tpl],
+  );
+  const seciliOverlay = layers.find((l) => l.type === "overlay") as OverlayLayer | undefined;
+
+  const overlaySec = (o: StudioOverlay) => {
+    setLayers((ls) => {
+      const digerleri = ls.filter((l) => l.type !== "overlay");   // tek şablon
+      if (seciliOverlay?.overlay_id === o.id) return digerleri;   // aynısına basınca kaldır
+      const yeni: OverlayLayer = {
+        id: yeniId(), type: "overlay", overlay_id: o.id, url: o.image_url, label: o.label,
+      };
+      return [...digerleri, yeni];
+    });
   };
 
   // Kırpma modu: görsel tutamakları ölçekleme yerine kenardan kırpar
@@ -402,6 +427,41 @@ export default function TasarlaPage() {
             <input ref={dosyaRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => gorselEkle(e.target.files?.[0])} />
           </div>
+
+          {/* Hazır şablonlar — müşterinin görselinin ÜSTÜNE binen çerçeveler.
+              Yüklenen görseller çerçevenin altında, yazılar üstünde kalır. */}
+          {uygunOverlaylar.length > 0 && (
+            <div>
+              <div className="text-xs text-zinc-500 mb-1.5">
+                Hazır şablonlardan seç
+                {seciliOverlay && (
+                  <button onClick={() => setLayers((ls) => ls.filter((l) => l.type !== "overlay"))}
+                    className="ml-2 text-[11px] underline text-zinc-600">kaldır</button>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {uygunOverlaylar.map((o) => (
+                  <button key={o.id} onClick={() => overlaySec(o)} title={o.label}
+                    className={`relative rounded-xl border-2 overflow-hidden bg-zinc-50
+                      aspect-[9/16] transition ${
+                        seciliOverlay?.overlay_id === o.id
+                          ? "border-zinc-900" : "border-zinc-200 hover:border-zinc-400"}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={o.thumb_url} alt={o.label}
+                      className="w-full h-full object-contain" />
+                    {seciliOverlay?.overlay_id === o.id && (
+                      <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-zinc-900
+                        text-white text-[10px] flex items-center justify-center">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1.5 leading-snug">
+                Şablon en üst katmandır: yüklediğin görseller altında kalır, yazılar
+                şablonun üstüne yazılır.
+              </p>
+            </div>
+          )}
 
           {kaliteUyarisi && (
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">

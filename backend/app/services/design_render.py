@@ -128,11 +128,13 @@ def render_print_file(db, design, template) -> bytes:
     tuval = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ciz = ImageDraw.Draw(tuval)
 
-    for katman in (design.layers or []):
+    for katman in siralanmis_katmanlar(design.layers or []):
         tip = katman.get("type")
         try:
             if tip == "image":
                 _ciz_gorsel(db, tuval, katman, W, H)
+            elif tip == "overlay":
+                _ciz_overlay(db, tuval, katman, W, H)
             elif tip == "text":
                 _ciz_metin(tuval, ciz, katman, W, H)
         except Exception:  # noqa: BLE001 — tek katman baskıyı tümden bozmasın
@@ -143,6 +145,46 @@ def render_print_file(db, design, template) -> bytes:
     buf = io.BytesIO()
     tuval.save(buf, "PNG", optimize=True)
     return buf.getvalue()
+
+
+# KATMAN SIRASI — editör, önizleme ve baskı için TEK kural:
+# müşterinin görselleri en altta, hazır şablon (çerçeve) onların üstünde,
+# yazılar en üstte. Storefront karşılığı: components/studio/katmanlar.ts
+_SIRA = {"image": 0, "overlay": 1, "text": 2}
+
+
+def siralanmis_katmanlar(layers: list[dict]) -> list[dict]:
+    """Katmanları çizim sırasına dizer (dizideki göreli sıra korunur)."""
+    return sorted(layers or [], key=lambda k: _SIRA.get(k.get("type"), 0))
+
+
+def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
+    """Hazır şablon (çerçeve) — baskı alanını tam kaplar.
+
+    Dosya yolu İSTEMCİDEN DEĞİL veritabanından okunur: müşteri katmana
+    istediği url'i yazsa bile sunucu yalnızca kendi kayıtlı dosyasını basar.
+    """
+    from sqlalchemy import select
+
+    from app.models import DesignOverlay
+
+    try:
+        o = db.scalar(select(DesignOverlay).where(
+            DesignOverlay.id == str(k.get("overlay_id") or "")))
+    except Exception:  # noqa: BLE001 — geçersiz uuid
+        return
+    if not o:
+        return
+    yol = STORAGE_ROOT / o.image_path
+    if not yol.exists():
+        log.warning("hazır şablon dosyası yok: %s", yol)
+        return
+    g = Image.open(yol)
+    g.load()
+    if g.mode != "RGBA":
+        g = g.convert("RGBA")
+    g = g.resize((W, H), Image.LANCZOS)
+    tuval.alpha_composite(g, (0, 0))
 
 
 def _ciz_gorsel(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:

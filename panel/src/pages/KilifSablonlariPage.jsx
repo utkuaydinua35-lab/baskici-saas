@@ -120,10 +120,130 @@ export default function KilifSablonlariPage() {
         </div>
       )}
 
+      <HazirSablonlar storeId={storeId} templates={data.templates} />
+
       {editing && (
         <AlanEditoru template={editing} storeId={storeId}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }} />
+      )}
+    </div>
+  )
+}
+
+// Hazır tasarım şablonları (overlay) — müşterinin tasarımının ÜSTÜNE binen
+// şeffaf PNG'ler. Örnek: fotoğraf çerçevesi. Müşterinin yüklediği görsel
+// ALTTA kalır, çerçeve üstüne oturur, yazılar çerçevenin de üstündedir.
+function HazirSablonlar({ storeId, templates }) {
+  const [items, setItems] = useState([])
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [ad, setAd] = useState('')
+  const [kilif, setKilif] = useState('')       // '' → tüm kılıflar
+  const dosyaRef = useRef(null)
+
+  const load = useCallback(async () => {
+    if (!storeId) return
+    try { setItems((await api.get(`/api/case-templates/overlays/list?store_id=${storeId}`)).items || []) }
+    catch { setErr('Hazır şablonlar yüklenemedi') }
+  }, [storeId])
+  useEffect(() => { load() }, [load])
+
+  const yukle = async (file) => {
+    if (!file) return
+    if (!ad.trim()) { setErr('Önce şablona bir ad verin'); return }
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const qs = new URLSearchParams({ store_id: storeId, label: ad.trim() })
+      if (kilif) qs.set('case_template_id', kilif)
+      const res = await fetch(`/api/case-templates/overlays?${qs}`, {
+        method: 'POST', body: fd,
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Yüklenemedi')
+      setAd('')
+      await load()
+    } catch (e) {
+      setErr(e.message || 'Yüklenemedi')
+    } finally { setBusy(false); if (dosyaRef.current) dosyaRef.current.value = '' }
+  }
+
+  const sil = async (o) => {
+    if (!window.confirm(`"${o.label}" hazır şablonu silinecek. Emin misiniz?`)) return
+    try { await api.del(`/api/case-templates/overlays/${o.id}`); load() }
+    catch { setErr('Silinemedi') }
+  }
+
+  const durum = async (o) => {
+    try { await api.patch(`/api/case-templates/overlays/${o.id}`, { is_active: !o.is_active }); load() }
+    catch { setErr('Güncellenemedi') }
+  }
+
+  return (
+    <div className="card space-y-3">
+      <div>
+        <h2 className="font-semibold text-sm">🖼️ Hazır Tasarım Şablonları</h2>
+        <p className="text-xs text-panel-muted mt-0.5">
+          Müşterinin tasarımının <b>üstüne binen</b> çerçeve/desenler. Örneğin fotoğraf
+          çerçevesi yüklersen müşterinin görseli çerçevenin içinde kalır, yazıları ise
+          çerçevenin üstüne yazılır. <b>Şeffaf PNG</b> yükleyin — saydam kısımda müşterinin
+          görseli görünür. Görsel baskı alanını tam kaplar, o oranda hazırlayın.
+        </p>
+      </div>
+
+      {err && <p className="text-sm text-red-600">{err}</p>}
+
+      <div className="flex flex-wrap gap-2 items-end">
+        <label className="text-xs text-panel-muted">
+          Şablon adı
+          <input value={ad} onChange={e => setAd(e.target.value)} maxLength={120}
+            placeholder="Polaroid çerçeve"
+            className="input !py-1.5 !text-sm block mt-0.5 w-48" />
+        </label>
+        <label className="text-xs text-panel-muted">
+          Hangi kılıfta
+          <select value={kilif} onChange={e => setKilif(e.target.value)}
+            className="input !py-1.5 !text-sm block mt-0.5 w-44">
+            <option value="">Tüm kılıflarda</option>
+            {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </label>
+        <button onClick={() => dosyaRef.current?.click()} disabled={busy}
+          className="btn !py-1.5 !text-sm disabled:opacity-40">
+          {busy ? 'Yükleniyor…' : '+ Şablon Yükle'}
+        </button>
+        <input ref={dosyaRef} type="file" accept="image/png,image/webp" className="hidden"
+          onChange={e => yukle(e.target.files?.[0])} />
+      </div>
+
+      {items.length > 0 ? (
+        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2">
+          {items.map(o => (
+            <div key={o.id} className="border border-panel-border rounded-xl overflow-hidden">
+              <div className="aspect-[9/16] bg-[repeating-conic-gradient(#e5e7eb_0_25%,#fff_0_50%)]
+                bg-[length:14px_14px] flex items-center justify-center">
+                <img src={o.thumb_url} alt={o.label} className="w-full h-full object-contain" />
+              </div>
+              <div className="p-1.5 space-y-1">
+                <div className="text-[11px] truncate" title={o.label}>{o.label}</div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => durum(o)}
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${o.is_active
+                      ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {o.is_active ? 'Yayında' : 'Kapalı'}
+                  </button>
+                  <button onClick={() => sil(o)} className="ml-auto text-[10px] text-red-600">Sil</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-panel-muted">
+          Henüz hazır şablon yok. Ad verip şeffaf PNG yükleyerek başlayın.
+        </p>
       )}
     </div>
   )

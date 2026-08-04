@@ -2260,6 +2260,37 @@ def support_model_check(
 # Şablon listesi herkese açık (tasarlamaya başlamak için hesap gerekmez);
 # KAYDETMEK için hesap gerekir — böylece müşteri kaldığı yerden devam eder.
 
+@router.get("/{store_slug}/studio/overlays")
+def studio_overlays(store_slug: str, response: Response, db: Session = Depends(get_db)):
+    """Hazır tasarım şablonları — müşterinin tasarımının üstüne binen çerçeveler.
+
+    case_template_id null olanlar tüm kılıflarda görünür; doluysa yalnız o
+    kılıf tipinde. Editör listeyi kılıf seçimine göre süzer.
+    """
+    from app.models import CaseTemplate, DesignOverlay
+
+    store = _resolve_store(db, store_slug)
+    rows = db.execute(
+        select(DesignOverlay, CaseTemplate.key)
+        .join(CaseTemplate, DesignOverlay.case_template_id == CaseTemplate.id,
+              isouter=True)
+        .where(DesignOverlay.store_id == store.id,
+               DesignOverlay.is_active.is_(True))
+        .order_by(DesignOverlay.position, DesignOverlay.created_at)
+    ).all()
+    response.headers["Cache-Control"] = "public, max-age=120"
+    return [
+        {
+            "id": str(o.id),
+            "label": o.label,
+            "template_key": key,          # null → tüm kılıflarda geçerli
+            "image_url": f"/storage/{o.image_path}",
+            "thumb_url": f"/storage/{o.thumb_path or o.image_path}",
+        }
+        for o, key in rows
+    ]
+
+
 @router.get("/{store_slug}/studio/templates")
 def studio_templates(store_slug: str, response: Response, db: Session = Depends(get_db)):
     """Boş kılıf seçenekleri + baskı alanı (editörün zemini)."""

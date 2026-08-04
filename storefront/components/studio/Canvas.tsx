@@ -7,7 +7,10 @@
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
-import type { CaseTemplate, ImageLayer, Layer, LayerPatch, TextLayer } from "./types";
+import { siralanmisKatmanlar } from "./katmanlar";
+import type {
+  CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, TextLayer,
+} from "./types";
 
 interface Props {
   template: CaseTemplate;
@@ -203,8 +206,19 @@ export default function Canvas({
           width: `${a.w * 100}%`, height: `${a.h * 100}%`,
           borderRadius: `${(a.radius || 0) * Math.min(areaPx.w, areaPx.h)}px`,
         }}>
-        {layers.map((l) => {
+        {siralanmisKatmanlar(layers).map((l) => {
           const secili = l.id === selected;
+          if (l.type === "overlay") {
+            // Hazır şablon: baskı alanını tam kaplar, tıklanamaz (yanlışlıkla
+            // taşınmasın). Panelden "Şablonu kaldır" ile silinir.
+            const ov = l as OverlayLayer;
+            return (
+              <img key={l.id} data-katman={l.id} src={ov.url} alt={ov.label || ""}
+                draggable={false}
+                className="absolute inset-0 pointer-events-none"
+                style={{ width: "100%", height: "100%", objectFit: "fill" }} />
+            );
+          }
           if (l.type === "image") {
             const im = l as ImageLayer;
             const c = im.crop;
@@ -274,8 +288,10 @@ export default function Canvas({
       {/* Seçili katmanın tutamakları — 8 yön + döndürme. Baskı alanının
           DIŞINDA çizilir ki kenara yapışık katmanlarda kırpılmasın. */}
       {selected && (() => {
-        const l = layers.find((x) => x.id === selected);
-        if (!l) return null;
+        const secim = layers.find((x) => x.id === selected);
+        // Hazır şablon taşınmaz/ölçeklenmez (kılıfa bire bir oturur) → tutamak yok
+        if (!secim || secim.type === "overlay") return null;
+        const l = secim as ImageLayer | TextLayer;
         const metin = l.type === "text";
         const yuk = metin
           ? Math.max(0.05, ((l as TextLayer).size || 0.1) * 1.3)

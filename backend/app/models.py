@@ -2192,6 +2192,42 @@ class CaseTemplate(Base):
     )
 
 
+class DesignOverlay(Base):
+    """Hazır tasarım şablonu — müşterinin tasarımının ÜSTÜNE binen şeffaf PNG.
+
+    Örnek: fotoğraf çerçevesi. Müşteri görsel yükler, görsel ALTTA kalır,
+    çerçeve üstüne oturur; yazılar ise çerçevenin de üstündedir. Bu sıralama
+    editörde, önizlemede ve baskı dosyasında aynıdır (bkz. design_render).
+
+    Görsel baskı ALANINI tam kaplar (taşınmaz/ölçeklenmez) — çerçeve kılıfa
+    bire bir otursun diye. Hangi kılıf tipine ait olduğu case_template_id ile
+    belirlenir; null ise o mağazanın tüm kılıflarında görünür.
+    """
+    __tablename__ = "design_overlays"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    case_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("case_templates.id", ondelete="CASCADE"),
+        nullable=True, index=True
+    )
+
+    label: Mapped[str] = mapped_column(String(120))
+    image_path: Mapped[str] = mapped_column(String(500))
+    # Küçük önizleme (liste kartı) — yoksa image_path kullanılır
+    thumb_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class DesignAsset(Base):
     """Müşterinin stüdyoya yüklediği görsel.
 

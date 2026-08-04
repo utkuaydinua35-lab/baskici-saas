@@ -1148,6 +1148,7 @@ function TopluTakipDialog({ onClose, onDone }) {
     kesin: { t: 'Kesin eşleşti', c: 'text-emerald-300' },
     supheli: { t: 'Şüpheli — onayla', c: 'text-amber-300' },
     eslesmedi: { t: 'Eşleşmedi', c: 'text-gray-500' },
+    zaten_islenmis: { t: 'Zaten işlenmiş', c: 'text-sky-300' },
     uygulandi: { t: 'İşlendi', c: 'text-emerald-400' },
   }
   const kesinSayi = rapor?.sayac?.kesin || 0
@@ -1245,12 +1246,15 @@ function TopluTakipDialog({ onClose, onDone }) {
                   {rapor.rapor.map((r, i) => (
                     <tr key={i} className="border-b border-brand-border/40">
                       <td className="px-2 py-1.5 w-6">
-                        {r.durum === 'supheli' && r.siparis && (
-                          <input type="checkbox" checked={onayli.has(r.siparis.shipment_id)}
+                        {/* Kimlik order_id — shipment_id null olabiliyor (gönderi kaydı
+                            takip no gelince açılıyor) ve null kimlikle tüm kutucuklar
+                            aynı kimliği paylaşıp birlikte işaretleniyordu. */}
+                        {r.durum === 'supheli' && r.siparis?.order_id && (
+                          <input type="checkbox" checked={onayli.has(r.siparis.order_id)}
                                  onChange={() => {
                                    const n = new Set(onayli)
-                                   n.has(r.siparis.shipment_id) ? n.delete(r.siparis.shipment_id)
-                                                                : n.add(r.siparis.shipment_id)
+                                   n.has(r.siparis.order_id) ? n.delete(r.siparis.order_id)
+                                                             : n.add(r.siparis.order_id)
                                    setOnayli(n)
                                  }}
                                  className="w-3.5 h-3.5 accent-amber-400" />

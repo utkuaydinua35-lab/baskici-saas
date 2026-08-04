@@ -1430,7 +1430,11 @@ async def takip_xlsx(
     dosya: UploadFile = File(...),
     uygula: bool = Query(False),
     mail_gonder: bool = Query(True),
-    onaylananlar: str = Query("", description="Şüpheli eşleşmelerden onaylananların shipment_id'leri"),
+    # Kimlik order_id — shipment_id DEĞİL: Basit Kargo akışında gönderi kaydı
+    # ancak takip no gelince açılıyor, yani bekleyenlerin shipment_id'si null.
+    # Null kimlikle onay listesi hiç eşleşmiyordu (panelde de tüm kutucuklar
+    # aynı kimliği paylaşıp birlikte işaretlenip birlikte kalkıyordu).
+    onaylananlar: str = Query("", description="Şüpheli eşleşmelerden onaylananların order_id'leri"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1479,6 +1483,27 @@ async def takip_xlsx(
     _onay = {x.strip() for x in (onaylananlar or "").split(",") if x.strip()}
     sonuclar = kargo_eslestir.eslestir(bekleyenler, kargolar)
 
+    # Sisteme ZATEN girmiş takip numaraları. Bunlar bekleyenler listesinde
+    # olmadığı için eşleşemiyor ve "eşleşmedi" görünüyordu — aynı dosya ikinci
+    # kez yüklendiğinde ilk seferde işlenen satırlar hata sanılıyor.
+    _dosya_takip = {k["takip_no"].strip() for k in kargolar if k.get("takip_no")}
+    _islenmis: dict[str, str] = {}
+    if _dosya_takip:
+        for _tn, _no in db.execute(
+            select(OrderShipment.takip_no, Order.order_number)
+            .join(Order, Order.id == OrderShipment.order_id)
+            .where(OrderShipment.tenant_id == user.tenant_id,
+                   OrderShipment.takip_no.in_(list(_dosya_takip)))
+        ).all():
+            _islenmis[(_tn or "").strip()] = str(_no)
+        for _no, _ki in db.execute(
+            select(Order.order_number, Order.kargo_info).where(
+                Order.tenant_id == user.tenant_id,
+                Order.kargo_info["takip_no"].astext.in_(list(_dosya_takip)),
+            )
+        ).all():
+            _islenmis.setdefault(((_ki or {}).get("takip_no") or "").strip(), str(_no))
+
     rapor, uygulanan = [], 0
     for r in sonuclar:
         k, s = r["kargo"], r["siparis"]
@@ -1492,10 +1517,15 @@ async def takip_xlsx(
                 "kaynak": s["kaynak"], "cikis_tarihi": s["cikis_tarihi"],
             },
         }
+        if not s and (_no := _islenmis.get((k["takip_no"] or "").strip())):
+            satir["durum"] = "zaten_islenmis"
+            satir["aciklama"] = f"Bu takip no zaten #{_no} siparişinde kayıtlı"
+            rapor.append(satir)
+            continue
         if not uygula or not s:
             rapor.append(satir)
             continue
-        if r["durum"] == "supheli" and s["shipment_id"] not in _onay:
+        if r["durum"] == "supheli" and s["order_id"] not in _onay:
             satir["aciklama"] = "Şüpheli — onaylanmadı, atlandı"
             rapor.append(satir)
             continue

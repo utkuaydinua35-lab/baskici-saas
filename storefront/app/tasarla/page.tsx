@@ -485,23 +485,28 @@ export default function TasarlaPage() {
               {/* Otomatik yaslama — baskı alanına göre (Illustrator mantığı) */}
               <div>
                 <div className="text-[11px] text-zinc-500 mb-1">Yasla</div>
-                <div className="flex gap-1">
+                <div className="grid grid-cols-3 gap-1">
                   {([
-                    ["sol", "⇤", "Sola yasla"],
+                    ["sol", "⇤", "Sola"],
                     ["yatay-orta", "↔", "Yatay ortala"],
-                    ["sag", "⇥", "Sağa yasla"],
-                    ["ust", "⇡", "Üste yasla"],
+                    ["sag", "⇥", "Sağa"],
+                    ["ust", "⇡", "Üste"],
                     ["dikey-orta", "↕", "Dikey ortala"],
-                    ["alt", "⇣", "Alta yasla"],
-                    ["orta", "✛", "Tam ortala"],
+                    ["alt", "⇣", "Alta"],
                   ] as const).map(([yon, ikon, baslik]) => (
-                    <button key={yon} onClick={() => hizala(yon)} title={baslik}
-                      aria-label={baslik}
-                      className="flex-1 text-sm py-1.5 rounded-lg border border-zinc-200
-                        hover:border-zinc-900 hover:bg-zinc-50 transition">
-                      {ikon}
+                    <button key={yon} onClick={() => hizala(yon)} title={`${baslik} yasla`}
+                      className="flex items-center justify-center gap-1 text-[11px] py-1.5
+                        rounded-lg border border-zinc-200 hover:border-zinc-900
+                        hover:bg-zinc-50 transition">
+                      <span className="text-sm leading-none">{ikon}</span> {baslik}
                     </button>
                   ))}
+                  <button onClick={() => hizala("orta")} title="Tam ortala"
+                    className="col-span-3 flex items-center justify-center gap-1 text-[11px] py-1.5
+                      rounded-lg border border-zinc-200 hover:border-zinc-900
+                      hover:bg-zinc-50 transition">
+                    <span className="text-sm leading-none">✛</span> Tam ortala
+                  </button>
                 </div>
               </div>
 

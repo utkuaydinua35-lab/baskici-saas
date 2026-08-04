@@ -31,7 +31,11 @@ export async function onizlemeUret(
     const a = template.area;
     const ax = a.x * W, ay = a.y * H, aw = a.w * W, ah = a.h * H;
 
-    // Katmanlar önce: kılıf görseli üstte kalsın (şeffaf kılıfta doğru sıra)
+    // Sıra tuvaldekiyle BİREBİR: kılıf zemin, tasarım üstünde, kamera adası
+    // en üstte. (Eskiden kılıf en üste çiziliyordu — opak kılıf şablonunda
+    // tasarımı tamamen örtüyor, önizleme boş kılıf gibi görünüyordu.)
+    ctx.drawImage(kilif, 0, 0, W, H);
+
     ctx.save();
     ctx.beginPath();
     const r = Math.min(aw, ah) * (a.radius || 0);
@@ -95,7 +99,19 @@ export async function onizlemeUret(
     }
     ctx.restore();
 
-    ctx.drawImage(kilif, 0, 0, W, H);
+    // Kamera/kesik bölgeleri: kılıf görselinin o parçası tasarımın üstüne
+    // döner — tuvaldeki görünümün aynısı (blur/maske değil, gerçek kamera adası)
+    for (const c of template.cutouts || []) {
+      const cx = c.x * W, cy = c.y * H, cw = c.w * W, ch = c.h * H;
+      ctx.save();
+      ctx.beginPath();
+      const cr = Math.min(cw, ch) * (c.radius || 0);
+      if (typeof ctx.roundRect === "function") ctx.roundRect(cx, cy, cw, ch, cr);
+      else ctx.rect(cx, cy, cw, ch);
+      ctx.clip();
+      ctx.drawImage(kilif, 0, 0, W, H);
+      ctx.restore();
+    }
     return cv.toDataURL("image/png");
   } catch {
     return null;

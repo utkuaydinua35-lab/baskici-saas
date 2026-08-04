@@ -43,10 +43,26 @@ export default function SupportChat({
     { from: "bot", text: "Merhaba! 👋 Ben BERNZ Support. Siparişiniz, ürünlerimiz ya da kargo hakkında 7/24 yardımcı olurum. Aşağıdan bir konu seçin ya da yazın." },
   ]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Karşılama baloncuğu: müşteri desteğin orada olduğunu fark etsin.
+  // Bir kez kapatılırsa o oturumda bir daha çıkmaz (rahatsız etmemek için).
+  const [davet, setDavet] = useState(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, open]);
+
+  useEffect(() => {
+    let kapatildi = false;
+    try { kapatildi = sessionStorage.getItem("support-davet") === "kapali"; } catch { /* yok */ }
+    if (kapatildi) return;
+    const z = setTimeout(() => setDavet(true), 2500);
+    return () => clearTimeout(z);
+  }, []);
+
+  const davetiKapat = () => {
+    setDavet(false);
+    try { sessionStorage.setItem("support-davet", "kapali"); } catch { /* yok */ }
+  };
 
   const push = (...m: Msg[]) => setMsgs((prev) => [...prev, ...m]);
 
@@ -157,15 +173,37 @@ export default function SupportChat({
 
   return (
     <>
+      {/* Karşılama baloncuğu — balonun hemen üstünde, sohbet kapalıyken */}
+      {davet && !open && (
+        <div className={`vitrin-yuzen-panel fixed right-4 z-40 max-w-[min(80vw,260px)] ${
+          whatsappVisible ? "bottom-40" : "bottom-[5.5rem]"}`}>
+          <div className="relative bg-white border border-zinc-200 rounded-2xl shadow-xl px-3.5 py-3 pr-7">
+            <button onClick={davetiKapat} aria-label="Kapat"
+              className="absolute top-1 right-2 text-zinc-400 hover:text-zinc-700 text-sm leading-none">×</button>
+            <button onClick={() => { setOpen(true); davetiKapat(); }} className="text-left">
+              <div className="text-xs font-semibold text-zinc-900">👋 Ben BERNZ Support Bot</div>
+              <div className="text-[11px] text-zinc-600 mt-0.5 leading-snug">
+                Size nasıl yardımcı olabilirim? Sipariş durumu, model uygunluğu ve kargo
+                sorularınızı 7/24 yanıtlıyorum.
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Balon — WhatsApp görünüyorsa üstüne biner */}
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { setOpen((o) => !o); davetiKapat(); }}
         aria-label="BERNZ Support"
         className={`vitrin-yuzen fixed right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center
           text-2xl text-white hover:scale-105 transition-transform ${whatsappVisible ? "bottom-24" : "bottom-5"}`}
         style={{ background: "var(--c-primary)" }}
       >
         {open ? "×" : "🎧"}
+        {davet && !open && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white
+            text-[11px] font-bold flex items-center justify-center animate-pulse">!</span>
+        )}
       </button>
 
       {open && (
@@ -214,7 +252,7 @@ export default function SupportChat({
                 return (
                   <div key={i} className="space-y-1.5">
                     {m.models.map((mo) => (
-                      <a key={mo.model} href={`/urunler?q=${encodeURIComponent(mo.model)}`}
+                      <a key={mo.model} href={`/urunler?model=${encodeURIComponent(mo.model)}`}
                         className="block bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs hover:border-zinc-400">
                         ✅ <b>{mo.model}</b> — {mo.product_count} üründe mevcut
                       </a>

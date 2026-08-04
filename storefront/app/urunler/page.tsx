@@ -18,14 +18,14 @@ export default async function ProductsPage({
 }: {
   searchParams: Promise<{
     q?: string; sayfa?: string; koleksiyon?: string; etiket?: string;
-    sirala?: string; marka?: string; min?: string; max?: string;
+    sirala?: string; marka?: string; min?: string; max?: string; model?: string;
   }>;
 }) {
-  const { q, sayfa, koleksiyon, etiket, sirala, marka, min, max } = await searchParams;
+  const { q, sayfa, koleksiyon, etiket, sirala, marka, min, max, model } = await searchParams;
   const page = Math.max(1, Number(sayfa) || 1);
   const [data, collections] = await Promise.all([
     getProducts({
-      q, page, collection: koleksiyon, tag: etiket,
+      q, page, collection: koleksiyon, tag: etiket, model,
       sort: sirala, brand: marka, minPrice: min, maxPrice: max,
     }),
     getCollections(),
@@ -74,6 +74,14 @@ export default async function ProductsPage({
         </div>
       )}
 
+      {model && (
+        <div className="mb-3">
+          <Link href="/urunler"
+            className="inline-flex items-center gap-1.5 text-xs bg-zinc-900 text-white rounded-full px-3 py-1.5">
+            📱 {model} modeline uygun <span className="opacity-70">×</span>
+          </Link>
+        </div>
+      )}
       {etiket && (
         <div className="mb-3">
           <Link href="/urunler"
@@ -88,7 +96,8 @@ export default async function ProductsPage({
 
       {items.length === 0 ? (
         <p className="py-16 text-center text-sm text-zinc-400">
-          {q ? `“${q}” için sonuç bulunamadı.` : "Henüz ürün eklenmemiş."}
+          {q ? `“${q}” için sonuç bulunamadı.`
+            : model ? `“${model}” için ürün bulunamadı.` : "Henüz ürün eklenmemiş."}
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -103,6 +112,7 @@ export default async function ProductsPage({
           {(() => {
             const base: Record<string, string> = {
               ...(q ? { q } : {}), ...(koleksiyon ? { koleksiyon } : {}),
+              ...(model ? { model } : {}),
               ...(etiket ? { etiket } : {}),
               ...(sirala ? { sirala } : {}), ...(marka ? { marka } : {}),
               ...(min ? { min } : {}), ...(max ? { max } : {}),

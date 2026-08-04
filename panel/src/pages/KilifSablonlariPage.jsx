@@ -360,17 +360,22 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
         ) : (
           <div className="space-y-3">
             {/* Tuval */}
-            <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[62vh] flex justify-center">
-            <div ref={boxRef} className="relative select-none inline-block"
-              onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
-              <img src={t.image_url} alt="" draggable={false}
-                onLoad={(e) => setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
-                style={{ height: `${58 * zoom}vh`, width: 'auto' }}
-                className="block pointer-events-none max-w-none" />
-              {kutuCiz(t.area, 'yesil', sel === 'baski')}
-              {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
-              {tutamakCiz()}
-            </div>
+            {/* Yakınlaştırma TUVALİN TAMAMINI ölçekler (transform: scale).
+                Görseli tek başına büyütmek kutuları/tutamakları kaydırıyordu;
+                böyle hepsi tek parça büyür, hiçbiri bozulmaz. */}
+            <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[64vh] flex justify-center">
+              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+                <div ref={boxRef} className="relative select-none inline-block"
+                  onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
+                  <img src={t.image_url} alt="" draggable={false}
+                    onLoad={(e) => setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
+                    style={{ height: '54vh', width: 'auto' }}
+                    className="block pointer-events-none max-w-none" />
+                  {kutuCiz(t.area, 'yesil', sel === 'baski')}
+                  {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
+                  {tutamakCiz()}
+                </div>
+              </div>
             </div>
 
             {/* Ayarlar */}

@@ -537,7 +537,16 @@ function ImagesSection({ product, onChanged, setMsg }) {
 // ── Varyant tablosu: inline fiyat + stok editi ──
 function VariantTable({ product, basePrice, onChanged, setMsg }) {
   const [edit, setEdit] = useState(null)   // {id, field, value}
-  const [collapsed, setCollapsed] = useState({})   // {marka: true} — kapalı gruplar
+  // Çok varyantlı üründe (varyant seti uygulanmış ürünlerde 200+ olabiliyor)
+  // tüm satırları birden çizmek sayfayı saniyelerce kilitliyordu: gruplar
+  // KAPALI başlar, kullanıcı ihtiyacı olanı açar.
+  const [collapsed, setCollapsed] = useState(() => {
+    if ((product.variants || []).length <= 40) return {}
+    const kapali = {}
+    for (const v of product.variants) kapali[v.brand || 'Diğer'] = true
+    return kapali
+  })
+  const [ara, setAra] = useState('')
   const [brandEdit, setBrandEdit] = useState(null) // {old, value} — marka adı düzenleme
 
   const commit = async () => {
@@ -602,8 +611,15 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
   }
 
   // Marka bazlı gruplar — başlık satırı tıklayınca grup kapanıp açılır
+  const q = ara.trim().toLocaleLowerCase('tr')
+  const gorunen = q
+    ? product.variants.filter(v =>
+        (v.model_display || '').toLocaleLowerCase('tr').includes(q) ||
+        (v.brand || '').toLocaleLowerCase('tr').includes(q) ||
+        (v.variation || '').toLocaleLowerCase('tr').includes(q))
+    : product.variants
   const groups = []
-  for (const v of product.variants) {
+  for (const v of gorunen) {
     const key = v.brand || 'Diğer'
     const g = groups.find(x => x.brand === key)
     if (g) g.items.push(v)
@@ -611,6 +627,20 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
   }
 
   return (
+    <div>
+      {(product.variants || []).length > 12 && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <input className="input !py-1 text-xs flex-1" value={ara}
+            onChange={e => setAra(e.target.value)}
+            placeholder="Model ara (örn. iPhone 15)…" />
+          <button onClick={() => setCollapsed({})} className="text-[11px] text-panel-muted underline">
+            tümünü aç
+          </button>
+          <button onClick={() => {
+              const k = {}; for (const v of product.variants) k[v.brand || 'Diğer'] = true; setCollapsed(k)
+            }} className="text-[11px] text-panel-muted underline">tümünü kapat</button>
+        </div>
+      )}
     <div className="max-h-96 overflow-y-auto border border-panel-border rounded-xl">
       <table className="w-full text-xs">
         <thead className="text-panel-muted bg-panel-input sticky top-0">
@@ -649,7 +679,7 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
                   </div>
                 </td>
               </tr>
-              {!collapsed[g.brand] && g.items.map(v => (
+              {(q || !collapsed[g.brand]) && g.items.map(v => (
                 <tr key={v.id} className={`border-t border-panel-border ${!v.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-1 py-1 pl-5">{cell(v, 'model_display', v.model_display)}</td>
                   <td className="px-3 py-1.5">{v.variation || '—'}</td>
@@ -677,6 +707,12 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
       {product.variants.length === 0 && (
         <div className="text-xs text-panel-muted p-3">Henüz varyant yok.</div>
       )}
+    </div>
+    {q && (
+      <div className="text-[11px] text-panel-muted mt-1">
+        {gorunen.length} varyant eşleşti
+      </div>
+    )}
     </div>
   )
 }

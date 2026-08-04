@@ -16,6 +16,9 @@ interface Props {
   onSelect: (id: string | null) => void;
   onChange: (id: string, patch: LayerPatch) => void;
   maxHeight?: number;
+  /** Kırpma modu: görsel tutamakları ÖLÇEKLEMEZ, kenardan KIRPAR
+      (en/boy oranı bozulmaz, görüntü ezilmez). */
+  kirpma?: boolean;
 }
 
 // Boyutlandırma yönleri: köşeler oranı korur, kenarlar tek eksende esner
@@ -28,13 +31,16 @@ const YONLER: [Yon, number, number, string][] = [
 ];
 
 export default function Canvas({
-  template, layers, selected, onSelect, onChange, maxHeight = 560,
+  template, layers, selected, onSelect, onChange, maxHeight = 560, kirpma = false,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     mode: DragMode; id: string; sx: number; sy: number; tip: string;
-    start: { x: number; y: number; w: number; h: number; rot: number; size?: number };
+    start: {
+      x: number; y: number; w: number; h: number; rot: number; size?: number;
+      crop?: { x: number; y: number; w: number; h: number };
+    };
   } | null>(null);
   const [, forceRender] = useState(0);
   // Baskı alanının ekrandaki ölçüsü — oransal metin boyutunu piksele çevirmek
@@ -67,9 +73,12 @@ export default function Canvas({
         h: anyL.h ?? (areaPx.h ? ((l as unknown as TextLayer).size || 0.1) : 0.06),
         rot: anyL.rot || 0,
         size: (l as unknown as TextLayer).size,
+        crop: anyL.crop ? { ...anyL.crop } : { x: 0, y: 0, w: 1, h: 1 },
       },
     };
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    // Yakalama başarısız olabilir (iptal edilmiş pointer) — sürükleme yine
+    // window dinleyicileriyle çalışır, bu yüzden hata yutulur.
+    try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { /* önemsiz */ }
   };
 
   const onPointerMove = useCallback((e: PointerEvent) => {
@@ -81,6 +90,41 @@ export default function Canvas({
 
     if (d.mode === "move") {
       onChange(d.id, { x: d.start.x + dx, y: d.start.y + dy });
+    } else if (kirpma && d.tip === "image" && d.mode !== "rotate") {
+      // ── KIRPMA ──
+      // Çerçeve kenardan içeri gelir, görselin GÖRÜNEN kısmı aynı ölçekte kalır:
+      // yani görsel ezilmez, sadece dışarıda kalan bölüm kırpılır. Kırpma
+      // penceresi orijinal dosyaya oransaldır (0-1), baskıda da bu bölge basılır.
+      const yon = d.mode as Yon;
+      const c0 = d.start.crop || { x: 0, y: 0, w: 1, h: 1 };
+      let { x, y, w, h } = d.start;
+      let { x: cx, y: cy, w: cw, h: ch } = c0;
+
+      if (yon.includes("e")) {
+        w = Math.max(0.05, d.start.w + dx);
+        cw = (c0.w * w) / d.start.w;
+        if (cx + cw > 1) { cw = 1 - cx; w = (d.start.w * cw) / c0.w; }   // orijinalin sonu
+      }
+      if (yon.includes("w")) {
+        w = Math.max(0.05, d.start.w - dx);
+        cw = (c0.w * w) / d.start.w;
+        cx = c0.x + c0.w - cw;
+        if (cx < 0) { cx = 0; cw = c0.x + c0.w; w = (d.start.w * cw) / c0.w; }
+        x = d.start.x + d.start.w - w;
+      }
+      if (yon.includes("s")) {
+        h = Math.max(0.03, d.start.h + dy);
+        ch = (c0.h * h) / d.start.h;
+        if (cy + ch > 1) { ch = 1 - cy; h = (d.start.h * ch) / c0.h; }
+      }
+      if (yon.includes("n")) {
+        h = Math.max(0.03, d.start.h - dy);
+        ch = (c0.h * h) / d.start.h;
+        cy = c0.y + c0.h - ch;
+        if (cy < 0) { cy = 0; ch = c0.y + c0.h; h = (d.start.h * ch) / c0.h; }
+        y = d.start.y + d.start.h - h;
+      }
+      onChange(d.id, { x, y, w, h, crop: { x: cx, y: cy, w: cw, h: ch } });
     } else if (d.mode !== "rotate") {
       // 8 yönlü boyutlandırma. Metinde yükseklik yazının kendisinden gelir:
       // yatay tutamak genişliği, dikey tutamak PUNTOYU değiştirir.
@@ -124,7 +168,9 @@ export default function Canvas({
       onChange(d.id, { rot: Math.round(aci) });
     }
     forceRender((n) => n + 1);
-  }, [onChange]);
+    // kirpma bağımlılıkta OLMALI: yoksa closure eski değeri yakalar ve
+    // kırpma modu açıkken tutamaklar hâlâ ölçekleme yapar.
+  }, [onChange, kirpma]);
 
   const onPointerUp = useCallback(() => { drag.current = null; }, []);
 

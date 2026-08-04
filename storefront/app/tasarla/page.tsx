@@ -190,6 +190,9 @@ export default function TasarlaPage() {
     guncelle(l.id, yama);
   };
 
+  // Kırpma modu: görsel tutamakları ölçekleme yerine kenardan kırpar
+  const [kirpmaModu, setKirpmaModu] = useState(false);
+
   // Renk seçimi — saf beyaz (CMYK 0,0,0,0) baskıda görünmez, otomatik düzeltilir
   const [hexGiris, setHexGiris] = useState("");
   const [renkUyari, setRenkUyari] = useState("");
@@ -367,7 +370,7 @@ export default function TasarlaPage() {
         {/* Tuval */}
         <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4">
           <Canvas template={tpl} layers={layers} selected={secili}
-            onSelect={setSecili} onChange={guncelle}
+            onSelect={setSecili} onChange={guncelle} kirpma={kirpmaModu}
             maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
         </div>
 
@@ -534,6 +537,33 @@ export default function TasarlaPage() {
                     className="w-full text-sm py-2 rounded-lg border border-zinc-300">
                     Kılıfı tamamen kapla
                   </button>
+
+                  {/* Kırpma modu — tutamaklar görseli ezmeden kenardan kırpar */}
+                  <div className={`rounded-xl border p-2.5 ${
+                    kirpmaModu ? "border-zinc-900 bg-zinc-50" : "border-zinc-200"}`}>
+                    <button onClick={() => setKirpmaModu((k) => !k)}
+                      className="w-full flex items-center gap-2 text-sm font-medium">
+                      <span>✂️ Kırpma modu</span>
+                      <span className={`ml-auto text-[11px] px-2 py-0.5 rounded-full ${
+                        kirpmaModu ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-500"}`}>
+                        {kirpmaModu ? "Açık" : "Kapalı"}
+                      </span>
+                    </button>
+                    <p className="text-[11px] text-zinc-500 mt-1.5 leading-snug">
+                      {kirpmaModu
+                        ? "Kenar ve köşelerden çekerek görselin istemediğin kısmını kırp — görsel ezilmez, oran korunur."
+                        : "Aç, sonra tutamaklardan çekerek görseli kenarlardan kırp (oranı bozulmadan)."}
+                    </p>
+                    {(seciliKatman as ImageLayer).crop && (
+                      <button
+                        onClick={() => guncelle(seciliKatman.id, {
+                          crop: { x: 0, y: 0, w: 1, h: 1 },
+                        })}
+                        className="mt-2 w-full text-xs py-1.5 rounded-lg border border-zinc-300">
+                        Kırpmayı sıfırla
+                      </button>
+                    )}
+                  </div>
                   <label className="block text-xs text-zinc-500">
                     Yakınlaştır (kırpar)
                     <input type="range" min="0.3" max="1" step="0.02"

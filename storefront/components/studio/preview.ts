@@ -4,7 +4,6 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
-import { siralanmisKatmanlar } from "./katmanlar";
 import type { CaseTemplate, ImageLayer, Layer, OverlayLayer, TextLayer } from "./types";
 
 const gorselYukle = (src: string): Promise<HTMLImageElement> =>
@@ -44,7 +43,9 @@ export async function onizlemeUret(
     else ctx.rect(ax, ay, aw, ah);
     ctx.clip();
 
-    for (const l of siralanmisKatmanlar(layers)) {
+    // Dizideki sıra = çizim sırası (ilk eleman en altta). Tipe göre otomatik
+    // sıralama yok; müşteri hazır şablonu istediği katmana taşıyabilir.
+    for (const l of layers) {
       if (l.type === "overlay") {
         // Hazır şablon baskı alanını tam kaplar
         try {

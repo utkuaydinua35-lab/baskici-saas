@@ -128,7 +128,7 @@ def render_print_file(db, design, template) -> bytes:
     tuval = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ciz = ImageDraw.Draw(tuval)
 
-    for katman in siralanmis_katmanlar(design.layers or []):
+    for katman in (design.layers or []):
         tip = katman.get("type")
         try:
             if tip == "image":
@@ -147,15 +147,9 @@ def render_print_file(db, design, template) -> bytes:
     return buf.getvalue()
 
 
-# KATMAN SIRASI — editör, önizleme ve baskı için TEK kural:
-# müşterinin görselleri en altta, hazır şablon (çerçeve) onların üstünde,
-# yazılar en üstte. Storefront karşılığı: components/studio/katmanlar.ts
-_SIRA = {"image": 0, "overlay": 1, "text": 2}
-
-
-def siralanmis_katmanlar(layers: list[dict]) -> list[dict]:
-    """Katmanları çizim sırasına dizer (dizideki göreli sıra korunur)."""
-    return sorted(layers or [], key=lambda k: _SIRA.get(k.get("type"), 0))
+# KATMAN SIRASI: dizideki sıra çizim sırasıdır (ilk eleman en altta). Tipe göre
+# otomatik sıralama YOK — müşteri hazır şablonu (çerçeveyi) editörde istediği
+# katmana taşıyabilir. Storefront karşılığı: components/studio/katmanlar.ts
 
 
 def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:

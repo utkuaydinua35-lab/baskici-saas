@@ -11,6 +11,7 @@ import Link from "next/link";
 import Canvas from "@/components/studio/Canvas";
 import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fonts";
 import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
+import { katmanEkle, overlayTasi } from "@/components/studio/katmanlar";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, SavedDesign,
@@ -155,7 +156,7 @@ export default function TasarlaPage() {
         x: (1 - w) / 2, y: (1 - h) / 2, w, h, rot: 0,
         src_w: d.width, src_h: d.height,
       };
-      setLayers((ls) => [...ls, yeni]);
+      setLayers((ls) => katmanEkle(ls, yeni));
       setSecili(yeni.id);
     } catch (e) {
       setDurum(e instanceof Error ? e.message : "Görsel yüklenemedi");
@@ -170,7 +171,7 @@ export default function TasarlaPage() {
       id: yeniId(), type: "text", text: "Yazınız", font: "poppins",
       size: 0.1, color: BASKI_BEYAZ, x: 0.1, y: 0.42, w: 0.8, rot: 0, align: "center",
     };
-    setLayers((ls) => [...ls, yeni]);
+    setLayers((ls) => katmanEkle(ls, yeni));
     setSecili(yeni.id);
   };
 
@@ -228,14 +229,23 @@ export default function TasarlaPage() {
 
   const overlaySec = (o: StudioOverlay) => {
     setLayers((ls) => {
+      const eski = ls.find((l) => l.type === "overlay") as OverlayLayer | undefined;
       const digerleri = ls.filter((l) => l.type !== "overlay");   // tek şablon
-      if (seciliOverlay?.overlay_id === o.id) return digerleri;   // aynısına basınca kaldır
+      if (eski?.overlay_id === o.id) return digerleri;            // aynısına basınca kaldır
       const yeni: OverlayLayer = {
         id: yeniId(), type: "overlay", overlay_id: o.id, url: o.image_url, label: o.label,
       };
-      return [...digerleri, yeni];
+      // Şablon değiştiriliyorsa eskisinin katman sırası korunur
+      if (eski) {
+        const i = ls.indexOf(eski);
+        return [...ls.slice(0, i), yeni, ...ls.slice(i + 1)];
+      }
+      return [...digerleri, yeni];   // ilk seçimde en üstte
     });
   };
+
+  // Şablon en üstte mi? (dizinin son elemanıysa üstte demektir)
+  const overlayUstte = layers.length > 0 && layers[layers.length - 1].type === "overlay";
 
   // Kırpma modu: görsel tutamakları ölçekleme yerine kenardan kırpar
   const [kirpmaModu, setKirpmaModu] = useState(false);
@@ -515,10 +525,32 @@ export default function TasarlaPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-zinc-400 mt-1.5 leading-snug">
-                Şablon en üst katmandır: yüklediğin görseller altında kalır, yazılar
-                şablonun üstüne yazılır.
-              </p>
+              {seciliOverlay && (
+                <div className="mt-2">
+                  <div className="text-[11px] text-zinc-500 mb-1">Şablonun katmanı</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button onClick={() => setLayers((ls) => overlayTasi(ls, "ust"))}
+                      className={`text-[11px] py-1.5 rounded-lg border transition ${
+                        overlayUstte
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-200 hover:border-zinc-400"}`}>
+                      ⬆ En üstte
+                    </button>
+                    <button onClick={() => setLayers((ls) => overlayTasi(ls, "alt"))}
+                      className={`text-[11px] py-1.5 rounded-lg border transition ${
+                        !overlayUstte
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-200 hover:border-zinc-400"}`}>
+                      ⬇ En altta
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                    {overlayUstte
+                      ? "Şablon her şeyin üstünde: görsellerin ve yazıların önünde durur."
+                      : "Şablon zeminde: görsellerin ve yazıların arkasında kalır."}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

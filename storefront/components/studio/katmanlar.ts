@@ -1,16 +1,25 @@
-// KATMAN SIRASI — tek kural, üç yerde de aynı:
-// tuval (Canvas.tsx), önizleme PNG'si (preview.ts) ve baskı dosyası
-// (backend/app/services/design_render.py → siralanmis_katmanlar).
-//
-// Müşterinin görselleri EN ALTTA, hazır şablon (çerçeve) onların üstünde,
-// yazılar EN ÜSTTE. Böylece fotoğraf çerçevesi şablonu seçen müşterinin
-// yüklediği fotoğraf çerçevenin içinde kalır, yazısı ise çerçevenin üstüne
-// yazılabilir.
+// KATMAN SIRASI — dizideki sıra ÇİZİM SIRASIDIR: ilk eleman en altta,
+// son eleman en üstte. Tipe göre otomatik sıralama YOK; müşteri hazır şablonu
+// (çerçeveyi) istediği katmana taşıyabilsin diye sıra tamamen ona bırakılmıştır.
+// Aynı kural üç yerde geçerli: tuval (Canvas.tsx), önizleme (preview.ts) ve
+// baskı dosyası (backend/app/services/design_render.py).
 import type { Layer } from "./types";
 
-const SIRA: Record<string, number> = { image: 0, overlay: 1, text: 2 };
+/**
+ * Yeni katmanı diziye ekler. Hazır şablon EN ÜSTTEYSE yeni içerik onun ALTINA
+ * girer — müşteri çerçeveyi üstte tutmayı seçtiyse eklediği her görsel/yazı
+ * çerçevenin arkasında kalsın diye. Şablon üstte değilse katman sona eklenir.
+ */
+export function katmanEkle(layers: Layer[], yeni: Layer): Layer[] {
+  const son = layers[layers.length - 1];
+  if (son?.type === "overlay") return [...layers.slice(0, -1), yeni, son];
+  return [...layers, yeni];
+}
 
-export function siralanmisKatmanlar(layers: Layer[]): Layer[] {
-  // Array.sort kararlıdır: aynı tipteki katmanların kendi sırası korunur
-  return [...layers].sort((a, b) => (SIRA[a.type] ?? 0) - (SIRA[b.type] ?? 0));
+/** Hazır şablonu en alta (zemin) veya en üste taşır. */
+export function overlayTasi(layers: Layer[], nereye: "ust" | "alt"): Layer[] {
+  const ov = layers.find((l) => l.type === "overlay");
+  if (!ov) return layers;
+  const digerleri = layers.filter((l) => l !== ov);
+  return nereye === "alt" ? [ov, ...digerleri] : [...digerleri, ov];
 }

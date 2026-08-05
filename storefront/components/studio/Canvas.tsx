@@ -7,7 +7,6 @@
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
-import { siralanmisKatmanlar } from "./katmanlar";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, TextLayer,
 } from "./types";
@@ -206,7 +205,7 @@ export default function Canvas({
           width: `${a.w * 100}%`, height: `${a.h * 100}%`,
           borderRadius: `${(a.radius || 0) * Math.min(areaPx.w, areaPx.h)}px`,
         }}>
-        {siralanmisKatmanlar(layers).map((l) => {
+        {layers.map((l) => {
           const secili = l.id === selected;
           if (l.type === "overlay") {
             // Hazır şablon: baskı alanını tam kaplar, tıklanamaz (yanlışlıkla

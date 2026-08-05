@@ -186,10 +186,11 @@ function HazirSablonlar({ storeId, templates }) {
       <div>
         <h2 className="font-semibold text-sm">🖼️ Hazır Tasarım Şablonları</h2>
         <p className="text-xs text-panel-muted mt-0.5">
-          Müşterinin tasarımının <b>üstüne binen</b> çerçeve/desenler. Örneğin fotoğraf
-          çerçevesi yüklersen müşterinin görseli çerçevenin içinde kalır, yazıları ise
-          çerçevenin üstüne yazılır. <b>Şeffaf PNG</b> yükleyin — saydam kısımda müşterinin
-          görseli görünür. Görsel baskı alanını tam kaplar, o oranda hazırlayın.
+          Müşterinin editörde seçebileceği hazır çerçeve/desenler. Şablon varsayılan
+          olarak <b>en üstte</b> durur (görsellerin ve yazıların önünde); müşteri isterse
+          tek tıkla <b>en alta</b> (zemin) alabilir. <b>Şeffaf PNG</b> yükleyin — saydam
+          kısımda alttaki tasarım görünür. Görsel baskı alanını tam kaplar, o oranda
+          hazırlayın.
         </p>
       </div>
 

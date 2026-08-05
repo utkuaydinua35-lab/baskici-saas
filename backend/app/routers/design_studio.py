@@ -241,9 +241,34 @@ def _ser_overlay(o: DesignOverlay) -> dict:
         "case_template_id": str(o.case_template_id) if o.case_template_id else None,
         "image_url": f"/storage/{o.image_path}",
         "thumb_url": f"/storage/{o.thumb_path}" if o.thumb_path else f"/storage/{o.image_path}",
+        "mod": o.mod,
+        "alanlar": [
+            {**a, "image_url": f"/storage/{a['image_path']}" if a.get("image_path") else None}
+            for a in (o.alanlar or [])
+        ],
         "position": o.position,
         "is_active": o.is_active,
     }
+
+
+class OverlayAlan(BaseModel):
+    """Kısıtlı şablonda müşterinin doldurabildiği tek bir alan."""
+    key: str = Field(..., min_length=1, max_length=30, pattern="^[a-z0-9_-]+$")
+    tip: str = Field(..., pattern="^(yazi|gorsel)$")
+    etiket: str = Field(..., min_length=1, max_length=60)
+    x: Decimal = Field(Decimal("0.1"), ge=0, le=1)
+    y: Decimal = Field(Decimal("0.1"), ge=0, le=1)
+    w: Decimal = Field(Decimal("0.8"), gt=0, le=1)
+    h: Decimal | None = Field(None, gt=0, le=1)          # görsel alanı
+    # yazı alanı
+    varsayilan: str | bool | None = None
+    max: int | None = Field(None, ge=1, le=40)
+    size: Decimal | None = Field(None, gt=0, le=0.6)
+    font: str | None = Field(None, max_length=30)
+    renk: str | None = Field(None, max_length=9)
+    hiza: str | None = Field(None, pattern="^(left|center|right)$")
+    # görsel alanı — dosya ayrı uçtan yüklenir, burada yolu taşınır
+    image_path: str | None = Field(None, max_length=500)
 
 
 @router.get("/overlays/list", response_model=dict)
@@ -307,6 +332,8 @@ async def create_overlay(
 class OverlayUpdate(BaseModel):
     label: str | None = Field(None, min_length=1, max_length=120)
     case_template_id: uuid.UUID | None = None
+    mod: str | None = Field(None, pattern="^(serbest|kisitli)$")
+    alanlar: list[OverlayAlan] | None = Field(None, max_length=12)
     position: int | None = None
     is_active: bool | None = None
 
@@ -322,11 +349,55 @@ def update_overlay(
         DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
     if not o:
         raise HTTPException(404, "Hazır şablon bulunamadı")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    guncel = body.model_dump(exclude_unset=True)
+    if guncel.get("alanlar") is not None:
+        anahtarlar = set()
+        temiz = []
+        for a in guncel["alanlar"]:
+            if a["key"] in anahtarlar:
+                raise HTTPException(422, f"Aynı alan anahtarı iki kez: {a['key']}")
+            anahtarlar.add(a["key"])
+            if a["tip"] == "gorsel" and not a.get("image_path"):
+                raise HTTPException(422, f"“{a['etiket']}” alanına görsel yüklenmedi")
+            temiz.append({
+                k: (float(v) if isinstance(v, Decimal) else v)
+                for k, v in a.items() if v is not None
+            })
+        guncel["alanlar"] = temiz
+    for k, v in guncel.items():
         setattr(o, k, v)
+    if o.mod == "kisitli" and not (o.alanlar or []):
+        raise HTTPException(422, "Kısıtlı şablonda en az bir alan tanımlanmalı")
     db.commit()
     db.refresh(o)
     return _ser_overlay(o)
+
+
+@router.post("/overlays/{overlay_id}/alan-gorseli", response_model=dict)
+async def upload_overlay_field_image(
+    overlay_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Kısıtlı şablondaki açılabilir öğenin görseli (bayrak, logo…).
+    Şeffaf PNG önerilir; dosya yüklenir, alana bağlama PATCH ile yapılır."""
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    data = await file.read()
+    try:
+        url, _prev, _w, _h = storage_svc.save_design_original(
+            user.tenant_id, o.store_id, data,
+            getattr(file, "filename", None) or "alan.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"image_path": url.removeprefix("/storage/"), "image_url": url}
 
 
 @router.delete("/overlays/{overlay_id}", status_code=status.HTTP_204_NO_CONTENT)

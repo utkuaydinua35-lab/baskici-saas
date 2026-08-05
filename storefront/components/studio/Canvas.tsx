@@ -208,14 +208,20 @@ export default function Canvas({
         {layers.map((l) => {
           const secili = l.id === selected;
           if (l.type === "overlay") {
-            // Hazır şablon: baskı alanını tam kaplar, tıklanamaz (yanlışlıkla
-            // taşınmasın). Panelden "Şablonu kaldır" ile silinir.
+            // Hazır şablon. Kutusu yoksa baskı alanını tam kaplar; kutusu varsa
+            // kısıtlı şablonun açılabilir öğesidir (bayrak, logo) ve kendi
+            // konumuna çizilir. İkisi de tıklanamaz — yanlışlıkla taşınmasın.
             const ov = l as OverlayLayer;
+            const k = ov.kutu;
             return (
               <img key={l.id} data-katman={l.id} src={ov.url} alt={ov.label || ""}
                 draggable={false}
-                className="absolute inset-0 pointer-events-none"
-                style={{ width: "100%", height: "100%", objectFit: "fill" }} />
+                className="absolute pointer-events-none"
+                style={k ? {
+                  left: `${k.x * 100}%`, top: `${k.y * 100}%`,
+                  width: `${k.w * 100}%`, height: `${k.h * 100}%`,
+                  objectFit: "contain",
+                } : { inset: 0, width: "100%", height: "100%", objectFit: "fill" }} />
             );
           }
           if (l.type === "image") {

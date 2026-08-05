@@ -12,6 +12,9 @@ import Canvas from "@/components/studio/Canvas";
 import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fonts";
 import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
 import { katmanEkle, overlayTasi } from "@/components/studio/katmanlar";
+import {
+  type AlanDegeri, kisitliKatmanlar, varsayilanDegerler,
+} from "@/components/studio/kisitli";
 import Ogretici, { type TurAdimi } from "@/components/studio/Ogretici";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
@@ -60,7 +63,9 @@ const TUR_ADIMLARI: TurAdimi[] = [
     baslik: "5. Hazır şablonlar",
     metin: "Hazır çerçeve/desenlerden birini seçebilirsin. Şablonu istersen en "
       + "üstte (tasarımının önünde çerçeve gibi), istersen en altta (zemin "
-      + "olarak) kullanırsın.",
+      + "olarak) kullanırsın. 🔒 işaretli şablonlar hazır tasarımdır: onlarda "
+      + "sadece isim/numara gibi alanları doldurur, açılabilir öğeleri açıp "
+      + "kapatırsın — yerleşim baskıya hazır olarak sabittir.",
   },
   {
     hedef: "kaydet",
@@ -293,7 +298,36 @@ export default function TasarlaPage() {
   );
   const seciliOverlay = layers.find((l) => l.type === "overlay") as OverlayLayer | undefined;
 
+  // Kısıtlı şablon: müşteri yalnız tanımlı alanları doldurur
+  const [kisitli, setKisitli] = useState<StudioOverlay | null>(null);
+  const [alanDegerleri, setAlanDegerleri] = useState<Record<string, AlanDegeri>>({});
+
+  const alanYaz = (key: string, deger: AlanDegeri) => {
+    if (!kisitli) return;
+    const yeni = { ...alanDegerleri, [key]: deger };
+    setAlanDegerleri(yeni);
+    setLayers(kisitliKatmanlar(kisitli, yeni));
+  };
+
+  const kisitliCik = () => {
+    setKisitli(null);
+    setAlanDegerleri({});
+    setLayers([]);
+    setSecili(null);
+  };
+
   const overlaySec = (o: StudioOverlay) => {
+    // Kısıtlı şablon seçilince editör FORM moduna geçer
+    if (o.mod === "kisitli") {
+      if (kisitli?.id === o.id) { kisitliCik(); return; }
+      const d = varsayilanDegerler(o);
+      setKisitli(o);
+      setAlanDegerleri(d);
+      setLayers(kisitliKatmanlar(o, d));
+      setSecili(null);
+      return;
+    }
+    if (kisitli) kisitliCik();
     setLayers((ls) => {
       const eski = ls.find((l) => l.type === "overlay") as OverlayLayer | undefined;
       const digerleri = ls.filter((l) => l.type !== "overlay");   // tek şablon
@@ -356,6 +390,9 @@ export default function TasarlaPage() {
         body: JSON.stringify({
           id: designId, name: ad, template_key: tpl.key,
           layers, status: durumDeger, preview_data_url: onizleme,
+          // Kısıtlı şablonda katmanları SUNUCU üretir; biz sadece alan
+          // değerlerini gönderiyoruz (kısıtlama baskıda da garanti olsun)
+          ...(kisitli ? { overlay_id: kisitli.id, alan_degerleri: alanDegerleri } : {}),
         }),
       });
       const d = await res.json();
@@ -388,6 +425,7 @@ export default function TasarlaPage() {
         body: JSON.stringify({
           id: designId, name: ad, template_key: tpl.key, layers,
           status: "ready", preview_data_url: onizleme,
+          ...(kisitli ? { overlay_id: kisitli.id, alan_degerleri: alanDegerleri } : {}),
         }),
       });
       const d = await res.json();
@@ -532,8 +570,9 @@ export default function TasarlaPage() {
         <div>
           <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4"
             data-tur="tuval">
-            <Canvas template={tpl} layers={layers} selected={secili}
-              onSelect={setSecili} onChange={guncelle} kirpma={kirpmaModu}
+            <Canvas template={tpl} layers={layers} selected={kisitli ? null : secili}
+              onSelect={kisitli ? () => {} : setSecili} onChange={guncelle}
+              kirpma={kirpmaModu}
               maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
           </div>
           <button onClick={() => setUyariGoster(true)}
@@ -559,7 +598,7 @@ export default function TasarlaPage() {
             </div>
           </div>
 
-          <div className="flex gap-2" data-tur="ekle">
+          {!kisitli && <div className="flex gap-2" data-tur="ekle">
             <button onClick={() => dosyaRef.current?.click()} disabled={yukleniyor}
               className="flex-1 px-3 py-2.5 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
               🖼️ {yukleniyor ? "Yükleniyor…" : "Görsel ekle"}
@@ -570,7 +609,51 @@ export default function TasarlaPage() {
             </button>
             <input ref={dosyaRef} type="file" accept="image/*" className="hidden"
               onChange={(e) => gorselEkle(e.target.files?.[0])} />
-          </div>
+          </div>}
+
+          {/* KISITLI ŞABLON FORMU — müşteri yalnız bu alanları değiştirir.
+              Konum, font, renk ve şablonun kendisi sabittir. */}
+          {kisitli && (
+            <div className="border border-zinc-900 rounded-2xl p-3 space-y-3" data-tur="ayarlar">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">🔒 {kisitli.label}</span>
+                <button onClick={kisitliCik}
+                  className="ml-auto text-xs underline text-zinc-500">şablondan çık</button>
+              </div>
+              <p className="text-[11px] text-zinc-500 leading-snug">
+                Bu hazır tasarımda yalnız aşağıdaki alanları değiştirebilirsin —
+                yerleşim ve renkler baskıya hazır olarak sabitlenmiştir.
+              </p>
+
+              {(kisitli.alanlar || []).map((a) => (
+                a.tip === "yazi" ? (
+                  <label key={a.key} className="block text-xs text-zinc-600">
+                    {a.etiket}
+                    <input
+                      value={String(alanDegerleri[a.key] ?? "")}
+                      maxLength={a.max || 40}
+                      onChange={(e) => alanYaz(a.key, e.target.value)}
+                      className="w-full border border-zinc-300 rounded-lg px-2 py-1.5 text-sm mt-0.5" />
+                    <span className="text-[10px] text-zinc-400">
+                      en fazla {a.max || 40} karakter
+                    </span>
+                  </label>
+                ) : (
+                  <label key={a.key}
+                    className="flex items-center gap-2 text-xs text-zinc-700 cursor-pointer">
+                    <input type="checkbox"
+                      checked={alanDegerleri[a.key] !== false}
+                      onChange={(e) => alanYaz(a.key, e.target.checked)} />
+                    {a.image_url && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={a.image_url} alt="" className="w-6 h-6 object-contain" />
+                    )}
+                    {a.etiket} olsun mu?
+                  </label>
+                )
+              ))}
+            </div>
+          )}
 
           {/* Hazır şablonlar — müşterinin görselinin ÜSTÜNE binen çerçeveler.
               Yüklenen görseller çerçevenin altında, yazılar üstünde kalır. */}
@@ -593,14 +676,18 @@ export default function TasarlaPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={o.thumb_url} alt={o.label}
                       className="w-full h-full object-contain" />
-                    {seciliOverlay?.overlay_id === o.id && (
+                    {o.mod === "kisitli" && (
+                      <span className="absolute bottom-0.5 left-0.5 text-[10px] bg-white/90
+                        rounded px-1" title="Hazır tasarım — sadece belirli alanlar değişir">🔒</span>
+                    )}
+                    {(seciliOverlay?.overlay_id === o.id || kisitli?.id === o.id) && (
                       <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-zinc-900
                         text-white text-[10px] flex items-center justify-center">✓</span>
                     )}
                   </button>
                 ))}
               </div>
-              {seciliOverlay && (
+              {seciliOverlay && !kisitli && (
                 <div className="mt-2">
                   <div className="text-[11px] text-zinc-500 mb-1">Şablonun katmanı</div>
                   <div className="grid grid-cols-2 gap-1">
@@ -637,7 +724,7 @@ export default function TasarlaPage() {
           )}
 
           {/* Seçili katman ayarları */}
-          {seciliKatman ? (
+          {kisitli ? null : seciliKatman ? (
             <div className="border border-zinc-200 rounded-2xl p-3 space-y-3" data-tur="ayarlar">
               <div className="flex items-center gap-2 text-sm font-medium">
                 {seciliKatman.type === "image" ? "Görsel" : "Yazı"}

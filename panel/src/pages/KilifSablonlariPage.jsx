@@ -181,6 +181,8 @@ function HazirSablonlar({ storeId, templates }) {
     catch { setErr('Güncellenemedi') }
   }
 
+  const [alanDuzenle, setAlanDuzenle] = useState(null)
+
   return (
     <div className="card space-y-3">
       <div>
@@ -219,6 +221,12 @@ function HazirSablonlar({ storeId, templates }) {
           onChange={e => yukle(e.target.files?.[0])} />
       </div>
 
+      {alanDuzenle && (
+        <SablonAlanEditoru overlay={alanDuzenle}
+          onClose={() => setAlanDuzenle(null)}
+          onSaved={() => { setAlanDuzenle(null); load() }} />
+      )}
+
       {items.length > 0 ? (
         <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2">
           {items.map(o => (
@@ -229,6 +237,16 @@ function HazirSablonlar({ storeId, templates }) {
               </div>
               <div className="p-1.5 space-y-1">
                 <div className="text-[11px] truncate" title={o.label}>{o.label}</div>
+                {o.mod === 'kisitli' && (
+                  <div className="text-[10px] text-panel-accent">
+                    🔒 Kısıtlı · {o.alanlar?.length || 0} alan
+                  </div>
+                )}
+                <button onClick={() => setAlanDuzenle(o)}
+                  className="w-full text-[10px] py-1 rounded-lg border border-panel-border
+                    hover:border-panel-accent transition">
+                  ✏️ Alanları düzenle
+                </button>
                 <div className="flex items-center gap-1">
                   <button onClick={() => durum(o)}
                     className={`text-[10px] px-1.5 py-0.5 rounded-full ${o.is_active
@@ -614,6 +632,296 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
           <button onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button onClick={kaydet} disabled={saving || !t.image_url} className="btn-primary">
             {saving ? 'Kaydediliyor…' : 'Kaydet'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Kısıtlı şablon alan editörü — müşterinin neyi değiştirebileceğini burada
+// tanımlarsınız. Örnek: forma şablonunda "numara" ve "isim" yazı alanları,
+// "Türk bayrağı" ve "logo" açılabilir görsel alanları. Müşteri bunların
+// DIŞINDA hiçbir şey ekleyemez, taşıyamaz.
+//
+// Koordinatlar şablon görseline ORANSAL (0-1) saklanır; alan kutuları fareyle
+// taşınır ve sağ alt köşeden boyutlandırılır.
+function SablonAlanEditoru({ overlay, onClose, onSaved }) {
+  const [mod, setMod] = useState(overlay.mod || 'serbest')
+  const [alanlar, setAlanlar] = useState(() =>
+    (overlay.alanlar || []).map(a => ({ ...a })))
+  const [sel, setSel] = useState(0)
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const tuvalRef = useRef(null)
+  const gorselRef = useRef(null)
+  const surukle = useRef(null)
+
+  const secili = alanlar[sel] || null
+  const yamala = (yama) => setAlanlar(ls =>
+    ls.map((a, i) => (i === sel ? { ...a, ...yama } : a)))
+
+  const ekle = (tip) => {
+    const n = alanlar.length + 1
+    setAlanlar(ls => [...ls, tip === 'yazi'
+      ? { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
+          max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
+          renk: '#ffffff', hiza: 'center' }
+      : { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
+          w: 0.2, h: 0.1, varsayilan: true, image_path: null }])
+    setSel(alanlar.length)
+    setMod('kisitli')
+  }
+
+  // Fareyle taşıma / boyutlandırma — konumlar şablona oransal
+  const basla = (e, i, tip) => {
+    e.preventDefault(); e.stopPropagation()
+    setSel(i)
+    const r = tuvalRef.current.getBoundingClientRect()
+    surukle.current = { i, tip, sx: e.clientX, sy: e.clientY, r, ilk: { ...alanlar[i] } }
+  }
+  useEffect(() => {
+    const hareket = (e) => {
+      const d = surukle.current
+      if (!d) return
+      const dx = (e.clientX - d.sx) / d.r.width
+      const dy = (e.clientY - d.sy) / d.r.height
+      setAlanlar(ls => ls.map((a, i) => {
+        if (i !== d.i) return a
+        if (d.tip === 'tasi') {
+          return { ...a, x: Math.min(1, Math.max(0, d.ilk.x + dx)),
+                   y: Math.min(1, Math.max(0, d.ilk.y + dy)) }
+        }
+        const w = Math.min(1, Math.max(0.03, d.ilk.w + dx))
+        if (a.tip === 'gorsel') {
+          return { ...a, w, h: Math.min(1, Math.max(0.02, (d.ilk.h || 0.1) + dy)) }
+        }
+        // Yazıda genişlik sarma kutusu, dikey sürükleme PUNTOYU değiştirir
+        return { ...a, w, size: Math.min(0.6, Math.max(0.02, (d.ilk.size || 0.1) + dy)) }
+      }))
+    }
+    const birak = () => { surukle.current = null }
+    window.addEventListener('pointermove', hareket)
+    window.addEventListener('pointerup', birak)
+    return () => {
+      window.removeEventListener('pointermove', hareket)
+      window.removeEventListener('pointerup', birak)
+    }
+  }, [])
+
+  const alanGorseliYukle = async (file) => {
+    if (!file || !secili) return
+    setBusy(true); setErr('')
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch(`/api/case-templates/overlays/${overlay.id}/alan-gorseli`, {
+        method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Yüklenemedi')
+      const d = await res.json()
+      yamala({ image_path: d.image_path, image_url: d.image_url })
+    } catch (e) { setErr(e.message || 'Yüklenemedi') }
+    finally { setBusy(false); if (gorselRef.current) gorselRef.current.value = '' }
+  }
+
+  const kaydet = async () => {
+    setBusy(true); setErr('')
+    try {
+      // image_url sunucuya gönderilmez (türetilmiş alan)
+      const temiz = alanlar.map(({ image_url, ...a }) => a)
+      await api.patch(`/api/case-templates/overlays/${overlay.id}`, { mod, alanlar: temiz })
+      onSaved()
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
+    } finally { setBusy(false) }
+  }
+
+  const yuzde = (v) => `${(v || 0) * 100}%`
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div className="bg-panel-card rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto p-4"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="font-semibold text-sm">“{overlay.label}” alanları</h2>
+          <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
+        </div>
+
+        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+
+        <label className="flex items-start gap-2 text-xs mb-3 p-2.5 rounded-xl bg-panel-input">
+          <input type="checkbox" checked={mod === 'kisitli'} className="mt-0.5"
+            onChange={e => setMod(e.target.checked ? 'kisitli' : 'serbest')} />
+          <span>
+            <b>Kısıtlı şablon</b> — müşteri yalnız aşağıdaki alanları doldurur, kendi
+            görselini/yazısını ekleyemez ve hiçbir şeyi taşıyamaz. Kapalıyken şablon
+            normal bir katman gibi kullanılır.
+          </span>
+        </label>
+
+        <div className="grid md:grid-cols-[1fr_260px] gap-4">
+          {/* Önizleme — alanlar şablon görselinin üstünde */}
+          <div className="bg-panel-input rounded-xl p-3 flex justify-center">
+            <div ref={tuvalRef} className="relative inline-block select-none touch-none">
+              <img src={overlay.image_url} alt={overlay.label} draggable={false}
+                style={{ maxHeight: '58vh', width: 'auto', display: 'block' }} />
+              {alanlar.map((a, i) => (
+                <div key={i} onPointerDown={e => basla(e, i, 'tasi')}
+                  className={`absolute cursor-move ${i === sel
+                    ? 'outline outline-2 outline-panel-accent' : 'outline outline-1 outline-white/60'}`}
+                  style={{
+                    left: yuzde(a.x), top: yuzde(a.y), width: yuzde(a.w),
+                    height: a.tip === 'gorsel' ? yuzde(a.h) : undefined,
+                    zIndex: i === sel ? 2 : 1,
+                  }}>
+                  {a.tip === 'gorsel' ? (
+                    a.image_url
+                      ? <img src={a.image_url} alt="" draggable={false}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      : <div className="w-full h-full bg-panel-accent/20 text-[9px]
+                          flex items-center justify-center">görsel yok</div>
+                  ) : (
+                    <div style={{
+                      fontSize: `calc(${(a.size || 0.1)} * ${tuvalRef.current?.clientHeight || 400}px)`,
+                      color: a.renk || '#fff', textAlign: a.hiza || 'center',
+                      lineHeight: 1.15, fontWeight: 800, wordBreak: 'break-word',
+                    }}>{a.varsayilan || a.etiket}</div>
+                  )}
+                  {/* Boyutlandırma tutamağı */}
+                  <span onPointerDown={e => basla(e, i, 'boyut')}
+                    className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-full
+                      bg-white border-2 border-panel-accent cursor-nwse-resize" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Alan listesi + özellikler */}
+          <div className="space-y-2">
+            <div className="flex gap-1.5">
+              <button onClick={() => ekle('yazi')} className="btn-ghost !py-1.5 text-xs flex-1">
+                + Yazı alanı
+              </button>
+              <button onClick={() => ekle('gorsel')} className="btn-ghost !py-1.5 text-xs flex-1">
+                + Açılabilir öğe
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {alanlar.map((a, i) => (
+                <div key={i}
+                  className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs cursor-pointer ${
+                    i === sel ? 'border-panel-accent' : 'border-panel-border'}`}
+                  onClick={() => setSel(i)}>
+                  <span>{a.tip === 'yazi' ? '🔤' : '🖼️'}</span>
+                  <span className="truncate">{a.etiket}</span>
+                  <button className="ml-auto text-red-600"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setAlanlar(ls => ls.filter((_, j) => j !== i))
+                      setSel(0)
+                    }}>×</button>
+                </div>
+              ))}
+              {alanlar.length === 0 && (
+                <p className="text-[11px] text-panel-muted">
+                  Henüz alan yok. Müşterinin değiştirebileceği yazıları ve açıp
+                  kapatabileceği öğeleri buradan ekleyin.
+                </p>
+              )}
+            </div>
+
+            {secili && (
+              <div className="border-t border-panel-border pt-2 space-y-2">
+                <label className="block text-[11px] text-panel-muted">
+                  Müşteriye görünen etiket
+                  <input value={secili.etiket} maxLength={60}
+                    onChange={e => yamala({ etiket: e.target.value })}
+                    className="input !py-1 !text-xs mt-0.5" />
+                </label>
+                <label className="block text-[11px] text-panel-muted">
+                  Alan anahtarı (a-z, rakam, tire)
+                  <input value={secili.key} maxLength={30}
+                    onChange={e => yamala({ key: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
+                    className="input !py-1 !text-xs mt-0.5 font-mono" />
+                </label>
+
+                {secili.tip === 'yazi' ? (
+                  <>
+                    <label className="block text-[11px] text-panel-muted">
+                      Varsayılan metin
+                      <input value={secili.varsayilan || ''} maxLength={40}
+                        onChange={e => yamala({ varsayilan: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5" />
+                    </label>
+                    <div className="flex gap-1.5">
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        En fazla karakter
+                        <input type="number" min={1} max={40} value={secili.max || 12}
+                          onChange={e => yamala({ max: Number(e.target.value) })}
+                          className="input !py-1 !text-xs mt-0.5" />
+                      </label>
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        Renk
+                        <input type="color" value={secili.renk || '#ffffff'}
+                          onChange={e => yamala({ renk: e.target.value })}
+                          className="w-full h-[26px] mt-0.5 rounded border border-panel-border bg-white" />
+                      </label>
+                    </div>
+                    <label className="block text-[11px] text-panel-muted">
+                      Yazı tipi (müşteride bu font kullanılır)
+                      <select value={secili.font || 'anton'}
+                        onChange={e => yamala({ font: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5">
+                        {['anton','bebas','staatliches','montserrat','poppins','oswald',
+                          'bangers','bungee','alfaslab','gotik','pirata','marker','sprey',
+                          'playfair','lobster','monoton','righteous','elite','dancing',
+                          'caveat','greatvibes','pacifico','creepster','mono'].map(f => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-[11px] text-panel-muted">
+                      Hizalama
+                      <select value={secili.hiza || 'center'}
+                        onChange={e => yamala({ hiza: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5">
+                        <option value="left">Sola</option>
+                        <option value="center">Ortalı</option>
+                        <option value="right">Sağa</option>
+                      </select>
+                    </label>
+                    <div className="text-[10px] text-panel-muted">
+                      Punto: {((secili.size || 0.1) * 100).toFixed(1)}% · kutuyu sağ alt
+                      köşeden sürükleyerek genişlik ve puntoyu ayarlayın.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="flex items-center gap-2 text-[11px]">
+                      <input type="checkbox" checked={secili.varsayilan !== false}
+                        onChange={e => yamala({ varsayilan: e.target.checked })} />
+                      Başlangıçta açık gelsin
+                    </label>
+                    <button onClick={() => gorselRef.current?.click()} disabled={busy}
+                      className="btn-ghost !py-1.5 text-xs w-full disabled:opacity-40">
+                      {secili.image_url || secili.image_path ? 'Görseli değiştir' : 'Görsel yükle (şeffaf PNG)'}
+                    </button>
+                    <input ref={gorselRef} type="file" accept="image/png,image/webp"
+                      className="hidden" onChange={e => alanGorseliYukle(e.target.files?.[0])} />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="btn-ghost !py-2 text-sm">Vazgeç</button>
+          <button onClick={kaydet} disabled={busy}
+            className="btn !py-2 text-sm flex-1 disabled:opacity-40">
+            {busy ? 'Kaydediliyor…' : 'Alanları Kaydet'}
           </button>
         </div>
       </div>

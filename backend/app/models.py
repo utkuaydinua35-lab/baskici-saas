@@ -2222,6 +2222,19 @@ class DesignOverlay(Base):
     # Küçük önizleme (liste kartı) — yoksa image_path kullanılır
     thumb_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # "serbest": müşteri şablonu bir katman gibi kullanır, kendi görsel/yazısını
+    #   ekler, taşır (varsayılan davranış).
+    # "kisitli": şablon SABİTTİR; müşteri yalnızca aşağıda tanımlı alanları
+    #   doldurur (ör. forma numarası + isim) ve açılabilir öğeleri açıp kapatır.
+    #   Serbest görsel/yazı ekleyemez, hiçbir şeyi taşıyamaz.
+    mod: Mapped[str] = mapped_column(String(10), default="serbest",
+                                     server_default=text("'serbest'"))
+    # Kısıtlı moddaki alan tanımları — hepsi şablona ORANSAL (0-1):
+    # yazı  : {key, tip:"yazi", etiket, varsayilan, max, x, y, w, size, font, renk, hiza}
+    # görsel: {key, tip:"gorsel", etiket, image_path, x, y, w, h, varsayilan:true|false}
+    alanlar: Mapped[list] = mapped_column(JSONB, default=list,
+                                          server_default=text("'[]'::jsonb"))
+
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 

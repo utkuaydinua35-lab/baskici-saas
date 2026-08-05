@@ -58,9 +58,30 @@ export interface OverlayLayer {
   overlay_id: string;   // DesignOverlay.id — baskıda dosya BUNDAN bulunur
   url: string;          // tuvalde gösterilen görsel
   label?: string;
+  /** Kısıtlı şablonun açılabilir öğesi (bayrak, logo…): alan anahtarı.
+   *  Boşsa şablonun kendi görselidir ve baskı alanını tam kaplar. */
+  field?: string;
+  /** field varsa öğenin konumu (baskı alanına oransal) */
+  kutu?: { x: number; y: number; w: number; h: number };
 }
 
 export type Layer = ImageLayer | TextLayer | OverlayLayer;
+
+/** Kısıtlı şablonda müşterinin doldurduğu tek alan (panelde tanımlanır) */
+export interface StudioAlan {
+  key: string;
+  tip: "yazi" | "gorsel";
+  etiket: string;
+  x: number; y: number; w: number;
+  h?: number;                    // görsel alanı
+  varsayilan?: string | boolean;
+  max?: number;                  // yazı: en fazla karakter
+  size?: number;                 // yazı: punto (baskı alanı yüksekliğine oran)
+  font?: string;
+  renk?: string;
+  hiza?: "left" | "center" | "right";
+  image_url?: string | null;     // görsel alanı
+}
 
 export interface StudioOverlay {
   id: string;
@@ -68,6 +89,9 @@ export interface StudioOverlay {
   template_key: string | null;   // null → tüm kılıflarda geçerli
   image_url: string;
   thumb_url: string;
+  /** "kisitli" → editör form moduna geçer: serbest görsel/yazı eklenemez */
+  mod?: "serbest" | "kisitli";
+  alanlar?: StudioAlan[];
 }
 
 export interface SavedDesign {

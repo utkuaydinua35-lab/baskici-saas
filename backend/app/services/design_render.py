@@ -153,7 +153,9 @@ def render_print_file(db, design, template) -> bytes:
 
 
 def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
-    """Hazır şablon (çerçeve) — baskı alanını tam kaplar.
+    """Hazır şablon. Katmanda 'field' yoksa şablonun kendi görseli baskı
+    alanını tam kaplar; 'field' varsa o ALANIN görseli (kısıtlı şablondaki
+    bayrak/logo gibi açılabilir öğe) kendi konumuna çizilir.
 
     Dosya yolu İSTEMCİDEN DEĞİL veritabanından okunur: müşteri katmana
     istediği url'i yazsa bile sunucu yalnızca kendi kayıtlı dosyasını basar.
@@ -169,7 +171,23 @@ def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
         return
     if not o:
         return
-    yol = STORAGE_ROOT / o.image_path
+
+    alan_key = k.get("field")
+    if alan_key:
+        alan = next((a for a in (o.alanlar or [])
+                     if str(a.get("key")) == str(alan_key) and a.get("tip") == "gorsel"), None)
+        if not alan or not alan.get("image_path"):
+            return
+        yol = STORAGE_ROOT / alan["image_path"]
+        kutu = (
+            round(float(alan.get("x", 0)) * W), round(float(alan.get("y", 0)) * H),
+            max(1, round(float(alan.get("w", 0.1)) * W)),
+            max(1, round(float(alan.get("h", 0.1)) * H)),
+        )
+    else:
+        yol = STORAGE_ROOT / o.image_path
+        kutu = (0, 0, W, H)
+
     if not yol.exists():
         log.warning("hazır şablon dosyası yok: %s", yol)
         return
@@ -177,8 +195,8 @@ def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
     g.load()
     if g.mode != "RGBA":
         g = g.convert("RGBA")
-    g = g.resize((W, H), Image.LANCZOS)
-    tuval.alpha_composite(g, (0, 0))
+    g = g.resize((kutu[2], kutu[3]), Image.LANCZOS)
+    tuval.alpha_composite(g, (kutu[0], kutu[1]))
 
 
 def _ciz_gorsel(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:

@@ -2304,6 +2304,8 @@ def studio_overlays(store_slug: str, response: Response, db: Session = Depends(g
         .order_by(DesignOverlay.position, DesignOverlay.created_at)
     ).all()
     response.headers["Cache-Control"] = "public, max-age=120"
+    from app.services import kisitli_sablon
+
     return [
         {
             "id": str(o.id),
@@ -2311,6 +2313,10 @@ def studio_overlays(store_slug: str, response: Response, db: Session = Depends(g
             "template_key": key,          # null → tüm kılıflarda geçerli
             "image_url": f"/storage/{o.image_path}",
             "thumb_url": f"/storage/{o.thumb_path or o.image_path}",
+            # "kisitli" ise editör form moduna geçer: müşteri yalnız bu
+            # alanları doldurur, serbest görsel/yazı ekleyemez.
+            "mod": o.mod,
+            "alanlar": kisitli_sablon.alan_ozeti(o) if o.mod == "kisitli" else [],
         }
         for o, key in rows
     ]
@@ -2383,6 +2389,11 @@ class DesignSave(BaseModel):
     variant_id: uuid.UUID | None = None
     layers: list[dict] = Field(default_factory=list, max_length=MAX_DESIGN_LAYERS)
     status: str = Field("draft", pattern="^(draft|ready)$")
+    # Kısıtlı şablon kullanılıyorsa: hangi şablon + müşterinin girdiği alan
+    # değerleri. Katmanlar bunlardan SUNUCUDA üretilir; gövdedeki layers yok
+    # sayılır — böylece müşteri şablonun dışına çıkan bir şey bastıramaz.
+    overlay_id: uuid.UUID | None = None
+    alan_degerleri: dict[str, str | bool | None] | None = None
     # Tuvalden alınan küçük önizleme (data URL) — liste ve panelde gösterilir
     preview_data_url: str | None = Field(None, max_length=4_000_000)
 
@@ -2421,8 +2432,25 @@ def save_design(request: Request, body: DesignSave, db: Session = Depends(get_db
     design.name = (body.name or "Tasarımım").strip()[:120]
     design.template_key = body.template_key
     design.variant_id = body.variant_id
-    design.layers = body.layers
     design.status = body.status
+
+    if body.overlay_id:
+        # KISITLI ŞABLON — katmanları şablon tanımından biz üretiriz
+        from app.models import DesignOverlay
+        from app.services import kisitli_sablon
+
+        ov = db.scalar(select(DesignOverlay).where(
+            DesignOverlay.id == body.overlay_id,
+            DesignOverlay.store_id == store.id,
+            DesignOverlay.is_active.is_(True),
+        ))
+        if not ov:
+            raise HTTPException(404, "Şablon bulunamadı")
+        if ov.mod != "kisitli":
+            raise HTTPException(422, "Bu şablon serbest modda — alan değeri gönderilemez")
+        design.layers = kisitli_sablon.layers_uret(ov, body.alan_degerleri)
+    else:
+        design.layers = body.layers
 
     if body.preview_data_url and body.preview_data_url.startswith("data:image/"):
         try:

@@ -47,10 +47,17 @@ export async function onizlemeUret(
     // sıralama yok; müşteri hazır şablonu istediği katmana taşıyabilir.
     for (const l of layers) {
       if (l.type === "overlay") {
-        // Hazır şablon baskı alanını tam kaplar
+        // Şablon zemini tam alanı kaplar; kısıtlı şablonun açılabilir öğesi
+        // (kutu'su olan) kendi konumuna çizilir
+        const o = l as OverlayLayer;
         try {
-          const ov = await gorselYukle((l as OverlayLayer).url);
-          ctx.drawImage(ov, ax, ay, aw, ah);
+          const ov = await gorselYukle(o.url);
+          if (o.kutu) {
+            ctx.drawImage(ov, ax + o.kutu.x * aw, ay + o.kutu.y * ah,
+              o.kutu.w * aw, o.kutu.h * ah);
+          } else {
+            ctx.drawImage(ov, ax, ay, aw, ah);
+          }
         } catch { /* şablon yüklenemezse önizleme yine üretilir */ }
       } else if (l.type === "image") {
         const im = l as ImageLayer;

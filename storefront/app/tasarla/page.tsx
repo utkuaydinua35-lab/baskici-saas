@@ -12,6 +12,7 @@ import Canvas from "@/components/studio/Canvas";
 import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fonts";
 import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
 import { katmanEkle, overlayTasi } from "@/components/studio/katmanlar";
+import Ogretici, { type TurAdimi } from "@/components/studio/Ogretici";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, SavedDesign,
@@ -20,6 +21,55 @@ import type {
 
 const TASLAK_ANAHTAR = "bernz_studyo_taslak";
 const UYARI_ANAHTAR = "bernz_studyo_uyari_onay";
+const OGRETICI_ANAHTAR = "bernz_studyo_ogretici_goruldu";
+
+// Editör turu — ilk ziyarette uyarı onaylanınca açılır, sonra "?" ile tekrar.
+const TUR_ADIMLARI: TurAdimi[] = [
+  {
+    hedef: "kilif",
+    baslik: "1. Kılıfını seç",
+    metin: "Önce kılıf tipini seç (şeffaf, siyah, MagSafe…). Tasarımın hep seçili "
+      + "kılıfın baskı alanına göre ölçeklenir; tipi sonradan değiştirsen de "
+      + "tasarımın korunur.",
+  },
+  {
+    hedef: "ekle",
+    baslik: "2. Görsel ve yazı ekle",
+    metin: "Fotoğrafını yükle ya da yazı ekle. Yüklediğin dosya orijinal "
+      + "çözünürlüğüyle saklanır — baskı bu dosyadan üretilir, ekrandaki "
+      + "önizlemeden değil. Çözünürlük düşükse seni uyarırız.",
+  },
+  {
+    hedef: "tuval",
+    baslik: "3. Tuvalde yerleştir",
+    metin: "Öğeyi parmağınla ya da fareyle sürükle. Seçtiğinde çevresinde 8 "
+      + "beyaz nokta çıkar: köşelerden çekince oran korunur, kenarlardan "
+      + "çekince tek yön değişir. Üstteki ↻ ile döndürürsün. Koyu kamera "
+      + "bölgesine baskı yapılmaz — tasarımını oraya taşırma.",
+  },
+  {
+    hedef: "ayarlar",
+    baslik: "4. İnce ayarlar",
+    metin: "Bir öğe seçiliyken sağdaki panelden yaslama (ortala, kenara yasla), "
+      + "yazı tipi, renk ve boyut ayarlanır. Renk kutusuna kendi HEX kodunu da "
+      + "girebilirsin. Görsellerde “Kırpma modu” ile kenarlardan kırparsın — "
+      + "görsel ezilmez.",
+  },
+  {
+    hedef: "sablonlar",
+    baslik: "5. Hazır şablonlar",
+    metin: "Hazır çerçeve/desenlerden birini seçebilirsin. Şablonu istersen en "
+      + "üstte (tasarımının önünde çerçeve gibi), istersen en altta (zemin "
+      + "olarak) kullanırsın.",
+  },
+  {
+    hedef: "kaydet",
+    baslik: "6. Kaydet ve sipariş ver",
+    metin: "Tasarımın hesabına kaydedilir; başka cihazdan girsen de kaldığın "
+      + "yerden devam edersin. Telefon modelini seçip sepete eklediğinde "
+      + "300 DPI baskı dosyan otomatik üretilir.",
+  },
+];
 
 // Dijital numunenin hangi telefon üzerinden gösterildiği + sorumluluk notu.
 // Müşteri tasarlamaya başlamadan ONAYLAR; onay o oturum boyunca hatırlanır.
@@ -62,12 +112,28 @@ export default function TasarlaPage() {
   const [uyariGoster, setUyariGoster] = useState(false);
   useEffect(() => {
     let onaylandi = false;
-    try { onaylandi = sessionStorage.getItem(UYARI_ANAHTAR) === "1"; } catch { /* yok */ }
-    if (!onaylandi) setUyariGoster(true);
+    let turGorulmus = false;
+    try {
+      onaylandi = sessionStorage.getItem(UYARI_ANAHTAR) === "1";
+      turGorulmus = localStorage.getItem(OGRETICI_ANAHTAR) === "1";
+    } catch { /* yok */ }
+    if (!onaylandi) { setUyariGoster(true); return; }
+    // Uyarı bu oturumda zaten onaylanmış (ikinci ziyaret) ama turu hiç
+    // görmemişse yine de göster — editör ilk kez kullanılıyor olabilir.
+    if (!turGorulmus) setTimeout(() => setOgretici(true), 600);
   }, []);
+  // Öğretici turu — ilk ziyarette uyarı onaylanınca kendiliğinden başlar
+  const [ogretici, setOgretici] = useState(false);
   const uyariOnayla = () => {
     setUyariGoster(false);
     try { sessionStorage.setItem(UYARI_ANAHTAR, "1"); } catch { /* yok */ }
+    let gorulmus = false;
+    try { gorulmus = localStorage.getItem(OGRETICI_ANAHTAR) === "1"; } catch { /* yok */ }
+    if (!gorulmus) setTimeout(() => setOgretici(true), 400);
+  };
+  const ogreticiKapat = () => {
+    setOgretici(false);
+    try { localStorage.setItem(OGRETICI_ANAHTAR, "1"); } catch { /* yok */ }
   };
 
   // ── Yükleme ──
@@ -395,6 +461,8 @@ export default function TasarlaPage() {
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 lg:pb-6">
       <style>{fontCss}</style>
 
+      {ogretici && <Ogretici adimlar={TUR_ADIMLARI} onKapat={ogreticiKapat} />}
+
       {/* Numune uyarısı — tasarlamaya başlamadan onaylanır */}
       {uyariGoster && (
         <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4"
@@ -429,8 +497,14 @@ export default function TasarlaPage() {
         <h1 className="text-lg sm:text-xl font-semibold">Kendi Kılıfını Tasarla</h1>
         <input value={ad} onChange={(e) => setAd(e.target.value)} maxLength={120}
           className="text-sm border border-zinc-300 rounded-lg px-2 py-1 flex-1 min-w-[8rem] sm:flex-none sm:w-44" />
+        <button onClick={() => setOgretici(true)}
+          title="Editörü tanıtan kısa turu başlat"
+          className="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-300 whitespace-nowrap
+            hover:border-zinc-900 transition">
+          ❓ Nasıl kullanılır?
+        </button>
         {/* Mobilde ana eylemler ALT ÇUBUKTA (aşağıda) — burada gizlenir */}
-        <div className="ml-auto hidden lg:flex gap-2">
+        <div className="ml-auto hidden lg:flex gap-2" data-tur="kaydet">
           <button onClick={() => kaydet("draft")} disabled={yukleniyor}
             className="px-3 py-2 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
             Kaydet
@@ -456,7 +530,8 @@ export default function TasarlaPage() {
       <div className="mt-4 grid lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Tuval */}
         <div>
-          <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4">
+          <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4"
+            data-tur="tuval">
             <Canvas template={tpl} layers={layers} selected={secili}
               onSelect={setSecili} onChange={guncelle} kirpma={kirpmaModu}
               maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
@@ -470,7 +545,7 @@ export default function TasarlaPage() {
 
         {/* Araçlar */}
         <div className="space-y-4">
-          <div>
+          <div data-tur="kilif">
             <div className="text-xs text-zinc-500 mb-1.5">Kılıf tipi</div>
             <div className="flex gap-2 flex-wrap">
               {templates.map((t) => (
@@ -484,7 +559,7 @@ export default function TasarlaPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tur="ekle">
             <button onClick={() => dosyaRef.current?.click()} disabled={yukleniyor}
               className="flex-1 px-3 py-2.5 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">
               🖼️ {yukleniyor ? "Yükleniyor…" : "Görsel ekle"}
@@ -500,7 +575,7 @@ export default function TasarlaPage() {
           {/* Hazır şablonlar — müşterinin görselinin ÜSTÜNE binen çerçeveler.
               Yüklenen görseller çerçevenin altında, yazılar üstünde kalır. */}
           {uygunOverlaylar.length > 0 && (
-            <div>
+            <div data-tur="sablonlar">
               <div className="text-xs text-zinc-500 mb-1.5">
                 Hazır şablonlardan seç
                 {seciliOverlay && (
@@ -563,7 +638,7 @@ export default function TasarlaPage() {
 
           {/* Seçili katman ayarları */}
           {seciliKatman ? (
-            <div className="border border-zinc-200 rounded-2xl p-3 space-y-3">
+            <div className="border border-zinc-200 rounded-2xl p-3 space-y-3" data-tur="ayarlar">
               <div className="flex items-center gap-2 text-sm font-medium">
                 {seciliKatman.type === "image" ? "Görsel" : "Yazı"}
                 <button onClick={() => sirala(1)} title="Öne getir"
@@ -829,7 +904,8 @@ export default function TasarlaPage() {
       )}
 
       {/* Mobil alt çubuk: ana eylemler parmak erişiminde sabit dursun */}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur
+      <div data-tur="kaydet"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur
         border-t border-zinc-200 px-3 py-2 flex gap-2">
         <button onClick={() => kaydet("draft")} disabled={yukleniyor}
           className="flex-1 py-3 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">

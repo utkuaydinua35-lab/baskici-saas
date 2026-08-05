@@ -1,7 +1,7 @@
 "use client";
 
 // Misafir checkout — form + KVKK onayı → backend ödeme oturumu → redirect/iframe.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
@@ -17,6 +17,12 @@ interface CheckoutResponse {
   url: string;
   amount: string;
   shipping_amount: string;
+}
+
+interface AdresKaydi {
+  title?: string;
+  first_name?: string; last_name?: string; phone?: string;
+  address1?: string; city?: string; province?: string; zip?: string;
 }
 
 export default function CheckoutPage() {
@@ -58,26 +64,40 @@ export default function CheckoutPage() {
   const estTotal = estShipping == null ? null
     : Math.max(0, subtotal - discountAmt) + estShipping;
 
-  // Girişli müşteri: kayıtlı bilgilerle formu doldur
+  // Girişli müşteri: kayıtlı bilgilerle formu doldur. Birden fazla adres
+  // varsa üstte kartlar çıkar, tıklayınca form o adrese göre yenilenir
+  // (form uncontrolled olduğu için key değişimiyle yeniden kurulur).
+  const [adresler, setAdresler] = useState<AdresKaydi[]>([]);
+  const [adresIdx, setAdresIdx] = useState(0);
+  const [hesap, setHesap] = useState<{ name?: string; email?: string; phone?: string } | null>(null);
+
+  const adresiUygula = useCallback((a: AdresKaydi, me: typeof hesap) => {
+    setPrefill({
+      first_name: a?.first_name || (me?.name || "").split(" ")[0] || "",
+      last_name: a?.last_name || (me?.name || "").split(" ").slice(1).join(" ") || "",
+      email: me?.email || "",
+      phone: a?.phone || me?.phone || "",
+      address1: a?.address1 || "",
+      city: a?.city || "",
+      province: a?.province || "",
+      zip: a?.zip || "",
+    });
+  }, []);
+
   useEffect(() => {
     fetch("/api/account")
       .then((r) => (r.ok ? r.json() : null))
       .then((me) => {
         if (!me) return;
-        const a = me.default_address || {};
-        setPrefill({
-          first_name: a.first_name || (me.name || "").split(" ")[0] || "",
-          last_name: a.last_name || (me.name || "").split(" ").slice(1).join(" ") || "",
-          email: me.email || "",
-          phone: a.phone || me.phone || "",
-          address1: a.address1 || "",
-          city: a.city || "",
-          province: a.province || "",
-          zip: a.zip || "",
-        });
+        setHesap(me);
+        const liste: AdresKaydi[] = Array.isArray(me.addresses) && me.addresses.length
+          ? me.addresses
+          : (me.default_address ? [me.default_address] : []);
+        setAdresler(liste);
+        adresiUygula(liste[0] || {}, me);
       })
       .catch(() => {});
-  }, []);
+  }, [adresiUygula]);
 
   useEffect(() => {
     if (items.length === 0) return;
@@ -191,7 +211,34 @@ export default function CheckoutPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-xl font-semibold mb-5">Teslimat ve Ödeme</h1>
-      <form key={prefill.email || "misafir"} onSubmit={submit} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
+      {/* Kayıtlı adresler — birden fazlaysa aralarında geçiş */}
+      {adresler.length > 1 && (
+        <div className="mb-4">
+          <div className="text-xs text-zinc-500 mb-1.5">Kayıtlı adreslerin</div>
+          <div className="grid sm:grid-cols-2 gap-2">
+            {adresler.map((a, i) => (
+              <button key={i} type="button"
+                onClick={() => { setAdresIdx(i); adresiUygula(a, hesap); }}
+                className={`text-left rounded-xl border px-3 py-2 text-xs transition ${
+                  adresIdx === i
+                    ? "border-zinc-900 bg-zinc-50"
+                    : "border-zinc-200 hover:border-zinc-400"}`}>
+                <div className="font-medium text-sm">
+                  {a.title || `${a.first_name || ""} ${a.last_name || ""}`.trim() || `Adres ${i + 1}`}
+                  {adresIdx === i && <span className="ml-1.5 text-[10px]">✓ seçili</span>}
+                </div>
+                <div className="text-zinc-600 mt-0.5 line-clamp-2">{a.address1}</div>
+                <div className="text-zinc-500">{[a.province, a.city].filter(Boolean).join(" / ")}</div>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-zinc-400 mt-1.5">
+            Seçtiğin adres aşağıdaki forma dolar; istersen üzerinde değişiklik yapabilirsin.
+          </p>
+        </div>
+      )}
+
+      <form key={`${prefill.email || "misafir"}-${adresIdx}`} onSubmit={submit} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
         <div className="space-y-4 bg-white border border-zinc-200 rounded-2xl p-5">
           <div className="grid grid-cols-2 gap-3">
             <Input name="first_name" label="Ad" required autoComplete="given-name" defaultValue={prefill.first_name} />

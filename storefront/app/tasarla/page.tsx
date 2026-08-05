@@ -90,7 +90,10 @@ interface StudioUrun {
   title: string;
   price: string;
   images: { url: string }[];
-  variants: { id: string; model_display: string; price: string; in_stock: boolean }[];
+  variants: {
+    id: string; model_display: string; price: string; in_stock: boolean;
+    brand?: string | null;
+  }[];
 }
 const yeniId = () => Math.random().toString(36).slice(2, 10);
 
@@ -111,6 +114,8 @@ export default function TasarlaPage() {
   const [overlays, setOverlays] = useState<StudioOverlay[]>([]);
   const [urun, setUrun] = useState<StudioUrun | null>(null);
   const [modelId, setModelId] = useState("");
+  const [marka, setMarka] = useState("");        // model seçimi iki kademeli
+  const [modelArama, setModelArama] = useState("");
   const [sepetAcik, setSepetAcik] = useState(false);
   // Numune uyarısı — onaylanmadan editör kullanılamaz (hidrasyon uyuşmazlığı
   // olmasın diye ilk render'da kapalı, useEffect ile açılır)
@@ -297,6 +302,32 @@ export default function TasarlaPage() {
     [overlays, tpl],
   );
   const seciliOverlay = layers.find((l) => l.type === "overlay") as OverlayLayer | undefined;
+
+  // Model seçimi: önce MARKA, sonra o markanın modelleri — yüzlerce modeli
+  // tek listede taramak yerine (normal ürün sayfasındaki akışın aynısı)
+  const stoktakiler = useMemo(
+    () => (urun?.variants || []).filter((v) => v.in_stock), [urun]);
+  const markalar = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const v of stoktakiler) {
+      const ad = (v.brand || "Diğer").trim() || "Diğer";
+      m.set(ad, (m.get(ad) || 0) + 1);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "tr"));
+  }, [stoktakiler]);
+  const markaModelleri = useMemo(() => {
+    const ara = modelArama.trim().toLocaleLowerCase("tr");
+    return stoktakiler.filter((v) => {
+      const ad = (v.brand || "Diğer").trim() || "Diğer";
+      if (marka && ad !== marka) return false;
+      return !ara || v.model_display.toLocaleLowerCase("tr").includes(ara);
+    });
+  }, [stoktakiler, marka, modelArama]);
+
+  // Tek marka varsa seçtirmeye gerek yok
+  useEffect(() => {
+    if (markalar.length === 1) setMarka(markalar[0][0]);
+  }, [markalar]);
 
   // Kısıtlı şablon: müşteri yalnız tanımlı alanları doldurur
   const [kisitli, setKisitli] = useState<StudioOverlay | null>(null);
@@ -962,18 +993,64 @@ export default function TasarlaPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           onClick={(e) => e.target === e.currentTarget && setSepetAcik(false)}>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-white rounded-2xl w-full max-w-sm p-4 space-y-3">
+          <div className="relative bg-white rounded-2xl w-full max-w-sm p-4 space-y-3
+            max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold">Telefon modelini seç</h3>
             <p className="text-xs text-zinc-500 -mt-2">
               Tasarımın bu modele göre basılacak.
             </p>
-            <select value={modelId} onChange={(e) => setModelId(e.target.value)}
-              className="w-full border border-zinc-300 rounded-xl px-3 py-2 text-sm">
-              <option value="">Model seçin…</option>
-              {urun.variants.filter((v) => v.in_stock).map((v) => (
-                <option key={v.id} value={v.id}>{v.model_display}</option>
-              ))}
-            </select>
+
+            {/* 1. adım: marka */}
+            {markalar.length > 1 && (
+              <div>
+                <div className="text-xs text-zinc-500 mb-1.5">Markan</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {markalar.map(([ad, adet]) => (
+                    <button key={ad}
+                      onClick={() => { setMarka(ad); setModelId(""); setModelArama(""); }}
+                      className={`px-3 py-1.5 rounded-xl text-xs border transition ${
+                        marka === ad
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 hover:border-zinc-500"}`}>
+                      {ad} <span className="opacity-60">({adet})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. adım: model — marka seçilmeden liste açılmaz */}
+            {(marka || markalar.length <= 1) && (
+              <div>
+                <div className="text-xs text-zinc-500 mb-1.5">
+                  Modelin {markaModelleri.length > 0 && (
+                    <span className="opacity-60">({markaModelleri.length})</span>
+                  )}
+                </div>
+                {markaModelleri.length > 8 && (
+                  <input value={modelArama} onChange={(e) => setModelArama(e.target.value)}
+                    placeholder="Model ara — örn. 15 Pro"
+                    className="w-full border border-zinc-300 rounded-xl px-3 py-2 text-sm mb-1.5" />
+                )}
+                <div className="max-h-56 overflow-y-auto border border-zinc-200 rounded-xl divide-y">
+                  {markaModelleri.map((v) => (
+                    <button key={v.id} onClick={() => setModelId(v.id)}
+                      className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${
+                        modelId === v.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-50"}`}>
+                      {v.model_display}
+                      <span className={`ml-auto text-xs ${
+                        modelId === v.id ? "opacity-80" : "text-zinc-500"}`}>{v.price} ₺</span>
+                    </button>
+                  ))}
+                  {markaModelleri.length === 0 && (
+                    <p className="px-3 py-3 text-xs text-zinc-500">
+                      Bu aramaya uyan model yok.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="text-sm">
               Fiyat:{" "}
               <b>{urun.variants.find((v) => v.id === modelId)?.price || urun.price} ₺</b>

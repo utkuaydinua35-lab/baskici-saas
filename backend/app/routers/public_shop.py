@@ -20,7 +20,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -240,21 +240,33 @@ def list_products(
             CatalogCollection.is_active.is_(True),
         )
 
-    products = db.scalars(query).all()
-    if slugs:
-        wanted = [x.strip() for x in slugs.split(",") if x.strip()][:24]
-        by_slug = {p_.slug: p_ for p_ in products}
-        products = [by_slug[w] for w in wanted if w in by_slug]
+    # Model filtresi SQL'de: "Galaxy S24 Plus" varyantı olan ürünler.
+    # (Python'da süzülürse mağazadaki BÜTÜN ürünler + varyantları belleğe
+    # çekilirdi — vitrinin ve destek botu linklerinin yavaşlama sebebi buydu.)
     if model:
-        m = model.lower()
-        products = [
-            p for p in products
-            if any(m in v.model_display.lower() for v in p.variants if v.is_active)
-        ]
+        query = query.where(
+            select(CatalogVariant.id).where(
+                CatalogVariant.product_id == CatalogProduct.id,
+                CatalogVariant.is_active.is_(True),
+                CatalogVariant.model_display.ilike(f"%{model}%"),
+            ).exists()
+        )
 
-    total = len(products)
-    start = (page - 1) * per_page
-    items = products[start:start + per_page]
+    if slugs:
+        # Verilen sırada dönen küçük liste (en fazla 24) — sayfalama uygulanmaz
+        wanted = [x.strip() for x in slugs.split(",") if x.strip()][:24]
+        rows = db.scalars(query.where(CatalogProduct.slug.in_(wanted))).all()
+        by_slug = {p_.slug: p_ for p_ in rows}
+        items = [by_slug[w] for w in wanted if w in by_slug]
+        total = len(items)
+    else:
+        # Sayım ve sayfalama VERİTABANINDA — sabit maliyet, katalog büyüdükçe
+        # yavaşlamaz. order_by sayımda gereksiz, alt sorgudan çıkarılır.
+        total = db.scalar(
+            select(func.count()).select_from(query.order_by(None).subquery())
+        ) or 0
+        start = (page - 1) * per_page
+        items = db.scalars(query.limit(per_page).offset(start)).all()
 
     # Filtre yüzeyleri: mağazadaki aktif markalar (mevcut filtrelerden bağımsız)
     brands = sorted(b for (b,) in db.execute(
@@ -2220,36 +2232,49 @@ def support_model_check(
     q_tokens = _norm_model(q or "")
     if not q_tokens:
         return {"models": []}
+    # MODEL BAŞINA tek satır: sayım ve örnek ürün veritabanında hesaplanır.
+    # (Eskiden mağazadaki tüm varyant satırları Python'a çekiliyordu —
+    # on binlerce satırda destek botu saniyelerce bekletiyordu.)
     rows = db.execute(
-        select(CatalogVariant.model_display, CatalogVariant.brand,
-               CatalogProduct.title, CatalogProduct.slug, CatalogProduct.id)
+        select(
+            CatalogVariant.model_display,
+            func.min(CatalogVariant.brand).label("brand"),
+            func.count(func.distinct(CatalogProduct.id)).label("urun_sayisi"),
+            func.min(CatalogProduct.title).label("ornek_baslik"),
+            func.min(CatalogProduct.slug).label("ornek_slug"),
+        )
         .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
         .where(
             CatalogProduct.store_id == store.id,
             CatalogProduct.status == "active",
             CatalogVariant.is_active.is_(True),
+            # Sorgunun en uzun kelimesi model veya marka adında geçmeli —
+            # token kontrolüne kalan aday sayısını SQL'de daraltır
+            or_(
+                CatalogVariant.model_display.ilike(f"%{max(q_tokens, key=len)}%"),
+                CatalogVariant.brand.ilike(f"%{max(q_tokens, key=len)}%"),
+            ),
         )
+        .group_by(CatalogVariant.model_display)
     ).all()
-    models: dict[str, dict] = {}
-    for model_display, marka, p_title, p_slug, p_id in rows:
+
+    bulunan: list[dict] = []
+    for model_display, marka, urun_sayisi, ornek_baslik, ornek_slug in rows:
         # Eşleşme havuzuna MARKA da girer: müşteri "samsung s24 plus" yazınca
         # model adı "Galaxy S24 Plus" olsa da bulunur (marka Samsung).
         m_tokens = _model_tokenlari(model_display, marka)
         if not all(t in m_tokens for t in q_tokens):
             continue
-        m = models.setdefault(model_display, {
-            "model": model_display, "product_count": 0,
-            "sample_title": p_title, "sample_slug": p_slug,
+        bulunan.append({
+            "model": model_display,
+            "product_count": urun_sayisi,      # VARYANT değil, benzersiz ürün
+            "sample_title": ornek_baslik,
+            "sample_slug": ornek_slug,
             # Az token farkı = daha isabetli eşleşme, üste gelsin
             "_extra": len(_norm_model(model_display)) - len(q_tokens),
-            "_urunler": set(),
         })
-        # Bir ürünün aynı modelde birden çok varyantı (renk/variation) olabilir;
-        # müşteriye VARYANT değil ÜRÜN sayısı gösterilmeli.
-        m["_urunler"].add(p_id)
-    ranked = sorted(models.values(), key=lambda m: m["_extra"])[:10]
+    ranked = sorted(bulunan, key=lambda m: m["_extra"])[:10]
     for m in ranked:
-        m["product_count"] = len(m.pop("_urunler"))
         m.pop("_extra", None)
     return {"models": ranked}
 

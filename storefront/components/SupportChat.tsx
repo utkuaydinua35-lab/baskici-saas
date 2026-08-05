@@ -3,6 +3,7 @@
 // BERNZ Support — kurallı 7/24 asistan (AI değildir). Sistem verisiyle çalışır:
 // sipariş durumu (e-posta ile), model uygunluğu (katalog araması), kargo/iade
 // bilgisi ve panelden tanımlanan SSS yanıtları. Sağ altta sohbet balonu.
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useTexts } from "@/lib/texts";
 
@@ -239,9 +240,10 @@ export default function SupportChat({
                             : o.takip_no}</div>
                         )}
                         {o.lookup_token && (
-                          <a href={`/siparis/${o.lookup_token}`} className="inline-block mt-1 underline text-zinc-600">
+                          <Link href={`/siparis/${o.lookup_token}`} prefetch
+                            className="inline-block mt-1 underline text-zinc-600">
                             Sipariş detayını gör →
-                          </a>
+                          </Link>
                         )}
                       </div>
                     ))}
@@ -252,10 +254,12 @@ export default function SupportChat({
                 return (
                   <div key={i} className="space-y-1.5">
                     {m.models.map((mo) => (
-                      <a key={mo.model} href={`/urunler?model=${encodeURIComponent(mo.model)}`}
+                      <Link key={mo.model} prefetch
+                        href={`/urunler?model=${encodeURIComponent(mo.model)}`}
+                        onClick={() => setOpen(false)}
                         className="block bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs hover:border-zinc-400">
                         ✅ <b>{mo.model}</b> — {mo.product_count} üründe mevcut
-                      </a>
+                      </Link>
                     ))}
                   </div>
                 );

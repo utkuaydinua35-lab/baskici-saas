@@ -18,6 +18,16 @@ import type {
 } from "@/components/studio/types";
 
 const TASLAK_ANAHTAR = "bernz_studyo_taslak";
+const UYARI_ANAHTAR = "bernz_studyo_uyari_onay";
+
+// Dijital numunenin hangi telefon üzerinden gösterildiği + sorumluluk notu.
+// Müşteri tasarlamaya başlamadan ONAYLAR; onay o oturum boyunca hatırlanır.
+const NUMUNE_UYARISI =
+  "Gördüğünüz dijital numune iPhone 12 Pro Max telefon modeli üzerinden " +
+  "gösterilmektedir, telefon modellerinde kameralar arası ölçü farklılıklarını da " +
+  "hesaba katarak tasarım yapmanızı öneririz. Baskı sonrası tasarımın kamera denk " +
+  "gelmesi veya parmak izi okuyucu gibi kısımların tasarımla çakışması durumlarından " +
+  "firmamız sorumlu değildir.";
 
 interface StudioUrun {
   slug: string;
@@ -46,6 +56,18 @@ export default function TasarlaPage() {
   const [urun, setUrun] = useState<StudioUrun | null>(null);
   const [modelId, setModelId] = useState("");
   const [sepetAcik, setSepetAcik] = useState(false);
+  // Numune uyarısı — onaylanmadan editör kullanılamaz (hidrasyon uyuşmazlığı
+  // olmasın diye ilk render'da kapalı, useEffect ile açılır)
+  const [uyariGoster, setUyariGoster] = useState(false);
+  useEffect(() => {
+    let onaylandi = false;
+    try { onaylandi = sessionStorage.getItem(UYARI_ANAHTAR) === "1"; } catch { /* yok */ }
+    if (!onaylandi) setUyariGoster(true);
+  }, []);
+  const uyariOnayla = () => {
+    setUyariGoster(false);
+    try { sessionStorage.setItem(UYARI_ANAHTAR, "1"); } catch { /* yok */ }
+  };
 
   // ── Yükleme ──
   useEffect(() => {
@@ -363,6 +385,36 @@ export default function TasarlaPage() {
     <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 lg:pb-6">
       <style>{fontCss}</style>
 
+      {/* Numune uyarısı — tasarlamaya başlamadan onaylanır */}
+      {uyariGoster && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4"
+          role="dialog" aria-modal="true" aria-labelledby="numune-uyari-baslik">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl
+            max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl leading-none">⚠️</span>
+              <div>
+                <h2 id="numune-uyari-baslik" className="text-base font-semibold">
+                  Tasarlamaya başlamadan önce
+                </h2>
+                <p className="text-sm text-zinc-600 mt-2 leading-relaxed">
+                  {NUMUNE_UYARISI}
+                </p>
+              </div>
+            </div>
+            <button onClick={uyariOnayla} autoFocus
+              className="mt-5 w-full py-3 rounded-xl bg-zinc-900 text-white text-sm font-medium
+                hover:bg-zinc-800 transition">
+              Okudum, kabul ediyorum — tasarlamaya başla
+            </button>
+            <Link href="/urunler"
+              className="block text-center text-xs text-zinc-500 mt-2.5 hover:text-zinc-800">
+              Vazgeç, ürünlere dön
+            </Link>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
         <h1 className="text-lg sm:text-xl font-semibold">Kendi Kılıfını Tasarla</h1>
         <input value={ad} onChange={(e) => setAd(e.target.value)} maxLength={120}
@@ -393,10 +445,17 @@ export default function TasarlaPage() {
 
       <div className="mt-4 grid lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* Tuval */}
-        <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4">
-          <Canvas template={tpl} layers={layers} selected={secili}
-            onSelect={setSecili} onChange={guncelle} kirpma={kirpmaModu}
-            maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
+        <div>
+          <div className="flex justify-center bg-zinc-100 rounded-2xl p-2 sm:p-4">
+            <Canvas template={tpl} layers={layers} selected={secili}
+              onSelect={setSecili} onChange={guncelle} kirpma={kirpmaModu}
+              maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
+          </div>
+          <button onClick={() => setUyariGoster(true)}
+            className="mt-2 text-[11px] text-zinc-500 hover:text-zinc-800 underline
+              decoration-dotted underline-offset-2">
+            ⓘ Numune iPhone 12 Pro Max üzerinden gösterilir — kamera/parmak izi uyarısını oku
+          </button>
         </div>
 
         {/* Araçlar */}

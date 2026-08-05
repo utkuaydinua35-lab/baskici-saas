@@ -23,7 +23,8 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -42,9 +43,31 @@ from app.services import activity, smart_collections
 from app.services import storage as storage_svc
 from app.services.sanitize import sanitize_rich_text
 
+class _VitrinCacheRoute(APIRoute):
+    """Katalogda BAŞARILI her yazma işleminden sonra vitrin önbelleğini düşürür.
+
+    Tek tek uçlara eklemek yerine router seviyesinde: yeni bir uç eklendiğinde
+    unutulmaz. Sinyal arka planda gider, yanıtı geciktirmez.
+    """
+
+    def get_route_handler(self):
+        orijinal = super().get_route_handler()
+
+        async def isleyici(request: Request):
+            yanit = await orijinal(request)
+            if request.method in ("POST", "PATCH", "PUT", "DELETE") \
+                    and yanit.status_code < 400:
+                from app.services import vitrin_cache
+                vitrin_cache.katalog_degisti()
+            return yanit
+
+        return isleyici
+
+
 router = APIRouter(
     prefix="/api/catalog", tags=["catalog"],
     dependencies=[Depends(require_permission("vitrin"))],
+    route_class=_VitrinCacheRoute,
 )
 
 

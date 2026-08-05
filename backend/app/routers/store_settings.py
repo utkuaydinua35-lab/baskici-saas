@@ -409,6 +409,88 @@ def get_theme(
     return resolve_theme(store.config)
 
 
+@router.post("/{store_id}/odeme-testi", response_model=dict)
+def odeme_testi(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ödeme sağlayıcısına GERÇEK bir başlatma isteği atar ve sonucu döner.
+
+    Canlıya çıkmadan "ödeme başlatılamadı" hatasının sebebini görmek için:
+    anahtar yanlış mı, IP izinli değil mi, sandbox anahtarı canlı adreste mi
+    kullanılıyor… Sağlayıcının kendi hata mesajı aynen gösterilir. Sipariş
+    OLUŞTURULMAZ; sadece ödeme sayfası açılabiliyor mu ona bakılır.
+    """
+    from types import SimpleNamespace
+
+    from app.payments import get_payment_provider
+
+    store = _get_store(db, user, store_id)
+    config = store.config or {}
+    saglayici = (config.get("payment_provider") or "iyzico").lower()
+    ortam = ("Sandbox (test)" if "sandbox" in (config.get("iyzico_base_url") or "").lower()
+             else "Canlı") if saglayici == "iyzico" else (
+        "Test" if str(config.get("paytr_test_mode")) == "1" else "Canlı")
+
+    # Gerçek CheckoutSession açmıyoruz — sağlayıcıya gidecek asgari sahte oturum
+    sahte = SimpleNamespace(
+        id=uuid.uuid4(),
+        token=f"test-{uuid.uuid4().hex[:12]}",
+        amount=Decimal("1.00"),
+        shipping_amount=Decimal("0"),
+        currency="TRY",
+        client_ip="85.34.78.112",
+        customer={"first_name": "Test", "last_name": "Kullanici",
+                  "email": "test@example.com", "phone": "+905000000000",
+                  "address1": "Test Mah. 1 Sk. No:1", "city": "Istanbul", "zip": "34000"},
+        # cart_snapshot LİSTEdir ve kalem tutarı unit_price × quantity'den doğar
+        cart_snapshot=[{"variant_id": "test", "title": "Test Ürün",
+                        "model_display": "", "quantity": 1, "unit_price": "1.00"}],
+        discount_amount=Decimal("0"),
+    )
+    try:
+        provider = get_payment_provider(store)
+        init = provider.create_checkout(sahte, f"{(config.get('storefront_url') or '').rstrip('/')}/odeme/sonuc")
+        return {
+            "ok": True,
+            "saglayici": saglayici, "ortam": ortam,
+            "mesaj": "Ödeme sayfası başarıyla açıldı — sağlayıcı bağlantısı çalışıyor.",
+            "url_var": bool(init.url),
+        }
+    except Exception as e:  # noqa: BLE001 — sebebi kullanıcıya göstereceğiz
+        return {
+            "ok": False,
+            "saglayici": saglayici, "ortam": ortam,
+            "mesaj": str(e)[:400] or e.__class__.__name__,
+            "ipucu": _odeme_ipucu(str(e), saglayici),
+        }
+
+
+def _odeme_ipucu(hata: str, saglayici: str) -> str:
+    """Sağlayıcının ham hatasını anlaşılır bir öneriye çevirir."""
+    h = (hata or "").lower()
+    if "anahtar" in h or "eksik" in h:
+        return ("Ayarlar → Ödeme bölümünde API ve güvenlik anahtarları boş. "
+                "iyzico panelinden alıp buraya yapıştırın.")
+    if ("api bilgileri" in h or "bulunamadı" in h or "invalid api" in h
+            or "signature" in h or "imza" in h or "unauthorized" in h or "5001" in h):
+        return ("Anahtarlar kabul edilmedi. En sık sebep: SANDBOX anahtarını "
+                "CANLI adreste (veya tersini) kullanmak — “iyzico ortamı” seçimi "
+                "ile anahtar takımı aynı olmalı. Anahtarları iyzico panelinden "
+                "yeniden kopyalayıp (baştaki/sondaki boşluklara dikkat) kaydedin.")
+    if "ip" in h and ("izin" in h or "restrict" in h or "not allowed" in h):
+        return ("iyzico hesabınızda IP kısıtlaması var. Sunucunun IP adresini "
+                "(91.132.49.107) iyzico panelinde izinli listesine ekleyin.")
+    if "timeout" in h or "connection" in h or "resolve" in h:
+        return ("Sunucudan sağlayıcıya bağlanılamadı. Güvenlik duvarı dış "
+                "bağlantıyı engelliyor olabilir.")
+    if "merchant" in h:
+        return "Üye iş yeri bilgileri hatalı — mağaza numarası/anahtarını kontrol edin."
+    return ("Sağlayıcının mesajını yukarıda görüyorsunuz. Anahtarlar, ortam "
+            "(test/canlı) ve iyzico hesabının aktif olup olmadığını kontrol edin.")
+
+
 def _revalidate_storefront(store: Store) -> None:
     """Vitrine tema cache'ini düşürme sinyali (best-effort, hatalar yutulur).
 

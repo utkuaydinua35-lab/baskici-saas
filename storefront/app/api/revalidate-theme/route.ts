@@ -5,6 +5,8 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 export async function POST() {
-  revalidateTag("theme", "max"); // stale-while-revalidate — Next 16 önerisi
+  // Panelden gelen sinyal → anında geçersiz kıl (bkz. revalidate-katalog).
+  // "max" ile mağaza sahibi ilk yenilemede eski temayı görüyordu.
+  revalidateTag("theme", { expire: 0 });
   return NextResponse.json({ revalidated: true });
 }

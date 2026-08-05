@@ -25,6 +25,8 @@ export default function AyarlarPage() {
   const [tab, setTab] = useState('genel')
   const [storeName, setStoreName] = useState('')
   const [cfg, setCfg] = useState({})
+  const [odemeSonuc, setOdemeSonuc] = useState(null)
+  const [odemeBusy, setOdemeBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
@@ -269,6 +271,36 @@ export default function AyarlarPage() {
           🔒 Anahtarlar maskeli görünür; değiştirmediğiniz sürece üzerine yazılmaz.
           Kart bilgileri hiçbir zaman sunucularımıza gelmez.
         </p>
+
+        {/* Bağlantı testi — "ödeme başlatılamadı" hatasının sebebini gösterir */}
+        <div className="border-t border-panel-border pt-3 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={odemeTesti} disabled={odemeBusy}
+              className="btn-ghost !py-1.5 text-xs disabled:opacity-40">
+              {odemeBusy ? 'Test ediliyor…' : '🔌 Bağlantıyı test et'}
+            </button>
+            <span className="text-[11px] text-panel-muted">
+              Sağlayıcıya gerçek bir ödeme başlatma isteği atar. Sipariş oluşmaz,
+              tahsilat yapılmaz. Önce ayarları kaydedin.
+            </span>
+          </div>
+          {odemeSonuc && (
+            <div className={`text-xs rounded-xl px-3 py-2 border ${odemeSonuc.ok
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-red-50 border-red-200 text-red-800'}`}>
+              <div className="font-medium">
+                {odemeSonuc.ok ? '✅ Bağlantı çalışıyor' : '❌ Bağlantı kurulamadı'}
+                <span className="font-normal opacity-70">
+                  {' '}· {odemeSonuc.saglayici} · {odemeSonuc.ortam}
+                </span>
+              </div>
+              <div className="mt-1 break-words">{odemeSonuc.mesaj}</div>
+              {odemeSonuc.ipucu && (
+                <div className="mt-1.5 opacity-80">💡 {odemeSonuc.ipucu}</div>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
       )}
 

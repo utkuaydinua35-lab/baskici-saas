@@ -120,7 +120,10 @@ async function shopFetch<T>(path: string): Promise<T | null> {
   try {
     const slug = await getStoreSlug();
     const res = await fetch(`${BACKEND_URL}/api/shop/${slug}${path}`, {
-      next: { revalidate: 60 },
+      // "katalog" etiketi: panelden ürün/koleksiyon kaydedilince backend
+      // /api/revalidate-katalog'u çağırır ve bu önbellek ANINDA düşer.
+      // Etiket olmasaydı değişikliğin görünmesi 60 sn'ye kadar sürerdi.
+      next: { revalidate: 60, tags: ["katalog"] },
     });
     if (!res.ok) return null;
     return (await res.json()) as T;

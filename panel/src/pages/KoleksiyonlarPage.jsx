@@ -30,6 +30,7 @@ export default function KoleksiyonlarPage() {
   const [err, setErr] = useState('')
   const [editing, setEditing] = useState(null)   // kural editörü açık koleksiyon
   const [creatingSmart, setCreatingSmart] = useState(false)
+  const [urunSecim, setUrunSecim] = useState(null)   // koleksiyona ürün ekle/çıkar
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -142,6 +143,10 @@ export default function KoleksiyonlarPage() {
                     className="text-xs text-panel-muted hover:text-panel-ink">Yenile</button>
                 </>
               )}
+              {!c.is_smart && (
+                <button onClick={() => setUrunSecim(c)}
+                  className="text-xs text-panel-accent hover:underline">Ürünler</button>
+              )}
               {c.image_url && (
                 <button onClick={() => clearImage(c)}
                   className="text-xs text-panel-muted hover:text-red-600">Görseli kaldır</button>
@@ -153,11 +158,18 @@ export default function KoleksiyonlarPage() {
         ))}
         {collections.length === 0 && (
           <div className="p-6 text-sm text-panel-muted text-center">
-            Henüz koleksiyon yok. Ürünleri koleksiyona, ürün detayındaki çiplerden atarsınız —
-            ya da "⚙️ Akıllı koleksiyon" ile kural yazıp otomatik doldurun.
+            Henüz koleksiyon yok. Koleksiyon açtıktan sonra "Ürünler" bağlantısından
+            içine ürün ekleyebilir ya da "⚙️ Akıllı koleksiyon" ile kural yazıp
+            otomatik doldurabilirsiniz.
           </div>
         )}
       </div>
+
+      {urunSecim && (
+        <KoleksiyonUrunleri storeId={storeId} collection={urunSecim}
+          onClose={() => setUrunSecim(null)}
+          onSaved={() => { setUrunSecim(null); load() }} />
+      )}
 
       {(editing || creatingSmart) && (
         <SmartModal
@@ -303,5 +315,121 @@ function SmartModal({ storeId, collection, onClose, onSaved }) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+
+// ─── Koleksiyon içi ürün yönetimi ─────────────────────────────
+// Koleksiyona ürün eklemek için ürün ürün gezmek gerekiyordu; burada arayıp
+// işaretleyerek toplu ekleyip çıkarırsınız. Akıllı koleksiyonlarda kapalıdır
+// (üyelik kuraldan gelir, elle eklenen ilk eşitlemede kaybolur).
+function KoleksiyonUrunleri({ storeId, collection, onClose, onSaved }) {
+  const [urunler, setUrunler] = useState([])
+  const [icerdekiler, setIcerdekiler] = useState(new Set())
+  const [ara, setAra] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [yalnizIcerik, setYalnizIcerik] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!storeId) return
+    try {
+      const [liste, icerik] = await Promise.all([
+        api.get(`/api/catalog/products?store_id=${storeId}&per_page=200`),
+        api.get(`/api/catalog/collections/${collection.id}/products`),
+      ])
+      setUrunler(Array.isArray(liste) ? liste : (liste.items || []))
+      setIcerdekiler(new Set(icerik.product_ids || []))
+    } catch { setErr('Ürünler yüklenemedi') }
+  }, [storeId, collection.id])
+  useEffect(() => { load() }, [load])
+
+  const gorunen = urunler.filter(u => {
+    if (yalnizIcerik && !icerdekiler.has(u.id)) return false
+    const q = ara.trim().toLocaleLowerCase('tr')
+    return !q || (u.title || '').toLocaleLowerCase('tr').includes(q)
+  })
+
+  const degistir = async (urun) => {
+    const ekle = !icerdekiler.has(urun.id)
+    setBusy(true); setErr('')
+    try {
+      await api.post(`/api/catalog/collections/${collection.id}/products`,
+        { product_ids: [urun.id], islem: ekle ? 'ekle' : 'cikar' })
+      setIcerdekiler(prev => {
+        const y = new Set(prev)
+        if (ekle) y.add(urun.id); else y.delete(urun.id)
+        return y
+      })
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi')
+    } finally { setBusy(false) }
+  }
+
+  const tumunuEkle = async () => {
+    const eklenecek = gorunen.filter(u => !icerdekiler.has(u.id)).map(u => u.id)
+    if (!eklenecek.length) return
+    setBusy(true); setErr('')
+    try {
+      await api.post(`/api/catalog/collections/${collection.id}/products`,
+        { product_ids: eklenecek, islem: 'ekle' })
+      setIcerdekiler(prev => new Set([...prev, ...eklenecek]))
+    } catch { setErr('Eklenemedi') } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div className="bg-panel-card rounded-2xl w-full max-w-2xl max-h-[88vh] flex flex-col p-4"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="font-semibold text-sm">“{collection.title}” koleksiyonundaki ürünler</h2>
+          <span className="text-xs text-panel-muted">{icerdekiler.size} ürün</span>
+          <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
+        </div>
+
+        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+
+        <div className="flex gap-2 items-center mb-2">
+          <input value={ara} onChange={e => setAra(e.target.value)} placeholder="Ürün ara…"
+            className="input !py-1.5 !text-sm flex-1" />
+          <label className="flex items-center gap-1.5 text-xs text-panel-muted whitespace-nowrap">
+            <input type="checkbox" checked={yalnizIcerik}
+              onChange={e => setYalnizIcerik(e.target.checked)} />
+            yalnız koleksiyondakiler
+          </label>
+          <button onClick={tumunuEkle} disabled={busy}
+            className="btn-ghost !py-1.5 text-xs whitespace-nowrap disabled:opacity-40">
+            Görünenleri ekle
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto border border-panel-border rounded-xl divide-y
+          divide-panel-border">
+          {gorunen.map(u => {
+            const icerde = icerdekiler.has(u.id)
+            return (
+              <button key={u.id} onClick={() => degistir(u)} disabled={busy}
+                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-panel-input
+                  disabled:opacity-60">
+                <input type="checkbox" checked={icerde} readOnly className="pointer-events-none" />
+                {u.image_url && (
+                  <img src={u.image_url} alt="" className="w-8 h-8 rounded object-cover" />
+                )}
+                <span className="text-sm truncate">{u.title}</span>
+                <span className="ml-auto text-xs text-panel-muted">{u.base_price} ₺</span>
+              </button>
+            )
+          })}
+          {gorunen.length === 0 && (
+            <p className="p-4 text-xs text-panel-muted text-center">Eşleşen ürün yok.</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-3">
+          <button onClick={onSaved} className="btn !py-2 text-sm">Bitti</button>
+        </div>
+      </div>
+    </div>
   )
 }

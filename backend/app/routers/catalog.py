@@ -865,6 +865,120 @@ def sync_smart_collection(
     return {"product_count": sayi}
 
 
+class KoleksiyonUrunleri(BaseModel):
+    """Koleksiyonun İÇİNDEN ürün ekleme/çıkarma (ürün detayına girmeden)."""
+    product_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=500)
+    islem: str = Field("ekle", pattern="^(ekle|cikar)$")
+
+
+@router.get("/collections/{collection_id}/products", response_model=dict)
+def list_collection_products(
+    collection_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Koleksiyondaki ürünlerin kimlikleri — panel işaretleme ekranı için."""
+    from app.models import CatalogCollection
+
+    c = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.id == collection_id,
+        CatalogCollection.tenant_id == user.tenant_id))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    return {
+        "id": str(c.id), "title": c.title, "is_smart": c.is_smart,
+        "product_ids": [str(p.id) for p in c.products],
+    }
+
+
+@router.post("/collections/{collection_id}/products", response_model=dict)
+def edit_collection_products(
+    collection_id: uuid.UUID,
+    body: KoleksiyonUrunleri,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Koleksiyona toplu ürün ekle / çıkar."""
+    from app.models import CatalogCollection
+
+    c = db.scalar(select(CatalogCollection).where(
+        CatalogCollection.id == collection_id,
+        CatalogCollection.tenant_id == user.tenant_id))
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
+    if c.is_smart:
+        # Akıllı koleksiyonun üyeliği KURALIN sonucudur; elle eklenen ürün ilk
+        # eşitlemede kaybolur — sessizce yanıltmak yerine açıkça reddedilir.
+        raise HTTPException(422, "Bu koleksiyon kural bazlı — üyelik kurallardan gelir")
+
+    urunler = db.scalars(select(CatalogProduct).where(
+        CatalogProduct.id.in_(body.product_ids),
+        CatalogProduct.tenant_id == user.tenant_id,
+        CatalogProduct.store_id == c.store_id,
+    )).all()
+    mevcut = {p.id: p for p in c.products}
+    if body.islem == "ekle":
+        for p in urunler:
+            if p.id not in mevcut:
+                c.products.append(p)
+    else:
+        kaldir = {p.id for p in urunler}
+        c.products = [p for p in c.products if p.id not in kaldir]
+    activity.record(db, user, "koleksiyon_urun", store_id=c.store_id,
+                    entity_type="koleksiyon", entity_id=c.id, entity_label=c.title,
+                    detail={"islem": body.islem, "adet": len(urunler)})
+    db.commit()
+    return {"product_count": len(c.products)}
+
+
+class SatirDuzenleme(BaseModel):
+    """Tablo düzenleyicide TEK ürünün değişen alanları."""
+    id: uuid.UUID
+    title: str | None = Field(None, min_length=1, max_length=300)
+    base_price: Decimal | None = Field(None, ge=0)
+    compare_at_price: Decimal | None = Field(None, ge=0)
+    status: str | None = Field(None, pattern="^(active|draft|archived)$")
+
+
+class SatirlarRequest(BaseModel):
+    satirlar: list[SatirDuzenleme] = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/products/bulk-rows", response_model=dict)
+def bulk_rows(
+    body: SatirlarRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Tablo düzenleyici: her ürüne KENDİ değerleri (Shopify bulk editor).
+
+    Mevcut /bulk-edit tüm seçime AYNI işlemi uygular (ör. hepsine %10 zam);
+    burada her satır farklı olabilir — fiyatları tek tek elden geçirmek için.
+    """
+    hedefler = {s.id: s for s in body.satirlar}
+    urunler = db.scalars(select(CatalogProduct).where(
+        CatalogProduct.id.in_(hedefler.keys()),
+        CatalogProduct.tenant_id == user.tenant_id,
+    )).all()
+    if not urunler:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ürün bulunamadı")
+
+    degisen = 0
+    for p in urunler:
+        s = hedefler[p.id]
+        yama = s.model_dump(exclude_unset=True, exclude={"id"})
+        if not yama:
+            continue
+        for alan, deger in yama.items():
+            setattr(p, alan, deger)
+        degisen += 1
+    activity.record(db, user, "toplu_satir_duzenleme",
+                    store_id=urunler[0].store_id, entity_type="urun",
+                    detail={"adet": degisen})
+    db.commit()
+    return {"updated": degisen}
+
+
 @router.put("/products/{product_id}/collections", response_model=dict)
 def set_product_collections(
     product_id: uuid.UUID,

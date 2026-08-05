@@ -15,6 +15,7 @@ export default function UrunlerPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
+  const [showTablo, setShowTablo] = useState(false)
   const [showSets, setShowSets] = useState(false)
   const [showBulkSet, setShowBulkSet] = useState(false)
   const [showFixVariants, setShowFixVariants] = useState(false)
@@ -219,7 +220,11 @@ export default function UrunlerPage() {
           <button disabled={bulkBusy} onClick={() => bulkStatus('archived')}
             className="px-3 py-1 rounded-lg text-xs bg-amber-50 text-amber-700 disabled:opacity-50">Arşivle</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkEdit(true)}
-            className="px-3 py-1 rounded-lg text-xs bg-indigo-50 text-indigo-700 disabled:opacity-50">✏️ Toplu Düzenle</button>
+            className="px-3 py-1 rounded-lg text-xs bg-indigo-50 text-indigo-700 disabled:opacity-50"
+            title="Seçili ürünlerin HEPSİNE aynı işlem (ör. %10 zam)">✏️ Toplu Düzenle</button>
+          <button disabled={bulkBusy} onClick={() => setShowTablo(true)}
+            className="px-3 py-1 rounded-lg text-xs bg-violet-50 text-violet-700 disabled:opacity-50"
+            title="Her ürünü tabloda tek tek düzenle">📊 Tablo Düzenleyici</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkSet(true)}
             className="px-3 py-1 rounded-lg text-xs bg-teal-50 text-teal-700 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
           <button disabled={bulkBusy} onClick={bulkDelete}
@@ -229,6 +234,12 @@ export default function UrunlerPage() {
       )}
 
       {showSets && <VariantSetsModal storeId={storeId} onClose={() => setShowSets(false)} />}
+
+      {showTablo && (
+        <TabloDuzenleyici urunler={products.filter(p => checked.has(p.id))}
+          onClose={() => setShowTablo(false)}
+          onDone={() => { setShowTablo(false); setChecked(new Set()); load() }} />
+      )}
 
       {showBulkEdit && (
         <BulkEditModal ids={[...checked]} storeId={storeId}
@@ -1003,5 +1014,156 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+
+// ─── Tablo düzenleyici (Shopify bulk editor) ──────────────────
+// "Toplu Düzenle" seçili ürünlerin HEPSİNE aynı işlemi uygular (ör. %10 zam).
+// Burada ise her ürün KENDİ satırında düzenlenir: başlık, fiyat, indirim öncesi
+// fiyat, durum. Yalnız DEĞİŞTİRİLEN hücreler gönderilir; tek istekte kaydedilir.
+export function TabloDuzenleyici({ urunler, onClose, onDone }) {
+  const [satirlar, setSatirlar] = useState(() => urunler.map(u => ({
+    id: u.id,
+    title: u.title || '',
+    base_price: u.base_price ?? '',
+    compare_at_price: u.compare_at_price ?? '',
+    status: u.status || 'active',
+  })))
+  const [ilk] = useState(() => JSON.stringify(urunler.map(u => ({
+    id: u.id, title: u.title || '', base_price: u.base_price ?? '',
+    compare_at_price: u.compare_at_price ?? '', status: u.status || 'active',
+  }))))
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const ilkler = JSON.parse(ilk)
+  const degisenSatirlar = satirlar.filter((r, i) => JSON.stringify(r) !== JSON.stringify(ilkler[i]))
+
+  const yaz = (i, alan, deger) =>
+    setSatirlar(ls => ls.map((r, j) => (i === j ? { ...r, [alan]: deger } : r)))
+
+  // Bir sütunu tüm satırlara uygula — "hepsine 249 TL" gibi hızlı düzeltmeler
+  const sutunaYay = (alan) => {
+    const deger = satirlar[0]?.[alan]
+    if (deger === undefined) return
+    setSatirlar(ls => ls.map(r => ({ ...r, [alan]: deger })))
+  }
+
+  const kaydet = async () => {
+    if (!degisenSatirlar.length) { onClose(); return }
+    setBusy(true); setErr('')
+    try {
+      const gonder = degisenSatirlar.map((r, idx) => {
+        const orj = ilkler.find(o => o.id === r.id)
+        const yama = { id: r.id }
+        if (r.title !== orj.title) yama.title = r.title
+        if (String(r.base_price) !== String(orj.base_price)) yama.base_price = Number(r.base_price)
+        if (String(r.compare_at_price) !== String(orj.compare_at_price)) {
+          yama.compare_at_price = r.compare_at_price === '' ? null : Number(r.compare_at_price)
+        }
+        if (r.status !== orj.status) yama.status = r.status
+        return yama
+      })
+      await api.post('/api/catalog/products/bulk-rows', { satirlar: gonder })
+      onDone()
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3"
+      onClick={onClose}>
+      <div className="bg-panel-card rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col p-4"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="font-semibold text-sm">📊 Tablo Düzenleyici</h2>
+          <span className="text-xs text-panel-muted">
+            {satirlar.length} ürün · {degisenSatirlar.length} değişiklik
+          </span>
+          <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
+        </div>
+
+        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+
+        <div className="flex-1 overflow-auto border border-panel-border rounded-xl">
+          <table className="w-full text-sm">
+            <thead className="bg-panel-input sticky top-0 z-10">
+              <tr className="text-left text-xs text-panel-muted">
+                <th className="px-2 py-2 font-medium">Ürün adı</th>
+                <th className="px-2 py-2 font-medium w-28">
+                  Fiyat
+                  <button onClick={() => sutunaYay('base_price')}
+                    title="İlk satırdaki değeri tüm satırlara uygula"
+                    className="ml-1 text-panel-accent">↓</button>
+                </th>
+                <th className="px-2 py-2 font-medium w-32">
+                  İndirim öncesi
+                  <button onClick={() => sutunaYay('compare_at_price')}
+                    title="İlk satırdaki değeri tüm satırlara uygula"
+                    className="ml-1 text-panel-accent">↓</button>
+                </th>
+                <th className="px-2 py-2 font-medium w-28">
+                  Durum
+                  <button onClick={() => sutunaYay('status')}
+                    title="İlk satırdaki değeri tüm satırlara uygula"
+                    className="ml-1 text-panel-accent">↓</button>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-panel-border">
+              {satirlar.map((r, i) => {
+                const degisti = JSON.stringify(r) !== JSON.stringify(ilkler[i])
+                return (
+                  <tr key={r.id} className={degisti ? 'bg-amber-50/60' : ''}>
+                    <td className="px-2 py-1">
+                      <input value={r.title} maxLength={300}
+                        onChange={e => yaz(i, 'title', e.target.value)}
+                        className="w-full bg-transparent border border-transparent hover:border-panel-border
+                          focus:border-panel-accent rounded px-1.5 py-1 outline-none" />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input type="number" step="0.01" min="0" value={r.base_price}
+                        onChange={e => yaz(i, 'base_price', e.target.value)}
+                        className="w-full bg-transparent border border-transparent hover:border-panel-border
+                          focus:border-panel-accent rounded px-1.5 py-1 outline-none text-right" />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input type="number" step="0.01" min="0" value={r.compare_at_price ?? ''}
+                        placeholder="—"
+                        onChange={e => yaz(i, 'compare_at_price', e.target.value)}
+                        className="w-full bg-transparent border border-transparent hover:border-panel-border
+                          focus:border-panel-accent rounded px-1.5 py-1 outline-none text-right" />
+                    </td>
+                    <td className="px-2 py-1">
+                      <select value={r.status} onChange={e => yaz(i, 'status', e.target.value)}
+                        className="w-full bg-transparent border border-transparent hover:border-panel-border
+                          focus:border-panel-accent rounded px-1 py-1 outline-none">
+                        <option value="active">Yayında</option>
+                        <option value="draft">Taslak</option>
+                        <option value="archived">Arşiv</option>
+                      </select>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center gap-2 mt-3">
+          <span className="text-[11px] text-panel-muted">
+            Sarı satırlar değiştirilmiş olanlar. Başlıktaki ↓ ile ilk satırın değerini
+            tüm satırlara yayarsınız.
+          </span>
+          <button onClick={onClose} className="ml-auto btn-ghost !py-2 text-sm">Vazgeç</button>
+          <button onClick={kaydet} disabled={busy || !degisenSatirlar.length}
+            className="btn !py-2 text-sm disabled:opacity-40">
+            {busy ? 'Kaydediliyor…' : `${degisenSatirlar.length} değişikliği kaydet`}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

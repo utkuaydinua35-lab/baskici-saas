@@ -52,6 +52,20 @@ export default function AyarlarPage() {
     setCfg(c => ({ ...c, [k]: v }))
   }
 
+  // Ödeme sağlayıcı bağlantı testi — "ödeme başlatılamadı" hatasının sebebini
+  // sağlayıcının kendi mesajıyla gösterir (sipariş oluşmaz, tahsilat yapılmaz).
+  const odemeTesti = async () => {
+    setOdemeBusy(true); setOdemeSonuc(null)
+    try {
+      setOdemeSonuc(await api.post(`/api/store-settings/${storeId}/odeme-testi`, {}))
+    } catch (e) {
+      setOdemeSonuc({
+        ok: false, saglayici: cfg.payment_provider || 'iyzico', ortam: '—',
+        mesaj: typeof e?.detail === 'string' ? e.detail : 'İstek başarısız',
+      })
+    } finally { setOdemeBusy(false) }
+  }
+
   const save = async () => {
     setBusy(true)
     try {

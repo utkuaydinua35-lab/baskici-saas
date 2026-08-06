@@ -65,22 +65,47 @@ export interface OverlayLayer {
   kutu?: { x: number; y: number; w: number; h: number };
 }
 
-export type Layer = ImageLayer | TextLayer | OverlayLayer;
+/** Çizilen öğe — şimdilik kısıtlı şablonun ilerleme çubuğu (Spotify) */
+export interface ShapeLayer {
+  id: string;
+  type: "sekil";
+  bicim: "ilerleme";
+  x: number; y: number; w: number;
+  kalinlik: number;
+  boyut: number;
+  oran: number;          // 0-1, geçen/toplam süreden
+  renk: string;
+  renk_pasif: string;
+}
+
+export type Layer = ImageLayer | TextLayer | OverlayLayer | ShapeLayer;
 
 /** Kısıtlı şablonda müşterinin doldurduğu tek alan (panelde tanımlanır) */
 export interface StudioAlan {
   key: string;
-  tip: "yazi" | "gorsel";
+  /** yazi: müşteri yazar · gorsel: panelden gelen sabit öğe (aç/kapa)
+   *  foto: MÜŞTERİNİN yüklediği görsel, çerçeveye otomatik oturur
+   *  ilerleme: iki süre alanından hesaplanan Spotify tarzı çubuk */
+  tip: "yazi" | "gorsel" | "foto" | "ilerleme";
   etiket: string;
   x: number; y: number; w: number;
-  h?: number;                    // görsel alanı
+  h?: number;
+  /** true → şablonun ALTINA çizilir (delikli şablonda fotoğraf oradan görünür) */
+  arkada?: boolean;
   varsayilan?: string | boolean;
   max?: number;                  // yazı: en fazla karakter
   size?: number;                 // yazı: punto (baskı alanı yüksekliğine oran)
   font?: string;
   renk?: string;
   hiza?: "left" | "center" | "right";
-  image_url?: string | null;     // görsel alanı
+  image_url?: string | null;     // gorsel alanı
+  sigdir?: "kapla" | "sigdir";   // foto alanı
+  // ilerleme alanı
+  kalinlik?: number;
+  boyut?: number;
+  renk_pasif?: string;
+  kaynak_gecen?: string;
+  kaynak_toplam?: string;
 }
 
 export interface StudioOverlay {
@@ -91,6 +116,7 @@ export interface StudioOverlay {
   thumb_url: string;
   /** "kisitli" → editör form moduna geçer: serbest görsel/yazı eklenemez */
   mod?: "serbest" | "kisitli";
+  kategori?: string;             // vitrinde şablonlar buna göre gruplanır
   alanlar?: StudioAlan[];
 }
 

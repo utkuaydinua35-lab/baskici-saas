@@ -2229,9 +2229,20 @@ class DesignOverlay(Base):
     #   Serbest görsel/yazı ekleyemez, hiçbir şeyi taşıyamaz.
     mod: Mapped[str] = mapped_column(String(10), default="serbest",
                                      server_default=text("'serbest'"))
+    # Şablon teması/modülü — vitrinde şablonlar buna göre gruplanır
+    # ("Forma", "Spotify", "Fotoğraf çerçevesi"…). Boşsa "Diğer".
+    kategori: Mapped[str | None] = mapped_column(String(60), nullable=True)
     # Kısıtlı moddaki alan tanımları — hepsi şablona ORANSAL (0-1):
-    # yazı  : {key, tip:"yazi", etiket, varsayilan, max, x, y, w, size, font, renk, hiza}
-    # görsel: {key, tip:"gorsel", etiket, image_path, x, y, w, h, varsayilan:true|false}
+    # yazı    : {key, tip:"yazi", etiket, varsayilan, max, x, y, w, size, font, renk, hiza}
+    # görsel  : {key, tip:"gorsel", etiket, image_path, x, y, w, h, varsayilan:true|false}
+    #           (panelden yüklenen SABİT öğe — müşteri sadece açıp kapatır)
+    # foto    : {key, tip:"foto", etiket, x, y, w, h, sigdir:"kapla"|"sigdir"}
+    #           (MÜŞTERİNİN yüklediği görsel; çerçeveye otomatik yerleşir)
+    # ilerleme: {key, tip:"ilerleme", etiket, x, y, w, kalinlik, boyut, renk, renk_pasif,
+    #           kaynak_gecen, kaynak_toplam} — iki süre alanından oran hesaplanır,
+    #           Spotify tarzı ilerleme çubuğu + noktası çizilir
+    # Her alanda "arkada": true ise şablonun ALTINA çizilir (şablon delikliyse
+    # fotoğraf oradan görünür), yoksa üstüne.
     alanlar: Mapped[list] = mapped_column(JSONB, default=list,
                                           server_default=text("'[]'::jsonb"))
 

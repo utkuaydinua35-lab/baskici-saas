@@ -31,6 +31,7 @@ FONT_FILES = {
     "mono": "RobotoMono-Medium.ttf",
     "anton": "Anton-Regular.ttf",
     "staatliches": "Staatliches-Regular.ttf",
+    "russo": "RussoOne-Regular.ttf",
     "gotik": "UnifrakturCook-Bold.ttf",
     "pirata": "PirataOne-Regular.ttf",
     "bangers": "Bangers-Regular.ttf",
@@ -137,6 +138,8 @@ def render_print_file(db, design, template) -> bytes:
                 _ciz_overlay(db, tuval, katman, W, H)
             elif tip == "text":
                 _ciz_metin(tuval, ciz, katman, W, H)
+            elif tip == "sekil":
+                _ciz_sekil(ciz, katman, W, H)
         except Exception:  # noqa: BLE001 — tek katman baskıyı tümden bozmasın
             log.exception("katman çizilemedi (design=%s, tip=%s)", design.id, tip)
 
@@ -150,6 +153,30 @@ def render_print_file(db, design, template) -> bytes:
 # KATMAN SIRASI: dizideki sıra çizim sırasıdır (ilk eleman en altta). Tipe göre
 # otomatik sıralama YOK — müşteri hazır şablonu (çerçeveyi) editörde istediği
 # katmana taşıyabilir. Storefront karşılığı: components/studio/katmanlar.ts
+
+
+def _ciz_sekil(ciz: ImageDraw.ImageDraw, k: dict, W: int, H: int) -> None:
+    """Kısıtlı şablonun çizilen öğeleri — şimdilik "ilerleme" (Spotify çubuğu).
+
+    Çubuğun dolu kısmı ve noktanın konumu, müşterinin yazdığı geçen/toplam
+    süreden hesaplanan orandan gelir (kisitli_sablon.layers_uret).
+    """
+    if k.get("bicim") != "ilerleme":
+        return
+    x = float(k.get("x", 0.1)) * W
+    y = float(k.get("y", 0.5)) * H
+    w = float(k.get("w", 0.8)) * W
+    kalinlik = max(1, round(float(k.get("kalinlik", 0.004)) * H))
+    yaricap = max(1, round(float(k.get("boyut", 0.012)) * H))
+    oran = max(0.0, min(1.0, float(k.get("oran", 0))))
+    renk = _basilabilir_renk(k.get("renk"))
+    pasif = _basilabilir_renk(k.get("renk_pasif"))
+
+    ciz.rectangle([x, y - kalinlik / 2, x + w, y + kalinlik / 2], fill=pasif)
+    if oran > 0:
+        ciz.rectangle([x, y - kalinlik / 2, x + w * oran, y + kalinlik / 2], fill=renk)
+    nx = x + w * oran
+    ciz.ellipse([nx - yaricap, y - yaricap, nx + yaricap, y + yaricap], fill=renk)
 
 
 def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:

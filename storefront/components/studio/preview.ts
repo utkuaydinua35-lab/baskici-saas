@@ -4,7 +4,9 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
-import type { CaseTemplate, ImageLayer, Layer, OverlayLayer, TextLayer } from "./types";
+import type {
+  CaseTemplate, ImageLayer, Layer, OverlayLayer, ShapeLayer, TextLayer,
+} from "./types";
 
 const gorselYukle = (src: string): Promise<HTMLImageElement> =>
   new Promise((cozumle, reddet) => {
@@ -59,6 +61,17 @@ export async function onizlemeUret(
             ctx.drawImage(ov, ax, ay, aw, ah);
           }
         } catch { /* şablon yüklenemezse önizleme yine üretilir */ }
+      } else if (l.type === "sekil") {
+        const sk = l as ShapeLayer;
+        const bx = ax + sk.x * aw, by = ay + sk.y * ah, bw = sk.w * aw;
+        const kal = Math.max(1, sk.kalinlik * ah);
+        ctx.fillStyle = sk.renk_pasif;
+        ctx.fillRect(bx, by - kal / 2, bw, kal);
+        ctx.fillStyle = sk.renk;
+        ctx.fillRect(bx, by - kal / 2, bw * sk.oran, kal);
+        ctx.beginPath();
+        ctx.arc(bx + bw * sk.oran, by, Math.max(1, sk.boyut * ah), 0, Math.PI * 2);
+        ctx.fill();
       } else if (l.type === "image") {
         const im = l as ImageLayer;
         try {

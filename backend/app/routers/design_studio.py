@@ -242,6 +242,7 @@ def _ser_overlay(o: DesignOverlay) -> dict:
         "image_url": f"/storage/{o.image_path}",
         "thumb_url": f"/storage/{o.thumb_path}" if o.thumb_path else f"/storage/{o.image_path}",
         "mod": o.mod,
+        "kategori": o.kategori,
         "alanlar": [
             {**a, "image_url": f"/storage/{a['image_path']}" if a.get("image_path") else None}
             for a in (o.alanlar or [])
@@ -254,7 +255,7 @@ def _ser_overlay(o: DesignOverlay) -> dict:
 class OverlayAlan(BaseModel):
     """Kısıtlı şablonda müşterinin doldurabildiği tek bir alan."""
     key: str = Field(..., min_length=1, max_length=30, pattern="^[a-z0-9_-]+$")
-    tip: str = Field(..., pattern="^(yazi|gorsel)$")
+    tip: str = Field(..., pattern="^(yazi|gorsel|foto|ilerleme)$")
     etiket: str = Field(..., min_length=1, max_length=60)
     x: Decimal = Field(Decimal("0.1"), ge=0, le=1)
     y: Decimal = Field(Decimal("0.1"), ge=0, le=1)
@@ -269,6 +270,16 @@ class OverlayAlan(BaseModel):
     hiza: str | None = Field(None, pattern="^(left|center|right)$")
     # görsel alanı — dosya ayrı uçtan yüklenir, burada yolu taşınır
     image_path: str | None = Field(None, max_length=500)
+    # foto alanı — MÜŞTERİNİN yükleyeceği görselin çerçeveye oturma biçimi
+    sigdir: str | None = Field(None, pattern="^(kapla|sigdir)$")
+    # ilerleme alanı — hangi süre alanlarından oran hesaplanacak
+    kaynak_gecen: str | None = Field(None, max_length=30)
+    kaynak_toplam: str | None = Field(None, max_length=30)
+    kalinlik: Decimal | None = Field(None, gt=0, le=0.2)
+    boyut: Decimal | None = Field(None, gt=0, le=0.2)
+    renk_pasif: str | None = Field(None, max_length=9)
+    # true → şablonun ALTINA çizilir (delikli şablonda fotoğraf oradan görünür)
+    arkada: bool | None = None
 
 
 @router.get("/overlays/list", response_model=dict)
@@ -332,6 +343,7 @@ async def create_overlay(
 class OverlayUpdate(BaseModel):
     label: str | None = Field(None, min_length=1, max_length=120)
     case_template_id: uuid.UUID | None = None
+    kategori: str | None = Field(None, max_length=60)
     mod: str | None = Field(None, pattern="^(serbest|kisitli)$")
     alanlar: list[OverlayAlan] | None = Field(None, max_length=12)
     position: int | None = None
@@ -359,6 +371,14 @@ def update_overlay(
             anahtarlar.add(a["key"])
             if a["tip"] == "gorsel" and not a.get("image_path"):
                 raise HTTPException(422, f"“{a['etiket']}” alanına görsel yüklenmedi")
+            if a["tip"] == "ilerleme":
+                yazilar = {x["key"] for x in guncel["alanlar"] if x["tip"] == "yazi"}
+                for alan_adi, etiket in (("kaynak_gecen", "geçen süre"),
+                                         ("kaynak_toplam", "toplam süre")):
+                    if a.get(alan_adi) not in yazilar:
+                        raise HTTPException(
+                            422, f"“{a['etiket']}” için {etiket} alanı seçilmedi — "
+                                 "önce o süreyi bir yazı alanı olarak ekleyin")
             temiz.append({
                 k: (float(v) if isinstance(v, Decimal) else v)
                 for k, v in a.items() if v is not None

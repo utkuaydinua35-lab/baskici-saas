@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
 import type {
-  CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, TextLayer,
+  CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, ShapeLayer, TextLayer,
 } from "./types";
 
 interface Props {
@@ -222,6 +222,31 @@ export default function Canvas({
                   width: `${k.w * 100}%`, height: `${k.h * 100}%`,
                   objectFit: "contain",
                 } : { inset: 0, width: "100%", height: "100%", objectFit: "fill" }} />
+            );
+          }
+          if (l.type === "sekil") {
+            // Kısıtlı şablonun ilerleme çubuğu (Spotify): dolu kısım + nokta,
+            // konumu müşterinin yazdığı sürelerden gelir
+            const sk = l as ShapeLayer;
+            const kal = `${sk.kalinlik * 100}%`;
+            return (
+              <div key={l.id} data-katman={l.id} className="absolute pointer-events-none"
+                style={{ left: `${sk.x * 100}%`, top: `${sk.y * 100}%`,
+                  width: `${sk.w * 100}%`, height: kal, transform: "translateY(-50%)" }}>
+                <div className="absolute inset-0 rounded-full"
+                  style={{ background: sk.renk_pasif }} />
+                <div className="absolute left-0 top-0 bottom-0 rounded-full"
+                  style={{ width: `${sk.oran * 100}%`, background: sk.renk }} />
+                <div className="absolute rounded-full"
+                  style={{
+                    left: `${sk.oran * 100}%`,
+                    top: "50%",
+                    width: `${(sk.boyut * 2 * 100) / (sk.w * 100) * 100}%`,
+                    aspectRatio: "1",
+                    transform: "translate(-50%,-50%)",
+                    background: sk.renk,
+                  }} />
+              </div>
             );
           }
           if (l.type === "image") {

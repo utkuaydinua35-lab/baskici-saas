@@ -2316,6 +2316,7 @@ def studio_overlays(store_slug: str, response: Response, db: Session = Depends(g
             # "kisitli" ise editör form moduna geçer: müşteri yalnız bu
             # alanları doldurur, serbest görsel/yazı ekleyemez.
             "mod": o.mod,
+            "kategori": o.kategori or "Diğer",
             "alanlar": kisitli_sablon.alan_ozeti(o) if o.mod == "kisitli" else [],
         }
         for o, key in rows
@@ -2448,7 +2449,17 @@ def save_design(request: Request, body: DesignSave, db: Session = Depends(get_db
             raise HTTPException(404, "Şablon bulunamadı")
         if ov.mod != "kisitli":
             raise HTTPException(422, "Bu şablon serbest modda — alan değeri gönderilemez")
-        design.layers = kisitli_sablon.layers_uret(ov, body.alan_degerleri)
+        # Baskı alanının en/boy oranı — müşteri fotoğrafının çerçeveye
+        # oranı bozmadan oturması (kapla) bu orana göre hesaplanır
+        from app.models import CaseTemplate as _CT
+        _tpl = db.scalar(select(_CT).where(
+            _CT.store_id == store.id, _CT.key == body.template_key))
+        _oran = 1.0
+        if _tpl and _tpl.area_h:
+            _oran = (float(_tpl.area_w) * _tpl.print_width_mm) / (
+                float(_tpl.area_h) * _tpl.print_height_mm)
+        design.layers = kisitli_sablon.layers_uret(
+            ov, body.alan_degerleri, db=db, alan_oran=_oran)
     else:
         design.layers = body.layers
 

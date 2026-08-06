@@ -25,6 +25,7 @@ export const FONTS: StudioFont[] = [
   { key: "oswald", label: "Oswald", file: "Oswald-SemiBold", css: "Oswald", lisans: "OFL", grup: "Klasik" },
   { key: "anton", label: "Anton", file: "Anton-Regular", css: "Anton", lisans: "OFL", grup: "Klasik" },
   { key: "staatliches", label: "Staatliches", file: "Staatliches-Regular", css: "Staatliches", lisans: "OFL", grup: "Klasik" },
+  { key: "russo", label: "Russo One (forma)", file: "RussoOne-Regular", css: "Russo One", lisans: "OFL", grup: "Klasik" },
   { key: "mono", label: "Daktilo", file: "RobotoMono-Medium", css: "Roboto Mono", lisans: "Apache 2.0", grup: "Klasik" },
 
   // ── Sokak / gangsta / poster ──

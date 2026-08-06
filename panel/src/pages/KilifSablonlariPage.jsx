@@ -237,6 +237,9 @@ function HazirSablonlar({ storeId, templates }) {
               </div>
               <div className="p-1.5 space-y-1">
                 <div className="text-[11px] truncate" title={o.label}>{o.label}</div>
+                {o.kategori && (
+                  <div className="text-[10px] text-panel-muted truncate">📁 {o.kategori}</div>
+                )}
                 {o.mod === 'kisitli' && (
                   <div className="text-[10px] text-panel-accent">
                     🔒 Kısıtlı · {o.alanlar?.length || 0} alan
@@ -648,6 +651,7 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
 // taşınır ve sağ alt köşeden boyutlandırılır.
 function SablonAlanEditoru({ overlay, onClose, onSaved }) {
   const [mod, setMod] = useState(overlay.mod || 'serbest')
+  const [kategori, setKategori] = useState(overlay.kategori || '')
   const [alanlar, setAlanlar] = useState(() =>
     (overlay.alanlar || []).map(a => ({ ...a })))
   const [sel, setSel] = useState(0)
@@ -663,12 +667,23 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
 
   const ekle = (tip) => {
     const n = alanlar.length + 1
-    setAlanlar(ls => [...ls, tip === 'yazi'
-      ? { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
-          max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
-          renk: '#ffffff', hiza: 'center' }
-      : { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
-          w: 0.2, h: 0.1, varsayilan: true, image_path: null }])
+    const yeniler = {
+      yazi: { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
+              max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
+              renk: '#ffffff', hiza: 'center' },
+      gorsel: { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
+                w: 0.2, h: 0.1, varsayilan: true, image_path: null },
+      // Müşterinin YÜKLEYECEĞİ görsel — çerçeveye otomatik oturur, şablon
+      // delikliyse arkada durması gerekir (arkada: true)
+      foto: { key: `foto${n}`, tip: 'foto', etiket: `Fotoğraf ${n}`, x: 0.15, y: 0.15,
+              w: 0.7, h: 0.4, sigdir: 'kapla', arkada: true },
+      // Spotify tarzı ilerleme çubuğu — iki süre alanından oran hesaplanır
+      ilerleme: { key: `ilerleme${n}`, tip: 'ilerleme', etiket: 'Şarkı konumu',
+                  x: 0.1, y: 0.75, w: 0.8, kalinlik: 0.004, boyut: 0.012,
+                  renk: '#ffffff', renk_pasif: '#5a5a5a',
+                  kaynak_gecen: '', kaynak_toplam: '' },
+    }
+    setAlanlar(ls => [...ls, yeniler[tip]])
     setSel(alanlar.length)
     setMod('kisitli')
   }
@@ -729,7 +744,8 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
     try {
       // image_url sunucuya gönderilmez (türetilmiş alan)
       const temiz = alanlar.map(({ image_url, ...a }) => a)
-      await api.patch(`/api/case-templates/overlays/${overlay.id}`, { mod, alanlar: temiz })
+      await api.patch(`/api/case-templates/overlays/${overlay.id}`,
+        { mod, kategori: kategori.trim() || null, alanlar: temiz })
       onSaved()
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
@@ -749,6 +765,13 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
         </div>
 
         {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+
+        <label className="block text-xs text-panel-muted mb-3">
+          Modül / tema adı — vitrinde şablonlar bu başlık altında gruplanır
+          <input value={kategori} onChange={e => setKategori(e.target.value)} maxLength={60}
+            placeholder="Forma · Spotify · Fotoğraf çerçevesi"
+            className="input !py-1.5 !text-sm mt-0.5 w-full sm:w-72" />
+        </label>
 
         <label className="flex items-start gap-2 text-xs mb-3 p-2.5 rounded-xl bg-panel-input">
           <input type="checkbox" checked={mod === 'kisitli'} className="mt-0.5"
@@ -775,7 +798,17 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                     height: a.tip === 'gorsel' ? yuzde(a.h) : undefined,
                     zIndex: i === sel ? 2 : 1,
                   }}>
-                  {a.tip === 'gorsel' ? (
+                  {a.tip === 'foto' ? (
+                    <div className="w-full h-full bg-panel-accent/25 border border-dashed
+                      border-panel-accent text-[9px] flex items-center justify-center text-center">
+                      📷 müşteri fotoğrafı
+                    </div>
+                  ) : a.tip === 'ilerleme' ? (
+                    <div className="w-full flex items-center" style={{ height: 8 }}>
+                      <div className="flex-1 rounded-full" style={{ height: 3, background: a.renk_pasif || '#5a5a5a' }} />
+                      <div className="rounded-full" style={{ width: 8, height: 8, background: a.renk || '#fff', marginLeft: -4 }} />
+                    </div>
+                  ) : a.tip === 'gorsel' ? (
                     a.image_url
                       ? <img src={a.image_url} alt="" draggable={false}
                           style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -799,13 +832,15 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
 
           {/* Alan listesi + özellikler */}
           <div className="space-y-2">
-            <div className="flex gap-1.5">
-              <button onClick={() => ekle('yazi')} className="btn-ghost !py-1.5 text-xs flex-1">
-                + Yazı alanı
-              </button>
-              <button onClick={() => ekle('gorsel')} className="btn-ghost !py-1.5 text-xs flex-1">
-                + Açılabilir öğe
-              </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button onClick={() => ekle('yazi')} className="btn-ghost !py-1.5 text-xs"
+                title="Müşteri metni yazar (isim, numara, süre…)">+ Yazı alanı</button>
+              <button onClick={() => ekle('foto')} className="btn-ghost !py-1.5 text-xs"
+                title="Müşteri görsel yükler, çerçeveye otomatik oturur">+ Müşteri fotoğrafı</button>
+              <button onClick={() => ekle('gorsel')} className="btn-ghost !py-1.5 text-xs"
+                title="Panelden yüklenen sabit öğe; müşteri açıp kapatır">+ Açılabilir öğe</button>
+              <button onClick={() => ekle('ilerleme')} className="btn-ghost !py-1.5 text-xs"
+                title="Spotify tarzı çubuk — nokta süreye göre kayar">+ İlerleme çubuğu</button>
             </div>
 
             <div className="space-y-1">
@@ -814,7 +849,7 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                   className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs cursor-pointer ${
                     i === sel ? 'border-panel-accent' : 'border-panel-border'}`}
                   onClick={() => setSel(i)}>
-                  <span>{a.tip === 'yazi' ? '🔤' : '🖼️'}</span>
+                  <span>{{ yazi: '🔤', gorsel: '🖼️', foto: '📷', ilerleme: '⏱' }[a.tip]}</span>
                   <span className="truncate">{a.etiket}</span>
                   <button className="ml-auto text-red-600"
                     onClick={(e) => {
@@ -847,7 +882,89 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                     className="input !py-1 !text-xs mt-0.5 font-mono" />
                 </label>
 
-                {secili.tip === 'yazi' ? (
+                <label className="flex items-center gap-2 text-[11px]">
+                  <input type="checkbox" checked={!!secili.arkada}
+                    onChange={e => yamala({ arkada: e.target.checked })} />
+                  Şablonun ARKASINDA dursun
+                  <span className="text-panel-muted" title="Şablon PNG'sinde delik/şeffaf alan varsa fotoğraf oradan görünür">ⓘ</span>
+                </label>
+
+                {secili.tip === 'foto' ? (
+                  <>
+                    <label className="block text-[11px] text-panel-muted">
+                      Çerçeveye oturma
+                      <select value={secili.sigdir || 'kapla'}
+                        onChange={e => yamala({ sigdir: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5">
+                        <option value="kapla">Kapla (çerçeve dolar, taşan kırpılır)</option>
+                        <option value="sigdir">Sığdır (tamamı görünür)</option>
+                      </select>
+                    </label>
+                    <p className="text-[10px] text-panel-muted">
+                      Müşteri buraya kendi görselini yükler; oranı bozulmadan çerçeveye
+                      yerleşir. Şablonda bu alan delik/şeffaf ise “arkasında dursun”u işaretleyin.
+                    </p>
+                  </>
+                ) : secili.tip === 'ilerleme' ? (
+                  <>
+                    <label className="block text-[11px] text-panel-muted">
+                      Geçen süre alanı
+                      <select value={secili.kaynak_gecen || ''}
+                        onChange={e => yamala({ kaynak_gecen: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5">
+                        <option value="">— seçin —</option>
+                        {alanlar.filter(x => x.tip === 'yazi').map(x => (
+                          <option key={x.key} value={x.key}>{x.etiket}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-[11px] text-panel-muted">
+                      Toplam süre alanı
+                      <select value={secili.kaynak_toplam || ''}
+                        onChange={e => yamala({ kaynak_toplam: e.target.value })}
+                        className="input !py-1 !text-xs mt-0.5">
+                        <option value="">— seçin —</option>
+                        {alanlar.filter(x => x.tip === 'yazi').map(x => (
+                          <option key={x.key} value={x.key}>{x.etiket}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex gap-1.5">
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        Dolu renk
+                        <input type="color" value={secili.renk || '#ffffff'}
+                          onChange={e => yamala({ renk: e.target.value })}
+                          className="w-full h-[26px] mt-0.5 rounded border border-panel-border bg-white" />
+                      </label>
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        Boş renk
+                        <input type="color" value={secili.renk_pasif || '#5a5a5a'}
+                          onChange={e => yamala({ renk_pasif: e.target.value })}
+                          className="w-full h-[26px] mt-0.5 rounded border border-panel-border bg-white" />
+                      </label>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        Çubuk kalınlığı
+                        <input type="number" step="0.001" min="0.001" max="0.05"
+                          value={secili.kalinlik ?? 0.004}
+                          onChange={e => yamala({ kalinlik: Number(e.target.value) })}
+                          className="input !py-1 !text-xs mt-0.5" />
+                      </label>
+                      <label className="block text-[11px] text-panel-muted flex-1">
+                        Nokta yarıçapı
+                        <input type="number" step="0.002" min="0.002" max="0.06"
+                          value={secili.boyut ?? 0.012}
+                          onChange={e => yamala({ boyut: Number(e.target.value) })}
+                          className="input !py-1 !text-xs mt-0.5" />
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-panel-muted">
+                      Nokta, müşterinin yazdığı geçen/toplam süreye göre kendi kayar
+                      (“1:23” ya da saniye olarak “83” yazılabilir).
+                    </p>
+                  </>
+                ) : secili.tip === 'yazi' ? (
                   <>
                     <label className="block text-[11px] text-panel-muted">
                       Varsayılan metin
@@ -874,7 +991,7 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                       <select value={secili.font || 'anton'}
                         onChange={e => yamala({ font: e.target.value })}
                         className="input !py-1 !text-xs mt-0.5">
-                        {['anton','bebas','staatliches','montserrat','poppins','oswald',
+                        {['anton','russo','bebas','staatliches','montserrat','poppins','oswald',
                           'bangers','bungee','alfaslab','gotik','pirata','marker','sprey',
                           'playfair','lobster','monoton','righteous','elite','dancing',
                           'caveat','greatvibes','pacifico','creepster','mono'].map(f => (

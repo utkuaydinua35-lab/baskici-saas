@@ -13,7 +13,7 @@ import { FONTS, FONT_GRUPLARI, fontCss, trUyarisi } from "@/components/studio/fo
 import { BASKI_BEYAZ, PALET, basilabilirRenk, cmykYazi, hexNormalize } from "@/components/studio/renk";
 import { katmanEkle, overlayTasi } from "@/components/studio/katmanlar";
 import {
-  type AlanDegeri, kisitliKatmanlar, varsayilanDegerler,
+  type AlanDegeri, type FotoDegeri, kisitliKatmanlar, sunucuDegerleri, varsayilanDegerler,
 } from "@/components/studio/kisitli";
 import Ogretici, { type TurAdimi } from "@/components/studio/Ogretici";
 import { onizlemeUret } from "@/components/studio/preview";
@@ -333,11 +333,39 @@ export default function TasarlaPage() {
   const [kisitli, setKisitli] = useState<StudioOverlay | null>(null);
   const [alanDegerleri, setAlanDegerleri] = useState<Record<string, AlanDegeri>>({});
 
+  // Baskı alanının en/boy oranı — müşteri fotoğrafının çerçeveye oranı
+  // bozulmadan oturması (kapla) buna göre hesaplanır
+  const alanOrani = useMemo(() => {
+    if (!tpl) return 1;
+    const p = tpl.print;
+    return (tpl.area.w * p.width_mm) / (tpl.area.h * p.height_mm) || 1;
+  }, [tpl]);
+
   const alanYaz = (key: string, deger: AlanDegeri) => {
     if (!kisitli) return;
     const yeni = { ...alanDegerleri, [key]: deger };
     setAlanDegerleri(yeni);
-    setLayers(kisitliKatmanlar(kisitli, yeni));
+    setLayers(kisitliKatmanlar(kisitli, yeni, alanOrani));
+  };
+
+  // Kısıtlı şablondaki "foto" alanına müşteri görseli yükleme
+  const [fotoYukleniyor, setFotoYukleniyor] = useState("");
+  const fotoYukle = async (key: string, file: File | undefined) => {
+    if (!file || !kisitli) return;
+    setFotoYukleniyor(key); setDurum("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/studio/assets", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.detail || "Yüklenemedi");
+      const foto: FotoDegeri = {
+        asset_id: d.asset_id, url: d.preview_url, w: d.width, h: d.height,
+      };
+      alanYaz(key, foto);
+    } catch (e) {
+      setDurum(e instanceof Error ? e.message : "Görsel yüklenemedi");
+    } finally { setFotoYukleniyor(""); }
   };
 
   const kisitliCik = () => {
@@ -354,7 +382,7 @@ export default function TasarlaPage() {
       const d = varsayilanDegerler(o);
       setKisitli(o);
       setAlanDegerleri(d);
-      setLayers(kisitliKatmanlar(o, d));
+      setLayers(kisitliKatmanlar(o, d, alanOrani));
       setSecili(null);
       return;
     }
@@ -423,7 +451,10 @@ export default function TasarlaPage() {
           layers, status: durumDeger, preview_data_url: onizleme,
           // Kısıtlı şablonda katmanları SUNUCU üretir; biz sadece alan
           // değerlerini gönderiyoruz (kısıtlama baskıda da garanti olsun)
-          ...(kisitli ? { overlay_id: kisitli.id, alan_degerleri: alanDegerleri } : {}),
+          ...(kisitli ? {
+            overlay_id: kisitli.id,
+            alan_degerleri: sunucuDegerleri(alanDegerleri, kisitli.alanlar || []),
+          } : {}),
         }),
       });
       const d = await res.json();
@@ -456,7 +487,10 @@ export default function TasarlaPage() {
         body: JSON.stringify({
           id: designId, name: ad, template_key: tpl.key, layers,
           status: "ready", preview_data_url: onizleme,
-          ...(kisitli ? { overlay_id: kisitli.id, alan_degerleri: alanDegerleri } : {}),
+          ...(kisitli ? {
+            overlay_id: kisitli.id,
+            alan_degerleri: sunucuDegerleri(alanDegerleri, kisitli.alanlar || []),
+          } : {}),
         }),
       });
       const d = await res.json();
@@ -657,7 +691,42 @@ export default function TasarlaPage() {
               </p>
 
               {(kisitli.alanlar || []).map((a) => (
-                a.tip === "yazi" ? (
+                a.tip === "foto" ? (
+                  <div key={a.key}>
+                    <div className="text-xs text-zinc-600 mb-1">{a.etiket}</div>
+                    {(alanDegerleri[a.key] as FotoDegeri | null)?.url ? (
+                      <div className="flex items-center gap-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={(alanDegerleri[a.key] as FotoDegeri).url} alt=""
+                          className="w-12 h-12 rounded-lg object-cover border border-zinc-200" />
+                        <label className="text-xs underline text-zinc-600 cursor-pointer">
+                          değiştir
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={(e) => fotoYukle(a.key, e.target.files?.[0])} />
+                        </label>
+                        <button onClick={() => alanYaz(a.key, null)}
+                          className="text-xs text-red-600 ml-auto">kaldır</button>
+                      </div>
+                    ) : (
+                      <label className={`block text-center text-sm py-3 rounded-xl border
+                        border-dashed cursor-pointer ${fotoYukleniyor === a.key
+                          ? "border-zinc-400 text-zinc-400" : "border-zinc-300 hover:border-zinc-900"}`}>
+                        {fotoYukleniyor === a.key ? "Yükleniyor…" : "📷 Görsel yükle"}
+                        <input type="file" accept="image/*" className="hidden"
+                          disabled={!!fotoYukleniyor}
+                          onChange={(e) => fotoYukle(a.key, e.target.files?.[0])} />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-zinc-400 mt-1">
+                      Görselin çerçeveye {a.sigdir === "sigdir" ? "sığdırılır" : "oranı bozulmadan oturur"} —
+                      taşan kenarlar kırpılır.
+                    </p>
+                  </div>
+                ) : a.tip === "ilerleme" ? (
+                  <p key={a.key} className="text-[11px] text-zinc-500 bg-zinc-50 rounded-lg px-2 py-1.5">
+                    ⏱ {a.etiket}: süreleri yazdıkça çubuktaki nokta kendi kayar.
+                  </p>
+                ) : a.tip === "yazi" ? (
                   <label key={a.key} className="block text-xs text-zinc-600">
                     {a.etiket}
                     <input
@@ -697,8 +766,13 @@ export default function TasarlaPage() {
                     className="ml-2 text-[11px] underline text-zinc-600">kaldır</button>
                 )}
               </div>
+              {[...new Set(uygunOverlaylar.map((o) => o.kategori || "Diğer"))].map((kat) => (
+              <div key={kat} className="mb-2">
+                {[...new Set(uygunOverlaylar.map((x) => x.kategori || "Diğer"))].length > 1 && (
+                  <div className="text-[11px] font-medium text-zinc-600 mb-1">{kat}</div>
+                )}
               <div className="grid grid-cols-4 gap-2">
-                {uygunOverlaylar.map((o) => (
+                {uygunOverlaylar.filter((o) => (o.kategori || "Diğer") === kat).map((o) => (
                   <button key={o.id} onClick={() => overlaySec(o)} title={o.label}
                     className={`relative rounded-xl border-2 overflow-hidden bg-zinc-50
                       aspect-[9/16] transition ${
@@ -718,6 +792,9 @@ export default function TasarlaPage() {
                   </button>
                 ))}
               </div>
+              </div>
+              ))}
+
               {seciliOverlay && !kisitli && (
                 <div className="mt-2">
                   <div className="text-[11px] text-zinc-500 mb-1">Şablonun katmanı</div>
@@ -744,6 +821,12 @@ export default function TasarlaPage() {
                   </p>
                 </div>
               )}
+
+              <p className="text-[11px] text-zinc-400 mt-1.5 leading-snug">
+                🔒 işaretli şablonlar hazır tasarımdır: yalnız tanımlı alanları
+                doldurursun. Diğerlerini istersen en üstte (çerçeve), istersen
+                en altta (zemin) kullanırsın.
+              </p>
             </div>
           )}
 

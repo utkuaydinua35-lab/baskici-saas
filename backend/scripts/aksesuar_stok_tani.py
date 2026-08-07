@@ -66,12 +66,34 @@ def main() -> None:
             print(f"\n  {bagsiz} ürünün stoğu takip edilmiyor — bunlar eksik listesine GİREMEZ.")
             print("  Stok sayfasında ana kalemi aç, 'Bağlı ürünler'e bu ürünü ekle.")
 
+        # Alt kalemler: "alt kalem tanımsız" iki sebepten olur — ya grupta hiç
+        # alt kalem yok, ya da var ama model adı eşleşmiyor. Ayrımı göster.
+        print("\n── Stok ana kalemlerinin alt kalemleri ──")
+        from app.models import StockItem
+        for g in gruplar:
+            alt = db.scalars(
+                select(StockItem).where(StockItem.group_id == g.id,
+                                        StockItem.is_active.is_(True))
+            ).all()
+            print(f"  {g.name}: {len(alt)} alt kalem")
+            if not alt:
+                print("    → hiç alt kalem yok; model bazlı stok girilmemiş.")
+                continue
+            for si in alt[:12]:
+                _modeller = si.models if si.models else ([si.model] if si.model else [])
+                _anahtar = " | ".join(stock_svc._norm_model(m) for m in _modeller)
+                print(f"    - {si.name[:34]:<36} adet={si.quantity:<5}"
+                      f" model={_modeller} → anahtar[{_anahtar}]")
+            if len(alt) > 12:
+                print(f"    … {len(alt) - 12} alt kalem daha")
+
         eksikler = stock_svc.siparis_stok_eksigi(db, tid)
         print(f"\n── Hesaplanan stok eksiği: {len(eksikler)} satır ──")
         if not eksikler:
             print("  (eksik yok — ya stok yeterli ya da yukarıdaki bağlantılar kurulmamış)")
         for e in eksikler:
-            _ek = "  ⚠ alt kalem tanımsız" if e["not_in_system"] else ""
+            _ek = (f"  ⚠ alt kalem tanımsız · aranan anahtar"
+                   f" [{stock_svc._norm_model(e['model'])}]") if e["not_in_system"] else ""
             print(f"  -{e['total_missing']:<4} {e['grup']} · {e['model']}"
                   f"  (ihtiyaç {e['ihtiyac']}, stok {e['mevcut']},"
                   f" {e['siparis_sayisi']} sipariş){_ek}")

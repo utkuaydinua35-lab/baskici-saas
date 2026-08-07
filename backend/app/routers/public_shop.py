@@ -108,6 +108,7 @@ def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
         "custom_fields": p.custom_fields or [],
         # Tasarım stüdyosu modülleri — müşteri bu kılıflarla kendi tasarımını
         # yapabilir; ürün sayfasında "Kendi Tasarımını Yap" bölümü olarak çıkar
+        "studio_overlays": [str(x) for x in (p.studio_overlays or [])],
         "studio_templates": (_studio_modules(db, store, p)
                              if db is not None and store is not None else []),
         "models_per_item": p.models_per_item or 1,
@@ -2286,15 +2287,28 @@ def support_model_check(
 # KAYDETMEK için hesap gerekir — böylece müşteri kaldığı yerden devam eder.
 
 @router.get("/{store_slug}/studio/overlays")
-def studio_overlays(store_slug: str, response: Response, db: Session = Depends(get_db)):
-    """Hazır tasarım şablonları — müşterinin tasarımının üstüne binen çerçeveler.
+def studio_overlays(store_slug: str, response: Response,
+                    urun: str | None = Query(None, max_length=200),
+                    db: Session = Depends(get_db)):
+    """Hazır tasarım modülleri — müşterinin tasarımına eklenen şablonlar.
 
-    case_template_id null olanlar tüm kılıflarda görünür; doluysa yalnız o
-    kılıf tipinde. Editör listeyi kılıf seçimine göre süzer.
+    Görünürlük iki kademeli:
+      • MODÜL (sadece_urunde=True): yalnız ürün detayında kendisine atanan
+        ürünlerin stüdyosunda çıkar. Spotify arayüzü gibi ürüne özel
+        tasarımlar her ürünün listesini şişirmesin diye.
+      • GENEL şablon (sadece_urunde=False): her üründe görünür.
+    Ayrıca case_template_id doluysa yalnız o kılıf tipinde listelenir.
     """
-    from app.models import CaseTemplate, DesignOverlay
+    from app.models import CaseTemplate, CatalogProduct, DesignOverlay
 
     store = _resolve_store(db, store_slug)
+    # Ürün verildiyse o ürüne atanmış modüllerin kimlikleri
+    urun_modulleri: set[str] = set()
+    if urun:
+        p = db.scalar(select(CatalogProduct).where(
+            CatalogProduct.store_id == store.id, CatalogProduct.slug == urun))
+        if p:
+            urun_modulleri = {str(x) for x in (p.studio_overlays or [])}
     rows = db.execute(
         select(DesignOverlay, CaseTemplate.key)
         .join(CaseTemplate, DesignOverlay.case_template_id == CaseTemplate.id,
@@ -2320,6 +2334,8 @@ def studio_overlays(store_slug: str, response: Response, db: Session = Depends(g
             "alanlar": kisitli_sablon.alan_ozeti(o) if o.mod == "kisitli" else [],
         }
         for o, key in rows
+        # Ürüne özel modül: yalnız atandığı üründe. Genel şablon: her üründe.
+        if (str(o.id) in urun_modulleri) or not o.sadece_urunde
     ]
 
 

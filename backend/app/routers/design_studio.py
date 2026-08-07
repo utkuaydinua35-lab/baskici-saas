@@ -243,6 +243,7 @@ def _ser_overlay(o: DesignOverlay) -> dict:
         "thumb_url": f"/storage/{o.thumb_path}" if o.thumb_path else f"/storage/{o.image_path}",
         "mod": o.mod,
         "kategori": o.kategori,
+        "sadece_urunde": o.sadece_urunde,
         "alanlar": [
             {**a, "image_url": f"/storage/{a['image_path']}" if a.get("image_path") else None}
             for a in (o.alanlar or [])
@@ -344,6 +345,7 @@ class OverlayUpdate(BaseModel):
     label: str | None = Field(None, min_length=1, max_length=120)
     case_template_id: uuid.UUID | None = None
     kategori: str | None = Field(None, max_length=60)
+    sadece_urunde: bool | None = None
     mod: str | None = Field(None, pattern="^(serbest|kisitli)$")
     alanlar: list[OverlayAlan] | None = Field(None, max_length=12)
     position: int | None = None

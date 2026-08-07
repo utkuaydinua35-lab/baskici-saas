@@ -1511,6 +1511,11 @@ class CatalogProduct(Base):
     # Tasarım stüdyosu modülleri: bu üründe müşteri hangi kılıf şablonlarıyla
     # kendi tasarımını yapabilir (CaseTemplate.key listesi). Boşsa ürün
     # stüdyoya bağlı değildir.
+    # Ürüne bağlanan HAZIR TASARIM MODÜLLERİ (DesignOverlay id listesi).
+    # Spotify arayüzü gibi ürüne özel modüller yalnız burada seçildiği üründe
+    # çıkar — her üründe görünen genel şablonlarla karışmaz.
+    studio_overlays: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"))
     studio_templates: Mapped[list] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb"))
     # Birim maliyet (KDV hariç alış/üretim) — kâr marjı raporunda kullanılır.
@@ -2229,6 +2234,10 @@ class DesignOverlay(Base):
     #   Serbest görsel/yazı ekleyemez, hiçbir şeyi taşıyamaz.
     mod: Mapped[str] = mapped_column(String(10), default="serbest",
                                      server_default=text("'serbest'"))
+    # True → bu modül YALNIZ atandığı ürünlerde görünür (ürün detayında
+    # seçilir). False → her ürünün stüdyosunda genel şablon olarak çıkar.
+    sadece_urunde: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"))
     # Şablon teması/modülü — vitrinde şablonlar buna göre gruplanır
     # ("Forma", "Spotify", "Fotoğraf çerçevesi"…). Boşsa "Diğer".
     kategori: Mapped[str | None] = mapped_column(String(60), nullable=True)

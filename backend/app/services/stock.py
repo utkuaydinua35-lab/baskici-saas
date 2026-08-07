@@ -366,13 +366,15 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
     out = []
     for (gid, nmodel), v in ihtiyac.items():
         adaylar = alt_kalemler.get(gid, [])
-        si = next(
-            (x for x in adaylar
-             if any(_norm_model(mm) == nmodel
-                    for mm in (x.models if x.models else ([x.model] if x.model else [])))),
-            None,
-        )
-        mevcut = int(si.quantity or 0) if si else 0
+        # Ayni modele birden fazla alt kalem denk gelebilir (or. ayni model,
+        # farkli varyasyon). Ilkini almak, stogu olan digerini gormezden gelip
+        # yanlis "eksik" uretiyordu — TUMUNUN toplami alinir.
+        eslesenler = [
+            x for x in adaylar
+            if any(_norm_model(mm) == nmodel
+                   for mm in (x.models if x.models else ([x.model] if x.model else [])))
+        ]
+        mevcut = sum(int(x.quantity or 0) for x in eslesenler)
         eksik = max(0, v["adet"] - mevcut)
         if eksik <= 0:
             continue
@@ -385,7 +387,7 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
             "total_missing": eksik,
             "siparis_sayisi": len(v["siparisler"]),
             # Alt kalem hic tanimli degil — stokta "0" degil, KAYIT yok.
-            "not_in_system": si is None,
+            "not_in_system": not eslesenler,
         })
     out.sort(key=lambda x: (-x["total_missing"], x["model"]))
     return out

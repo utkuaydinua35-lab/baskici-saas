@@ -86,6 +86,8 @@ class ProductCreate(BaseModel):
     cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
     # Tasarım stüdyosu modülleri (kılıf şablonu anahtarları)
     studio_templates: list[str] | None = Field(None, max_length=10)
+    # Ürüne özel hazır tasarım modülleri (DesignOverlay id listesi)
+    studio_overlays: list[uuid.UUID] | None = Field(None, max_length=20)
     tags: str | None = Field(None, max_length=500)
     position: int = 0
 
@@ -102,6 +104,8 @@ class ProductUpdate(BaseModel):
     cost_price: Decimal | None = Field(None, ge=0)   # birim maliyet (kâr raporu)
     # Tasarım stüdyosu modülleri (kılıf şablonu anahtarları)
     studio_templates: list[str] | None = Field(None, max_length=10)
+    # Ürüne özel hazır tasarım modülleri (DesignOverlay id listesi)
+    studio_overlays: list[uuid.UUID] | None = Field(None, max_length=20)
     tags: str | None = Field(None, max_length=500)
     position: int | None = None
     publish_at: datetime | None = None   # draft üründe zamanlanmış yayın
@@ -244,6 +248,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "compare_at_price": str(p.compare_at_price) if p.compare_at_price is not None else None,
         "cost_price": str(p.cost_price) if p.cost_price is not None else None,
         "studio_templates": p.studio_templates or [],
+        "studio_overlays": [str(x) for x in (p.studio_overlays or [])],
         "currency": p.currency,
         "tags": p.tags,
         "position": p.position,
@@ -359,6 +364,7 @@ def create_product(
         compare_at_price=body.compare_at_price,
         cost_price=body.cost_price,
         studio_templates=body.studio_templates or [],
+        studio_overlays=[str(x) for x in (body.studio_overlays or [])],
         tags=body.tags,
         position=body.position,
     )
@@ -394,6 +400,9 @@ def update_product(
         updates["description"] = sanitize_rich_text(updates["description"])
     if "custom_fields" in updates:
         updates["custom_fields"] = _clean_custom_fields(updates["custom_fields"])
+    if "studio_overlays" in updates:
+        # JSONB'ye UUID nesnesi yazılamaz — metne çevrilir
+        updates["studio_overlays"] = [str(x) for x in (updates["studio_overlays"] or [])]
     if "slug" in updates and updates["slug"]:
         updates["slug"] = slugify(updates["slug"])
         clash = db.scalar(select(CatalogProduct).where(

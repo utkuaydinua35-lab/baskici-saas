@@ -66,37 +66,65 @@ def main() -> None:
             print(f"\n  {bagsiz} ürünün stoğu takip edilmiyor — bunlar eksik listesine GİREMEZ.")
             print("  Stok sayfasında ana kalemi aç, 'Bağlı ürünler'e bu ürünü ekle.")
 
-        # Alt kalemler: "alt kalem tanımsız" iki sebepten olur — ya grupta hiç
-        # alt kalem yok, ya da var ama model adı eşleşmiyor. Ayrımı göster.
-        print("\n── Stok ana kalemlerinin alt kalemleri ──")
+        eksikler = stock_svc.siparis_stok_eksigi(db, tid)
+        print(f"\n── Hesaplanan stok eksiği: {len(eksikler)} satır ──")
+        if not eksikler:
+            print("  (eksik yok — ya stok yeterli ya da yukarıdaki bağlantılar kurulmamış)")
+        for e in eksikler[:15]:
+            _ek = ("  ⚠ alt kalem tanımsız" if e["not_in_system"] else "")
+            print(f"  -{e['total_missing']:<4} {e['grup']} · {e['model']}"
+                  f"  (ihtiyaç {e['ihtiyac']}, stok {e['mevcut']},"
+                  f" {e['siparis_sayisi']} sipariş){_ek}")
+        if len(eksikler) > 15:
+            print(f"  … {len(eksikler) - 15} satır daha")
+
+        # "Alt kalem tanımsız" iki sebepten olur: ya grupta hiç alt kalem yok,
+        # ya da var ama model adı eşleşmiyor. Ayrımı gösterip KARARI da veriyoruz;
+        # bu bölüm EN SONDA duruyor çünkü terminal kaydırınca sadece son ekran
+        # okunabiliyor ve asıl cevap burada.
         from app.models import StockItem
+        print("\n── Stok ana kalemlerinin alt kalemleri ──")
+        toplam_alt = 0
+        ornek_anahtar: list[str] = []
         for g in gruplar:
             alt = db.scalars(
                 select(StockItem).where(StockItem.group_id == g.id,
                                         StockItem.is_active.is_(True))
             ).all()
+            toplam_alt += len(alt)
             print(f"  {g.name}: {len(alt)} alt kalem")
             if not alt:
                 print("    → hiç alt kalem yok; model bazlı stok girilmemiş.")
                 continue
-            for si in alt[:12]:
+            for si in alt[:8]:
                 _modeller = si.models if si.models else ([si.model] if si.model else [])
-                _anahtar = " | ".join(stock_svc._norm_model(m) for m in _modeller)
-                print(f"    - {si.name[:34]:<36} adet={si.quantity:<5}"
-                      f" model={_modeller} → anahtar[{_anahtar}]")
-            if len(alt) > 12:
-                print(f"    … {len(alt) - 12} alt kalem daha")
+                _anahtarlar = [stock_svc._norm_model(m) for m in _modeller]
+                ornek_anahtar.extend(_anahtarlar)
+                print(f"    - {(si.name or '')[:30]:<32} adet={si.quantity:<5}"
+                      f" model={_modeller} → anahtar{_anahtarlar}")
+            if len(alt) > 8:
+                print(f"    … {len(alt) - 8} alt kalem daha")
 
-        eksikler = stock_svc.siparis_stok_eksigi(db, tid)
-        print(f"\n── Hesaplanan stok eksiği: {len(eksikler)} satır ──")
-        if not eksikler:
-            print("  (eksik yok — ya stok yeterli ya da yukarıdaki bağlantılar kurulmamış)")
-        for e in eksikler:
-            _ek = (f"  ⚠ alt kalem tanımsız · aranan anahtar"
-                   f" [{stock_svc._norm_model(e['model'])}]") if e["not_in_system"] else ""
-            print(f"  -{e['total_missing']:<4} {e['grup']} · {e['model']}"
-                  f"  (ihtiyaç {e['ihtiyac']}, stok {e['mevcut']},"
-                  f" {e['siparis_sayisi']} sipariş){_ek}")
+        aranan = {stock_svc._norm_model(e["model"]) for e in eksikler}
+        kesisim = aranan & set(ornek_anahtar)
+        print("\n" + "═" * 62)
+        print("KARAR")
+        if toplam_alt == 0:
+            print("  Gruplarda HİÇ alt kalem yok → model bazlı stok girilmemiş.")
+            print("  Yapılacak: Stok sayfasında ana kalemi aç, her model için alt")
+            print("  kalem ekle. Eşleştirme kodu doğru çalışıyor, veri eksik.")
+        elif not ornek_anahtar:
+            print("  Alt kalemler var ama hiçbirinde model tanımlı değil.")
+            print("  Yapılacak: alt kalemlere model adı gir.")
+        elif kesisim:
+            print(f"  Eşleşme çalışıyor ({len(kesisim)} anahtar tuttu). Kalan")
+            print("  'alt kalem tanımsız' satırları gerçekten girilmemiş modeller.")
+        else:
+            print("  Alt kalemler VAR ama hiçbir anahtar tutmuyor → EŞLEŞTİRME HATASI.")
+            print(f"  Aranan örnek : {sorted(aranan)[:4]}")
+            print(f"  Stokta olan  : {sorted(set(ornek_anahtar))[:4]}")
+            print("  Bu çıktıyı ilet — normalize eşleştirmesi düzeltilecek.")
+        print("═" * 62)
     finally:
         db.close()
 

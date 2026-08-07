@@ -171,8 +171,14 @@ export default function TasarlaPage() {
           .then((p) => { if (p) setUrun(p); });
       })
       .catch(() => {});
-    fetch("/api/studio/overlays")
-      .then((r) => (r.ok ? r.json() : []))
+    // Modüller ürüne özel olabilir — hangi üründen gelindiyse onunla sorulur
+    fetch("/api/shop-config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        const slug = urunSlug || c?.settings?.studio_product_slug || "";
+        return fetch(`/api/studio/overlays${slug ? `?urun=${encodeURIComponent(slug)}` : ""}`);
+      })
+      .then((r) => (r?.ok ? r.json() : []))
       .then((d) => setOverlays(Array.isArray(d) ? d : []))
       .catch(() => {});
     fetch("/api/account/designs")

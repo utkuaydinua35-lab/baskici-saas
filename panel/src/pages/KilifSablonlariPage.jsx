@@ -240,6 +240,9 @@ function HazirSablonlar({ storeId, templates }) {
                 {o.kategori && (
                   <div className="text-[10px] text-panel-muted truncate">📁 {o.kategori}</div>
                 )}
+                {o.sadece_urunde && (
+                  <div className="text-[10px] text-panel-accent">🧩 ürüne özel modül</div>
+                )}
                 {o.mod === 'kisitli' && (
                   <div className="text-[10px] text-panel-accent">
                     🔒 Kısıtlı · {o.alanlar?.length || 0} alan
@@ -652,6 +655,7 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
 function SablonAlanEditoru({ overlay, onClose, onSaved }) {
   const [mod, setMod] = useState(overlay.mod || 'serbest')
   const [kategori, setKategori] = useState(overlay.kategori || '')
+  const [sadeceUrunde, setSadeceUrunde] = useState(!!overlay.sadece_urunde)
   const [alanlar, setAlanlar] = useState(() =>
     (overlay.alanlar || []).map(a => ({ ...a })))
   const [sel, setSel] = useState(0)
@@ -745,7 +749,8 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
       // image_url sunucuya gönderilmez (türetilmiş alan)
       const temiz = alanlar.map(({ image_url, ...a }) => a)
       await api.patch(`/api/case-templates/overlays/${overlay.id}`,
-        { mod, kategori: kategori.trim() || null, alanlar: temiz })
+        { mod, kategori: kategori.trim() || null, sadece_urunde: sadeceUrunde,
+          alanlar: temiz })
       onSaved()
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
@@ -771,6 +776,17 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
           <input value={kategori} onChange={e => setKategori(e.target.value)} maxLength={60}
             placeholder="Forma · Spotify · Fotoğraf çerçevesi"
             className="input !py-1.5 !text-sm mt-0.5 w-full sm:w-72" />
+        </label>
+
+        <label className="flex items-start gap-2 text-xs mb-2 p-2.5 rounded-xl bg-panel-input">
+          <input type="checkbox" checked={sadeceUrunde} className="mt-0.5"
+            onChange={e => setSadeceUrunde(e.target.checked)} />
+          <span>
+            <b>Yalnız atandığı ürünlerde görünsün</b> — bu tasarımı bir MODÜL yapar.
+            Ürün detayındaki “Hazır Tasarım Modülleri”nden seçtiğiniz ürünlerde
+            çıkar, diğer ürünlerin stüdyosunu kalabalıklaştırmaz. Kapalıyken her
+            üründe genel şablon olarak görünür.
+          </span>
         </label>
 
         <label className="flex items-start gap-2 text-xs mb-3 p-2.5 rounded-xl bg-panel-input">

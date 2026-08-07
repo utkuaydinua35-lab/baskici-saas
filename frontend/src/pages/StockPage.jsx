@@ -103,6 +103,16 @@ export default function StockPage() {
                 <button onClick={() => setAddItemGroup(active)} className="btn-secondary !text-sm whitespace-nowrap">➕ Model ekle</button>
                 <GroupMenu group={active}
                   onLink={() => setLinkGroup(active)}
+                  onAutoFill={async () => {
+                    if (!confirm(`Açık siparişlerde geçen ama "${active.name}" altında kaydı olmayan modeller 0 adetle oluşturulacak. Mevcut kayıtlara dokunulmaz. Devam?`)) return
+                    try {
+                      const r = await api.post(`/api/stock/groups/${active.id}/eksik-modelleri-olustur`, {})
+                      flash(true, r.olusturulan
+                        ? `${r.olusturulan} model oluşturuldu — adetleri gir`
+                        : (r.mesaj || 'Eklenecek model yok'))
+                      load()
+                    } catch (e) { flash(false, 'Oluşturulamadı: ' + (e?.detail || '')) }
+                  }}
                   onDelete={async () => {
                     if (!confirm(`"${active.name}" ana kalemi ve tüm modelleri silinecek. Emin misin?`)) return
                     try { await api.del(`/api/stock/groups/${active.id}`); flash(true, 'Ana kalem silindi'); load() }
@@ -325,7 +335,7 @@ function RowWithBrand({ showBrand, brand, colSpan, children }) {
   )
 }
 
-function GroupMenu({ group, onLink, onDelete }) {
+function GroupMenu({ group, onLink, onDelete, onAutoFill }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
@@ -335,6 +345,12 @@ function GroupMenu({ group, onLink, onDelete }) {
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-10 z-20 w-48 bg-brand-card border border-brand-border rounded-lg shadow-lg py-1">
             <button onClick={() => { onLink(); setOpen(false) }} className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-brand-input/50">🔗 Ürün eşleştir ({group.linked_products?.length || 0})</button>
+            {/* Aksesuar gruplarında model listesi elle girilmiyor; açık
+                siparişlerde geçen modeller 0 adetle açılıp adetler doldurulur. */}
+            <button onClick={() => { onAutoFill(); setOpen(false) }}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-brand-input/50">
+              ✨ Eksik modelleri oluştur
+            </button>
             <button onClick={() => { onDelete(); setOpen(false) }} className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-500/10">🗑 Ana kalemi sil</button>
           </div>
         </>

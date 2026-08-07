@@ -275,6 +275,76 @@ def add_group_item(group_id: uuid.UUID, body: GroupItemCreate,
     return _serialize(it)
 
 
+@router.post("/groups/{group_id}/eksik-modelleri-olustur", response_model=dict)
+def eksik_modelleri_olustur(group_id: uuid.UUID,
+                            user: User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """Acik siparislerde gecen ama alt kalemi olmayan modeller icin 0 adetli
+    alt kalem ac.
+
+    Aksesuar gruplarinda model bazli stok kaydi yoksa sistem her seyi "stok 0"
+    sayiyor ve tum aksesuarlar eksik gorunuyor. Modelleri tek tek girmek
+    zahmetli oldugu icin acik siparislerden turetilir; kullanici yalnizca
+    adetleri doldurur.
+
+    Var olan alt kalemlere DOKUNULMAZ; yalnizca eksik olanlar eklenir.
+    """
+    import re as _re
+    from app.services import stock as stock_svc
+
+    g = db.scalar(select(StockGroup).where(
+        StockGroup.id == group_id, StockGroup.tenant_id == user.tenant_id))
+    if not g:
+        raise HTTPException(404, "Ana kalem bulunamadi")
+
+    ihtiyac = stock_svc.aksesuar_talebi(db, user.tenant_id)
+    bu_grup = {k: v for k, v in ihtiyac.items() if k[0] == str(g.id)}
+    if not bu_grup:
+        return {"ok": True, "olusturulan": 0, "modeller": [],
+                "mesaj": "Bu ana kaleme bagli urunlerde acik siparis ihtiyaci yok."}
+
+    mevcut = db.scalars(select(StockItem).where(
+        StockItem.group_id == g.id, StockItem.is_active.is_(True))).all()
+
+    # Kategori: aksesuar alt kalemleri bos_kilif OLMAMALI — kalip dusumu
+    # (_find_bos_kilif) yalnizca bos_kilif'e bakiyor, ekran koruyucu oraya
+    # karisirsa kalip stogu yanlis dusulur.
+    _ad = (g.name or "").lower()
+    if "lens" in _ad:
+        kategori = "lens_koruyucu"
+    elif "ekran" in _ad or "cam" in _ad:
+        kategori = "ekran_koruyucu"
+    else:
+        kategori = "diger"
+
+    olusturulan = []
+    for (_gid, nmodel), v in sorted(bu_grup.items(), key=lambda x: x[1]["model"]):
+        if stock_svc._model_eslesenleri(mevcut, nmodel):
+            continue        # zaten var
+        model = v["model"]
+        base_sku = _re.sub(r"[^A-Za-z0-9]+", "-", f"{g.name}-{model}").strip("-").upper()[:90]
+        sku = base_sku
+        n = 1
+        while db.scalar(select(StockItem).where(
+                StockItem.tenant_id == user.tenant_id, StockItem.sku == sku)):
+            n += 1
+            sku = f"{base_sku}-{n}"[:100]
+        it = StockItem(
+            tenant_id=user.tenant_id, group_id=g.id,
+            sku=sku, name=model, category=kategori,
+            variation=None, model=model, models=[model],
+            quantity=0,
+            low_stock_threshold=g.low_stock_threshold or 0,
+        )
+        db.add(it)
+        # Ayni calistirmada ayni model iki kez uretilmesin
+        mevcut.append(it)
+        olusturulan.append(model)
+
+    db.commit()
+    return {"ok": True, "olusturulan": len(olusturulan), "modeller": olusturulan}
+
+
 @router.get("/groups/_suggest-compatible", response_model=dict)
 def suggest_compatible(model: str, user: User = Depends(get_current_user)):
     """Verilen model ile ayni kalibi/olcuyu paylasan (uyumlu olabilecek) modelleri oner.

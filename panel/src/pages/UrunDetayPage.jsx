@@ -34,6 +34,7 @@ export default function UrunDetayPage() {
         base_price: prod.base_price, compare_at_price: prod.compare_at_price || '',
         cost_price: prod.cost_price || '',
         studio_templates: prod.studio_templates || [],
+        studio_overlays: prod.studio_overlays || [],
         description: prod.description || '', tags: prod.tags || '',
         seo_title: prod.seo_title || '', seo_description: prod.seo_description || '',
       }
@@ -95,6 +96,7 @@ export default function UrunDetayPage() {
         compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
         cost_price: form.cost_price ? Number(form.cost_price) : null,
         studio_templates: form.studio_templates || [],
+        studio_overlays: form.studio_overlays || [],
         description: form.description || null, tags: form.tags || null,
         seo_title: form.seo_title || null, seo_description: form.seo_description || null,
       })
@@ -926,18 +928,28 @@ function InlineCollectionCreate({ storeId, productId, currentIds, onDone, setMsg
 // "Kendi Tasarımını Yap" bölümü çıkar ve müşteri o kılıflarla tasarım yapar.
 function StudyoModulleri({ form, setForm, storeId }) {
   const [sablonlar, setSablonlar] = useState([])
+  const [moduller, setModuller] = useState([])     // ürüne özel hazır tasarımlar
   const secili = form.studio_templates || []
+  const seciliModul = form.studio_overlays || []
 
   useEffect(() => {
     if (!storeId) return
     api.get(`/api/case-templates?store_id=${storeId}`)
       .then(r => setSablonlar((r.templates || []).filter(t => t.is_active && t.image_url)))
       .catch(() => {})
+    api.get(`/api/case-templates/overlays/list?store_id=${storeId}`)
+      .then(r => setModuller((r.items || []).filter(o => o.is_active)))
+      .catch(() => {})
   }, [storeId])
 
   const degistir = (key) => setForm(f => {
     const v = f.studio_templates || []
     return { ...f, studio_templates: v.includes(key) ? v.filter(k => k !== key) : [...v, key] }
+  })
+
+  const modulDegistir = (id) => setForm(f => {
+    const v = f.studio_overlays || []
+    return { ...f, studio_overlays: v.includes(id) ? v.filter(x => x !== id) : [...v, id] }
   })
 
   return (
@@ -972,9 +984,54 @@ function StudyoModulleri({ form, setForm, storeId }) {
       )}
       {secili.length > 0 && (
         <p className="text-[11px] text-emerald-700">
-          {secili.length} modül bağlı — ürün sayfasında tasarım seçenekleri görünecek.
+          {secili.length} kılıf tipi bağlı — ürün sayfasında tasarım seçeneği görünecek.
         </p>
       )}
+
+      {/* Hazır tasarım modülleri — Spotify arayüzü gibi ÜRÜNE ÖZEL tasarımlar.
+          "Yalnız atandığı üründe" işaretli modüller sadece burada seçilirse
+          o ürünün stüdyosunda çıkar; diğerleri her üründe görünür. */}
+      <div className="border-t border-panel-border pt-2 mt-1">
+        <h3 className="text-sm font-medium">🧩 Hazır Tasarım Modülleri</h3>
+        <p className="text-[11px] text-panel-muted mt-0.5 mb-2">
+          Bu ürüne özel hazır tasarımlar (Spotify arayüzü, forma…). Modül
+          <b> “yalnız atandığı üründe”</b> olarak işaretlenmişse sadece burada
+          seçtiğiniz ürünlerde çıkar.
+        </p>
+        {moduller.length === 0 ? (
+          <p className="text-xs text-panel-muted">
+            Henüz hazır tasarım yok — Katalog → Kılıf Şablonları sayfasının altındaki
+            “Hazır Tasarım Şablonları”ndan ekleyin.
+          </p>
+        ) : (
+          <div className="flex gap-2.5 flex-wrap">
+            {moduller.map(o => {
+              const on = seciliModul.includes(o.id)
+              return (
+                <button key={o.id} type="button" onClick={() => modulDegistir(o.id)}
+                  className={`rounded-xl border-2 overflow-hidden w-24 text-left transition ${on
+                    ? 'border-panel-accent' : 'border-panel-border opacity-70 hover:opacity-100'}`}>
+                  <div className="h-24 bg-panel-input flex items-center justify-center">
+                    <img src={o.thumb_url} alt={o.label} className="h-full w-auto object-contain" />
+                  </div>
+                  <div className="px-1.5 py-1 text-[11px] truncate">
+                    {on ? '✓ ' : ''}{o.label}
+                  </div>
+                  <div className="px-1.5 pb-1 text-[10px] text-panel-muted truncate">
+                    {o.sadece_urunde ? '🔒 ürüne özel' : 'genel'}
+                    {o.kategori ? ` · ${o.kategori}` : ''}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {seciliModul.length > 0 && (
+          <p className="text-[11px] text-emerald-700 mt-1.5">
+            {seciliModul.length} hazır tasarım bu ürüne bağlı.
+          </p>
+        )}
+      </div>
     </section>
   )
 }

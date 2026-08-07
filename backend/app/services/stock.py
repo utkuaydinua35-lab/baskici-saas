@@ -283,21 +283,16 @@ def deduct_for_shipment(db: Session, tenant_id, order, user=None) -> dict:
     return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}
 
 
-def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
-    """Kaliba GIRMEYEN urunlerin acik siparislerdeki stok eksigi.
-
-    Aksesuar olarak isaretli urunler (ekran koruyucu, lens, magsafe duz kilif)
-    kalip planina girmez — bu yuzden kalip bazli eksik listelerinde hic
-    gorunmuyorlardi. Stok bitince siparis paketlemede tikaniyor ve bunu ancak
-    o an fark ediyorduk.
+def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
+    """Acik siparislerdeki aksesuar ihtiyaci: {(grup_id, normalize_model): {...}}
 
     Talep = henuz kargoya VERILMEMIS (asama < 8) acik siparisler. Stok dusumu
     kargoda yapildigi icin bu siparislerin ihtiyaci hala stoktan karsilanacak.
 
-    Yalnizca EKSIK olanlar doner. Stok sistemine hic bagli olmayan urun
-    atlanir — onun icin "eksik" diye bir sey soylenemez.
+    Yalnizca AKSESUAR isaretli ve bir stok ana kalemine BAGLI urunler sayilir;
+    digerlerinin stogu bilinmiyor, onlar icin "eksik" denemez.
     """
-    from app.models import AccessoryProduct, Order, StockGroup, StockItem as _SI
+    from app.models import AccessoryProduct, Order, StockGroup
 
     aksesuar_pids = {
         str(pid) for (pid,) in db.execute(
@@ -308,7 +303,7 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
         ).all()
     }
     if not aksesuar_pids:
-        return []
+        return {}
 
     gruplar = db.scalars(
         select(StockGroup).where(StockGroup.tenant_id == tenant_id,
@@ -321,7 +316,7 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
             if pid:
                 pid_to_group[pid] = g
     if not pid_to_group:
-        return []
+        return {}
 
     siparisler = db.scalars(
         select(Order).where(
@@ -331,7 +326,6 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
         )
     ).all()
 
-    # (grup_id, normalize model) -> ihtiyac
     ihtiyac: dict[tuple, dict] = {}
     for o in siparisler:
         for li in (o.line_items or []):
@@ -342,6 +336,8 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
             if g is None:
                 continue        # stok takibi yok — "eksik" denemez
             model = _extract_model_for_shipment(li)
+            if not model:
+                continue        # model belirlenemedi — alt kalem acilamaz
             anahtar = (str(g.id), _norm_model(model))
             kayit = ihtiyac.setdefault(anahtar, {
                 "grup": g.name, "grup_id": g.id, "model": model,
@@ -349,31 +345,52 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
             })
             kayit["adet"] += li.quantity or 1
             kayit["siparisler"].add(str(o.order_number))
-            if not kayit["model"]:
-                kayit["model"] = model
+    return ihtiyac
 
+
+def _eslesen_alt_kalemler(db: Session, grup_ids) -> dict:
+    """{grup_id(str): [StockItem]} — aktif alt kalemler, tek sorgu."""
+    from app.models import StockItem as _SI
+    out: dict = {}
+    if not grup_ids:
+        return out
+    for si in db.scalars(
+        select(_SI).where(_SI.group_id.in_(list(grup_ids)), _SI.is_active.is_(True))
+    ).all():
+        out.setdefault(str(si.group_id), []).append(si)
+    return out
+
+
+def _model_eslesenleri(adaylar: list, nmodel: str) -> list:
+    """Alt kalemler icinde bu modele karsilik gelenler (models listesi dahil)."""
+    return [
+        x for x in adaylar
+        if any(_norm_model(mm) == nmodel
+               for mm in (x.models if x.models else ([x.model] if x.model else [])))
+    ]
+
+
+def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
+    """Kaliba GIRMEYEN urunlerin acik siparislerdeki stok eksigi.
+
+    Aksesuar olarak isaretli urunler (ekran koruyucu, lens, magsafe duz kilif)
+    kalip planina girmez — bu yuzden kalip bazli eksik listelerinde hic
+    gorunmuyorlardi. Stok bitince siparis paketlemede tikaniyor ve bunu ancak
+    o an fark ediyorduk.
+
+    Yalnizca EKSIK olanlar doner.
+    """
+    ihtiyac = aksesuar_talebi(db, tenant_id)
     if not ihtiyac:
         return []
-
-    # Grup basina alt kalemler tek sorguda
-    alt_kalemler: dict = {}
-    for si in db.scalars(
-        select(_SI).where(_SI.group_id.in_([v["grup_id"] for v in ihtiyac.values()]),
-                          _SI.is_active.is_(True))
-    ).all():
-        alt_kalemler.setdefault(str(si.group_id), []).append(si)
+    alt_kalemler = _eslesen_alt_kalemler(db, {v["grup_id"] for v in ihtiyac.values()})
 
     out = []
     for (gid, nmodel), v in ihtiyac.items():
-        adaylar = alt_kalemler.get(gid, [])
         # Ayni modele birden fazla alt kalem denk gelebilir (or. ayni model,
         # farkli varyasyon). Ilkini almak, stogu olan digerini gormezden gelip
         # yanlis "eksik" uretiyordu — TUMUNUN toplami alinir.
-        eslesenler = [
-            x for x in adaylar
-            if any(_norm_model(mm) == nmodel
-                   for mm in (x.models if x.models else ([x.model] if x.model else [])))
-        ]
+        eslesenler = _model_eslesenleri(alt_kalemler.get(gid, []), nmodel)
         mevcut = sum(int(x.quantity or 0) for x in eslesenler)
         eksik = max(0, v["adet"] - mevcut)
         if eksik <= 0:
@@ -381,7 +398,7 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
         out.append({
             "kaynak": "siparis",
             "grup": v["grup"],
-            "model": v["model"] or "(model belirtilmemiş)",
+            "model": v["model"],
             "ihtiyac": v["adet"],
             "mevcut": mevcut,
             "total_missing": eksik,

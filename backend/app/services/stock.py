@@ -281,3 +281,111 @@ def deduct_for_shipment(db: Session, tenant_id, order, user=None) -> dict:
             shortages.append({"group": g.name, "model": model, "need": qty, "deducted": take, "reason": "yetersiz_stok"})
 
     return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}
+
+
+def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
+    """Kaliba GIRMEYEN urunlerin acik siparislerdeki stok eksigi.
+
+    Aksesuar olarak isaretli urunler (ekran koruyucu, lens, magsafe duz kilif)
+    kalip planina girmez — bu yuzden kalip bazli eksik listelerinde hic
+    gorunmuyorlardi. Stok bitince siparis paketlemede tikaniyor ve bunu ancak
+    o an fark ediyorduk.
+
+    Talep = henuz kargoya VERILMEMIS (asama < 8) acik siparisler. Stok dusumu
+    kargoda yapildigi icin bu siparislerin ihtiyaci hala stoktan karsilanacak.
+
+    Yalnizca EKSIK olanlar doner. Stok sistemine hic bagli olmayan urun
+    atlanir — onun icin "eksik" diye bir sey soylenemez.
+    """
+    from app.models import AccessoryProduct, Order, StockGroup, StockItem as _SI
+
+    aksesuar_pids = {
+        str(pid) for (pid,) in db.execute(
+            select(AccessoryProduct.product_id).where(
+                AccessoryProduct.tenant_id == tenant_id,
+                AccessoryProduct.product_id.isnot(None),
+            )
+        ).all()
+    }
+    if not aksesuar_pids:
+        return []
+
+    gruplar = db.scalars(
+        select(StockGroup).where(StockGroup.tenant_id == tenant_id,
+                                 StockGroup.is_active.is_(True))
+    ).all()
+    pid_to_group = {}
+    for g in gruplar:
+        for lp in (g.linked_products or []):
+            pid = str(lp.get("product_id")) if isinstance(lp, dict) else None
+            if pid:
+                pid_to_group[pid] = g
+    if not pid_to_group:
+        return []
+
+    siparisler = db.scalars(
+        select(Order).where(
+            Order.tenant_id == tenant_id,
+            Order.is_iptal == False,  # noqa: E712
+            Order.current_stage < 8,
+        )
+    ).all()
+
+    # (grup_id, normalize model) -> ihtiyac
+    ihtiyac: dict[tuple, dict] = {}
+    for o in siparisler:
+        for li in (o.line_items or []):
+            pid = str(li.product_id) if li.product_id else None
+            if not pid or pid not in aksesuar_pids:
+                continue
+            g = pid_to_group.get(pid)
+            if g is None:
+                continue        # stok takibi yok — "eksik" denemez
+            model = _extract_model_for_shipment(li)
+            anahtar = (str(g.id), _norm_model(model))
+            kayit = ihtiyac.setdefault(anahtar, {
+                "grup": g.name, "grup_id": g.id, "model": model,
+                "adet": 0, "siparisler": set(),
+            })
+            kayit["adet"] += li.quantity or 1
+            kayit["siparisler"].add(str(o.order_number))
+            if not kayit["model"]:
+                kayit["model"] = model
+
+    if not ihtiyac:
+        return []
+
+    # Grup basina alt kalemler tek sorguda
+    alt_kalemler: dict = {}
+    for si in db.scalars(
+        select(_SI).where(_SI.group_id.in_([v["grup_id"] for v in ihtiyac.values()]),
+                          _SI.is_active.is_(True))
+    ).all():
+        alt_kalemler.setdefault(str(si.group_id), []).append(si)
+
+    out = []
+    for (gid, nmodel), v in ihtiyac.items():
+        adaylar = alt_kalemler.get(gid, [])
+        si = next(
+            (x for x in adaylar
+             if any(_norm_model(mm) == nmodel
+                    for mm in (x.models if x.models else ([x.model] if x.model else [])))),
+            None,
+        )
+        mevcut = int(si.quantity or 0) if si else 0
+        eksik = max(0, v["adet"] - mevcut)
+        if eksik <= 0:
+            continue
+        out.append({
+            "kaynak": "siparis",
+            "grup": v["grup"],
+            "model": v["model"] or "(model belirtilmemiş)",
+            "ihtiyac": v["adet"],
+            "mevcut": mevcut,
+            "total_missing": eksik,
+            "siparis_sayisi": len(v["siparisler"]),
+            # Alt kalem hic tanimli degil — stokta "0" degil, KAYIT yok.
+            "not_in_system": si is None,
+        })
+    out.sort(key=lambda x: (-x["total_missing"], x["model"]))
+    return out

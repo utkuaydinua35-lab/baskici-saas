@@ -1538,8 +1538,18 @@ def total_missing(
             "mold_count": len(mold_set[(var, model)]),
             "not_in_system": v["not_in_system"],
         })
+    # Kalıba girmeyen ürünler (aksesuar / işleme girmeden gönderilenler) kalıp
+    # analizinde hiç görünmüyor; açık siparişlerdeki eksikleri ayrıca eklenir.
+    siparis_eksik = stock_svc.siparis_stok_eksigi(db, user.tenant_id)
+
     items.sort(key=lambda x: (-x["total_missing"], x["model"] or ""))
-    return {"items": items, "total_models": len(items), "total_missing": sum(i["total_missing"] for i in items)}
+    items.extend(siparis_eksik)
+    return {
+        "items": items,
+        "total_models": len(items),
+        "total_missing": sum(i["total_missing"] for i in items),
+        "siparis_kalem_sayisi": len(siparis_eksik),
+    }
 
 
 @router.get("/print/required-models")
@@ -1575,7 +1585,20 @@ def required_models(
         for (var, model), v in agg.items()
     ]
     items.sort(key=lambda x: (-x["count"], x["model"] or ""))
-    return {"items": items, "total_models": len(items), "total_count": sum(i["count"] for i in items)}
+
+    # Kalıba girmeyen ürünler (aksesuar / işleme girmeden gönderilenler): bu liste
+    # kalıp odaklı olduğu için onları hiç göstermiyordu. Yalnızca stoğu YETMEYENLER
+    # eklenir — tedarik edilmesi gereken şey o.
+    from app.services import stock as stock_svc
+    siparis_eksik = stock_svc.siparis_stok_eksigi(db, user.tenant_id)
+    items.extend({**s, "count": s["total_missing"], "mold_count": 0} for s in siparis_eksik)
+
+    return {
+        "items": items,
+        "total_models": len(items),
+        "total_count": sum(i["count"] for i in items),
+        "siparis_kalem_sayisi": len(siparis_eksik),
+    }
 
 
 @router.get("/{mold_id}/analyze")

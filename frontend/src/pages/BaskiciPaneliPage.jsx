@@ -126,7 +126,10 @@ export default function BaskiciPaneliPage() {
   const copyRequiredModels = async () => {
     if (!requiredModels?.items?.length) return
     const text = requiredModels.items
-      .map(it => `${it.count} ad ${String(it.variation || '').toUpperCase()} ${it.model}`)
+      .map(it => it.kaynak === 'siparis'
+        // Aksesuarda varyasyon yok; tedarikçiye grup adıyla gitmeli.
+        ? `${it.count} ad ${it.grup} — ${it.model} (stok eksiği)`
+        : `${it.count} ad ${String(it.variation || '').toUpperCase()} ${it.model}`)
       .join('\n')
     try { await navigator.clipboard.writeText(text); toast.success('Liste kopyalandı') }
     catch { toast.error('Kopyalanamadı') }
@@ -201,19 +204,31 @@ export default function BaskiciPaneliPage() {
               <button onClick={() => setTotalMissing(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
             </div>
             {totalMissing.items.length === 0 ? (
-              <div className="text-center py-8 text-emerald-300">✓ Hiç stok eksiği yok — tüm kalıplar için yeterli.</div>
+              <div className="text-center py-8 text-emerald-300">✓ Hiç stok eksiği yok — kalıplar ve aksesuarlar için yeterli.</div>
             ) : (
               <>
-                <div className="text-xs text-gray-500 mb-3">{totalMissing.total_models} model · toplam {totalMissing.total_missing} adet eksik</div>
+                <div className="text-xs text-gray-500 mb-3">
+                  {totalMissing.total_models} satır · toplam {totalMissing.total_missing} adet eksik
+                  {totalMissing.siparis_kalem_sayisi > 0 &&
+                    ` · ${totalMissing.siparis_kalem_sayisi}'i aksesuar/işlemsiz ürün`}
+                </div>
                 <div className="space-y-1.5">
                   {totalMissing.items.map((it, i) => (
                     <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">
                       <span className="text-red-400 font-bold tabular-nums text-sm w-12">-{it.total_missing}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 truncate">{it.model}</div>
-                        <div className="text-[10px] text-gray-500">{it.variation} · {it.mold_count} kalıpta</div>
+                        {/* Aksesuar/işleme girmeyen ürünler kalıptan değil, açık
+                            siparişlerden geliyor — "kalıpta" yazmak yanıltıcı olur. */}
+                        <div className="text-[10px] text-gray-500">
+                          {it.kaynak === 'siparis'
+                            ? `🎁 ${it.grup} · ${it.siparis_sayisi} siparişte · ihtiyaç ${it.ihtiyac}, stok ${it.mevcut}`
+                            : `${it.variation} · ${it.mold_count} kalıpta`}
+                        </div>
                       </div>
-                      {it.not_in_system && <span className="text-[10px] text-red-400/80 whitespace-nowrap">📦 stokta yok</span>}
+                      {it.not_in_system && (
+                        <span className="text-[10px] text-red-400/80 whitespace-nowrap">📦 stokta yok</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -236,17 +251,25 @@ export default function BaskiciPaneliPage() {
               </div>
             </div>
             {requiredModels.items.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">Panelde (basılmamış) kalıp yok.</div>
+              <div className="text-center py-8 text-gray-400">Panelde (basılmamış) kalıp ve stok eksiği yok.</div>
             ) : (
               <>
-                <div className="text-xs text-gray-500 mb-3">{requiredModels.total_models} model · toplam {requiredModels.total_count} kılıf · stok bakılmadı</div>
+                <div className="text-xs text-gray-500 mb-3">
+                  {requiredModels.total_models} satır · toplam {requiredModels.total_count} adet · kalıplar için stok bakılmadı
+                  {requiredModels.siparis_kalem_sayisi > 0 &&
+                    ` · ${requiredModels.siparis_kalem_sayisi} aksesuar kalemi stok eksiğinden eklendi`}
+                </div>
                 <div className="space-y-1.5">
                   {requiredModels.items.map((it, i) => (
                     <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">
-                      <span className="text-accent font-bold tabular-nums text-sm w-12">{it.count}×</span>
+                      <span className={`font-bold tabular-nums text-sm w-12 ${it.kaynak === 'siparis' ? 'text-red-400' : 'text-accent'}`}>{it.count}×</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 truncate">{it.model}</div>
-                        <div className="text-[10px] text-gray-500">{it.variation} · {it.mold_count} kalıpta</div>
+                        <div className="text-[10px] text-gray-500">
+                          {it.kaynak === 'siparis'
+                            ? `🎁 ${it.grup} · stok eksiği · ${it.siparis_sayisi} siparişte`
+                            : `${it.variation} · ${it.mold_count} kalıpta`}
+                        </div>
                       </div>
                     </div>
                   ))}

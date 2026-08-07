@@ -352,6 +352,7 @@ def _tasarimlari_isle(db, session, order, store) -> None:
 
     from app.models import CaseTemplate, CustomerDesign
     from app.services import storage as storage_svc
+    from app.services.design_pdf import render_print_pdf
     from app.services.design_render import render_print_file
 
     ids = [i["design_id"] for i in (session.cart_snapshot or []) if i.get("design_id")]
@@ -374,5 +375,16 @@ def _tasarimlari_isle(db, session, order, store) -> None:
         design.print_path = storage_svc.save_design_render(
             design.tenant_id, design.store_id, design.id, veri, "baski"
         ).removeprefix("/storage/")
+        # Matbaa/RIP için vektörel + CMYK sürüm — PNG üretildiyse bu da denenir,
+        # hatası siparişi bozmaz (PNG her hâlükârda elde kalır)
+        try:
+            from app.services.icc import magaza_icc
+
+            pdf = render_print_pdf(db, design, sablon, icc=magaza_icc(db, design.store_id))
+            design.print_pdf_path = storage_svc.save_design_render(
+                design.tenant_id, design.store_id, design.id, pdf, "baski-pdf"
+            ).removeprefix("/storage/")
+        except Exception as e:  # noqa: BLE001
+            print(f"[stüdyo] PDF üretilemedi (tasarım {did}): {e}")
         print(f"[stüdyo] baskı dosyası hazır: {design.print_path}")
     db.commit()

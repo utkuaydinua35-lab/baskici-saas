@@ -2316,6 +2316,8 @@ class CustomerDesign(Base):
     preview_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Baskıya hazır çıktı (sipariş sonrası sunucuda üretilir)
     print_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Vektörel + CMYK baskı dosyası (matbaa/RIP için); PNG'nin yanında durur
+    print_pdf_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Rötuş/CMYK sonrası hazırlanan NUMUNE — müşteri onayında bu gösterilir
     # (yoksa stüdyo önizlemesine düşülür)
     proof_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

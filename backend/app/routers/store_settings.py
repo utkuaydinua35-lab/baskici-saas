@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
@@ -46,6 +46,8 @@ _TEXT_KEYS = {
     "storefront_password",
     # Tasarım stüdyosu: fiyat ve telefon modelleri bu üründen alınır
     "studio_product_slug",
+    # Baskı: CMYK ICC profilinin storage yolu (dosya ayrı uçtan yüklenir)
+    "cmyk_icc_path", "cmyk_icc_ad",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
@@ -407,6 +409,83 @@ def get_theme(
 ):
     store = _get_store(db, user, store_id)
     return resolve_theme(store.config)
+
+
+@router.post("/{store_id}/cmyk-profili", response_model=dict)
+async def cmyk_profili_yukle(
+    store_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Baskı makinesinin / matbaanın CMYK ICC profilini yükle.
+
+    Baskı PDF'i üretilirken RGB fotoğraflar bu profille CMYK'ya çevrilir.
+    Profil yoksa Pillow'un basit dönüşümü kullanılır — çalışır ama renkler
+    makinenin gerçek gamutuna göre ayarlanmaz.
+    """
+    from pathlib import Path
+
+    from app.services.storage import STORAGE_ROOT
+
+    store = _get_store(db, user, store_id)
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    ad = (getattr(file, "filename", None) or "profil.icc")
+    if not ad.lower().endswith((".icc", ".icm")):
+        raise HTTPException(422, "ICC profili .icc veya .icm uzantılı olmalı")
+    veri = await file.read()
+    if len(veri) > 8 * 1024 * 1024:
+        raise HTTPException(422, "Profil dosyası çok büyük (max 8 MB)")
+
+    # Gerçekten CMYK profili mi — yanlış profil sessizce yanlış renk üretir
+    try:
+        import io as _io
+
+        from PIL import ImageCms
+        profil = ImageCms.ImageCmsProfile(_io.BytesIO(veri))
+        uzay = ImageCms.getProfileInfo(profil)
+        if profil.profile.xcolor_space.strip() not in ("CMYK",):
+            raise HTTPException(
+                422, f"Bu bir CMYK profili değil ({profil.profile.xcolor_space.strip()}). "
+                     "Baskı makinenizin/matbaanızın CMYK profilini yükleyin.")
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(422, f"ICC profili okunamadı: {e}") from e
+
+    rel = Path("tenants") / str(store.tenant_id) / "icc" / f"{store.id}.icc"
+    tam = STORAGE_ROOT / rel
+    tam.parent.mkdir(parents=True, exist_ok=True)
+    tam.write_bytes(veri)
+
+    config = dict(store.config or {})
+    config["cmyk_icc_path"] = rel.as_posix()
+    config["cmyk_icc_ad"] = ad[:120]
+    store.config = config
+    flag_modified(store, "config")
+    activity.record(db, user, "cmyk_profili", store_id=store.id,
+                    entity_type="ayar", entity_label=ad[:120])
+    db.commit()
+    return {"ok": True, "ad": ad[:120], "aciklama": (uzay or "").strip()[:200]}
+
+
+@router.delete("/{store_id}/cmyk-profili", response_model=dict)
+def cmyk_profili_sil(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    store = _get_store(db, user, store_id)
+    config = dict(store.config or {})
+    config.pop("cmyk_icc_path", None)
+    config.pop("cmyk_icc_ad", None)
+    store.config = config
+    flag_modified(store, "config")
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{store_id}/odeme-testi", response_model=dict)

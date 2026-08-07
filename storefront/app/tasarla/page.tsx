@@ -672,7 +672,10 @@ export default function TasarlaPage() {
               className="flex-1 px-3 py-2.5 rounded-xl border border-zinc-300 text-sm">
               ✏️ Yazı ekle
             </button>
-            <input ref={dosyaRef} type="file" accept="image/*" className="hidden"
+            {/* PDF/SVG de kabul edilir — baskıda vektörel gömülür, ekranda
+                sunucuda üretilen önizlemesi görünür */}
+            <input ref={dosyaRef} type="file" className="hidden"
+              accept="image/*,application/pdf,image/svg+xml,.pdf,.svg"
               onChange={(e) => gorselEkle(e.target.files?.[0])} />
           </div>}
 
@@ -701,7 +704,8 @@ export default function TasarlaPage() {
                           className="w-12 h-12 rounded-lg object-cover border border-zinc-200" />
                         <label className="text-xs underline text-zinc-600 cursor-pointer">
                           değiştir
-                          <input type="file" accept="image/*" className="hidden"
+                          <input type="file" className="hidden"
+                            accept="image/*,application/pdf,image/svg+xml,.pdf,.svg"
                             onChange={(e) => fotoYukle(a.key, e.target.files?.[0])} />
                         </label>
                         <button onClick={() => alanYaz(a.key, null)}
@@ -712,7 +716,8 @@ export default function TasarlaPage() {
                         border-dashed cursor-pointer ${fotoYukleniyor === a.key
                           ? "border-zinc-400 text-zinc-400" : "border-zinc-300 hover:border-zinc-900"}`}>
                         {fotoYukleniyor === a.key ? "Yükleniyor…" : "📷 Görsel yükle"}
-                        <input type="file" accept="image/*" className="hidden"
+                        <input type="file" className="hidden"
+                          accept="image/*,application/pdf,image/svg+xml,.pdf,.svg"
                           disabled={!!fotoYukleniyor}
                           onChange={(e) => fotoYukle(a.key, e.target.files?.[0])} />
                       </label>

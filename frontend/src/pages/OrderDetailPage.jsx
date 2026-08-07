@@ -614,17 +614,23 @@ function TedarikToggle({ value, onChange }) {
 // ═══════════════════════════════════════════════════════════
 
 function KalipOzeti({ lineItems }) {
-  const total = lineItems.length
-  const eklenmis = lineItems.filter(li => li.is_kaliba_eklendi).length
+  // Aksesuar ve işleme girmeyen ürünler (magsafe düz kılıf, ekran koruyucu)
+  // kalıba girmez — kalıp planlayıcı da bunları atlıyor. Eksik sayılmamalılar,
+  // aksi halde sipariş hiçbir zaman "tüm ürünler kalıpta" durumuna gelmiyor.
+  const kalipluk = lineItems.filter(li => !li.is_aksesuar)
   // Hazır işaretli kalemler kalıp gerektirmez -> eksik sayılmaz
-  const eksik = lineItems.filter(li => !li.is_kaliba_eklendi && !li.is_hazir).length
+  const eksik = kalipluk.filter(li => !li.is_kaliba_eklendi && !li.is_hazir).length
 
   return (
     <div className="card">
       <h2 className="text-sm font-medium text-gray-200 mb-2 flex items-center gap-2">
         <span>🧩</span> Kalıp Özeti
       </h2>
-      {eksik > 0 ? (
+      {kalipluk.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-gray-400 bg-brand-input/40 border border-brand-border rounded-lg px-3 py-2">
+          <span>—</span> Bu siparişte kalıp gerektiren ürün yok.
+        </div>
+      ) : eksik > 0 ? (
         <div className="flex items-center gap-2 text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
           <span>⚠</span> Bu siparişin {eksik} ürünü için henüz kalıp atanmamış.
         </div>
@@ -863,6 +869,11 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
                 className="text-[11px] bg-accent/15 text-accent border border-accent/30 px-2 py-1 rounded flex items-center gap-1 font-mono hover:bg-accent/25"
               >🧩 {m.kod}</a>
             ))
+          ) : item.is_aksesuar ? (
+            // Aksesuar / işleme girmeyen ürün — hiçbir zaman kalıba girmez.
+            <span className="text-[11px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-2 py-1 rounded flex items-center gap-1">
+              🎁 Aksesuar (kalıp gerekmiyor)
+            </span>
           ) : item.is_hazir ? (
             <span className="text-[11px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded flex items-center gap-1">
               ✓ Hazır (kalıp gerekmiyor)

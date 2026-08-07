@@ -240,6 +240,24 @@ def _couple_pids(db, store_id) -> set:
     }
 
 
+def _aksesuar_pids(db, store_id) -> set:
+    """Bu mağazadaki aksesuar ürün id'leri — tek sorgu, satır başına değil.
+
+    Aksesuar ve işleme girmeyen ürünler (ekran koruyucu, magsafe düz kılıf)
+    kalıba girmez. mold_planner bunları zaten atlıyor; panelin de aynı
+    sınıflandırmayı kullanması gerekiyor, aksi halde bu ürünler sonsuza kadar
+    "kalıp bekliyor" görünüyor ve sipariş hiç tamamlanmış sayılmıyordu.
+    """
+    if db is None or not store_id:
+        return set()
+    from app.models import AccessoryProduct
+    return {
+        str(p) for (p,) in db.execute(
+            select(AccessoryProduct.product_id).where(AccessoryProduct.store_id == store_id)
+        ).all() if p
+    }
+
+
 def _is_couple_li(db, li, couple_pids: set | None = None) -> bool:
     """Kalem couple ürün mü (2 telefon modeli + 2 tasarım)."""
     if not li.product_id:
@@ -329,7 +347,8 @@ def _couple_parcalar(li: LineItem, db) -> list[dict]:
 
 
 def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
-                         couple_pids: set | None = None) -> dict:
+                         couple_pids: set | None = None,
+                         aksesuar_pids: set | None = None) -> dict:
     assigned = None
     if li.assigned_design_id and li.assigned_design:
         d = li.assigned_design
@@ -395,6 +414,8 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
         image_url = storage.get_thumbnail_url(li.assigned_design.file_path, li.assigned_design.file_format)
 
     _is_couple = _is_couple_li(db, li, couple_pids)
+    # Aksesuar / işleme girmeyen ürün: kalıp gerektirmez.
+    _is_aksesuar = bool(li.product_id) and str(li.product_id) in (aksesuar_pids or set())
 
     return {
         "id": str(li.id),
@@ -404,6 +425,8 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
         # Couple (çift kılıf): 2 ayrı telefon modeli — 2. slot ayrı override alır.
         "device_model_override_2": li.device_model_override_2,
         "is_couple": _is_couple,
+        # Kalıba girmeyen ürün — panel "kalıp bekliyor" saymasın.
+        "is_aksesuar": _is_aksesuar,
         # Çift kılıf 2 alt ürün olarak döner; her yarının kendi tasarımı/modeli/
         # varyasyonu ve KENDİ kalıp+baskı durumu var.
         "parcalar": _couple_parcalar(li, db) if _is_couple else None,
@@ -454,9 +477,11 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
 
     _molds_map = _molds_by_line_item(db, order)
     _cpids = _couple_pids(db, order.store_id)   # tek sorgu, tüm kalemler için
+    _apids = _aksesuar_pids(db, order.store_id)
     _li_list = []
     for li in (order.line_items or []):
-        _d = _serialize_line_item(li, db, adapter, couple_pids=_cpids)
+        _d = _serialize_line_item(li, db, adapter, couple_pids=_cpids,
+                                  aksesuar_pids=_apids)
         _d["molds"] = sorted(_molds_map.get(li.id, []), key=lambda m: m["kod"] or "")
         _li_list.append(_d)
 

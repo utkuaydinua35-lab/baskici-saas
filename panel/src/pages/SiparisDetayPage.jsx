@@ -995,7 +995,8 @@ function TasarimKarti({ li }) {
     setBusy(true); setErr('')
     try {
       const r = await api.post(`/api/case-templates/designs/${d.id}/render`, {})
-      setD(x => ({ ...x, print_url: r.print_url }))
+      setD(x => ({ ...x, print_url: r.print_url, print_pdf_url: r.print_pdf_url }))
+      if (r.pdf_hata) setErr(`PNG hazır ama PDF üretilemedi: ${r.pdf_hata}`)
     } catch { setErr('Baskı dosyası üretilemedi') }
     finally { setBusy(false) }
   }
@@ -1019,11 +1020,18 @@ function TasarimKarti({ li }) {
         </div>
         <div className="flex gap-2 flex-wrap mt-1">
           {d.print_url ? (
-            <a href={d.print_url} download className="text-indigo-700 underline">
-              ⬇ Baskı dosyası{d.print_size ? ` (${d.print_size.px_w}×${d.print_size.px_h})` : ''}
+            <a href={d.print_url} download className="text-indigo-700 underline"
+              title="Ekrandakiyle birebir raster dosya (RGB)">
+              ⬇ PNG{d.print_size ? ` (${d.print_size.px_w}×${d.print_size.px_h})` : ''}
             </a>
           ) : (
             <span className="text-amber-700">Baskı dosyası yok</span>
+          )}
+          {d.print_pdf_url && (
+            <a href={d.print_pdf_url} download className="text-indigo-700 underline"
+              title="Matbaa/RIP için: yazılar vektörel, renkler CMYK, gerçek mm ölçüsünde">
+              ⬇ PDF (vektörel · CMYK)
+            </a>
           )}
           <button onClick={yenidenUret} disabled={busy} className="text-panel-muted underline">
             {busy ? 'üretiliyor…' : 'yeniden üret'}

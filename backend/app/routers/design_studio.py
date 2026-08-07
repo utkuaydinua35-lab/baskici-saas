@@ -466,6 +466,7 @@ def get_design(
         "template": t.label if t else d.template_key,
         "preview_url": f"/storage/{d.preview_path}" if d.preview_path else None,
         "print_url": f"/storage/{d.print_path}" if d.print_path else None,
+        "print_pdf_url": f"/storage/{d.print_pdf_path}" if d.print_pdf_path else None,
         # Rötuş sonrası numune — müşteri onayında bu gösterilir
         "proof_url": f"/storage/{d.proof_path}" if d.proof_path else None,
         "print_size": ({"px_w": round(t.print_width_mm / 25.4 * t.print_dpi),
@@ -485,8 +486,13 @@ def rerender_design(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    """Baskı dosyasını yeniden üret (şablon ölçüsü değiştiyse veya hata olduysa)."""
+    """Baskı dosyalarını yeniden üret (şablon ölçüsü değiştiyse veya hata olduysa).
+
+    İkisi birden üretilir: ekranla birebir PNG + matbaa/RIP için vektörel
+    CMYK PDF."""
+    from app.services.design_pdf import render_print_pdf
     from app.services.design_render import render_print_file
+    from app.services.icc import magaza_icc
 
     d = db.scalar(select(CustomerDesign).where(
         CustomerDesign.id == design_id, CustomerDesign.tenant_id == user.tenant_id))
@@ -502,8 +508,20 @@ def rerender_design(
         raise HTTPException(422, str(e))
     d.print_path = storage_svc.save_design_render(
         d.tenant_id, d.store_id, d.id, veri, "baski").removeprefix("/storage/")
+    pdf_hata = None
+    try:
+        pdf = render_print_pdf(db, d, t, icc=magaza_icc(db, d.store_id))
+        d.print_pdf_path = storage_svc.save_design_render(
+            d.tenant_id, d.store_id, d.id, pdf, "baski-pdf").removeprefix("/storage/")
+    except Exception as e:  # noqa: BLE001 — PNG yine de elde kalsın
+        pdf_hata = str(e)[:200]
     db.commit()
-    return {"print_url": f"/storage/{d.print_path}", "bytes": len(veri)}
+    return {
+        "print_url": f"/storage/{d.print_path}",
+        "print_pdf_url": f"/storage/{d.print_pdf_path}" if d.print_pdf_path else None,
+        "bytes": len(veri),
+        "pdf_hata": pdf_hata,
+    }
 
 
 @router.post("/designs/{design_id}/proof", response_model=dict)

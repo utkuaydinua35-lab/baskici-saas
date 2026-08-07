@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
@@ -12,6 +12,7 @@ const TABS = [
   { key: 'genel', label: 'Genel', icon: '🏬' },
   { key: 'kargo', label: 'Kargo & Sepet', icon: '📦' },
   { key: 'odeme', label: 'Ödeme', icon: '💳' },
+  { key: 'baski', label: 'Baskı', icon: '🖨️' },
   { key: 'eposta', label: 'E-posta', icon: '🔔' },
   { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
   { key: 'destek', label: 'Destek', icon: '🎧' },
@@ -27,6 +28,9 @@ export default function AyarlarPage() {
   const [cfg, setCfg] = useState({})
   const [odemeSonuc, setOdemeSonuc] = useState(null)
   const [odemeBusy, setOdemeBusy] = useState(false)
+  const [iccBusy, setIccBusy] = useState(false)
+  const [iccHata, setIccHata] = useState('')
+  const iccRef = useRef(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
@@ -50,6 +54,30 @@ export default function AyarlarPage() {
   const set = (k) => (e) => {
     const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value
     setCfg(c => ({ ...c, [k]: v }))
+  }
+
+  // CMYK ICC profili — baskı PDF'inde renk dönüşümü bununla yapılır
+  const iccYukle = async (file) => {
+    if (!file) return
+    setIccBusy(true); setIccHata('')
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch(`/api/store-settings/${storeId}/cmyk-profili`, {
+        method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      const r = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(r.detail || 'Yüklenemedi')
+      setCfg(c => ({ ...c, cmyk_icc_ad: r.ad, cmyk_icc_path: 'var' }))
+      toast.success('CMYK profili yüklendi')
+    } catch (e) {
+      setIccHata(e.message || 'Yüklenemedi')
+    } finally { setIccBusy(false); if (iccRef.current) iccRef.current.value = '' }
+  }
+  const iccSil = async () => {
+    try {
+      await api.del(`/api/store-settings/${storeId}/cmyk-profili`)
+      setCfg(c => ({ ...c, cmyk_icc_ad: '', cmyk_icc_path: '' }))
+    } catch { setIccHata('Silinemedi') }
   }
 
   // Ödeme sağlayıcı bağlantı testi — "ödeme başlatılamadı" hatasının sebebini
@@ -318,6 +346,58 @@ export default function AyarlarPage() {
       </Section>
       )}
 
+      {tab === 'baski' && (
+      <Section title="Baskı Dosyaları" icon="🖨️">
+        <p className="text-xs text-panel-muted -mt-1">
+          Tasarım stüdyosundan gelen her sipariş için <b>iki dosya</b> üretilir:
+          ekrandakiyle birebir <b>PNG</b> (300 DPI, RGB) ve matbaa/RIP için
+          <b> PDF</b> — yazılar vektörel, renkler CMYK, sayfa gerçek mm ölçüsünde.
+          İkisi de sipariş detayındaki tasarım kartından indirilir.
+        </p>
+
+        <div className="rounded-xl border border-panel-border p-3 space-y-2">
+          <div className="text-sm font-medium">CMYK renk profili (ICC)</div>
+          <p className="text-xs text-panel-muted">
+            Baskı makinenizin ya da matbaanızın profilini yükleyin; müşteri
+            fotoğrafları PDF'e bu profille CMYK'ya çevrilir. Yüklenmezse basit
+            dönüşüm kullanılır — çalışır ama renkler makinenizin gerçek
+            gamutuna göre ayarlanmaz.
+          </p>
+          {cfg.cmyk_icc_ad ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">
+                ✓ {cfg.cmyk_icc_ad}
+              </span>
+              <button onClick={() => iccRef.current?.click()} className="underline text-panel-muted">
+                değiştir
+              </button>
+              <button onClick={iccSil} className="underline text-red-600 ml-auto">kaldır</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={() => iccRef.current?.click()} disabled={iccBusy}
+                className="btn-ghost !py-1.5 text-xs disabled:opacity-40">
+                {iccBusy ? 'Yükleniyor…' : '📥 ICC profili yükle'}
+              </button>
+              <span className="text-xs text-amber-700">
+                Profil yok — basit dönüşüm kullanılıyor
+              </span>
+            </div>
+          )}
+          {iccHata && <p className="text-xs text-red-600">{iccHata}</p>}
+          <input ref={iccRef} type="file" accept=".icc,.icm" className="hidden"
+            onChange={e => iccYukle(e.target.files?.[0])} />
+        </div>
+
+        <p className="text-[11px] text-panel-muted">
+          🖼️ Müşteri <b>PDF ve SVG</b> de yükleyebilir. Vektörel dosyalar baskı
+          PDF'ine olduğu gibi gömülür (rasterleşmez); ekranda ise sunucunun
+          ürettiği önizlemesi görünür. Fotoğraflar vektöre çevrilemez — onlar
+          CMYK rastere dönüştürülür.
+        </p>
+      </Section>
+      )}
+
       {tab === 'eposta' && (
       <Section title="E-posta Bildirimleri" icon="🔔">
         <p className="text-[11px] text-panel-muted -mt-1">
@@ -470,6 +550,58 @@ export default function AyarlarPage() {
           süreci, kapıda ödeme olup olmadığı, üretim süresi. Müşterileriniz sıkça
           ne soruyorsa buraya ekleyin — asistan yazılan mesajı anahtar
           kelimelerle bu listeden eşleştirir.
+        </p>
+      </Section>
+      )}
+
+      {tab === 'baski' && (
+      <Section title="Baskı Dosyaları" icon="🖨️">
+        <p className="text-xs text-panel-muted -mt-1">
+          Tasarım stüdyosundan gelen her sipariş için <b>iki dosya</b> üretilir:
+          ekrandakiyle birebir <b>PNG</b> (300 DPI, RGB) ve matbaa/RIP için
+          <b> PDF</b> — yazılar vektörel, renkler CMYK, sayfa gerçek mm ölçüsünde.
+          İkisi de sipariş detayındaki tasarım kartından indirilir.
+        </p>
+
+        <div className="rounded-xl border border-panel-border p-3 space-y-2">
+          <div className="text-sm font-medium">CMYK renk profili (ICC)</div>
+          <p className="text-xs text-panel-muted">
+            Baskı makinenizin ya da matbaanızın profilini yükleyin; müşteri
+            fotoğrafları PDF'e bu profille CMYK'ya çevrilir. Yüklenmezse basit
+            dönüşüm kullanılır — çalışır ama renkler makinenizin gerçek
+            gamutuna göre ayarlanmaz.
+          </p>
+          {cfg.cmyk_icc_ad ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">
+                ✓ {cfg.cmyk_icc_ad}
+              </span>
+              <button onClick={() => iccRef.current?.click()} className="underline text-panel-muted">
+                değiştir
+              </button>
+              <button onClick={iccSil} className="underline text-red-600 ml-auto">kaldır</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={() => iccRef.current?.click()} disabled={iccBusy}
+                className="btn-ghost !py-1.5 text-xs disabled:opacity-40">
+                {iccBusy ? 'Yükleniyor…' : '📥 ICC profili yükle'}
+              </button>
+              <span className="text-xs text-amber-700">
+                Profil yok — basit dönüşüm kullanılıyor
+              </span>
+            </div>
+          )}
+          {iccHata && <p className="text-xs text-red-600">{iccHata}</p>}
+          <input ref={iccRef} type="file" accept=".icc,.icm" className="hidden"
+            onChange={e => iccYukle(e.target.files?.[0])} />
+        </div>
+
+        <p className="text-[11px] text-panel-muted">
+          🖼️ Müşteri <b>PDF ve SVG</b> de yükleyebilir. Vektörel dosyalar baskı
+          PDF'ine olduğu gibi gömülür (rasterleşmez); ekranda ise sunucunun
+          ürettiği önizlemesi görünür. Fotoğraflar vektöre çevrilemez — onlar
+          CMYK rastere dönüştürülür.
         </p>
       </Section>
       )}

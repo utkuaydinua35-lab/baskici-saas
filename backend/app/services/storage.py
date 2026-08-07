@@ -330,7 +330,11 @@ def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_
 # sıkıştırılmaz, saydamlığı korunur. Tarayıcı için ayrıca hafif bir
 # önizleme türetilir (40 MP fotoğrafı tuvalde sürüklemek imkânsızdır).
 
-DESIGN_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+DESIGN_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "svg"}
+# Vektörel kaynaklar: baskı PDF'ine OLDUĞU GİBİ gömülür (rasterleşmez).
+# Tuvalde ise sunucuda üretilen PNG önizlemesi gösterilir.
+VEKTOR_TASARIM_UZANTILARI = {"pdf", "svg"}
+MAX_VEKTOR_SAYFA = 1
 MAX_DESIGN_SIZE = 40 * 1024 * 1024      # 40 MB — telefon fotoğrafı rahat sığar
 DESIGN_PREVIEW_PX = 1400
 
@@ -351,6 +355,17 @@ def save_design_original(tenant_id, store_id, file_data: bytes,
     if len(file_data) > MAX_DESIGN_SIZE:
         raise ValueError(f"Dosya çok büyük (max {MAX_DESIGN_SIZE // 1024 // 1024} MB)")
 
+    rel_dir = Path("tenants") / str(tenant_id) / "designs" / str(store_id)
+    full_dir = STORAGE_ROOT / rel_dir
+    full_dir.mkdir(parents=True, exist_ok=True)
+    damga = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}"
+
+    # ── Vektörel dosya (PDF/SVG) ──
+    # Orijinal DOKUNULMADAN saklanır; baskıda vektör olarak gömülecek.
+    # Tuval için yüksek çözünürlüklü PNG önizleme üretilir.
+    if ext in VEKTOR_TASARIM_UZANTILARI:
+        return _vektor_tasarim_kaydet(file_data, ext, full_dir, rel_dir, damga)
+
     # Gerçekten görsel mi + EXIF yönü (dikey fotoğraf yan yatmasın)
     try:
         img = Image.open(io.BytesIO(file_data))
@@ -359,11 +374,6 @@ def save_design_original(tenant_id, store_id, file_data: bytes,
         raise ValueError(f"Görsel dosyası okunamadı: {e}") from e
     img = ImageOps.exif_transpose(img)
     genislik, yukseklik = img.size
-
-    rel_dir = Path("tenants") / str(tenant_id) / "designs" / str(store_id)
-    full_dir = STORAGE_ROOT / rel_dir
-    full_dir.mkdir(parents=True, exist_ok=True)
-    damga = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}"
 
     # EXIF döndürmesi uygulanmış hali yazılır — baskıda yan yatma olmasın.
     # Yeniden ÖLÇEKLEME YOK; JPEG'de kalite 100 + subsampling kapalı.
@@ -387,12 +397,61 @@ def save_design_original(tenant_id, store_id, file_data: bytes,
     )
 
 
+def _vektor_tasarim_kaydet(veri: bytes, ext: str, full_dir: Path, rel_dir: Path,
+                           damga: str) -> tuple[str, str, int, int]:
+    """PDF/SVG tasarımı olduğu gibi sakla + tuval için PNG önizleme üret.
+
+    Dönüş: (orijinal_url, onizleme_url, genislik_px, yukseklik_px)
+    Genişlik/yükseklik, dosyanın nokta (pt) ölçüsünden 300 DPI karşılığıdır —
+    editördeki çözünürlük uyarısı bunu kullanır.
+    """
+    try:
+        import pymupdf
+    except ImportError as e:
+        raise ValueError(
+            "PDF/SVG desteği için sunucuda pymupdf kurulu olmalı") from e
+
+    try:
+        belge = pymupdf.open(stream=veri, filetype=ext)
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f"Dosya açılamadı ({ext.upper()}): {e}") from e
+
+    try:
+        if belge.page_count == 0:
+            raise ValueError("Dosya boş görünüyor")
+        if belge.page_count > MAX_VEKTOR_SAYFA:
+            raise ValueError(
+                f"Yalnız tek sayfalık dosya kabul ediliyor "
+                f"({belge.page_count} sayfa gönderildi)")
+        sayfa = belge[0]
+        # 300 DPI karşılığı piksel ölçüsü (1 pt = 1/72 inch)
+        genislik = max(1, round(sayfa.rect.width / 72 * 300))
+        yukseklik = max(1, round(sayfa.rect.height / 72 * 300))
+
+        orig_name = f"{damga}.{ext}"
+        (full_dir / orig_name).write_bytes(veri)
+
+        # Tuval önizlemesi — vektörden rasterleştirilir (yalnız ekran için)
+        olcek = min(DESIGN_PREVIEW_PX / max(sayfa.rect.width, 1),
+                    DESIGN_PREVIEW_PX / max(sayfa.rect.height, 1), 4.0)
+        pix = sayfa.get_pixmap(matrix=pymupdf.Matrix(olcek, olcek), alpha=True)
+        onizleme_name = f"{damga}-onizleme.png"
+        pix.save(str(full_dir / onizleme_name))
+    finally:
+        belge.close()
+
+    return (f"/storage/{(rel_dir / orig_name).as_posix()}",
+            f"/storage/{(rel_dir / onizleme_name).as_posix()}",
+            genislik, yukseklik)
+
+
 def save_design_render(tenant_id, store_id, design_id, data: bytes, kind: str) -> str:
-    """Tasarımın üretilmiş çıktısı: 'onizleme' (küçük) veya 'baski' (yüksek çözünürlük)."""
+    """Tasarımın üretilmiş çıktısı: 'onizleme' (küçük), 'baski' (yüksek
+    çözünürlük PNG) veya 'baski-pdf' (vektörel + CMYK)."""
     rel_dir = Path("tenants") / str(tenant_id) / "designs" / str(store_id) / str(design_id)
     full_dir = STORAGE_ROOT / rel_dir
     full_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"{kind}.png"
+    fname = f"{kind}.pdf" if kind.endswith("pdf") else f"{kind}.png"
     with open(full_dir / fname, "wb") as f:
         f.write(data)
     return f"/storage/{(rel_dir / fname).as_posix()}"

@@ -657,7 +657,7 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
 const TAVAN_PUNTO = 0.8
 
 // Metni kutu genişliğine oturtan önizleme — vitrindeki SigdirilanYazi'nin eşi
-function DolduranYazi({ metin, punto, doldur, tavan }) {
+function DolduranYazi({ metin, punto, doldur, cerceveYuk, tavan }) {
   // Ölçüm hep TANIMLI puntodaki gizli kopyadan yapılır (bkz. Canvas.tsx):
   // görünen metni ölçmek geri besleme yaratıp ölçeği şaşırtıyor.
   const olcRef = useRef(null)
@@ -668,10 +668,13 @@ function DolduranYazi({ metin, punto, doldur, tavan }) {
     if (!doldur || !el || !kap) { setOlcek(1); return }
     const olc = () => {
       const kutu = kap.clientWidth
-      const gen = el.getBoundingClientRect().width
-      if (!kutu || !gen) return
-      const enBuyuk = punto > 0 ? Math.max(1, tavan / punto) : 1
-      const yeni = Math.min(enBuyuk, Math.max(0.15, kutu / gen))
+      const k = el.getBoundingClientRect()
+      if (!kutu || !k.width || !k.height) return
+      // Vitrindeki kuralın aynısı: genişlik VE yükseklik birlikte sınırlar;
+      // çerçeve yüksekliği yoksa metin büyümez
+      const enBuyukH = cerceveYuk > 0 ? cerceveYuk / k.height : 1
+      const tavanOlcek = punto > 0 ? Math.max(1, tavan / punto) : 1
+      const yeni = Math.max(0.15, Math.min(kutu / k.width, enBuyukH, tavanOlcek))
       setOlcek(eski => (Math.abs(yeni - eski) > 0.005 ? yeni : eski))
     }
     olc()
@@ -685,19 +688,21 @@ function DolduranYazi({ metin, punto, doldur, tavan }) {
     } catch { /* eski tarayıcı */ }
     const zamanlar = [120, 350, 800, 1600].map(ms => setTimeout(olc, ms))
     return () => { ro?.disconnect(); zamanlar.forEach(clearTimeout) }
-  }, [metin, punto, doldur, tavan])
+  }, [metin, punto, doldur, cerceveYuk, tavan])
   return (
     <>
       {doldur && (
         <span ref={olcRef} aria-hidden="true" style={{
           position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
           left: 0, top: 0, whiteSpace: 'nowrap', fontSize: `${punto}px`,
+          lineHeight: 'normal',
         }}>{metin}</span>
       )}
       <span style={{
         display: 'inline-block',
         whiteSpace: doldur ? 'nowrap' : 'normal',
         fontSize: `${punto * olcek}px`,
+        lineHeight: doldur ? 'normal' : undefined,
         width: doldur ? 'auto' : '100%',
       }}>{metin}</span>
     </>
@@ -761,8 +766,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     const n = alanlar.length + 1
     const yeniler = {
       yazi: { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
-              max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
-              renk: '#ffffff', hiza: 'center', otomatik_kucult: true },
+              max: 12, x: 0.2, y: 0.4, w: 0.6, h: 0.12 * 1.3, size: 0.12,
+              font: 'anton', renk: '#ffffff', hiza: 'center', otomatik_kucult: true },
       gorsel: { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
                 w: 0.2, h: 0.1, varsayilan: true, image_path: null },
       // Müşterinin YÜKLEYECEĞİ görsel — çerçeveye otomatik oturur, şablon
@@ -800,11 +805,13 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                    y: Math.min(1, Math.max(0, d.ilk.y + dy)) }
         }
         const w = Math.min(1, Math.max(0.03, d.ilk.w + dx))
-        if (a.tip === 'gorsel') {
-          return { ...a, w, h: Math.min(1, Math.max(0.02, (d.ilk.h || 0.1) + dy)) }
-        }
-        // Yazıda genişlik sarma kutusu, dikey sürükleme PUNTOYU değiştirir
-        return { ...a, w, size: Math.min(0.6, Math.max(0.02, (d.ilk.size || 0.1) + dy)) }
+        // Yazıda da ÇERÇEVE kutusu ölçeklenir: metin bu kutuya oturtulur,
+        // punto kutudan hesaplanır (eskiden dikey sürükleme puntoyu
+        // değiştiriyordu; o zaman "çerçeve" diye bir şey yoktu ve tek
+        // haneli metin kutunun dışına taşıyordu)
+        const yeniH = Math.min(1, Math.max(0.02, (d.ilk.h ?? (d.ilk.size || 0.1) * 1.3) + dy))
+        if (a.tip === 'yazi') return { ...a, w, h: yeniH, size: yeniH / 1.3 }
+        return { ...a, w, h: yeniH }
       }))
     }
     const birak = () => { surukle.current = null }
@@ -822,7 +829,7 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     const w = Number(secili.w) || 0.3
     // Yazıda gerçek yükseklik puntodan doğar; görsel/ilerlemede h alanı var
     const h = secili.tip === 'yazi'
-      ? (Number(secili.size) || 0.1) * 1.15
+      ? (Number(secili.h) || (Number(secili.size) || 0.1) * 1.3)
       : secili.tip === 'ilerleme'
         ? (Number(secili.boyut) || 0.012) * 2
         : (Number(secili.h) || 0.1)
@@ -921,7 +928,11 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                     ? 'outline outline-2 outline-panel-accent' : 'outline outline-1 outline-white/60'}`}
                   style={{
                     left: yuzde(a.x), top: yuzde(a.y), width: yuzde(a.w),
-                    height: a.tip === 'gorsel' ? yuzde(a.h) : undefined,
+                    // Yazıda da gerçek bir ÇERÇEVE var: metin bu kutuya
+                    // oturtulur, dışına taşmaz (vitrindeki davranışın aynısı)
+                    height: a.tip === 'gorsel' || a.tip === 'yazi'
+                      ? yuzde(a.h ?? (a.tip === 'yazi' ? (a.size || 0.1) * 1.3 : 0.1))
+                      : undefined,
                     zIndex: i === sel ? 2 : 1,
                   }}>
                   {a.tip === 'foto' ? (
@@ -944,12 +955,18 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                     <div style={{
                       color: a.renk || '#fff', textAlign: a.hiza || 'center',
                       lineHeight: 1.15, fontWeight: 800,
+                      width: '100%', height: '100%', display: 'flex',
+                      alignItems: 'center', overflow: 'hidden',
+                      justifyContent: a.hiza === 'center' ? 'center'
+                        : a.hiza === 'right' ? 'flex-end' : 'flex-start',
                     }}>
                       {/* Vitrindeki davranışın aynısı: "çerçeveyi doldur"
-                          açıkken metin kutu genişliğine oturtulur */}
+                          açıkken metin kutuya oturur — genişlik VE yükseklik
+                          birlikte sınırlar */}
                       <DolduranYazi metin={a.varsayilan || a.etiket}
                         punto={(a.size || 0.1) * (tuvalPx.h || 400)}
                         doldur={a.otomatik_kucult !== false}
+                        cerceveYuk={(a.h || 0) * (tuvalPx.h || 400)}
                         tavan={TAVAN_PUNTO * (tuvalPx.h || 400)} />
                     </div>
                   )}
@@ -1169,16 +1186,18 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                       <input type="checkbox" checked={secili.otomatik_kucult !== false} className="mt-0.5"
                         onChange={e => yamala({ otomatik_kucult: e.target.checked })} />
                       <span>
-                        <b>Çerçeveyi doldur</b> — yazı kutu genişliğine birebir
-                        oturur: kısa metin BÜYÜR, uzun metin küçülür. (“10” da
-                        “100” da aynı genişlikte çıkar; tek harfli isim de üç
-                        harfli isim de çerçeveyi kaplar.) Kapalıyken punto
-                        aşağıdaki değerde sabit kalır.
+                        <b>Çerçeveyi doldur</b> — yazı çerçeveye oturur: kısa
+                        metin BÜYÜR, uzun metin küçülür. Punto çerçevenin hem
+                        genişliğiyle hem YÜKSEKLİĞİYLE sınırlıdır, yani tek
+                        haneli metin de dışarı taşmaz. Kapalıyken punto
+                        çerçeve yüksekliğinden hesaplanan sabit değerde kalır.
                       </span>
                     </label>
                     <div className="text-[10px] text-panel-muted">
-                      Punto: {((secili.size || 0.1) * 100).toFixed(1)}% · kutuyu sağ alt
-                      köşeden sürükleyerek genişlik ve puntoyu ayarlayın.
+                      Çerçeve: {((secili.w || 0.6) * 100).toFixed(0)}% ×
+                      {' '}{(((secili.h ?? (secili.size || 0.1) * 1.3)) * 100).toFixed(1)}%
+                      · kutuyu sağ alt köşeden sürükleyerek çerçeveyi
+                      büyütüp küçültün. Metin bu çerçeveye ortalanır.
                     </div>
                   </>
                 ) : (

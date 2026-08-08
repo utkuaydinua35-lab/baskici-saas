@@ -87,9 +87,13 @@ export function kisitliKatmanlar(
       const yazi: TextLayer = {
         id: `alan-${a.key}`, type: "text", text: metin,
         font: a.font || "anton", size: a.size ?? 0.1, color: a.renk || "#ffffff",
-        x: a.x, y: a.y, w: a.w, rot: 0,
+        x: a.x, y: a.y, w: a.w,
+        // Çerçeve yüksekliği — panelde çizilmemişse yok sayılır: o alanda
+        // metin büyümez, yalnız gerekirse küçülür (taşma olmaz)
+        ...(a.h ? { h: a.h } : {}),
+        rot: 0,
         align: (a.hiza as TextLayer["align"]) || "center",
-        // Panelde "çerçeveye sığdır" kapatılmadıysa punto otomatik küçülür
+        // Panelde "çerçeveyi doldur" kapatılmadıysa punto çerçeveye oturur
         sigdir: a.otomatik_kucult !== false,
       };
       hedef.push(yazi);

@@ -22,7 +22,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.services.design_render import (
-    FONT_DIR, FONT_FILES, TAVAN_PUNTO, _basilabilir_renk,
+    FONT_DIR, FONT_FILES, TAVAN_PUNTO, _basilabilir_renk, _sayi_yoksa,
 )
 from app.services.storage import STORAGE_ROOT
 
@@ -135,13 +135,18 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
     hiza = {"left": 0, "center": 1, "right": 2}.get(yaslama, 0)
 
     # ÇERÇEVEYİ DOLDUR — PNG çıktısındaki kuralın aynısı (bkz. design_render):
-    # kısa metin büyür, uzun metin küçülür, ikisi de kutuyu tam kaplar.
+    # kısa metin büyür, uzun metin küçülür; hem genişlik hem YÜKSEKLİK sınırlar.
     if k.get("sigdir") is True:
         try:
             font = pymupdf.Font(fontfile=str(yol))
+            # Satır yüksekliği fontun kendi ölçüsünden (ascent - descent)
+            oran = max(0.5, font.ascender - font.descender)
+            # Yükseklik verilmemişse tanımlı puntonun doğal satırı → büyüme yok
+            kutu_yuk = _sayi_yoksa(k.get("h"), 0) * H or boy * oran
             gen = font.text_length(metin, fontsize=boy)
             if gen > 0:
-                boy = max(2.0, min(H * TAVAN_PUNTO, boy * kutu_gen / gen))
+                boy = max(2.0, min(boy * kutu_gen / gen, kutu_yuk / oran,
+                                   H * TAVAN_PUNTO))
                 # TEK SATIR olarak çizilir: insert_textbox metni kutuya
                 # sığdıramazsa HİÇ çizmez — punto büyüyünce kısa metinler
                 # (tek harf, "10") baskı dosyasından tamamen düşüyordu.
@@ -152,9 +157,11 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
                     x = sol + (kutu_gen - genislik) / 2
                 elif yaslama == "right":
                     x = sol + kutu_gen - genislik
-                # insert_text TABAN ÇİZGİSİNİ ister; PNG'de üst kenar y'dedir
+                # insert_text TABAN ÇİZGİSİNİ ister. Metin çerçeveye dikey
+                # ortalanır (PNG çıktısındaki kuralın aynısı).
+                satir_ust = ust + (kutu_yuk - boy * oran) / 2
                 sayfa.insert_text(
-                    (x, ust + boy * font.ascender), metin, fontsize=boy,
+                    (x, satir_ust + boy * font.ascender), metin, fontsize=boy,
                     fontfile=str(yol), fontname=yol.stem, color=renk,
                 )
                 return

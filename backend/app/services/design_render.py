@@ -267,47 +267,92 @@ def _ciz_gorsel(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
     tuval.alpha_composite(g, (mx - g.width // 2, my - g.height // 2))
 
 
+def _sayi_yoksa(v, varsayilan: float) -> float:
+    """None/boş/geçersiz değerde varsayılana düş."""
+    try:
+        s = float(v)
+    except (TypeError, ValueError):
+        return varsayilan
+    return s if s > 0 else varsayilan
+
+
+def _satir_orani(font, boy: int) -> float:
+    """Fontun doğal satır yüksekliği / punto. Ascent+descent'ten gelir; ölçüm
+    başarısızsa başlık fontlarında güvenli olan 1,3 kullanılır."""
+    try:
+        a, d = font.getmetrics()
+        if boy > 0 and (a + d) > 0:
+            return (a + d) / boy
+    except Exception:  # noqa: BLE001 — bitmap font/eksik metrik
+        pass
+    return 1.3
+
+
 def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H: int) -> None:
     metin = (k.get("text") or "").strip()
     if not metin:
         return
+    ad = str(k.get("font") or "poppins")
     boy = max(4, round(float(k.get("size", 0.1)) * H))
     kutu_gen = max(1, round(float(k.get("w", 0.8)) * W))
-    font = _font(str(k.get("font") or "poppins"), boy)
+    font = _font(ad, boy)
 
-    # ÇERÇEVEYİ DOLDUR: metin kutu genişliğine BİREBİR oturtulur — kısa metin
-    # büyür, uzun metin küçülür. "10" ile "100" aynı genişlikte çıkar; formada
-    # tek harfli isim de üç harfli isim de çerçeveyi doldurur.
+    # SATIR YÜKSEKLİĞİ fontun KENDİ ölçüsünden gelir (ascent + descent).
+    # Sabit 1,15 katsayısı Anton gibi başlık fontlarında gerçek satırdan
+    # küçük kalıyordu: "g/y/ğ" kuyrukları ve hatta rakamların altı çerçevenin
+    # dışına taşıyordu.
+    oran = _satir_orani(font, boy)
+
+    # ÇERÇEVE: alanın kutusu. Yükseklik verilmemişse tanımlı puntonun doğal
+    # satır kutusu kabul edilir → o alanda metin BÜYÜMEZ, yalnız küçülür
+    # (eski alanlar böyle; taşma yerine tanımlı punto korunur).
+    kutu_yuk = max(1, round(_sayi_yoksa(k.get("h"), 0) * H) or round(boy * oran))
+
+    # ÇERÇEVEYİ DOLDUR: metin kutuya BİREBİR oturtulur — kısa metin büyür,
+    # uzun metin küçülür. Hem GENİŞLİK hem YÜKSEKLİK sınırlar: "1" gibi tek
+    # haneli metin genişliği doldurmak için çerçeveden taşacak kadar büyümez.
     # Yalnız KISITLI ŞABLON alanlarında açıktır (katman üreticisi sigdir=True
     # yazar); serbest editörde punto müşterinin kendi ayarıdır, dokunulmaz.
     if k.get("sigdir") is True:
         gen = ciz.textlength(metin, font=font)
         if gen > 0:
-            # Güvenlik tavanı: satır baskı alanının dışına taşmasın
-            tavan = max(4, int(H * TAVAN_PUNTO))
-            boy = max(4, min(tavan, int(boy * kutu_gen / gen)))
-            font = _font(str(k.get("font") or "poppins"), boy)
+            en = boy * kutu_gen / gen               # genişliğe göre punto
+            yuk = kutu_yuk / oran                   # yüksekliğe göre punto
+            boy = max(4, int(min(en, yuk, H * TAVAN_PUNTO)))
+            font = _font(ad, boy)
+            oran = _satir_orani(font, boy)
 
     satirlar = _sar(ciz, metin, font, kutu_gen)
-    satir_yuk = round(boy * 1.15)
+    satir_yuk = max(1, round(boy * oran))
 
-    # Metni kendi katmanına çiz — döndürme ancak böyle temiz olur
-    kat = Image.new("RGBA", (kutu_gen, max(1, satir_yuk * len(satirlar))), (0, 0, 0, 0))
+    # Metni kendi katmanına çiz — döndürme ancak böyle temiz olur.
+    # PAYLAR: satır kutusu harfin gerçek mürekkebini tam kapsamayabilir —
+    # "g/y/ğ" gibi alt uzantılar satır kutusunun dışına iner. Tuval satır
+    # yüksekliğinde olursa bu kuyruklar BASKIDA KESİLİR. Paylar simetrik
+    # olduğu için (birleştirme merkeze göre yapılır) konum değişmez.
+    pay_y = max(1, round(boy * 0.35))
+    pay_x = max(1, round(boy * 0.15))
+    kat = Image.new(
+        "RGBA",
+        (kutu_gen + 2 * pay_x, max(1, satir_yuk * len(satirlar)) + 2 * pay_y),
+        (0, 0, 0, 0))
     kciz = ImageDraw.Draw(kat)
     hiza = k.get("align") or "left"
     for i, s in enumerate(satirlar):
         gen = kciz.textlength(s, font=font)
         x = 0 if hiza == "left" else (kutu_gen - gen) / 2 if hiza == "center" else kutu_gen - gen
-        kciz.text((x, i * satir_yuk), s, font=font,
+        kciz.text((x + pay_x, pay_y + i * satir_yuk), s, font=font,
                   fill=_basilabilir_renk(k.get("color")))
 
     aci = float(k.get("rot") or 0)
     if aci:
         kat = kat.rotate(-aci, expand=True, resample=Image.BICUBIC)
 
-    # Editörde metin kutusunun SOL-ÜSTÜ konumlandırılır; döndürmede merkez korunur
+    # Editörde ÇERÇEVENİN sol-üstü konumlandırılır; metin çerçeveye dikey
+    # ORTALANIR (küçülen metin çerçevenin tepesine yapışmasın). Tek satırlık
+    # çerçevede iki hesap aynı sonucu verir — eski alanlar aynı yerde kalır.
     sol = float(k.get("x", 0)) * W
     ust = float(k.get("y", 0)) * H
     mx = round(sol + kutu_gen / 2)
-    my = round(ust + (satir_yuk * len(satirlar)) / 2)
+    my = round(ust + kutu_yuk / 2)
     tuval.alpha_composite(kat, (mx - kat.width // 2, my - kat.height // 2))

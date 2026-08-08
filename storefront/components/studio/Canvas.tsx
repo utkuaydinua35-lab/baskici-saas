@@ -35,8 +35,11 @@ interface Props {
  *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu.
  *
  *  Sunucudaki karşılığı: design_render._ciz_metin / design_pdf._yazi. */
-function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
-  metin: string; punto: number; sigdir: boolean; tavan: number;
+function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil }: {
+  metin: string; punto: number; sigdir: boolean;
+  /** Çerçeve yüksekliği (px). 0 → yükseklik serbest, metin BÜYÜMEZ. */
+  cerceveYuk: number;
+  tavan: number;
   stil: React.CSSProperties;
 }) {
   // Ölçüm, GÖRÜNEN metnin değil hep TANIMLI puntodaki gizli kopyanın üzerinden
@@ -52,12 +55,16 @@ function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
     if (!sigdir || !el || !kap) { setOlcek(1); return; }
     const olc = () => {
       const kutu = kap.clientWidth;
-      const gen = el.getBoundingClientRect().width;   // her zaman ölçeksiz
-      if (!kutu || !gen) return;
-      // Kutuyu TAM doldur (büyüt ya da küçült); tavan, tek harfli metnin
-      // baskı alanını boydan boya taşırmasını engeller
-      const enBuyuk = punto > 0 ? Math.max(1, tavan / punto) : 1;
-      const yeni = Math.min(enBuyuk, Math.max(0.15, kutu / gen));
+      const kut = el.getBoundingClientRect();
+      const gen = kut.width;      // ölçeksiz genişlik
+      const yuk = kut.height;     // ölçeksiz SATIR yüksekliği (fontun kendi ölçüsü)
+      if (!kutu || !gen || !yuk) return;
+      // Kutuyu doldur: hem GENİŞLİK hem YÜKSEKLİK sınırlar. Çerçeve yüksekliği
+      // verilmemişse metin büyümez (yalnız küçülür) — tek harfli metin,
+      // genişliği doldurayım derken çerçevenin dışına taşmasın.
+      const enBuyukH = cerceveYuk > 0 ? cerceveYuk / yuk : 1;
+      const tavanOlcek = punto > 0 ? Math.max(1, tavan / punto) : 1;
+      const yeni = Math.max(0.15, Math.min(kutu / gen, enBuyukH, tavanOlcek));
       setOlcek((eski) => (Math.abs(yeni - eski) > 0.005 ? yeni : eski));
     };
     olc();
@@ -75,7 +82,7 @@ function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
     } catch { /* eski tarayıcı — zamanlayıcılar yine ölçer */ }
     const zamanlar = [120, 350, 800, 1600].map((ms) => window.setTimeout(olc, ms));
     return () => { ro?.disconnect(); zamanlar.forEach(window.clearTimeout); };
-  }, [metin, punto, sigdir, tavan, stil.fontFamily]);
+  }, [metin, punto, sigdir, cerceveYuk, tavan, stil.fontFamily]);
 
   return (
     <>
@@ -83,6 +90,7 @@ function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
         <span ref={olcRef} aria-hidden="true" style={{
           position: "absolute", visibility: "hidden", pointerEvents: "none",
           left: 0, top: 0, whiteSpace: "nowrap", fontSize: `${punto}px`,
+          lineHeight: "normal",
         }}>
           {metin}
         </span>
@@ -91,6 +99,7 @@ function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
         display: "inline-block",
         whiteSpace: sigdir ? "nowrap" : "normal",
         fontSize: `${punto * olcek}px`,
+        lineHeight: sigdir ? "normal" : undefined,
         width: sigdir ? "auto" : "100%",
       }}>
         {metin}
@@ -378,12 +387,21 @@ export default function Canvas({
           const tx = l as TextLayer;
           const f = fontByKey(tx.font);
           const puntoPx = Math.max(8, tx.size * areaPx.h);
+          // Çerçeve yüksekliği: verilmemişse tek satırlık (eski alanlar).
+          // "Doldur" açıkken punto bunu aşamaz — tek harf taşırmasın.
+          // Çerçeve yüksekliği; verilmemişse serbest (metin büyümez)
+          const cerceveYuk = (tx.h ?? 0) * areaPx.h;
           return (
             <div key={l.id} data-katman={l.id}
               onPointerDown={(e) => onPointerDown(e, l.id, "move")}
               className={`absolute ${secili && !kilitli ? "outline outline-2 outline-white/90" : ""}`}
               style={{
                 left: `${tx.x * 100}%`, top: `${tx.y * 100}%`, width: `${tx.w * 100}%`,
+                // Metin çerçeveye dikey ortalanır; küçülen metin tepeye yapışmaz
+                height: cerceveYuk ? `${cerceveYuk}px` : undefined,
+                display: "flex", alignItems: "center",
+                justifyContent: tx.align === "center" ? "center"
+                  : tx.align === "right" ? "flex-end" : "flex-start",
                 transform: `rotate(${tx.rot || 0}deg)`,
                 fontFamily: `'${f.css}', sans-serif`,
                 color: tx.color,
@@ -396,7 +414,8 @@ export default function Canvas({
               {/* Sığdırma yalnız kısıtlı şablon alanlarında (sigdir === true);
                   serbest editörde punto müşterinin kendi ayarıdır */}
               <SigdirilanYazi metin={tx.text} punto={puntoPx}
-                sigdir={tx.sigdir === true} tavan={TAVAN_PUNTO * areaPx.h}
+                sigdir={tx.sigdir === true} cerceveYuk={cerceveYuk}
+                tavan={TAVAN_PUNTO * areaPx.h}
                 stil={{ fontFamily: `'${f.css}', sans-serif` }} />
             </div>
           );

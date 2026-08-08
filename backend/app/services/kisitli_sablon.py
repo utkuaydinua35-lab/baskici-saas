@@ -97,6 +97,9 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "x": _sayi(a.get("x"), 0.1),
                 "y": _sayi(a.get("y"), 0.1),
                 "w": _sayi(a.get("w"), 0.8),
+                # Çerçeve yüksekliği — panelde çizilmemişse gönderilmez:
+                # o alanda metin BÜYÜMEZ, yalnız gerekirse küçülür
+                **({"h": _sayi(a.get("h"))} if _sayi(a.get("h")) > 0 else {}),
                 "rot": 0,
                 "align": str(a.get("hiza") or "center"),
                 # Çerçeveye sığdırma: uzun metinde punto otomatik küçülür.
@@ -217,6 +220,7 @@ def alan_ozeti(overlay) -> list[dict]:
                 "font": a.get("font") or "anton",
                 "renk": a.get("renk") or "#ffffff",
                 "hiza": a.get("hiza") or "center",
+                "h": _sayi(a.get("h")) or None,
                 "otomatik_kucult": a.get("otomatik_kucult", True) is not False,
             })
         elif a.get("tip") == "gorsel":

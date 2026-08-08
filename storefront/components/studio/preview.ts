@@ -115,15 +115,24 @@ export async function onizlemeUret(
         const tx = l as TextLayer;
         const f = fontByKey(tx.font);
         let boy = Math.max(6, tx.size * ah);
+        const cerceveYuk = (tx.h ?? 0) * ah;   // 0 → metin büyümez
         ctx.save();
         ctx.font = `${boy}px '${f.css}', sans-serif`;
+        // Satır yüksekliği fontun KENDİ ölçüsünden (sabit katsayı, Anton gibi
+        // başlık fontlarında gerçek satırdan küçük kalıp taşmaya yol açıyordu)
+        const olcuBir = ctx.measureText(tx.text || "M");
+        const satirOran = Math.max(0.5,
+          ((olcuBir.fontBoundingBoxAscent ?? 0) + (olcuBir.fontBoundingBoxDescent ?? 0))
+          / boy) || 1.3;
         // ÇERÇEVEYİ DOLDUR — tuval ve baskıdaki kuralın aynısı: kısa metin
-        // büyür, uzun metin küçülür, ikisi de kutuyu tam kaplar
+        // büyür, uzun metin küçülür; genişlik VE yükseklik birlikte sınırlar
         if (tx.sigdir === true) {
           const olcu = ctx.measureText(tx.text || "").width;
           const kutu = tx.w * aw;
           if (olcu > 0) {
-            boy = Math.max(4, Math.min(ah * TAVAN_PUNTO, (boy * kutu) / olcu));
+            const yukSiniri = cerceveYuk > 0 ? cerceveYuk / satirOran : boy;
+            boy = Math.max(4, Math.min((boy * kutu) / olcu, yukSiniri,
+              ah * TAVAN_PUNTO));
             ctx.font = `${boy}px '${f.css}', sans-serif`;
           }
         }
@@ -131,7 +140,8 @@ export async function onizlemeUret(
         ctx.textBaseline = "top";
         ctx.textAlign = tx.align === "center" ? "center" : tx.align === "right" ? "right" : "left";
         const x = ax + tx.x * aw;
-        const y = ay + tx.y * ah;
+        // Metin çerçeveye dikey ortalanır (tuval ve baskıyla aynı)
+        const y = ay + tx.y * ah + Math.max(0, (cerceveYuk - boy * satirOran) / 2);
         const kutuG = tx.w * aw;
         const hizaX = tx.align === "center" ? x + kutuG / 2 : tx.align === "right" ? x + kutuG : x;
         ctx.translate(hizaX, y);

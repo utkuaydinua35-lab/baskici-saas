@@ -48,12 +48,16 @@ export interface TextLayer {
   font: string;         // FONTS[].key
   size: number;         // baskı alanı YÜKSEKLİĞİNE oran (0-1)
   color: string;
-  x: number; y: number; // metin kutusunun sol-üstü
-  w: number;            // sarma genişliği
+  x: number; y: number; // ÇERÇEVENİN sol-üstü
+  w: number;            // çerçeve genişliği (sarma genişliği)
+  /** Çerçeve yüksekliği (0-1). Verilmezse tek satırlık kabul edilir.
+   *  "sigdir" açıkken punto bu yüksekliği de aşamaz — tek harfli metin
+   *  genişliği doldurayım derken çerçeveden taşmasın. */
+  h?: number;
   rot: number;
   align: "left" | "center" | "right";
-  /** Metin kutuya sığmıyorsa punto otomatik küçülsün mü — kısıtlı şablon
-   *  alanlarında varsayılan açık ("10" büyük, "100" sığacak kadar küçük) */
+  /** Metin çerçeveyi doldursun mu (kısa metin büyür, uzun metin küçülür) —
+   *  kısıtlı şablon alanlarında varsayılan açık */
   sigdir?: boolean;
 }
 

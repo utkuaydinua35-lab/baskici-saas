@@ -95,9 +95,18 @@ export async function onizlemeUret(
       } else {
         const tx = l as TextLayer;
         const f = fontByKey(tx.font);
-        const boy = Math.max(6, tx.size * ah);
+        let boy = Math.max(6, tx.size * ah);
         ctx.save();
         ctx.font = `${boy}px '${f.css}', sans-serif`;
+        // ÇERÇEVEYE SIĞDIR — tuval ve baskıdaki kuralın aynısı
+        if (tx.sigdir === true) {
+          const olcu = ctx.measureText(tx.text || "").width;
+          const kutu = tx.w * aw;
+          if (olcu > kutu && olcu > 0) {
+            boy = Math.max(4, (boy * kutu) / olcu);
+            ctx.font = `${boy}px '${f.css}', sans-serif`;
+          }
+        }
         ctx.fillStyle = tx.color;
         ctx.textBaseline = "top";
         ctx.textAlign = tx.align === "center" ? "center" : tx.align === "right" ? "right" : "left";

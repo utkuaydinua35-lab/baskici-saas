@@ -99,6 +99,9 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "w": _sayi(a.get("w"), 0.8),
                 "rot": 0,
                 "align": str(a.get("hiza") or "center"),
+                # Çerçeveye sığdırma: uzun metinde punto otomatik küçülür.
+                # Hesap çizim anında yapılır (font ölçüsü orada bilinir).
+                "sigdir": a.get("sigdir", True) is not False,
             })
 
         elif tip == "gorsel":
@@ -214,6 +217,7 @@ def alan_ozeti(overlay) -> list[dict]:
                 "font": a.get("font") or "anton",
                 "renk": a.get("renk") or "#ffffff",
                 "hiza": a.get("hiza") or "center",
+                "sigdir": a.get("sigdir", True) is not False,
             })
         elif a.get("tip") == "gorsel":
             ozet.append({

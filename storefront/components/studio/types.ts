@@ -47,6 +47,9 @@ export interface TextLayer {
   w: number;            // sarma genişliği
   rot: number;
   align: "left" | "center" | "right";
+  /** Metin kutuya sığmıyorsa punto otomatik küçülsün mü — kısıtlı şablon
+   *  alanlarında varsayılan açık ("10" büyük, "100" sığacak kadar küçük) */
+  sigdir?: boolean;
 }
 
 /** Hazır tasarım şablonu (panelden yüklenen çerçeve/desen).
@@ -98,6 +101,7 @@ export interface StudioAlan {
   font?: string;
   renk?: string;
   hiza?: "left" | "center" | "right";
+  sigdir_yazi?: boolean;         // yazı alanı: çerçeveye sığdır (auto-fit)
   image_url?: string | null;     // gorsel alanı
   sigdir?: "kapla" | "sigdir";   // foto alanı
   // ilerleme alanı

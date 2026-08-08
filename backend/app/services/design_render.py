@@ -268,8 +268,19 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     if not metin:
         return
     boy = max(4, round(float(k.get("size", 0.1)) * H))
-    font = _font(str(k.get("font") or "poppins"), boy)
     kutu_gen = max(1, round(float(k.get("w", 0.8)) * W))
+    font = _font(str(k.get("font") or "poppins"), boy)
+
+    # ÇERÇEVEYE SIĞDIR: metin kutuya sığmıyorsa punto orantılı küçültülür.
+    # "10" tanımlı puntoda çıkar, "100" aynı genişliğe sığacak kadar küçülür.
+    # Yalnız KISITLI ŞABLON alanlarında açıktır (katman üreticisi sigdir=True
+    # yazar); serbest editörde punto müşterinin kendi ayarıdır, dokunulmaz.
+    if k.get("sigdir") is True:
+        gen = ciz.textlength(metin, font=font)
+        if gen > kutu_gen and gen > 0:
+            boy = max(4, int(boy * kutu_gen / gen))
+            font = _font(str(k.get("font") or "poppins"), boy)
+
     satirlar = _sar(ciz, metin, font, kutu_gen)
     satir_yuk = round(boy * 1.15)
 

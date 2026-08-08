@@ -269,6 +269,8 @@ class OverlayAlan(BaseModel):
     font: str | None = Field(None, max_length=30)
     renk: str | None = Field(None, max_length=9)
     hiza: str | None = Field(None, pattern="^(left|center|right)$")
+    # Yazı çerçeveye sığmazsa punto otomatik küçülsün mü (varsayılan: evet)
+    sigdir: bool | None = None
     # görsel alanı — dosya ayrı uçtan yüklenir, burada yolu taşınır
     image_path: str | None = Field(None, max_length=500)
     # foto alanı — MÜŞTERİNİN yükleyeceği görselin çerçeveye oturma biçimi

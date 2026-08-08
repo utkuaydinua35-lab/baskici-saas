@@ -23,6 +23,19 @@ interface Props {
   kirpma?: boolean;
 }
 
+/** Metin kutuya sığmıyorsa puntoyu orantılı küçültür (tek satır varsayımı).
+ *  Ölçüm için tarayıcının canvas metin ölçüsü kullanılır — gerçek font
+ *  yüklüyse birebir, yüklenmemişse yaklaşık (font gelince yeniden ölçülür). */
+let _olcumCtx: CanvasRenderingContext2D | null = null;
+function metniSigdir(metin: string, fontCss: string, punto: number, kutuGen: number): number {
+  if (!metin || kutuGen <= 0) return punto;
+  if (!_olcumCtx) _olcumCtx = document.createElement("canvas").getContext("2d");
+  if (!_olcumCtx) return punto;
+  _olcumCtx.font = `${punto}px '${fontCss}', sans-serif`;
+  const gen = _olcumCtx.measureText(metin).width;
+  return gen > kutuGen && gen > 0 ? Math.max(6, (punto * kutuGen) / gen) : punto;
+}
+
 // Boyutlandırma yönleri: köşeler oranı korur, kenarlar tek eksende esner
 type Yon = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 type DragMode = "move" | "rotate" | Yon;
@@ -274,6 +287,15 @@ export default function Canvas({
           }
           const tx = l as TextLayer;
           const f = fontByKey(tx.font);
+          // ÇERÇEVEYE SIĞDIR — kutuya sığmayan metnin puntosu orantılı küçülür
+          // (sunucudaki kuralın aynısı: design_render._ciz_metin). Ölçüm canvas
+          // API'siyle yapılır; DOM'a yazıp geri okumaya gerek kalmaz.
+          const puntoPx = Math.max(8, tx.size * areaPx.h);
+          // Sığdırma yalnız kısıtlı şablon alanlarında (sigdir === true);
+          // serbest editörde punto müşterinin kendi ayarıdır
+          const puntoSon = tx.sigdir === true && areaPx.w
+            ? metniSigdir(tx.text, f.css, puntoPx, tx.w * areaPx.w)
+            : puntoPx;
           return (
             <div key={l.id} data-katman={l.id}
               onPointerDown={(e) => onPointerDown(e, l.id, "move")}
@@ -282,7 +304,7 @@ export default function Canvas({
                 left: `${tx.x * 100}%`, top: `${tx.y * 100}%`, width: `${tx.w * 100}%`,
                 transform: `rotate(${tx.rot || 0}deg)`,
                 fontFamily: `'${f.css}', sans-serif`,
-                fontSize: `${Math.max(8, tx.size * areaPx.h)}px`,
+                fontSize: `${puntoSon}px`,
                 color: tx.color,
                 textAlign: tx.align,
                 lineHeight: 1.15,

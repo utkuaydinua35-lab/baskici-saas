@@ -126,6 +126,16 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
     boy = float(k.get("size", 0.1)) * H
     renk = hex_to_cmyk(k.get("color"))
     kutu_gen = float(k.get("w", 0.8)) * W
+
+    # ÇERÇEVEYE SIĞDIR — PNG çıktısındaki kuralın aynısı (bkz. design_render)
+    if k.get("sigdir") is True:
+        try:
+            font = pymupdf.Font(fontfile=str(yol))
+            gen = font.text_length(metin, fontsize=boy)
+            if gen > kutu_gen and gen > 0:
+                boy = max(2.0, boy * kutu_gen / gen)
+        except Exception:  # noqa: BLE001 — ölçüm başarısızsa tanımlı punto kalır
+            log.debug("PDF metin ölçülemedi", exc_info=True)
     sol = float(k.get("x", 0)) * W
     ust = float(k.get("y", 0)) * H
     hiza = {"left": 0, "center": 1, "right": 2}.get(k.get("align") or "left", 0)

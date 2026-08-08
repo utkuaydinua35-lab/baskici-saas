@@ -674,7 +674,7 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
     const yeniler = {
       yazi: { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
               max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
-              renk: '#ffffff', hiza: 'center' },
+              renk: '#ffffff', hiza: 'center', sigdir: true },
       gorsel: { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
                 w: 0.2, h: 0.1, varsayilan: true, image_path: null },
       // Müşterinin YÜKLEYECEĞİ görsel — çerçeveye otomatik oturur, şablon
@@ -727,6 +727,26 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
       window.removeEventListener('pointerup', birak)
     }
   }, [])
+
+  // Seçili alanı şablona göre yasla (0-1 oransal koordinatlar)
+  const yasla = (yon) => {
+    if (!secili) return
+    const w = Number(secili.w) || 0.3
+    // Yazıda gerçek yükseklik puntodan doğar; görsel/ilerlemede h alanı var
+    const h = secili.tip === 'yazi'
+      ? (Number(secili.size) || 0.1) * 1.15
+      : secili.tip === 'ilerleme'
+        ? (Number(secili.boyut) || 0.012) * 2
+        : (Number(secili.h) || 0.1)
+    const yama = {}
+    if (['sol', 'yatay', 'sag', 'orta'].includes(yon)) {
+      yama.x = yon === 'sol' ? 0 : yon === 'sag' ? 1 - w : (1 - w) / 2
+    }
+    if (['ust', 'dikey', 'alt', 'orta'].includes(yon)) {
+      yama.y = yon === 'ust' ? 0 : yon === 'alt' ? 1 - h : (1 - h) / 2
+    }
+    yamala(yama)
+  }
 
   const alanGorseliYukle = async (file) => {
     if (!file || !secili) return
@@ -834,7 +854,12 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                     <div style={{
                       fontSize: `calc(${(a.size || 0.1)} * ${tuvalRef.current?.clientHeight || 400}px)`,
                       color: a.renk || '#fff', textAlign: a.hiza || 'center',
-                      lineHeight: 1.15, fontWeight: 800, wordBreak: 'break-word',
+                      lineHeight: 1.15, fontWeight: 800,
+                      // "Çerçeveye sığdır" açıkken müşteride uzun metin küçülür;
+                      // panelde de tek satırda kalıp kutuya sıkışmış görünsün
+                      ...(a.sigdir !== false
+                        ? { whiteSpace: 'nowrap', overflow: 'hidden' }
+                        : { wordBreak: 'break-word' }),
                     }}>{a.varsayilan || a.etiket}</div>
                   )}
                   {/* Boyutlandırma tutamağı */}
@@ -885,6 +910,30 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
 
             {secili && (
               <div className="border-t border-panel-border pt-2 space-y-2">
+                {/* Yaslama — alanı şablonun ortasına/kenarına oturtur.
+                    Yazıda yükseklik puntodan doğduğu için dikeyde tek satır
+                    yüksekliği (punto × 1.15) esas alınır. */}
+                <div>
+                  <div className="text-[11px] text-panel-muted mb-1">Yasla</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      ['sol', '⇤ Sola'], ['yatay', '↔ Yatay ortala'], ['sag', '⇥ Sağa'],
+                      ['ust', '⇡ Üste'], ['dikey', '↕ Dikey ortala'], ['alt', '⇣ Alta'],
+                    ].map(([yon, etiket]) => (
+                      <button key={yon} type="button" onClick={() => yasla(yon)}
+                        className="text-[11px] py-1.5 rounded-lg border border-panel-border
+                          hover:border-panel-accent transition">
+                        {etiket}
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => yasla('orta')}
+                      className="col-span-3 text-[11px] py-1.5 rounded-lg border
+                        border-panel-border hover:border-panel-accent transition">
+                      ✛ Tam ortala
+                    </button>
+                  </div>
+                </div>
+
                 <label className="block text-[11px] text-panel-muted">
                   Müşteriye görünen etiket
                   <input value={secili.etiket} maxLength={60}
@@ -1024,6 +1073,15 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                         <option value="center">Ortalı</option>
                         <option value="right">Sağa</option>
                       </select>
+                    </label>
+                    <label className="flex items-start gap-2 text-[11px]">
+                      <input type="checkbox" checked={secili.sigdir !== false} className="mt-0.5"
+                        onChange={e => yamala({ sigdir: e.target.checked })} />
+                      <span>
+                        <b>Çerçeveye sığdır</b> — uzun metinde punto otomatik küçülür,
+                        yazı kutunun dışına taşmaz. (“10” büyük çıkar, “100” aynı
+                        genişliğe sığacak kadar küçülür.)
+                      </span>
                     </label>
                     <div className="text-[10px] text-panel-muted">
                       Punto: {((secili.size || 0.1) * 100).toFixed(1)}% · kutuyu sağ alt

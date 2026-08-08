@@ -89,6 +89,8 @@ export function kisitliKatmanlar(
         font: a.font || "anton", size: a.size ?? 0.1, color: a.renk || "#ffffff",
         x: a.x, y: a.y, w: a.w, rot: 0,
         align: (a.hiza as TextLayer["align"]) || "center",
+        // Panelde "çerçeveye sığdır" kapatılmadıysa punto otomatik küçülür
+        sigdir: (a as { sigdir?: boolean }).sigdir !== false,
       };
       hedef.push(yazi);
 

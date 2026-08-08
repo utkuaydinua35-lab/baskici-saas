@@ -664,7 +664,7 @@ export default function TasarlaPage() {
             data-tur="tuval">
             <Canvas template={tpl} layers={layers} selected={kisitli ? null : secili}
               onSelect={kisitli ? () => {} : setSecili} onChange={guncelle}
-              kirpma={kirpmaModu}
+              kirpma={kirpmaModu} kilitli={!!kisitli}
               maxHeight={typeof window !== "undefined" && window.innerWidth < 640 ? 380 : 560} />
           </div>
           <button onClick={() => setUyariGoster(true)}

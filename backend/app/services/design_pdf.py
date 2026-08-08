@@ -21,7 +21,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.services.design_render import FONT_DIR, FONT_FILES, _basilabilir_renk
+from app.services.design_render import (
+    FONT_DIR, FONT_FILES, TAVAN_PUNTO, _basilabilir_renk,
+)
 from app.services.storage import STORAGE_ROOT
 
 log = logging.getLogger("design_pdf")
@@ -127,18 +129,37 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
     renk = hex_to_cmyk(k.get("color"))
     kutu_gen = float(k.get("w", 0.8)) * W
 
-    # ÇERÇEVEYE SIĞDIR — PNG çıktısındaki kuralın aynısı (bkz. design_render)
+    sol = float(k.get("x", 0)) * W
+    ust = float(k.get("y", 0)) * H
+    yaslama = str(k.get("align") or "left")
+    hiza = {"left": 0, "center": 1, "right": 2}.get(yaslama, 0)
+
+    # ÇERÇEVEYİ DOLDUR — PNG çıktısındaki kuralın aynısı (bkz. design_render):
+    # kısa metin büyür, uzun metin küçülür, ikisi de kutuyu tam kaplar.
     if k.get("sigdir") is True:
         try:
             font = pymupdf.Font(fontfile=str(yol))
             gen = font.text_length(metin, fontsize=boy)
-            if gen > kutu_gen and gen > 0:
-                boy = max(2.0, boy * kutu_gen / gen)
-        except Exception:  # noqa: BLE001 — ölçüm başarısızsa tanımlı punto kalır
-            log.debug("PDF metin ölçülemedi", exc_info=True)
-    sol = float(k.get("x", 0)) * W
-    ust = float(k.get("y", 0)) * H
-    hiza = {"left": 0, "center": 1, "right": 2}.get(k.get("align") or "left", 0)
+            if gen > 0:
+                boy = max(2.0, min(H * TAVAN_PUNTO, boy * kutu_gen / gen))
+                # TEK SATIR olarak çizilir: insert_textbox metni kutuya
+                # sığdıramazsa HİÇ çizmez — punto büyüyünce kısa metinler
+                # (tek harf, "10") baskı dosyasından tamamen düşüyordu.
+                # Ekrandaki karşılığı da tek satırdır (white-space: nowrap).
+                genislik = font.text_length(metin, fontsize=boy)
+                x = sol
+                if yaslama == "center":
+                    x = sol + (kutu_gen - genislik) / 2
+                elif yaslama == "right":
+                    x = sol + kutu_gen - genislik
+                # insert_text TABAN ÇİZGİSİNİ ister; PNG'de üst kenar y'dedir
+                sayfa.insert_text(
+                    (x, ust + boy * font.ascender), metin, fontsize=boy,
+                    fontfile=str(yol), fontname=yol.stem, color=renk,
+                )
+                return
+        except Exception:  # noqa: BLE001 — ölçüm/çizim başarısızsa kutuya düşülür
+            log.debug("PDF metin ölçülemedi — kutuya düşülüyor", exc_info=True)
 
     # Metin kutusu: PNG çıktısındaki satır sarma davranışının karşılığı
     kutu = pymupdf.Rect(sol, ust, sol + kutu_gen, H)

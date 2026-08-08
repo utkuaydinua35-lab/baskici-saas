@@ -7,6 +7,7 @@
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
+import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, ShapeLayer, TextLayer,
 } from "./types";
@@ -21,59 +22,80 @@ interface Props {
   /** Kırpma modu: görsel tutamakları ÖLÇEKLEMEZ, kenardan KIRPAR
       (en/boy oranı bozulmaz, görüntü ezilmez). */
   kirpma?: boolean;
+  /** Kısıtlı şablon: yerleşim panelde belirlenmiştir — müşteri hiçbir
+      katmanı taşıyamaz, ölçekleyemez, döndüremez. */
+  kilitli?: boolean;
 }
 
-/** Kutuya sığmayan metnin puntosunu orantılı küçülten metin katmanı.
+/** Metni kutu genişliğine BİREBİR oturtan katman: kısa metin büyür, uzun
+ *  metin küçülür — "10" ile "100" aynı genişlikte çıkar.
  *
- *  Ölçüm GERÇEK DOM elemanı üzerinden yapılır (scrollWidth): canvas
+ *  Ölçüm, tanımlı puntoda duran GİZLİ bir kopya üzerinden yapılır; canvas
  *  measureText ile ölçmek, özel font henüz yüklenmemişse yedek fontu ölçüyor
- *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu. Font sonradan
- *  yüklendiğinde document.fonts.ready ile yeniden ölçülür.
+ *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu.
  *
  *  Sunucudaki karşılığı: design_render._ciz_metin / design_pdf._yazi. */
-function SigdirilanYazi({ metin, punto, sigdir, stil }: {
-  metin: string; punto: number; sigdir: boolean;
+function SigdirilanYazi({ metin, punto, sigdir, tavan, stil }: {
+  metin: string; punto: number; sigdir: boolean; tavan: number;
   stil: React.CSSProperties;
 }) {
-  const ref = useRef<HTMLSpanElement>(null);
+  // Ölçüm, GÖRÜNEN metnin değil hep TANIMLI puntodaki gizli kopyanın üzerinden
+  // yapılır. Görünen metni ölçmek geri besleme yaratıyordu: bir kez ölçekledikten
+  // sonraki ölçüm zaten büyümüş/küçülmüş metni okuyup yanlış oran çıkarıyor,
+  // ölçek tek geçişte doğru değere yakınsamıyordu.
+  const olcRef = useRef<HTMLSpanElement>(null);
   const [olcek, setOlcek] = useState(1);
-  // Ölçüm sırasında DOM zaten küçültülmüş olabilir; ölçeksiz genişliği
-  // bulmak için o anki ölçek gerekir (ref ile, efekti tetiklemeden).
-  const olcekRef = useRef(1);
-  olcekRef.current = olcek;
 
   useLayoutEffect(() => {
-    if (!sigdir) { setOlcek(1); return; }
-    let iptal = false;
+    const el = olcRef.current;
+    const kap = el?.parentElement;
+    if (!sigdir || !el || !kap) { setOlcek(1); return; }
     const olc = () => {
-      const el = ref.current;
-      const kap = el?.parentElement;
-      if (iptal || !el || !kap) return;
       const kutu = kap.clientWidth;
-      // ÖLÇEKSİZ genişlik: ölçülen değer mevcut ölçekle küçülmüş olduğundan
-      // geri büyütülür. Aksi hâlde ikinci ölçüm "sığıyor" deyip ölçeği 1'e
-      // döndürüyor, metin yeniden taşıyordu.
-      const gen = el.scrollWidth / (olcekRef.current || 1);
+      const gen = el.getBoundingClientRect().width;   // her zaman ölçeksiz
       if (!kutu || !gen) return;
-      const yeni = gen > kutu ? Math.max(0.15, kutu / gen) : 1;
-      // Kılpayı farklarda gereksiz render olmasın
-      if (Math.abs(yeni - olcekRef.current) > 0.005) setOlcek(yeni);
+      // Kutuyu TAM doldur (büyüt ya da küçült); tavan, tek harfli metnin
+      // baskı alanını boydan boya taşırmasını engeller
+      const enBuyuk = punto > 0 ? Math.max(1, tavan / punto) : 1;
+      const yeni = Math.min(enBuyuk, Math.max(0.15, kutu / gen));
+      setOlcek((eski) => (Math.abs(yeni - eski) > 0.005 ? yeni : eski));
     };
     olc();
-    // Özel font sonradan gelirse genişlik değişir — tekrar ölç
-    document.fonts?.ready?.then(olc).catch(() => {});
-    return () => { iptal = true; };
-  }, [metin, punto, sigdir, stil.fontFamily]);
+    // Özel font GEÇ yüklenirse İLK ölçüm yedek fontu okur ve metin kutuyu
+    // doldurmaz. Tek bir "font hazır" sinyaline güvenmek yetmiyor:
+    // document.fonts.ready tek seferliktir, fonts.load bazı tarayıcılarda
+    // yazı tipi uygulanmadan çözülüyor, ResizeObserver ise her ortamda
+    // tetiklenmiyor. Bu yüzden kısa bir pencere boyunca yeniden ölçülür —
+    // ölçü değişmediği anda durulur (setOlcek zaten aynı değeri yazmaz).
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(olc);
+      ro.observe(el);
+      ro.observe(kap);
+    } catch { /* eski tarayıcı — zamanlayıcılar yine ölçer */ }
+    const zamanlar = [120, 350, 800, 1600].map((ms) => window.setTimeout(olc, ms));
+    return () => { ro?.disconnect(); zamanlar.forEach(window.clearTimeout); };
+  }, [metin, punto, sigdir, tavan, stil.fontFamily]);
 
   return (
-    <span ref={ref} style={{
-      display: "inline-block",
-      whiteSpace: sigdir ? "nowrap" : "normal",
-      fontSize: `${punto * olcek}px`,
-      width: sigdir ? "auto" : "100%",
-    }}>
-      {metin}
-    </span>
+    <>
+      {sigdir && (
+        <span ref={olcRef} aria-hidden="true" style={{
+          position: "absolute", visibility: "hidden", pointerEvents: "none",
+          left: 0, top: 0, whiteSpace: "nowrap", fontSize: `${punto}px`,
+        }}>
+          {metin}
+        </span>
+      )}
+      <span style={{
+        display: "inline-block",
+        whiteSpace: sigdir ? "nowrap" : "normal",
+        fontSize: `${punto * olcek}px`,
+        width: sigdir ? "auto" : "100%",
+      }}>
+        {metin}
+      </span>
+    </>
   );
 }
 
@@ -88,6 +110,7 @@ const YONLER: [Yon, number, number, string][] = [
 
 export default function Canvas({
   template, layers, selected, onSelect, onChange, maxHeight = 560, kirpma = false,
+  kilitli = false,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -102,20 +125,42 @@ export default function Canvas({
   // Baskı alanının ekrandaki ölçüsü — oransal metin boyutunu piksele çevirmek
   // için gerekli (saf CSS ile yapılamıyor).
   const [areaPx, setAreaPx] = useState({ w: 0, h: 0 });
+  const alaniOlc = useCallback(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const w = el.clientWidth, h = el.clientHeight;
+    setAreaPx((eski) => (eski.w === w && eski.h === h ? eski : { w, h }));
+  }, []);
   useEffect(() => {
     const el = areaRef.current;
     if (!el) return;
-    const olc = () => setAreaPx({ w: el.clientWidth, h: el.clientHeight });
-    olc();
-    const ro = new ResizeObserver(olc);
+    alaniOlc();
+    // Kılıf görseli yüklenince alan büyür. Tek başına ResizeObserver yetmiyor:
+    // görsel önbellekten gelirse onLoad hiç tetiklenmiyor, RO da her ortamda
+    // çalışmıyor. Kısa bir pencerede yeniden ölçülür (punto buna oranlı).
+    const ro = new ResizeObserver(alaniOlc);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    window.addEventListener("resize", alaniOlc);
+    const zamanlar = [120, 350, 800, 1600].map((ms) => window.setTimeout(alaniOlc, ms));
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", alaniOlc);
+      zamanlar.forEach(window.clearTimeout);
+    };
+  }, [alaniOlc]);
+
+  // Her render'dan sonra da ölç: yukarıdaki tetikler (RO / onLoad / resize /
+  // zamanlayıcı) hiçbiri çalışmasa bile katman, şablon ya da metin değişimiyle
+  // gelen render ölçüyü tazeler. Değer değişmediğinde setAreaPx yeni render
+  // üretmediği için döngü olmaz.
+  useLayoutEffect(alaniOlc);
 
   // Baskı alanının ekrandaki piksel ölçüsü — oranları piksele çevirmek için
   const areaBox = () => areaRef.current?.getBoundingClientRect();
 
   const onPointerDown = (e: React.PointerEvent, id: string, mode: DragMode) => {
+    // Kısıtlı şablonda yerleşim sabittir — dokunuş hiçbir şeyi oynatmaz
+    if (kilitli) return;
     e.preventDefault();
     e.stopPropagation();
     const l = layers.find((x) => x.id === id);
@@ -246,7 +291,10 @@ export default function Canvas({
       onPointerDown={() => onSelect(null)}>
       {/* Kılıf görseli — tasarım BUNUN ALTINDA kalır (şeffaf kılıfta doğru görünüm) */}
       {/* Mobilde ekran genişliğine, masaüstünde yüksekliğe göre sığar */}
+      {/* Kılıf görseli yüklenince baskı alanı büyür — punto ona oranlı
+          olduğundan yeniden ölçülmeli (ResizeObserver'a tek başına güvenilmez) */}
       <img src={template.image_url} alt={template.label} draggable={false}
+        onLoad={alaniOlc}
         style={{
           maxHeight, maxWidth: "100%", width: "auto", height: "auto", display: "block",
         }} />
@@ -309,12 +357,13 @@ export default function Canvas({
             return (
               <div key={l.id} data-katman={l.id}
                 onPointerDown={(e) => onPointerDown(e, l.id, "move")}
-                className={`absolute ${secili ? "outline outline-2 outline-white/90" : ""}`}
+                className={`absolute ${secili && !kilitli ? "outline outline-2 outline-white/90" : ""}`}
                 style={{
                   left: `${im.x * 100}%`, top: `${im.y * 100}%`,
                   width: `${im.w * 100}%`, height: `${im.h * 100}%`,
                   transform: `rotate(${im.rot || 0}deg)`,
-                  cursor: "move", overflow: "hidden",
+                  cursor: kilitli ? "default" : "move", overflow: "hidden",
+                  pointerEvents: kilitli ? "none" : undefined,
                 }}>
                 <img src={im.url} alt="" draggable={false}
                   style={c ? {
@@ -332,7 +381,7 @@ export default function Canvas({
           return (
             <div key={l.id} data-katman={l.id}
               onPointerDown={(e) => onPointerDown(e, l.id, "move")}
-              className={`absolute ${secili ? "outline outline-2 outline-white/90" : ""}`}
+              className={`absolute ${secili && !kilitli ? "outline outline-2 outline-white/90" : ""}`}
               style={{
                 left: `${tx.x * 100}%`, top: `${tx.y * 100}%`, width: `${tx.w * 100}%`,
                 transform: `rotate(${tx.rot || 0}deg)`,
@@ -340,13 +389,14 @@ export default function Canvas({
                 color: tx.color,
                 textAlign: tx.align,
                 lineHeight: 1.15,
-                cursor: "move",
+                cursor: kilitli ? "default" : "move",
+                pointerEvents: kilitli ? "none" : undefined,
                 wordBreak: "break-word",
               }}>
               {/* Sığdırma yalnız kısıtlı şablon alanlarında (sigdir === true);
                   serbest editörde punto müşterinin kendi ayarıdır */}
               <SigdirilanYazi metin={tx.text} punto={puntoPx}
-                sigdir={tx.sigdir === true}
+                sigdir={tx.sigdir === true} tavan={TAVAN_PUNTO * areaPx.h}
                 stil={{ fontFamily: `'${f.css}', sans-serif` }} />
             </div>
           );
@@ -375,7 +425,7 @@ export default function Canvas({
 
       {/* Seçili katmanın tutamakları — 8 yön + döndürme. Baskı alanının
           DIŞINDA çizilir ki kenara yapışık katmanlarda kırpılmasın. */}
-      {selected && (() => {
+      {selected && !kilitli && (() => {
         const secim = layers.find((x) => x.id === selected);
         // Hazır şablon taşınmaz/ölçeklenmez (kılıfa bire bir oturur) → tutamak yok
         if (!secim || secim.type === "overlay") return null;

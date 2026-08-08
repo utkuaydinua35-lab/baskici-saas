@@ -5,6 +5,11 @@
 // dosyasını üretirken de aynı oranları kullanır. Böylece müşterinin gördüğü
 // ile basılan bire bir örtüşür.
 
+/** "Çerçeveyi doldur" alanlarında punto, baskı alanı yüksekliğinin bu katından
+ *  büyüyemez — tek harfli metin alanı boydan boya taşırmasın.
+ *  Sunucudaki eşi: backend/app/services/design_render.py → TAVAN_PUNTO */
+export const TAVAN_PUNTO = 0.8;
+
 export interface CaseArea {
   x: number; y: number; w: number; h: number; radius: number;
 }

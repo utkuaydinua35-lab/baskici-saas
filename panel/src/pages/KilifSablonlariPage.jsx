@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 
@@ -222,7 +222,7 @@ function HazirSablonlar({ storeId, templates }) {
       </div>
 
       {alanDuzenle && (
-        <SablonAlanEditoru overlay={alanDuzenle}
+        <SablonAlanEditoru overlay={alanDuzenle} templates={templates}
           onClose={() => setAlanDuzenle(null)}
           onSaved={() => { setAlanDuzenle(null); load() }} />
       )}
@@ -652,7 +652,65 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
 //
 // Koordinatlar şablon görseline ORANSAL (0-1) saklanır; alan kutuları fareyle
 // taşınır ve sağ alt köşeden boyutlandırılır.
-function SablonAlanEditoru({ overlay, onClose, onSaved }) {
+// "Çerçeveyi doldur" tavanı — vitrindeki ve sunucudaki değerle aynı olmalı
+// (storefront/components/studio/types.ts, backend design_render.TAVAN_PUNTO)
+const TAVAN_PUNTO = 0.8
+
+// Metni kutu genişliğine oturtan önizleme — vitrindeki SigdirilanYazi'nin eşi
+function DolduranYazi({ metin, punto, doldur, tavan }) {
+  // Ölçüm hep TANIMLI puntodaki gizli kopyadan yapılır (bkz. Canvas.tsx):
+  // görünen metni ölçmek geri besleme yaratıp ölçeği şaşırtıyor.
+  const olcRef = useRef(null)
+  const [olcek, setOlcek] = useState(1)
+  useLayoutEffect(() => {
+    const el = olcRef.current
+    const kap = el?.parentElement
+    if (!doldur || !el || !kap) { setOlcek(1); return }
+    const olc = () => {
+      const kutu = kap.clientWidth
+      const gen = el.getBoundingClientRect().width
+      if (!kutu || !gen) return
+      const enBuyuk = punto > 0 ? Math.max(1, tavan / punto) : 1
+      const yeni = Math.min(enBuyuk, Math.max(0.15, kutu / gen))
+      setOlcek(eski => (Math.abs(yeni - eski) > 0.005 ? yeni : eski))
+    }
+    olc()
+    // Font sonradan yüklenince ölçüm kopyasının genişliği değişir → kısa bir
+    // pencere boyunca yeniden ölç (bkz. Canvas.tsx'teki aynı gerekçe)
+    let ro = null
+    try {
+      ro = new ResizeObserver(olc)
+      ro.observe(el)
+      ro.observe(kap)
+    } catch { /* eski tarayıcı */ }
+    const zamanlar = [120, 350, 800, 1600].map(ms => setTimeout(olc, ms))
+    return () => { ro?.disconnect(); zamanlar.forEach(clearTimeout) }
+  }, [metin, punto, doldur, tavan])
+  return (
+    <>
+      {doldur && (
+        <span ref={olcRef} aria-hidden="true" style={{
+          position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+          left: 0, top: 0, whiteSpace: 'nowrap', fontSize: `${punto}px`,
+        }}>{metin}</span>
+      )}
+      <span style={{
+        display: 'inline-block',
+        whiteSpace: doldur ? 'nowrap' : 'normal',
+        fontSize: `${punto * olcek}px`,
+        width: doldur ? 'auto' : '100%',
+      }}>{metin}</span>
+    </>
+  )
+}
+
+// Alan editörünün önizlemesi VİTRİNDEKİ TUVALLE aynı geometriyi kullanır:
+// şablon görseli baskı alanına GERİLİR (objectFit: fill), alanlar ve punto
+// baskı alanına oranlanır. Şablon görselini burada kendi doğal oranında
+// göstermek, kare bir tasarımın uzun kılıfta bambaşka görünmesine ve
+// "yazıyı koyduğum yerde değil" şikâyetine yol açıyordu.
+// Vitrindeki eşi: storefront/components/studio/Canvas.tsx
+function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
   const [mod, setMod] = useState(overlay.mod || 'serbest')
   const [kategori, setKategori] = useState(overlay.kategori || '')
   const [sadeceUrunde, setSadeceUrunde] = useState(!!overlay.sadece_urunde)
@@ -664,6 +722,36 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
   const tuvalRef = useRef(null)
   const gorselRef = useRef(null)
   const surukle = useRef(null)
+  // Tuvalin ölçüsü — puntoyu piksele çevirmek için (vitrindeki areaPx'in eşi)
+  const [tuvalPx, setTuvalPx] = useState({ w: 0, h: 0 })
+
+  // Baskı alanının EN/BOY oranı: kılıf görselinin doğal ölçüsü × alan oranı.
+  // Şablon bir kılıfa bağlı değilse görselin kendi oranı kullanılır.
+  const kilif = templates.find(t => t.id === overlay.case_template_id) || null
+  const [alanOran, setAlanOran] = useState(null)
+  useEffect(() => {
+    let iptal = false
+    const im = new Image()
+    im.onload = () => {
+      if (iptal) return
+      const a = kilif?.area
+      setAlanOran(a
+        ? (a.w * im.naturalWidth) / (a.h * im.naturalHeight)
+        : im.naturalWidth / im.naturalHeight)
+    }
+    im.src = kilif?.image_url || overlay.image_url
+    return () => { iptal = true }
+  }, [kilif, overlay.image_url])
+
+  useEffect(() => {
+    const el = tuvalRef.current
+    if (!el) return
+    const olc = () => setTuvalPx({ w: el.clientWidth, h: el.clientHeight })
+    olc()
+    const ro = new ResizeObserver(olc)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [alanOran])
 
   const secili = alanlar[sel] || null
   const yamala = (yama) => setAlanlar(ls =>
@@ -820,11 +908,13 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
         </label>
 
         <div className="grid md:grid-cols-[1fr_260px] gap-4">
-          {/* Önizleme — alanlar şablon görselinin üstünde */}
-          <div className="bg-panel-input rounded-xl p-3 flex justify-center">
-            <div ref={tuvalRef} className="relative inline-block select-none touch-none">
+          {/* Önizleme — vitrindeki tuvalin birebir aynısı: şablon görseli
+              baskı alanına gerilir, alanlar o kutuya oranlanır */}
+          <div className="bg-panel-input rounded-xl p-3 flex flex-col items-center gap-1.5">
+            <div ref={tuvalRef} className="relative select-none touch-none bg-black/20"
+              style={{ height: '58vh', aspectRatio: alanOran || 0.5 }}>
               <img src={overlay.image_url} alt={overlay.label} draggable={false}
-                style={{ maxHeight: '58vh', width: 'auto', display: 'block' }} />
+                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} />
               {alanlar.map((a, i) => (
                 <div key={i} onPointerDown={e => basla(e, i, 'tasi')}
                   className={`absolute cursor-move ${i === sel
@@ -852,15 +942,16 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                           flex items-center justify-center">görsel yok</div>
                   ) : (
                     <div style={{
-                      fontSize: `calc(${(a.size || 0.1)} * ${tuvalRef.current?.clientHeight || 400}px)`,
                       color: a.renk || '#fff', textAlign: a.hiza || 'center',
                       lineHeight: 1.15, fontWeight: 800,
-                      // "Çerçeveye sığdır" açıkken müşteride uzun metin küçülür;
-                      // panelde de tek satırda kalıp kutuya sıkışmış görünsün
-                      ...(a.tip === 'yazi' && a.otomatik_kucult !== false
-                        ? { whiteSpace: 'nowrap', overflow: 'hidden' }
-                        : { wordBreak: 'break-word' }),
-                    }}>{a.varsayilan || a.etiket}</div>
+                    }}>
+                      {/* Vitrindeki davranışın aynısı: "çerçeveyi doldur"
+                          açıkken metin kutu genişliğine oturtulur */}
+                      <DolduranYazi metin={a.varsayilan || a.etiket}
+                        punto={(a.size || 0.1) * (tuvalPx.h || 400)}
+                        doldur={a.otomatik_kucult !== false}
+                        tavan={TAVAN_PUNTO * (tuvalPx.h || 400)} />
+                    </div>
                   )}
                   {/* Boyutlandırma tutamağı */}
                   <span onPointerDown={e => basla(e, i, 'boyut')}
@@ -1078,9 +1169,11 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                       <input type="checkbox" checked={secili.otomatik_kucult !== false} className="mt-0.5"
                         onChange={e => yamala({ otomatik_kucult: e.target.checked })} />
                       <span>
-                        <b>Çerçeveye sığdır</b> — uzun metinde punto otomatik küçülür,
-                        yazı kutunun dışına taşmaz. (“10” büyük çıkar, “100” aynı
-                        genişliğe sığacak kadar küçülür.)
+                        <b>Çerçeveyi doldur</b> — yazı kutu genişliğine birebir
+                        oturur: kısa metin BÜYÜR, uzun metin küçülür. (“10” da
+                        “100” da aynı genişlikte çıkar; tek harfli isim de üç
+                        harfli isim de çerçeveyi kaplar.) Kapalıyken punto
+                        aşağıdaki değerde sabit kalır.
                       </span>
                     </label>
                     <div className="text-[10px] text-panel-muted">

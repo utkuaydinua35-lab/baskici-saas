@@ -4,6 +4,7 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
+import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, OverlayLayer, ShapeLayer, TextLayer,
 } from "./types";
@@ -116,12 +117,13 @@ export async function onizlemeUret(
         let boy = Math.max(6, tx.size * ah);
         ctx.save();
         ctx.font = `${boy}px '${f.css}', sans-serif`;
-        // ÇERÇEVEYE SIĞDIR — tuval ve baskıdaki kuralın aynısı
+        // ÇERÇEVEYİ DOLDUR — tuval ve baskıdaki kuralın aynısı: kısa metin
+        // büyür, uzun metin küçülür, ikisi de kutuyu tam kaplar
         if (tx.sigdir === true) {
           const olcu = ctx.measureText(tx.text || "").width;
           const kutu = tx.w * aw;
-          if (olcu > kutu && olcu > 0) {
-            boy = Math.max(4, (boy * kutu) / olcu);
+          if (olcu > 0) {
+            boy = Math.max(4, Math.min(ah * TAVAN_PUNTO, (boy * kutu) / olcu));
             ctx.font = `${boy}px '${f.css}', sans-serif`;
           }
         }

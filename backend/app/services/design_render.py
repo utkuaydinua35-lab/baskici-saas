@@ -48,6 +48,10 @@ FONT_FILES = {
     "elite": "SpecialElite-Regular.ttf",
 }
 MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
+# "Çerçeveyi doldur" açık alanlarda punto, baskı alanı yüksekliğinin bu
+# katından büyüyemez — tek harfli metin alanı boydan boya taşırmasın.
+# İstemcideki eşi: storefront/components/studio/Canvas.tsx → TAVAN_PUNTO
+TAVAN_PUNTO = 0.8
 
 # BASKI RENK KURALI (storefront/components/studio/renk.ts ile aynı):
 # CMYK bileşenlerinin tamamı ~0 olan renk (saf beyaz) baskı makinesinde
@@ -271,14 +275,17 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     kutu_gen = max(1, round(float(k.get("w", 0.8)) * W))
     font = _font(str(k.get("font") or "poppins"), boy)
 
-    # ÇERÇEVEYE SIĞDIR: metin kutuya sığmıyorsa punto orantılı küçültülür.
-    # "10" tanımlı puntoda çıkar, "100" aynı genişliğe sığacak kadar küçülür.
+    # ÇERÇEVEYİ DOLDUR: metin kutu genişliğine BİREBİR oturtulur — kısa metin
+    # büyür, uzun metin küçülür. "10" ile "100" aynı genişlikte çıkar; formada
+    # tek harfli isim de üç harfli isim de çerçeveyi doldurur.
     # Yalnız KISITLI ŞABLON alanlarında açıktır (katman üreticisi sigdir=True
     # yazar); serbest editörde punto müşterinin kendi ayarıdır, dokunulmaz.
     if k.get("sigdir") is True:
         gen = ciz.textlength(metin, font=font)
-        if gen > kutu_gen and gen > 0:
-            boy = max(4, int(boy * kutu_gen / gen))
+        if gen > 0:
+            # Güvenlik tavanı: satır baskı alanının dışına taşmasın
+            tavan = max(4, int(H * TAVAN_PUNTO))
+            boy = max(4, min(tavan, int(boy * kutu_gen / gen)))
             font = _font(str(k.get("font") or "poppins"), boy)
 
     satirlar = _sar(ciz, metin, font, kutu_gen)

@@ -269,8 +269,11 @@ class OverlayAlan(BaseModel):
     font: str | None = Field(None, max_length=30)
     renk: str | None = Field(None, max_length=9)
     hiza: str | None = Field(None, pattern="^(left|center|right)$")
-    # Yazı çerçeveye sığmazsa punto otomatik küçülsün mü (varsayılan: evet)
-    sigdir: bool | None = None
+    # Yazı çerçeveye sığmazsa punto otomatik küçülsün mü (varsayılan: evet).
+    # DİKKAT: foto alanının "sigdir" alanı METİNdir ("kapla"/"sigdir") — aynı
+    # adı kullanmak Pydantic'te ikinci tanımın birinciyi ezmesine ve panelin
+    # "Input should be a valid string" hatası almasına yol açmıştı.
+    otomatik_kucult: bool | None = None
     # görsel alanı — dosya ayrı uçtan yüklenir, burada yolu taşınır
     image_path: str | None = Field(None, max_length=500)
     # foto alanı — MÜŞTERİNİN yükleyeceği görselin çerçeveye oturma biçimi

@@ -674,7 +674,7 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
     const yeniler = {
       yazi: { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
               max: 12, x: 0.2, y: 0.4, w: 0.6, size: 0.12, font: 'anton',
-              renk: '#ffffff', hiza: 'center', sigdir: true },
+              renk: '#ffffff', hiza: 'center', otomatik_kucult: true },
       gorsel: { key: `gorsel${n}`, tip: 'gorsel', etiket: `Öğe ${n}`, x: 0.2, y: 0.2,
                 w: 0.2, h: 0.1, varsayilan: true, image_path: null },
       // Müşterinin YÜKLEYECEĞİ görsel — çerçeveye otomatik oturur, şablon
@@ -857,7 +857,7 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                       lineHeight: 1.15, fontWeight: 800,
                       // "Çerçeveye sığdır" açıkken müşteride uzun metin küçülür;
                       // panelde de tek satırda kalıp kutuya sıkışmış görünsün
-                      ...(a.sigdir !== false
+                      ...(a.tip === 'yazi' && a.otomatik_kucult !== false
                         ? { whiteSpace: 'nowrap', overflow: 'hidden' }
                         : { wordBreak: 'break-word' }),
                     }}>{a.varsayilan || a.etiket}</div>
@@ -1075,8 +1075,8 @@ function SablonAlanEditoru({ overlay, onClose, onSaved }) {
                       </select>
                     </label>
                     <label className="flex items-start gap-2 text-[11px]">
-                      <input type="checkbox" checked={secili.sigdir !== false} className="mt-0.5"
-                        onChange={e => yamala({ sigdir: e.target.checked })} />
+                      <input type="checkbox" checked={secili.otomatik_kucult !== false} className="mt-0.5"
+                        onChange={e => yamala({ otomatik_kucult: e.target.checked })} />
                       <span>
                         <b>Çerçeveye sığdır</b> — uzun metinde punto otomatik küçülür,
                         yazı kutunun dışına taşmaz. (“10” büyük çıkar, “100” aynı

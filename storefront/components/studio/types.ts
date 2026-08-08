@@ -101,7 +101,7 @@ export interface StudioAlan {
   font?: string;
   renk?: string;
   hiza?: "left" | "center" | "right";
-  sigdir_yazi?: boolean;         // yazı alanı: çerçeveye sığdır (auto-fit)
+  otomatik_kucult?: boolean;     // yazı alanı: çerçeveye sığmazsa punto küçülür
   image_url?: string | null;     // gorsel alanı
   sigdir?: "kapla" | "sigdir";   // foto alanı
   // ilerleme alanı

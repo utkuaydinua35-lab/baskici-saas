@@ -5,7 +5,7 @@
 // Katmanlar DOM elemanıdır (canvas değil): metin gerçek font'la render olur,
 // dokunmatik tutamaklar kolay, kırpma CSS ile yapılır. Önizleme PNG'si ayrıca
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, ShapeLayer, TextLayer,
@@ -23,17 +23,58 @@ interface Props {
   kirpma?: boolean;
 }
 
-/** Metin kutuya sığmıyorsa puntoyu orantılı küçültür (tek satır varsayımı).
- *  Ölçüm için tarayıcının canvas metin ölçüsü kullanılır — gerçek font
- *  yüklüyse birebir, yüklenmemişse yaklaşık (font gelince yeniden ölçülür). */
-let _olcumCtx: CanvasRenderingContext2D | null = null;
-function metniSigdir(metin: string, fontCss: string, punto: number, kutuGen: number): number {
-  if (!metin || kutuGen <= 0) return punto;
-  if (!_olcumCtx) _olcumCtx = document.createElement("canvas").getContext("2d");
-  if (!_olcumCtx) return punto;
-  _olcumCtx.font = `${punto}px '${fontCss}', sans-serif`;
-  const gen = _olcumCtx.measureText(metin).width;
-  return gen > kutuGen && gen > 0 ? Math.max(6, (punto * kutuGen) / gen) : punto;
+/** Kutuya sığmayan metnin puntosunu orantılı küçülten metin katmanı.
+ *
+ *  Ölçüm GERÇEK DOM elemanı üzerinden yapılır (scrollWidth): canvas
+ *  measureText ile ölçmek, özel font henüz yüklenmemişse yedek fontu ölçüyor
+ *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu. Font sonradan
+ *  yüklendiğinde document.fonts.ready ile yeniden ölçülür.
+ *
+ *  Sunucudaki karşılığı: design_render._ciz_metin / design_pdf._yazi. */
+function SigdirilanYazi({ metin, punto, sigdir, stil }: {
+  metin: string; punto: number; sigdir: boolean;
+  stil: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [olcek, setOlcek] = useState(1);
+  // Ölçüm sırasında DOM zaten küçültülmüş olabilir; ölçeksiz genişliği
+  // bulmak için o anki ölçek gerekir (ref ile, efekti tetiklemeden).
+  const olcekRef = useRef(1);
+  olcekRef.current = olcek;
+
+  useLayoutEffect(() => {
+    if (!sigdir) { setOlcek(1); return; }
+    let iptal = false;
+    const olc = () => {
+      const el = ref.current;
+      const kap = el?.parentElement;
+      if (iptal || !el || !kap) return;
+      const kutu = kap.clientWidth;
+      // ÖLÇEKSİZ genişlik: ölçülen değer mevcut ölçekle küçülmüş olduğundan
+      // geri büyütülür. Aksi hâlde ikinci ölçüm "sığıyor" deyip ölçeği 1'e
+      // döndürüyor, metin yeniden taşıyordu.
+      const gen = el.scrollWidth / (olcekRef.current || 1);
+      if (!kutu || !gen) return;
+      const yeni = gen > kutu ? Math.max(0.15, kutu / gen) : 1;
+      // Kılpayı farklarda gereksiz render olmasın
+      if (Math.abs(yeni - olcekRef.current) > 0.005) setOlcek(yeni);
+    };
+    olc();
+    // Özel font sonradan gelirse genişlik değişir — tekrar ölç
+    document.fonts?.ready?.then(olc).catch(() => {});
+    return () => { iptal = true; };
+  }, [metin, punto, sigdir, stil.fontFamily]);
+
+  return (
+    <span ref={ref} style={{
+      display: "inline-block",
+      whiteSpace: sigdir ? "nowrap" : "normal",
+      fontSize: `${punto * olcek}px`,
+      width: sigdir ? "auto" : "100%",
+    }}>
+      {metin}
+    </span>
+  );
 }
 
 // Boyutlandırma yönleri: köşeler oranı korur, kenarlar tek eksende esner
@@ -287,15 +328,7 @@ export default function Canvas({
           }
           const tx = l as TextLayer;
           const f = fontByKey(tx.font);
-          // ÇERÇEVEYE SIĞDIR — kutuya sığmayan metnin puntosu orantılı küçülür
-          // (sunucudaki kuralın aynısı: design_render._ciz_metin). Ölçüm canvas
-          // API'siyle yapılır; DOM'a yazıp geri okumaya gerek kalmaz.
           const puntoPx = Math.max(8, tx.size * areaPx.h);
-          // Sığdırma yalnız kısıtlı şablon alanlarında (sigdir === true);
-          // serbest editörde punto müşterinin kendi ayarıdır
-          const puntoSon = tx.sigdir === true && areaPx.w
-            ? metniSigdir(tx.text, f.css, puntoPx, tx.w * areaPx.w)
-            : puntoPx;
           return (
             <div key={l.id} data-katman={l.id}
               onPointerDown={(e) => onPointerDown(e, l.id, "move")}
@@ -304,14 +337,17 @@ export default function Canvas({
                 left: `${tx.x * 100}%`, top: `${tx.y * 100}%`, width: `${tx.w * 100}%`,
                 transform: `rotate(${tx.rot || 0}deg)`,
                 fontFamily: `'${f.css}', sans-serif`,
-                fontSize: `${puntoSon}px`,
                 color: tx.color,
                 textAlign: tx.align,
                 lineHeight: 1.15,
                 cursor: "move",
                 wordBreak: "break-word",
               }}>
-              {tx.text}
+              {/* Sığdırma yalnız kısıtlı şablon alanlarında (sigdir === true);
+                  serbest editörde punto müşterinin kendi ayarıdır */}
+              <SigdirilanYazi metin={tx.text} punto={puntoPx}
+                sigdir={tx.sigdir === true}
+                stil={{ fontFamily: `'${f.css}', sans-serif` }} />
             </div>
           );
         })}

@@ -90,7 +90,7 @@ export function kisitliKatmanlar(
         x: a.x, y: a.y, w: a.w, rot: 0,
         align: (a.hiza as TextLayer["align"]) || "center",
         // Panelde "çerçeveye sığdır" kapatılmadıysa punto otomatik küçülür
-        sigdir: (a as { sigdir?: boolean }).sigdir !== false,
+        sigdir: a.otomatik_kucult !== false,
       };
       hedef.push(yazi);
 

@@ -8,6 +8,21 @@ import type {
   CaseTemplate, ImageLayer, Layer, OverlayLayer, ShapeLayer, TextLayer,
 } from "./types";
 
+/** Tasarımda kullanılan yazı tipleri yüklenene kadar bekle (en fazla 3 sn). */
+async function fontlariBekle(layers: Layer[]): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  const yazilar = layers.filter((l) => l.type === "text") as TextLayer[];
+  if (!yazilar.length) return;
+  const isler = yazilar.map((t) => {
+    const f = fontByKey(t.font);
+    return document.fonts.load(`16px '${f.css}'`).catch(() => undefined);
+  });
+  await Promise.race([
+    Promise.all(isler),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]);
+}
+
 const gorselYukle = (src: string): Promise<HTMLImageElement> =>
   new Promise((cozumle, reddet) => {
     const im = new Image();
@@ -21,6 +36,9 @@ export async function onizlemeUret(
   template: CaseTemplate, layers: Layer[], genislik = 420,
 ): Promise<string | null> {
   try {
+    // Özel fontlar yüklenmeden ölçüm/çizim yapılırsa yedek font kullanılır:
+    // metin genişliği yanlış çıkar, "çerçeveye sığdır" hesabı şaşar.
+    await fontlariBekle(layers);
     const kilif = await gorselYukle(template.image_url);
     const oran = kilif.naturalHeight / kilif.naturalWidth;
     const W = genislik;

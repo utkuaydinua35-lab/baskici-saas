@@ -189,9 +189,11 @@ export default async function ProductPage({ params }: Props) {
         </section>
       )}
 
-      {/* Ürün soru-cevap — satın alma şartı yok, yanıtlananlar yayınlanır */}
-      <StudioModules modules={product.studio_templates || []} productSlug={product.slug} />
+      {/* Kendi tasarımını yap — kılıf şablonları + hazır tasarım modülleri */}
+      <StudioModules modules={product.studio_templates || []}
+        moduller={product.studio_moduller || []} productSlug={product.slug} />
 
+      {/* Ürün soru-cevap — satın alma şartı yok, yanıtlananlar yayınlanır */}
       <ProductQuestions productSlug={product.slug} />
 
       <RecentlyViewed

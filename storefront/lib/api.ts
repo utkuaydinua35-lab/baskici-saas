@@ -71,6 +71,11 @@ export interface ProductDetail {
   custom_fields?: CustomField[];
   // Tasarım stüdyosu modülleri — ürün sayfasında "Kendi Tasarımını Yap"
   studio_templates?: { key: string; label: string; description: string | null; image_url: string }[];
+  // Ürüne bağlı hazır tasarım modülleri (Spotify arayüzü, forma…)
+  studio_moduller?: {
+    id: string; label: string; kategori: string | null;
+    thumb_url: string; kilif_key: string | null;
+  }[];
   models_per_item?: number;
   video_url?: string | null;
   description: string | null;

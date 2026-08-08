@@ -50,6 +50,16 @@ export default function YorumlarPage() {
     finally { setBusyId(null) }
   }
 
+  // Kalıcı sil — küfür/spam/alakasız içerik için. "Reddet" kaydı listede
+  // tutar (vitrinde görünmez), bu tamamen kaldırır.
+  const sil = async (id) => {
+    if (!window.confirm('Kalıcı olarak silinsin mi? Bu geri alınamaz.')) return
+    setBusyId(id)
+    try { await api.del(`/api/catalog/reviews/${id}`); await load() }
+    catch { setError('Silinemedi') }
+    finally { setBusyId(null) }
+  }
+
   return (
     <div className="max-w-3xl space-y-4">
       <div className="flex items-center gap-2">
@@ -121,10 +131,16 @@ export default function YorumlarPage() {
               )}
               {r.status !== 'rejected' && (
                 <button onClick={() => moderate(r.id, 'reject')} disabled={busyId === r.id}
-                  className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50">
+                  className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50"
+                  title="Vitrinde görünmez, kayıt 'Reddedilen' sekmesinde durur">
                   Reddet
                 </button>
               )}
+              <button onClick={() => sil(r.id)} disabled={busyId === r.id}
+                className="ml-auto px-3 py-1 rounded-lg text-xs text-panel-muted hover:text-red-700 hover:bg-red-50 disabled:opacity-50"
+                title="Kalıcı olarak sil — geri alınamaz">
+                🗑 Sil
+              </button>
             </div>
           </div>
         ))}

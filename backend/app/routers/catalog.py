@@ -2113,3 +2113,22 @@ def moderate_review(
         review.status = "approved" if action == "approve" else "rejected"
     db.commit()
     return {"id": str(review.id), "status": review.status, "answer": review.answer}
+
+
+@router.delete("/reviews/{review_id}", response_model=dict)
+def delete_review(
+    review_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Yorumu/soruyu KALICI olarak sil — küfür, spam ya da alakasız içerik
+    için. 'Reddet' kaydı listede tutar, bu tamamen kaldırır."""
+    from app.models import ProductReview
+
+    review = db.scalar(select(ProductReview).where(
+        ProductReview.id == review_id, ProductReview.tenant_id == user.tenant_id))
+    if not review:
+        raise HTTPException(404, "Kayıt bulunamadı")
+    db.delete(review)
+    db.commit()
+    return {"ok": True}

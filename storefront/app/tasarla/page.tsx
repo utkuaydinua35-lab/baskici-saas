@@ -409,6 +409,27 @@ export default function TasarlaPage() {
     });
   };
 
+  // Ürün sayfasındaki hazır tasarım kartından gelindiyse (?modul=<id>) o modül
+  // kendiliğinden seçilir; müşteri şablon listesinde aramak zorunda kalmaz.
+  const modulUygulandi = useRef(false);
+  useEffect(() => {
+    if (modulUygulandi.current || !tpl || overlays.length === 0) return;
+    const id = new URLSearchParams(window.location.search).get("modul");
+    if (!id) { modulUygulandi.current = true; return; }
+    const o = overlays.find((x) => x.id === id);
+    if (!o) return;                     // liste henüz yüklenmemiş olabilir
+    // Modül belirli bir kılıfa bağlıysa önce o kılıfa geçilir (yanlış kılıfın
+    // üstüne uygulanmasın); kılıf değişince bu etki yeniden çalışır
+    if (o.template_key && o.template_key !== tpl.key) {
+      const hedef = templates.find((t) => t.key === o.template_key);
+      if (hedef) { setTpl(hedef); return; }
+    }
+    modulUygulandi.current = true;
+    overlaySec(o);
+    // overlaySec her render'da yeniden kurulur; ref sayesinde bir kez çalışır
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlays, tpl, templates]);
+
   // Şablon en üstte mi? (dizinin son elemanıysa üstte demektir)
   const overlayUstte = layers.length > 0 && layers[layers.length - 1].type === "overlay";
 

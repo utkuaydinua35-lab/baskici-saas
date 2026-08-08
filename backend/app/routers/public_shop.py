@@ -13,6 +13,7 @@ gelmez → CORS gerekmez). Ödeme sağlayıcı callback'leri de buraya gelir.
 """
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from decimal import Decimal
@@ -55,6 +56,40 @@ def _studio_modules(db, store, product) -> list[dict]:
         {"key": t.key, "label": t.label, "description": t.description,
          "image_url": f"/storage/{t.image_path}"}
         for t in rows
+    ]
+
+
+def _studio_overlay_moduller(db, store, product) -> list[dict]:
+    """Ürüne bağlanan HAZIR TASARIM MODÜLLERİ (Spotify arayüzü, forma…).
+
+    Kılıf şablonundan (studio_templates) farkı: bunlar hazır bir tasarım
+    sunar, müşteri yalnız içindeki alanları doldurur. Ürün sayfasında ayrı
+    kart olarak çıkar; karta basınca stüdyo o modül seçili açılır.
+    """
+    from app.models import CaseTemplate, DesignOverlay
+
+    kimlikler = [str(x) for x in (product.studio_overlays or [])]
+    if not kimlikler:
+        return []
+    rows = db.execute(
+        select(DesignOverlay, CaseTemplate.key)
+        .join(CaseTemplate, DesignOverlay.case_template_id == CaseTemplate.id,
+              isouter=True)
+        .where(DesignOverlay.store_id == store.id,
+               DesignOverlay.id.in_(kimlikler),
+               DesignOverlay.is_active.is_(True))
+        .order_by(DesignOverlay.position, DesignOverlay.created_at)
+    ).all()
+    return [
+        {
+            "id": str(o.id),
+            "label": o.label,
+            "kategori": o.kategori or None,
+            "thumb_url": f"/storage/{o.thumb_path or o.image_path}",
+            # Modül belirli bir kılıfa bağlıysa stüdyo o kılıfla açılsın
+            "kilif_key": key,
+        }
+        for o, key in rows
     ]
 
 
@@ -111,6 +146,10 @@ def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
         "studio_overlays": [str(x) for x in (p.studio_overlays or [])],
         "studio_templates": (_studio_modules(db, store, p)
                              if db is not None and store is not None else []),
+        # Ürüne bağlı HAZIR TASARIM MODÜLLERİ — kılıf şablonu seçilmemiş olsa
+        # bile ürün sayfasında görünür (modül tek başına da satılabilir)
+        "studio_moduller": (_studio_overlay_moduller(db, store, p)
+                            if db is not None and store is not None else []),
         "models_per_item": p.models_per_item or 1,
         "video_url": p.video_url,
         "description": p.description,
@@ -1357,6 +1396,24 @@ def create_question(
         status="pending",
     ))
     db.commit()
+
+    # Mağazaya haber ver — soru yanıtlanana kadar vitrinde görünmez, bu yüzden
+    # bildirim gelmezse müşteri cevapsız kalır
+    baslik = f"❓ Yeni ürün sorusu — {product.title[:40]}"
+    ozet = body.question.strip()[:200]
+    try:
+        from app.models import Notification
+        from app.services import push
+
+        db.add(Notification(
+            tenant_id=store.tenant_id, store_id=store.id,
+            kind="info", title=baslik, body=ozet, link="/yorumlar",
+        ))
+        db.commit()
+        push.send_to_tenant(db, store.tenant_id, baslik, ozet[:120],
+                            url="/yorumlar", tag="urun-sorusu")
+    except Exception:  # noqa: BLE001 — bildirim gitmese de soru kaydedildi
+        logging.getLogger("public_shop").warning("Soru bildirimi gönderilemedi", exc_info=True)
     return {"ok": True,
             "message": "Sorunuz iletildi — yanıtladığımızda ürün sayfasında görünecek"}
 

@@ -57,12 +57,25 @@ export default function CheckoutPage() {
   const discountAmt = coupon
     ? Number(coupon.discountAmount) || 0
     : autoQuote ? autoQuote.discount : 0;
-  const estShipping = shipCfg == null ? null
+  // KESİN tutar SUNUCUDAN gelir (kupon yanıtı ya da /api/quote). Sayfa kendi
+  // kargo hesabını yapınca gösterilen tutar TAHSİL EDİLENLE ÇELİŞEBİLİYORDU:
+  // özet "Tahmini Toplam 484,00" derken karta 399,90 düşüyordu (sunucu kargoyu
+  // 0 hesaplamıştı). Sunucu değeri yoksa yalnız İLK saniyede config'ten kaba
+  // tahmin gösterilir.
+  const sunucuKargo = coupon?.shipping != null ? Number(coupon.shipping)
+    : autoQuote ? autoQuote.shipping : null;
+  const sunucuToplam = coupon?.total != null ? Number(coupon.total)
+    : autoQuote ? autoQuote.total : null;
+
+  const kabaKargo = shipCfg == null ? null
     : (coupon?.freeShipping || autoQuote?.freeShipping) ? 0
     : shipCfg.freeOver > 0 && subtotal >= shipCfg.freeOver ? 0
     : shipCfg.fee;
-  const estTotal = estShipping == null ? null
-    : Math.max(0, subtotal - discountAmt) + estShipping;
+  const estShipping = sunucuKargo ?? kabaKargo;
+  const estTotal = sunucuToplam
+    ?? (estShipping == null ? null : Math.max(0, subtotal - discountAmt) + estShipping);
+  // Sunucu tutarı geldiyse "tahmini" demek yanıltıcı olur
+  const kesin = sunucuToplam != null;
 
   // Girişli müşteri: kayıtlı bilgilerle formu doldur. Birden fazla adres
   // varsa üstte kartlar çıkar, tıklayınca form o adrese göre yenilenir
@@ -344,12 +357,14 @@ export default function CheckoutPage() {
           )}
           {estTotal != null && (
             <div className="flex justify-between text-sm border-t border-zinc-200 pt-2 font-semibold">
-              <span>Tahmini Toplam</span>
+              <span>{kesin ? "Genel Toplam" : "Tahmini Toplam"}</span>
               <span>{formatPrice(estTotal)}</span>
             </div>
           )}
           <p className="text-[11px] text-zinc-400">
-            Kesin tutar güvenli ödeme sayfasında onaylanır.
+            {kesin
+              ? "Kartınızdan tahsil edilecek tutar budur."
+              : "Kesin tutar güvenli ödeme sayfasında onaylanır."}
           </p>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button

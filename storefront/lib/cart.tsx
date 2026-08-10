@@ -50,6 +50,9 @@ export interface AppliedCoupon {
   kind: string;
   discountAmount: string; // gösterim — sunucu ödeme anında yeniden doğrular
   freeShipping: boolean;
+  // Sunucunun hesapladığı KESİN kargo ve toplam (kupon uygulanmış hâli)
+  shipping?: string;
+  total?: string;
   // Kupon "birleşebilir" ise otomatik indirim de eklenmiş olabilir; tutarlar
   // yukarıdaki toplamlara zaten dahildir, bu liste yalnız gösterim içindir
   combined?: { code: string; label: string }[];

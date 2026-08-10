@@ -56,6 +56,8 @@ export default function CouponInput({ email }: { email?: string }) {
           kind: data.kind,
           discountAmount: data.discount_amount,
           freeShipping: data.free_shipping,
+          shipping: data.shipping,
+          total: data.total,
           // Kodla birleşen otomatik indirimler (varsa) — rozette gösterilir
           combined: (data.applied || [])
             .filter((a: { code: string }) => a.code !== data.code)

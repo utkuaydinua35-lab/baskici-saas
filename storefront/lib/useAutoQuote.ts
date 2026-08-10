@@ -9,6 +9,11 @@ export interface AutoQuote {
   discount: number;
   code: string | null;
   freeShipping: boolean;
+  /** Sunucunun hesapladığı KESİN kargo ve toplam. Ödeme özeti bunları
+   *  gösterir; istemcinin kendi kargo tahmini tahsil edilen tutarla
+   *  çelişebiliyordu (sayfada 484 yazarken karta 399,90 düşüyordu). */
+  shipping: number;
+  total: number;
 }
 
 interface QuoteItem {
@@ -37,11 +42,14 @@ export function useAutoQuote(items: QuoteItem[], coupon: unknown): AutoQuote | n
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (d?.valid && (Number(d.discount_amount) > 0 || d.free_shipping)) {
+          // İndirim olmasa da tut: kargo/toplam sunucudan gelsin
+          if (d?.valid) {
             setQuote({
-              discount: Number(d.discount_amount),
+              discount: Number(d.discount_amount) || 0,
               code: d.discount_code,
               freeShipping: !!d.free_shipping,
+              shipping: Number(d.shipping) || 0,
+              total: Number(d.total) || 0,
             });
           } else setQuote(null);
         })

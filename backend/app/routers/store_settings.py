@@ -1034,15 +1034,17 @@ def entegrasyon_anahtari_olustur(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    """Yeni anahtar üret. Ham anahtar YALNIZ bu yanıtta döner — bir daha değil."""
-    import secrets
+    """Yeni anahtar üret. Ham anahtar YALNIZ bu yanıtta döner — bir daha değil.
 
+    Biçim GUID (uuid4): BirFatura'nın "API Şifresi" alanı GUID bekliyor;
+    diğer entegratörler için de geçerli bir rastgele anahtardır (122 bit).
+    """
     from app.models import IntegrationKey
     from app.routers.entegrasyon import anahtar_ozeti
 
     store = _get_store(db, user, store_id)
     etiket = str((body or {}).get("label") or "").strip()[:80] or "Entegrasyon"
-    ham = f"bsk_{secrets.token_urlsafe(32)}"
+    ham = str(uuid.uuid4())
     kayit = IntegrationKey(
         tenant_id=user.tenant_id, store_id=store.id, label=etiket,
         key_prefix=ham[:12], key_hash=anahtar_ozeti(ham),

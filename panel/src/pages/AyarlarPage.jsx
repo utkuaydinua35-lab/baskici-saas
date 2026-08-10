@@ -805,7 +805,41 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
         </div>
       </Section>
 
-      <Section title="Entegratöre Verilecek Bilgiler" icon="📋">
+      <Section title="BirFatura — Özel Entegrasyon" icon="🧾">
+        <p className="text-xs text-panel-muted">
+          BirFatura panelinde <b>Mağazalarım → Özel Entegrasyon</b> ile mağaza
+          eklerken istenen alanlar. BirFatura bu adrese kendisi bağlanır,
+          siparişleri çeker, faturayı keser ve fatura numarasını buraya geri yazar.
+        </p>
+        <div className="space-y-2">
+          {[
+            ['Mağaza Adı', 'Mağaza adınız (BirFatura panelinde görünür)', null],
+            ['Web Sitenizin Adresi', cfg.storefront_url || 'Ayarlar → Yayın & Domain\'da vitrin adresini girin', cfg.storefront_url],
+            ['API Şifresi', 'Yukarıda ürettiğiniz anahtar', null],
+            ['Satış Kanalı Url', cfg.storefront_url || '—', cfg.storefront_url],
+          ].map(([etiket, deger, kopyalanabilir]) => (
+            <div key={etiket} className="text-xs">
+              <div className="text-panel-muted">{etiket}</div>
+              <div className="flex gap-2 items-center mt-0.5">
+                <code className="flex-1 bg-panel-input rounded-lg px-2 py-1.5 break-all">{deger}</code>
+                {kopyalanabilir && (
+                  <button onClick={() => kopyala(kopyalanabilir)} className="btn-ghost !py-1 text-xs">
+                    Kopyala
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-panel-muted">
+          BirFatura fatura kesim durumu olarak <b>“Ödendi”</b> seçilmelidir —
+          ödenmiş ve iptal edilmemiş tüm siparişler bu durumda listelenir.
+          Kesilen fatura numarası sipariş detayında görünür ve o sipariş bir
+          daha faturalandırılmaz.
+        </p>
+      </Section>
+
+      <Section title="Diğer Entegratörler / Muhasebe" icon="📋">
         <Field label="API adresi">
           <div className="flex gap-2 items-center mt-1">
             <code className="flex-1 text-[11px] bg-panel-input rounded-lg px-2 py-1.5 break-all">{taban}</code>

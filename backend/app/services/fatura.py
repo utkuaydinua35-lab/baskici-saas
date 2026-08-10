@@ -73,6 +73,8 @@ def _kalemler(raw: dict) -> list[dict]:
             "adet": adet,
             "birim_fiyat_kdv_dahil": birim,
             "tutar_kdv_dahil": _para(birim * adet),
+            # Kaynak satır — BirFatura eşlemesi varyantları buradan okur
+            "_kaynak": k,
         })
     return cikti
 

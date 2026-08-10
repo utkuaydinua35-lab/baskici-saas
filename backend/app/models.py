@@ -449,6 +449,14 @@ class Order(Base):
     # handler_name, status}. Re-print (etiket), iptal ve webhook eşleşmesi için.
     kargo_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # ─── e-Fatura / e-Arşiv ───────────────────────────────────────────
+    # Faturayı ENTEGRATÖR keser (GİB'e iletim mali mühür ister); biz yalnız
+    # sipariş verisini sunar ve sonucu buraya yazarız.
+    # durum: None (henüz yok) | beklemede | kesildi | hata | iptal
+    fatura_durum: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    # {no, ettn, tarih, pdf_url, kaynak, hata} — entegratörün döndürdüğü bilgi
+    fatura: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     store: Mapped[Store] = relationship(back_populates="orders")
@@ -2342,3 +2350,38 @@ class CustomerDesign(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class IntegrationKey(Base):
+    """Dış entegrasyona (e-fatura entegratörü, muhasebe yazılımı…) verilen
+    okuma anahtarı.
+
+    Anahtarın kendisi SAKLANMAZ — yalnız SHA-256 özeti tutulur; panelde bir
+    kez gösterilir. Böylece veritabanı sızsa bile anahtar geri üretilemez.
+    Yetki mağaza bazlıdır: anahtar yalnız kendi mağazasının siparişlerini
+    görür ve yalnız fatura bilgisi yazabilir.
+    """
+    __tablename__ = "integration_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), index=True
+    )
+    # Kimin kullandığı belli olsun: "Birfatura", "Muhasebeci" …
+    label: Mapped[str] = mapped_column(String(80))
+    # Panelde listelerken gösterilen baş harfler (bfk_ab12…)
+    key_prefix: Mapped[str] = mapped_column(String(16))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_used_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

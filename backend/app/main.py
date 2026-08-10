@@ -43,6 +43,7 @@ from app.routers.settings import router as tenant_settings_router
 from app.routers.shortcuts import router as shortcuts_router
 from app.routers.stores import router as stores_router
 from app.routers.catalog import router as catalog_router
+from app.routers.entegrasyon import router as entegrasyon_router
 from app.routers.discounts import router as discounts_router
 from app.routers.blog import router as blog_router
 from app.routers.design_requests import router as design_requests_router
@@ -164,6 +165,7 @@ app.include_router(store_settings_router)
 app.include_router(store_activity_router)
 app.include_router(design_studio_router)
 app.include_router(public_shop_router)
+app.include_router(entegrasyon_router)
 
 
 # ─── Rota golgeleme denetimi ──────────────────────────────────

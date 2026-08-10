@@ -168,15 +168,18 @@ export default function SiparisDetayPage() {
             </div>
           )}
 
-          {/* Kurumsal fatura */}
-          {d.invoice && (d.invoice.company || d.invoice.tax_no) && (
+          {/* Kurumsal fatura + e-fatura durumu (entegratör geri yazar) */}
+          {((d.invoice && (d.invoice.company || d.invoice.tax_no)) || d.fatura_durum) && (
             <div className="card">
-              <h2 className="text-sm font-semibold mb-2">🧾 Fatura Bilgisi</h2>
-              <div className="text-xs text-panel-muted leading-relaxed">
-                {d.invoice.company && <div className="text-panel-ink font-medium">{d.invoice.company}</div>}
-                {d.invoice.tax_office && <div>Vergi Dairesi: {d.invoice.tax_office}</div>}
-                {d.invoice.tax_no && <div>VKN/TCKN: <span className="font-mono">{d.invoice.tax_no}</span></div>}
-              </div>
+              <h2 className="text-sm font-semibold mb-2">🧾 Fatura</h2>
+              {d.invoice && (d.invoice.company || d.invoice.tax_no) && (
+                <div className="text-xs text-panel-muted leading-relaxed">
+                  {d.invoice.company && <div className="text-panel-ink font-medium">{d.invoice.company}</div>}
+                  {d.invoice.tax_office && <div>Vergi Dairesi: {d.invoice.tax_office}</div>}
+                  {d.invoice.tax_no && <div>VKN/TCKN: <span className="font-mono">{d.invoice.tax_no}</span></div>}
+                </div>
+              )}
+              <FaturaDurumu d={d} />
             </div>
           )}
 
@@ -1049,6 +1052,43 @@ function TasarimKarti({ li }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// e-Fatura durumu — faturayı entegratör keser, sonucu entegrasyon API'sinden
+// geri yazar (backend/app/routers/entegrasyon.py). Panel yalnız gösterir.
+function FaturaDurumu({ d }) {
+  if (!d.fatura_durum) {
+    return (
+      <p className="text-[11px] text-panel-muted mt-2">
+        e-Fatura henüz kesilmedi — entegratör siparişi çektiğinde burada görünür.
+      </p>
+    )
+  }
+  const f = d.fatura || {}
+  const stil = {
+    kesildi: 'bg-emerald-50 text-emerald-700',
+    beklemede: 'bg-amber-50 text-amber-700',
+    hata: 'bg-red-50 text-red-700',
+    iptal: 'bg-slate-100 text-slate-500',
+  }[d.fatura_durum] || 'bg-slate-100 text-slate-500'
+  const etiket = { kesildi: 'Fatura kesildi', beklemede: 'Sırada',
+                   hata: 'Hata', iptal: 'İptal' }[d.fatura_durum] || d.fatura_durum
+  return (
+    <div className="mt-2 space-y-1 text-xs">
+      <div className="flex items-center gap-2">
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${stil}`}>{etiket}</span>
+        {f.no && <span className="font-mono text-panel-ink">{f.no}</span>}
+        {f.kaynak && <span className="text-[11px] text-panel-muted">· {f.kaynak}</span>}
+      </div>
+      {f.ettn && <div className="text-[11px] text-panel-muted font-mono">ETTN: {f.ettn}</div>}
+      {f.hata && <div className="text-[11px] text-red-600">{f.hata}</div>}
+      {f.pdf_url && (
+        <a href={f.pdf_url} target="_blank" rel="noreferrer"
+          className="text-[11px] text-panel-accent underline">Faturayı aç (PDF)</a>
+      )}
     </div>
   )
 }

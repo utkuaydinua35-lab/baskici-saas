@@ -996,3 +996,86 @@ def put_custom_code(
     flag_modified(store, "config")
     db.commit()
     return code
+
+
+# ─── Entegrasyon anahtarları ─────────────────────────────────
+# Dış sistemlerin (e-fatura entegratörü, muhasebe) sipariş okuması için
+# üretilen Bearer anahtarları. Anahtarın kendisi SAKLANMAZ; yalnız SHA-256
+# özeti tutulur ve üretim anında BİR KEZ gösterilir.
+
+@router.get("/{store_id}/entegrasyon-anahtarlari", response_model=dict)
+def entegrasyon_anahtarlari(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    from app.models import IntegrationKey
+
+    _get_store(db, user, store_id)
+    satirlar = db.scalars(select(IntegrationKey).where(
+        IntegrationKey.store_id == store_id).order_by(
+        IntegrationKey.created_at.desc())).all()
+    return {"items": [
+        {
+            "id": str(k.id), "label": k.label, "prefix": k.key_prefix,
+            "is_active": k.is_active and k.revoked_at is None,
+            "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
+            "last_used_ip": k.last_used_ip,
+            "created_at": k.created_at.isoformat() if k.created_at else None,
+        }
+        for k in satirlar
+    ]}
+
+
+@router.post("/{store_id}/entegrasyon-anahtarlari", response_model=dict)
+def entegrasyon_anahtari_olustur(
+    store_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Yeni anahtar üret. Ham anahtar YALNIZ bu yanıtta döner — bir daha değil."""
+    import secrets
+
+    from app.models import IntegrationKey
+    from app.routers.entegrasyon import anahtar_ozeti
+
+    store = _get_store(db, user, store_id)
+    etiket = str((body or {}).get("label") or "").strip()[:80] or "Entegrasyon"
+    ham = f"bsk_{secrets.token_urlsafe(32)}"
+    kayit = IntegrationKey(
+        tenant_id=user.tenant_id, store_id=store.id, label=etiket,
+        key_prefix=ham[:12], key_hash=anahtar_ozeti(ham),
+    )
+    db.add(kayit)
+    activity.record(db, user, "entegrasyon_anahtari_olustur", store_id=store.id,
+                    entity_type="entegrasyon", entity_label=etiket)
+    db.commit()
+    db.refresh(kayit)
+    return {"id": str(kayit.id), "label": kayit.label, "prefix": kayit.key_prefix,
+            "anahtar": ham}
+
+
+@router.delete("/{store_id}/entegrasyon-anahtarlari/{anahtar_id}", response_model=dict)
+def entegrasyon_anahtari_iptal(
+    store_id: uuid.UUID,
+    anahtar_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Anahtarı iptal et — o andan itibaren tüm istekleri 401 alır."""
+    from datetime import UTC, datetime
+
+    from app.models import IntegrationKey
+
+    _get_store(db, user, store_id)
+    kayit = db.scalar(select(IntegrationKey).where(
+        IntegrationKey.id == anahtar_id, IntegrationKey.store_id == store_id))
+    if not kayit:
+        raise HTTPException(404, "Anahtar bulunamadı")
+    kayit.is_active = False
+    kayit.revoked_at = datetime.now(UTC)
+    activity.record(db, user, "entegrasyon_anahtari_iptal", store_id=store_id,
+                    entity_type="entegrasyon", entity_label=kayit.label)
+    db.commit()
+    return {"ok": True}

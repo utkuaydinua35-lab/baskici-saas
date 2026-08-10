@@ -562,6 +562,10 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
 
         # Kurumsal fatura bilgisi (vitrin checkout'unda opsiyonel alan)
         "invoice": raw.get("invoice") or None,
+        # e-Fatura durumu — faturayı entegratör keser, sonucu entegrasyon
+        # API'sinden geri yazar (bkz. routers/entegrasyon.py)
+        "fatura_durum": order.fatura_durum,
+        "fatura": order.fatura or None,
 
         "line_items": _li_list,
         # Kargo: tek gönderi bilgisi (Basit Kargo/Shopify takip no) — panelin

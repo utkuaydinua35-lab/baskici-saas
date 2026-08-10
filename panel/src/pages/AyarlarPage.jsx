@@ -17,6 +17,7 @@ const TABS = [
   { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
   { key: 'destek', label: 'Destek', icon: '🎧' },
   { key: 'guvenlik', label: 'Güvenlik', icon: '🔐' },
+  { key: 'entegrasyon', label: 'Entegrasyon', icon: '🔌' },
   { key: 'yayin', label: 'Yayın & Domain', icon: '🌐' },
   { key: 'yasal', label: 'Yasal', icon: '📄' },
 ]
@@ -644,6 +645,8 @@ export default function AyarlarPage() {
 
       {tab === 'guvenlik' && <PasskeySection toast={toast} />}
 
+      {tab === 'entegrasyon' && <EntegrasyonSection storeId={storeId} cfg={cfg} toast={toast} />}
+
       {tab === 'yayin' && (<>
       <Section title="Yayın Öncesi Kilit" icon="🔒">
         <Field label="Mağaza şifresi (boş = koruma kapalı)">
@@ -691,6 +694,142 @@ export default function AyarlarPage() {
       </Section>
       )}
     </div>
+  )
+}
+
+// ─── Entegrasyon anahtarları ─────────────────────────────────
+// e-Fatura entegratörü (Birfatura, Nilvera…) ya da muhasebe yazılımı,
+// siparişleri bu anahtarla okur. Faturayı GİB'e ileten taraf ONLARDIR;
+// biz sipariş verisini veririz, sonucu geri yazarlar.
+function EntegrasyonSection({ storeId, cfg, toast }) {
+  const [items, setItems] = useState([])
+  const [ad, setAd] = useState('Birfatura')
+  const [yeni, setYeni] = useState(null)     // yalnız bir kez gösterilir
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const load = useCallback(async () => {
+    if (!storeId) return
+    try {
+      setItems((await api.get(`/api/store-settings/${storeId}/entegrasyon-anahtarlari`)).items || [])
+    } catch { setErr('Anahtarlar yüklenemedi') }
+  }, [storeId])
+  useEffect(() => { load() }, [load])
+
+  const uret = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await api.post(`/api/store-settings/${storeId}/entegrasyon-anahtarlari`,
+        { label: ad.trim() || 'Entegrasyon' })
+      setYeni(r.anahtar)
+      await load()
+    } catch { setErr('Anahtar üretilemedi') }
+    finally { setBusy(false) }
+  }
+
+  const iptal = async (k) => {
+    if (!window.confirm(`"${k.label}" anahtarı iptal edilecek. Bu anahtarı kullanan sistem bağlantısını kaybeder. Emin misiniz?`)) return
+    try { await api.del(`/api/store-settings/${storeId}/entegrasyon-anahtarlari/${k.id}`); load() }
+    catch { setErr('İptal edilemedi') }
+  }
+
+  const kopyala = (metin) => {
+    navigator.clipboard?.writeText(metin)
+      .then(() => toast?.success?.('Kopyalandı'))
+      .catch(() => {})
+  }
+
+  // Entegratöre verilecek adres — panel API'yi kendi kökünden çağırır
+  // (ters vekil aynı origin'de sunuyor), dış sistem de aynı adresi kullanır
+  const taban = `${window.location.origin}/api/entegrasyon/v1`
+
+  return (
+    <>
+      <Section title="e-Fatura / Muhasebe Entegrasyonu" icon="🔌">
+        <p className="text-xs text-panel-muted">
+          Faturayı <b>entegratör keser</b> (GİB'e iletim mali mühür gerektirir).
+          Buradan üreteceğiniz anahtarla entegratör siparişlerinizi okur,
+          faturayı keser ve fatura numarasını sisteme geri yazar.
+        </p>
+
+        {err && <p className="text-sm text-red-600">{err}</p>}
+
+        <div className="flex gap-2 items-end">
+          <Field label="Anahtar adı (kim kullanacak?)">
+            <input className="input mt-1 !w-56" value={ad} maxLength={80}
+              onChange={e => setAd(e.target.value)} placeholder="Birfatura" />
+          </Field>
+          <button onClick={uret} disabled={busy} className="btn-primary !py-2 text-xs disabled:opacity-50">
+            {busy ? 'Üretiliyor…' : '+ Anahtar üret'}
+          </button>
+        </div>
+
+        {yeni && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-1.5">
+            <div className="text-xs font-semibold text-amber-900">
+              ⚠️ Anahtarı şimdi kopyalayın — bir daha gösterilmeyecek
+            </div>
+            <div className="flex gap-2 items-center">
+              <code className="flex-1 text-[11px] bg-white rounded-lg px-2 py-1.5 break-all border border-amber-200">
+                {yeni}
+              </code>
+              <button onClick={() => kopyala(yeni)} className="btn-ghost !py-1 text-xs">Kopyala</button>
+            </div>
+            <button onClick={() => setYeni(null)} className="text-[11px] text-panel-muted underline">
+              Kopyaladım, gizle
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          {items.map(k => (
+            <div key={k.id} className="flex items-center gap-2 px-2.5 py-2 rounded-xl border border-panel-border text-xs">
+              <span className="font-medium">{k.label}</span>
+              <code className="text-[11px] text-panel-muted">{k.prefix}…</code>
+              {k.is_active
+                ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">aktif</span>
+                : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">iptal</span>}
+              <span className="ml-auto text-[11px] text-panel-muted">
+                {k.last_used_at
+                  ? `son bağlantı: ${new Date(k.last_used_at).toLocaleString('tr-TR')}`
+                  : 'henüz bağlanmadı'}
+              </span>
+              {k.is_active && (
+                <button onClick={() => iptal(k)} className="text-[11px] text-red-600">İptal</button>
+              )}
+            </div>
+          ))}
+          {items.length === 0 && (
+            <p className="text-xs text-panel-muted">Henüz anahtar yok.</p>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Entegratöre Verilecek Bilgiler" icon="📋">
+        <Field label="API adresi">
+          <div className="flex gap-2 items-center mt-1">
+            <code className="flex-1 text-[11px] bg-panel-input rounded-lg px-2 py-1.5 break-all">{taban}</code>
+            <button onClick={() => kopyala(taban)} className="btn-ghost !py-1 text-xs">Kopyala</button>
+          </div>
+        </Field>
+        <div className="text-[11px] text-panel-muted space-y-1">
+          <p>Kimlik: <code>Authorization: Bearer &lt;anahtar&gt;</code></p>
+          <p><b>Uçlar:</b></p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li><code>GET /saglik</code> — bağlantı testi</li>
+            <li><code>GET /siparisler?durum=faturasiz&amp;limit=50&amp;offset=0</code> — faturalanacaklar</li>
+            <li><code>GET /siparisler/&#123;siparis_no&#125;</code> — tek sipariş</li>
+            <li><code>POST /siparisler/&#123;siparis_no&#125;/fatura</code> — sonucu geri yaz
+              <br /><code>&#123;"durum":"kesildi","no":"…","ettn":"…","pdf_url":"…"&#125;</code></li>
+          </ul>
+          <p className="pt-1">
+            Tutarlar faturaya hazır gelir: KDV (%{cfg.tax_rate ?? 20}) ayrıştırılmış,
+            indirim kalemlere dağıtılmış, kargo ayrı kalem. Ödenmemiş ve iptal
+            siparişler listelenmez; fatura numarası yazılan sipariş listeden düşer.
+          </p>
+        </div>
+      </Section>
+    </>
   )
 }
 

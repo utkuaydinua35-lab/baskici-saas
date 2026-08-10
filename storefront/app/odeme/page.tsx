@@ -259,7 +259,7 @@ export default function CheckoutPage() {
             <IlIlceSelect defaultIl={prefill.city} defaultIlce={prefill.province} />
             <Input name="zip" label="Posta Kodu" autoComplete="postal-code" defaultValue={prefill.zip} />
           </div>
-          <Input name="note" label="Sipariş notu (isteğe bağlı)" />
+          <Input name="note" label="Sipariş notu (isteğe bağlı)" maxLength={500} />
           {giftWrapOn && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={giftWrap}

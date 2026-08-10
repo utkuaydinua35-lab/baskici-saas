@@ -17,10 +17,11 @@ import logging
 import re
 import uuid
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import PlainTextResponse, RedirectResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -396,6 +397,30 @@ def get_product(
 
 # ─── Checkout + Ödeme ────────────────────────────────────────
 
+def _kirp(sinir: int):
+    """Uzun değeri REDDETME, KIRP.
+
+    Ödeme akışında zorunlu olmayan alanlar (reklam eşleşme sinyalleri, sipariş
+    notu) uzun geldi diye istek 422 alırsa müşteri ödeme yapamaz — üstelik
+    ekranda sebebi görünmez. Gerçek vaka: Facebook/Instagram reklamından gelen
+    ziyaretçinin `_fbc` çerezi 200 karakteri aşıyor ve REKLAMDAN GELEN HER
+    MÜŞTERİNİN ödemesi düşüyordu. Bu alanlar teslimat için gerekli değil;
+    fazlası atılır, sipariş devam eder.
+    """
+    def kirp(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s[:sinir] or None
+    return kirp
+
+
+# Reklam eşleşme sinyali (_fbp/_fbc çerezleri) — uzunluğu Facebook'un elinde
+Sinyal = Annotated[str | None, BeforeValidator(_kirp(400))]
+# Müşterinin serbest metni — kırpılır, ödeme durmaz
+SiparisNotu = Annotated[str | None, BeforeValidator(_kirp(500))]
+
+
 class CheckoutItemIn(BaseModel):
     variant_id: uuid.UUID
     quantity: int = Field(..., ge=1, le=20)
@@ -416,7 +441,7 @@ class CheckoutCustomerIn(BaseModel):
     city: str = Field(..., min_length=2, max_length=60)
     province: str | None = Field(None, max_length=60)
     zip: str | None = Field(None, max_length=20)
-    note: str | None = Field(None, max_length=500)
+    note: SiparisNotu = None
     # Kurumsal fatura (opsiyonel) — e-fatura/e-arşiv için
     invoice_company: str | None = Field(None, max_length=200)
     invoice_tax_office: str | None = Field(None, max_length=100)
@@ -430,8 +455,8 @@ class CheckoutRequest(BaseModel):
     discount_code: str | None = Field(None, max_length=40)
     # Meta CAPI eşleşme sinyalleri (ops.) — _fbp/_fbc çerezleri; sunucu
     # taraflı Purchase'ın müşteriyle eşleşme kalitesini yükseltir
-    fbp: str | None = Field(None, max_length=100)
-    fbc: str | None = Field(None, max_length=200)
+    fbp: Sinyal = None
+    fbc: Sinyal = None
 
 
 class ValidateCodeRequest(BaseModel):

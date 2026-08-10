@@ -553,6 +553,10 @@ def create_checkout(
                 "variant_id": str(i.variant_id), "quantity": i.quantity,
                 "second_variant_id": str(i.second_variant_id) if i.second_variant_id else None,
                 "custom": i.custom or None,
+                # Stüdyo tasarımı — checkout.create_session bunu okuyup baskı
+                # dosyasını siparişe bağlar. Aktarılmadığı için müşterinin
+                # tasarımı siparişe HİÇ düşmüyordu.
+                "design_id": str(i.design_id) if i.design_id else None,
             } for i in body.items],
             customer={
                 **body.customer.model_dump(),

@@ -1,7 +1,10 @@
 """Baskıcı SaaS — FastAPI ana uygulama."""
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -91,6 +94,25 @@ app = FastAPI(
     redoc_url=None if _is_prod else "/redoc",
     openapi_url=None if _is_prod else "/openapi.json",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def dogrulama_hatasi(request: Request, exc: RequestValidationError):
+    """İstek doğrulama hatalarını LOG'A yaz + istemciye OKUNUR mesaj ver.
+
+    Öntanımlı davranışta gövde `{"detail": [ {...}, ... ]}` yani DİZİ olur;
+    vitrin `detail`i metin bekleyip "Ödeme başlatılamadı" gibi genel bir
+    mesaja düşüyor ve asıl sebep (hangi alan?) hiçbir yerde görünmüyordu.
+    Artık hem sunucu günlüğünde hem yanıtta alan adı ve sebebi yazıyor.
+    """
+    parcalar = []
+    for h in exc.errors():
+        yol = ".".join(str(x) for x in h.get("loc", ()) if x != "body")
+        parcalar.append(f"{yol}: {h.get('msg', 'geçersiz')}")
+    ozet = " · ".join(parcalar) or "Geçersiz istek"
+    logging.getLogger("dogrulama").warning(
+        "dogrulama hatasi %s %s → %s", request.method, request.url.path, ozet)
+    return JSONResponse(status_code=422, content={"detail": ozet, "alanlar": exc.errors()})
 
 
 @app.middleware("http")

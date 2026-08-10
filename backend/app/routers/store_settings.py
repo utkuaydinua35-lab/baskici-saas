@@ -256,6 +256,19 @@ def store_readiness(
         "EKLEYEMEZ. Ürünler → Varyant Seti Uygula ile toplu düzeltin",
         blocker=True, to="/urunler", count=no_variant)
 
+    # 3b) Kargo ücreti — eşik var ama ücret yoksa HER sipariş ücretsiz kargo
+    # olur ve eşiğin hiçbir etkisi kalmaz (sessizce para kaybı).
+    try:
+        kargo_ucreti = Decimal(str(config.get("shipping_fee") or "0"))
+    except (InvalidOperation, ValueError):
+        kargo_ucreti = Decimal("0")
+    esik_var = bool(config.get("free_shipping_over"))
+    add("shipping_fee", not (esik_var and kargo_ucreti <= 0),
+        "Kargo ücreti tanımlı",
+        "Ücretsiz kargo EŞİĞİ girilmiş ama kargo ÜCRETİ boş/0 — eşiğin altındaki "
+        "siparişlerden de kargo alınmıyor. Ayarlar → Kargo & Sepet'e ücreti girin",
+        to="/ayarlar")
+
     # 4) Vitrin adresi + yayın kilidi
     from app.services.site import site_url
 

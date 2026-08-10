@@ -194,6 +194,18 @@ export default function AyarlarPage() {
               value={cfg.min_order_amount || ''} onChange={set('min_order_amount')} placeholder="boş = yok" />
           </Field>
         </div>
+        {/* Eşik var ama ücret yoksa HER siparişte kargo bedava olur — eşik
+            hiçbir işe yaramaz ve fark ancak siparişte görülür. */}
+        {Number(cfg.free_shipping_over || 0) > 0 && !(Number(cfg.shipping_fee || 0) > 0) && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            ⚠️ <b>Kargo ücreti boş.</b> Ücretsiz kargo eşiği
+            {' '}{Number(cfg.free_shipping_over).toLocaleString('tr-TR')} ₺ olarak girilmiş,
+            ama kargo ücreti girilmediği için <b>her siparişte kargo ücretsiz</b> oluyor —
+            eşiğin bir etkisi yok. Eşiğin altındaki siparişlerden kargo almak için
+            yukarıya kargo ücretini yazın.
+          </p>
+        )}
+
         <Field label="KDV oranı (%)">
           <input className="input mt-1 !w-32" type="number" min="0" max="100" step="1"
             value={cfg.tax_rate ?? ''} onChange={set('tax_rate')} placeholder="20" />

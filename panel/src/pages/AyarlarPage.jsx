@@ -708,11 +708,21 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  // Hatayı YUTMA: sunucunun söylediğini göster. Genel bir "üretilemedi"
+  // mesajı, veritabanı migration'ının çalışmamış olması gibi tek satırlık
+  // sorunları saatlerce gizliyordu.
+  const hataMetni = (e, varsayilan) => {
+    if (typeof e?.detail === 'string' && e.detail) return e.detail
+    if (e?.status === 500) return `${varsayilan} — sunucu hatası (500). Veritabanı güncellemesi (alembic upgrade head) çalıştırılmış mı?`
+    if (e?.status) return `${varsayilan} (HTTP ${e.status})`
+    return varsayilan
+  }
+
   const load = useCallback(async () => {
     if (!storeId) return
     try {
       setItems((await api.get(`/api/store-settings/${storeId}/entegrasyon-anahtarlari`)).items || [])
-    } catch { setErr('Anahtarlar yüklenemedi') }
+    } catch (e) { setErr(hataMetni(e, 'Anahtarlar yüklenemedi')) }
   }, [storeId])
   useEffect(() => { load() }, [load])
 
@@ -723,14 +733,14 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
         { label: ad.trim() || 'Entegrasyon' })
       setYeni(r.anahtar)
       await load()
-    } catch { setErr('Anahtar üretilemedi') }
+    } catch (e) { setErr(hataMetni(e, 'Anahtar üretilemedi')) }
     finally { setBusy(false) }
   }
 
   const iptal = async (k) => {
     if (!window.confirm(`"${k.label}" anahtarı iptal edilecek. Bu anahtarı kullanan sistem bağlantısını kaybeder. Emin misiniz?`)) return
     try { await api.del(`/api/store-settings/${storeId}/entegrasyon-anahtarlari/${k.id}`); load() }
-    catch { setErr('İptal edilemedi') }
+    catch (e) { setErr(hataMetni(e, 'İptal edilemedi')) }
   }
 
   const kopyala = (metin) => {

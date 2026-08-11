@@ -194,6 +194,8 @@ export default function AyarlarPage() {
               value={cfg.min_order_amount || ''} onChange={set('min_order_amount')} placeholder="boş = yok" />
           </Field>
         </div>
+        <KargoTanisi storeId={storeId} />
+
         {/* Eşik var ama ücret yoksa HER siparişte kargo bedava olur — eşik
             hiçbir işe yaramaz ve fark ancak siparişte görülür. */}
         {Number(cfg.free_shipping_over || 0) > 0 && !(Number(cfg.shipping_fee || 0) > 0) && (
@@ -704,6 +706,55 @@ export default function AyarlarPage() {
           <textarea className="input mt-1" rows={4} value={cfg.iade_text || ''} onChange={set('iade_text')} />
         </Field>
       </Section>
+      )}
+    </div>
+  )
+}
+
+// ─── Kargo teşhisi ───────────────────────────────────────────
+// "Ayar dolu görünüyor ama siparişte kargo alınmıyor" durumunun sebebini
+// tahmin etmek yerine SUNUCUYA sorar: o sepet tutarı için hangi kargoyu
+// uygulayacağını ve NEDEN uyguladığını söyler.
+function KargoTanisi({ storeId }) {
+  const [tutar, setTutar] = useState('400')
+  const [sonuc, setSonuc] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const sor = async () => {
+    setBusy(true); setSonuc(null)
+    try {
+      setSonuc(await api.get(
+        `/api/store-settings/${storeId}/kargo-tanisi?sepet=${Number(tutar) || 0}`))
+    } catch (e) {
+      setSonuc({ sebep: typeof e?.detail === 'string' ? e.detail : 'Sorgulanamadı' })
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="rounded-xl bg-panel-input p-3 space-y-2">
+      <div className="flex items-end gap-2">
+        <label className="text-[11px] text-panel-muted">
+          Kargo testi — sepet tutarı (₺)
+          <input className="input !py-1.5 !text-sm !w-28 mt-0.5" type="number" min="0"
+            value={tutar} onChange={e => setTutar(e.target.value)} />
+        </label>
+        <button onClick={sor} disabled={busy} className="btn-ghost !py-1.5 text-xs disabled:opacity-50">
+          {busy ? 'Sorgulanıyor…' : '🚚 Bu sepette kargo ne olur?'}
+        </button>
+      </div>
+      {sonuc && (
+        <div className="text-xs space-y-0.5">
+          <div>
+            <b>Uygulanacak kargo: {sonuc.uygulanacak_kargo ?? '—'} ₺</b>
+          </div>
+          <div className="text-panel-muted">{sonuc.sebep}</div>
+          {sonuc.ayar_kargo_ucreti !== undefined && (
+            <div className="text-[11px] text-panel-muted">
+              Kayıtlı ayar → ücret: <b>{sonuc.ayar_kargo_ucreti ?? 'boş'}</b>
+              {' '}· ücretsiz eşiği: <b>{sonuc.ayar_ucretsiz_esik ?? 'boş'}</b>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

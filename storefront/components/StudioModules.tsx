@@ -29,7 +29,7 @@ export default function StudioModules({
   if (!modules?.length && !moduller?.length) return null;
   const urunQs = `urun=${encodeURIComponent(productSlug)}`;
   return (
-    <section className="mt-8 border border-zinc-200 rounded-2xl p-5">
+    <section id="tasarim" className="mt-8 border border-zinc-200 rounded-2xl p-5 scroll-mt-24 transition-shadow">
       <h2 className="text-lg font-semibold">🎨 Kendi Tasarımını Yap</h2>
       <p className="mt-1 text-sm text-zinc-500">
         Bu ürünü kendi fotoğrafın ve yazınla tasarlayabilirsin. Kılıfını seç,

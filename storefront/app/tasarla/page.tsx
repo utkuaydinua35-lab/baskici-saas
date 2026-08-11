@@ -412,6 +412,9 @@ export default function TasarlaPage() {
   // Ürün sayfasındaki hazır tasarım kartından gelindiyse (?modul=<id>) o modül
   // kendiliğinden seçilir; müşteri şablon listesinde aramak zorunda kalmaz.
   const modulUygulandi = useRef(false);
+  // Ürün sayfasından TEK bir hazır tasarımla gelindi mi? Öyleyse müşteriye
+  // şablon seçtirmeye gerek yok — editör doğrudan o tasarımla açılır.
+  const [modulKilitli, setModulKilitli] = useState(false);
   useEffect(() => {
     if (modulUygulandi.current || !tpl || overlays.length === 0) return;
     const id = new URLSearchParams(window.location.search).get("modul");
@@ -425,6 +428,7 @@ export default function TasarlaPage() {
       if (hedef) { setTpl(hedef); return; }
     }
     modulUygulandi.current = true;
+    setModulKilitli(true);
     overlaySec(o);
     // overlaySec her render'da yeniden kurulur; ref sayesinde bir kez çalışır
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -712,8 +716,10 @@ export default function TasarlaPage() {
             <div className="border border-zinc-900 rounded-2xl p-3 space-y-3" data-tur="ayarlar">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">🔒 {kisitli.label}</span>
-                <button onClick={kisitliCik}
-                  className="ml-auto text-xs underline text-zinc-500">şablondan çık</button>
+                {!modulKilitli && (
+                  <button onClick={kisitliCik}
+                    className="ml-auto text-xs underline text-zinc-500">şablondan çık</button>
+                )}
               </div>
               <p className="text-[11px] text-zinc-500 leading-snug">
                 Bu hazır tasarımda yalnız aşağıdaki alanları değiştirebilirsin —
@@ -789,7 +795,7 @@ export default function TasarlaPage() {
 
           {/* Hazır şablonlar — müşterinin görselinin ÜSTÜNE binen çerçeveler.
               Yüklenen görseller çerçevenin altında, yazılar üstünde kalır. */}
-          {uygunOverlaylar.length > 0 && (
+          {uygunOverlaylar.length > 0 && !modulKilitli && (
             <div data-tur="sablonlar">
               <div className="text-xs text-zinc-500 mb-1.5">
                 Hazır şablonlardan seç

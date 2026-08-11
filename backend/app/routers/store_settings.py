@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
@@ -1015,6 +1015,52 @@ def put_custom_code(
 # Dış sistemlerin (e-fatura entegratörü, muhasebe) sipariş okuması için
 # üretilen Bearer anahtarları. Anahtarın kendisi SAKLANMAZ; yalnız SHA-256
 # özeti tutulur ve üretim anında BİR KEZ gösterilir.
+
+@router.get("/{store_id}/kargo-tanisi", response_model=dict)
+def kargo_tanisi(
+    store_id: uuid.UUID,
+    sepet: Decimal = Query(Decimal("0"), ge=0, description="Test edilecek sepet tutarı"),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Kargo neden 0 çıkıyor? Ayarları ve SONUCU birlikte gösterir.
+
+    Panelde ayar dolu görünürken siparişte kargo alınmayınca sebebi bulmak
+    ancak koda bakarak mümkün oluyordu. Bu uç, sunucunun O SEPET İÇİN
+    uygulayacağı kargoyu ve gerekçesini döner.
+    """
+    from app.services import checkout as cs
+
+    store = _get_store(db, user, store_id)
+    config = store.config or {}
+    ham_ucret = config.get("shipping_fee")
+    ham_esik = config.get("free_shipping_over")
+    kargo = cs._shipping_fee(store, Decimal(str(sepet)))
+
+    # Kargoyu bedavaya çeviren otomatik indirim var mı?
+    plan = cs.resolve_discounts(db, store, None, Decimal(str(sepet)), None, kargo, 1, [])
+    kampanya_bedava = plan.free_shipping
+    sonuc = Decimal("0") if kampanya_bedava else kargo
+
+    if kampanya_bedava:
+        sebep = ("Kargo bedava veren bir OTOMATİK İNDİRİM etkin: "
+                 + ", ".join(a["code"] for a in plan.breakdown()) or "kampanya")
+    elif not ham_ucret or Decimal(str(ham_ucret or 0)) <= 0:
+        sebep = "Kargo ÜCRETİ girilmemiş (boş/0) — bu yüzden her sipariş ücretsiz."
+    elif ham_esik and Decimal(str(sepet)) >= Decimal(str(ham_esik)):
+        sebep = f"Sepet ({sepet}₺) ücretsiz kargo eşiğini ({ham_esik}₺) geçiyor."
+    else:
+        sebep = f"Kargo ücreti uygulanıyor: {sonuc}₺"
+
+    return {
+        "ayar_kargo_ucreti": str(ham_ucret) if ham_ucret is not None else None,
+        "ayar_ucretsiz_esik": str(ham_esik) if ham_esik is not None else None,
+        "test_sepet_tutari": str(sepet),
+        "uygulanacak_kargo": str(sonuc),
+        "kampanya_kargo_bedava": kampanya_bedava,
+        "sebep": sebep,
+    }
+
 
 @router.get("/{store_id}/entegrasyon-anahtarlari", response_model=dict)
 def entegrasyon_anahtarlari(

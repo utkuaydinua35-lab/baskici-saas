@@ -7,6 +7,7 @@ import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
 import TrackProductView from "@/components/TrackProductView";
 import ProductQuestions from "@/components/ProductQuestions";
+import OzellestirButton from "@/components/OzellestirButton";
 import StudioModules from "@/components/StudioModules";
 import RecentlyViewed from "@/components/RecentlyViewed";
 import TrustBadges from "@/components/TrustBadges";
@@ -124,6 +125,10 @@ export default async function ProductPage({ params }: Props) {
           ) : null}
           <div className="mt-5">
             <VariantPicker product={product} />
+            {/* Tasarım bölümü sayfanın altında kalıyordu — model seçiminin
+                hemen altına belirgin bir giriş kondu */}
+            <OzellestirButton modules={product.studio_templates || []}
+              moduller={product.studio_moduller || []} productSlug={product.slug} />
           </div>
           {trustEnabled && (
             <div className="mt-5">

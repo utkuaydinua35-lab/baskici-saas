@@ -45,8 +45,14 @@ def render_mockup(design: Image.Image, variation: str = "siyah") -> Image.Image:
     cw, ch = W - 2 * MARGIN, H - 2 * MARGIN
 
     # ── Kılıf gövdesi: tasarım cover-fit + yuvarlatılmış maske ──
+    # Tasarımın saydam yerlerinde KILIFIN KENDİ rengi görünmeli. paste() ayrı bir
+    # maske aldığında kaynağın alfasını yok sayar; tasarım önce kılıf zeminine
+    # kompozitlenir, yoksa saydam alanlar siyah lekeye dönerdi.
+    _zemin = (238, 241, 246, 90) if seffaf else (17, 17, 19, 255)
+    _govde = Image.alpha_composite(
+        Image.new("RGBA", (cw, ch), _zemin), _cover(design, cw, ch))
     body = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-    body.paste(_cover(design, cw, ch), (0, 0), _rounded_mask(cw, ch, RADIUS))
+    body.paste(_govde, (0, 0), _rounded_mask(cw, ch, RADIUS))
     draw = ImageDraw.Draw(body)
 
     # Çerçeve (kılıf kenarı)
@@ -99,8 +105,10 @@ def _load_design_image(file_path: str, file_format: str | None) -> Image.Image |
             doc = fitz.open(str(full))
             page = doc[0]
             mat = fitz.Matrix(300 / 72, 300 / 72)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            # alpha=True ŞART: alpha=False ile boş zemin BEYAZA dönüyordu ve
+            # arkası şeffaf PDF'ler numunede beyaz dikdörtgen olarak çıkıyordu.
+            pix = page.get_pixmap(matrix=mat, alpha=True)
+            img = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
             doc.close()
             return img
         return Image.open(full)
@@ -181,7 +189,10 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
     if rw < 4 or rh < 4:
         return tpl
     overlay = bool(rect.get("overlay")) if isinstance(rect, dict) else False
-    fitted = _cover(design, rw, rh).convert("RGB")
+    # RGBA korunur: tasarımın KENDİ saydamlığı aşağıda maskeye çarpılıyor.
+    # Eskiden burada .convert("RGB") vardı ve arkası boş tasarımlar beyaz zeminle
+    # yapışıyordu.
+    fitted = _cover(design, rw, rh)
     rfrac = min(0.5, max(0.0, float(rect.get("radius", 0.08)) if isinstance(rect, dict) else 0.08))
 
     # Boş alanlar (kamera, parmak izi): tasarımdan hariç → fotoğraftaki detay üstte kalır.
@@ -210,10 +221,17 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
     if ss != 1:
         mask = mask.resize((rw, rh), Image.LANCZOS)
 
+    # Tasarımın kendi alfası maskeye çarpılır — saydam yerlerde şablon fotoğrafı
+    # (kılıfın kendisi) görünür, beyaz zemin basılmaz.
+    if fitted.mode == "RGBA":
+        from PIL import ImageChops as _IC
+        mask = _IC.multiply(mask, fitted.getchannel("A"))
+    fitted_rgb = fitted.convert("RGB")
+
     if overlay:
         # Şeffaf pencereli şablon: tasarım ARKADA, şablon (pencere + kamera + gölge) ÜSTTE
         base = Image.new("RGBA", (TW, TH), (0, 0, 0, 0))
-        base.paste(fitted, (rx, ry), mask)
+        base.paste(fitted_rgb, (rx, ry), mask)
         return Image.alpha_composite(base, tpl)
 
     # ── Düz foto: kılıfın ışık/gölgesini tasarıma soft-light ile uygula (ayarlanabilir) ──
@@ -222,11 +240,11 @@ def render_with_template(design: Image.Image, template_path: str, rect: dict) ->
         try:
             from PIL import ImageChops
             case = tpl.crop((rx, ry, rx + rw, ry + rh)).convert("RGB")
-            fitted = Image.blend(fitted, ImageChops.soft_light(fitted, case), sh)
+            fitted_rgb = Image.blend(fitted_rgb, ImageChops.soft_light(fitted_rgb, case), sh)
         except Exception:  # noqa: BLE001
             pass
     out = tpl.copy()
-    out.paste(fitted, (rx, ry), mask)
+    out.paste(fitted_rgb, (rx, ry), mask)
     return out
 
 

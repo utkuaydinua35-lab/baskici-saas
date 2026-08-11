@@ -62,7 +62,9 @@ def _generate_pdf_thumbnail(pdf_path: Path, thumb_path: Path, dpi: int = 100) ->
             return False
         page = doc[0]
         mat = pymupdf.Matrix(dpi / 72, dpi / 72)
-        pix = page.get_pixmap(matrix=mat, alpha=False)
+        # PNG kaydediliyor: alpha=True olmadan arkasi bos tasarimlar beyaz
+        # zeminli kucuk resim uretiyordu.
+        pix = page.get_pixmap(matrix=mat, alpha=True)
         pix.save(str(thumb_path))
         doc.close()
         return True

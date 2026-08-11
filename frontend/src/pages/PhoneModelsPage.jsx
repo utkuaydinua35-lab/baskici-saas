@@ -571,7 +571,10 @@ function MockupEditor({ model, onClose, onSaved }) {
               <button onClick={() => setRect(p => ({ ...(p || {}), overlay: true, quad: [[0.2, 0.15], [0.8, 0.15], [0.8, 0.85], [0.2, 0.85]] }))}
                 className={`px-2 py-1 rounded ${isQuad ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Perspektif (4 nokta)</button>
             </div>
-            {!overlay && (
+            {/* Boş alanlar şeffaf pencere modunda da geçerli — renderer maskeye
+                uyguluyor, yalnızca bu kontroller gizliydi. Perspektif (quad)
+                modunda maske kullanılmadığı için orada gösterilmiyor. */}
+            {!isQuad && (
               <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                 <button onClick={() => setSel('design')}
                   className={`text-xs px-2.5 py-1 rounded ${sel === 'design' ? 'bg-accent text-white' : 'bg-brand-input text-gray-400 hover:text-gray-200'}`}>Tasarım alanı</button>
@@ -587,7 +590,9 @@ function MockupEditor({ model, onClose, onSaved }) {
               {isQuad
                 ? <>Perspektif: <b className="text-accent">4 köşeyi</b> (SÜ, SAĞ Ü, SAĞ A, SA) açılı fotoğraftaki kılıf yüzeyine sürükle. Tasarım bu dörtgene perspektifle oturur (tasarım <b className="text-accent">arkada</b>, şablon üstte).</>
                 : overlay
-                ? <>Şeffaf pencereli PNG — tasarım <b className="text-accent">arkada</b>, şablon (kamera/gölge) üstte. <b className="text-accent">Tasarım alanını</b> pencereye hizala: çiz, sonra kenar/köşelerden tutup oturt.</>
+                ? (sel === 'design'
+                  ? <>Şeffaf pencereli PNG — tasarım <b className="text-accent">arkada</b>, şablon (kamera/gölge) üstte. <b className="text-accent">Tasarım alanını</b> pencereye hizala: çiz, sonra kenar/köşelerden tutup oturt.</>
+                  : <>Kamera, parmak izi vb. <b className="text-amber-400">boş alanı</b> çiz/taşı — tasarımdan hariç tutulur. Şablonun penceresi zaten kamerayı kapatıyorsa buna gerek yok.</>)
                 : sel === 'design'
                   ? <>Tasarımın oturacağı <b className="text-accent">alanı</b> çiz; kenar/köşelerden tutup tam oturt.</>
                   : <>Kamera, parmak izi vb. <b className="text-amber-400">boş alanı</b> çiz/taşı — tasarımdan hariç tutulur, fotoğraftaki detay görünür. Köşe ovalliğini aşağıdan ayarla.</>}

@@ -114,7 +114,8 @@ def build_items(db: Session, order: Order) -> list[dict]:
     ).all())
 
     def _mk_item(li, d, pm, title, qty, variation):
-        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation, phone_model=pm)
+        mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation,
+                                              phone_model=pm, db=db)
         preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
         return {
             "image_url": _absolute(preview),

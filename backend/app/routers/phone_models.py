@@ -72,6 +72,24 @@ def _var_key(variation: str | None) -> str | None:
     return None if vk == "SİYAH" else vk
 
 
+def _varsayilan_var_mi(db: Session, tenant_id, var_key: str, haric_id=None) -> bool:
+    """Bu varyasyon için başka bir modelde geçerli şablon var mı.
+
+    Varsa yeni yüklenen şablon varsayılan YAPILMAZ; yalnızca kendi modelinde
+    geçerli olur. Böylece modele özel bir şablon yüklemek, herkes için kullanılan
+    varsayılanı kaçırmıyor.
+    """
+    from app.services.mockup import _gecerli_varyant
+    for x in db.scalars(select(PhoneModel).where(
+            PhoneModel.tenant_id == tenant_id,
+            PhoneModel.mockup_variants.isnot(None))).all():
+        if haric_id is not None and x.id == haric_id:
+            continue
+        if _gecerli_varyant((x.mockup_variants or {}).get(var_key)):
+            return True
+    return False
+
+
 def _serialize(m: PhoneModel) -> dict:
     return {
         "id": str(m.id),
@@ -346,10 +364,62 @@ async def upload_mockup_template(
         variants = dict(m.mockup_variants or {})
         entry = dict(variants.get(vk) or {})
         entry["template_url"] = url
+        # Bu varyasyonun İLK şablonuysa tüm modeller için varsayılan olsun —
+        # parlak/magsafe fotoğrafı modelden modele değişmiyor. Sonradan başka bir
+        # modele şablon yüklenirse o YALNIZCA kendi modelinde geçerli olur.
+        if not entry.get("varsayilan") and not _varsayilan_var_mi(db, user.tenant_id, vk, m.id):
+            entry["varsayilan"] = True
         variants[vk] = entry
         m.mockup_variants = variants
     else:
         m.mockup_template_url = storage.save_logo(user.tenant_id, f"mockup-{model_id}", data, ext)
+    db.commit()
+    db.refresh(m)
+    return _serialize(m)
+
+
+@router.post("/{model_id}/mockup-varsayilan", response_model=dict)
+def set_mockup_varsayilan(
+    model_id: uuid.UUID,
+    variation: str = Query(...),
+    aktif: bool = Query(True),
+    user: User = Depends(require_permission("telefon_modelleri")),
+    db: Session = Depends(get_db),
+):
+    """Bu modelin varyasyon şablonunu TÜM modeller için varsayılan yap/kaldır.
+
+    Varyasyon başına tek varsayılan olur; işaretlenince diğer modellerdeki
+    işaret temizlenir. Kendi şablonu olan model her zaman kendininkini kullanır,
+    varsayılan yalnızca şablonu OLMAYAN modelleri etkiler.
+    """
+    vk = _var_key(variation)
+    if not vk:
+        raise HTTPException(400, "Varsayılan yalnızca varyasyon şablonları için geçerli")
+    m = db.scalar(select(PhoneModel).where(
+        PhoneModel.id == model_id, PhoneModel.tenant_id == user.tenant_id))
+    if not m:
+        raise HTTPException(404, "Model bulunamadı")
+    variants = dict(m.mockup_variants or {})
+    entry = dict(variants.get(vk) or {})
+    if not entry.get("template_url"):
+        raise HTTPException(400, "Bu modelde bu varyasyon için şablon yok")
+
+    if aktif:
+        # Varyasyon başına TEK varsayılan — diğerlerini temizle.
+        for x in db.scalars(select(PhoneModel).where(
+                PhoneModel.tenant_id == user.tenant_id,
+                PhoneModel.id != m.id,
+                PhoneModel.mockup_variants.isnot(None))).all():
+            xv = dict(x.mockup_variants or {})
+            e = xv.get(vk)
+            if isinstance(e, dict) and e.get("varsayilan"):
+                xv[vk] = {**e, "varsayilan": False}
+                x.mockup_variants = xv
+        entry["varsayilan"] = True
+    else:
+        entry["varsayilan"] = False
+    variants[vk] = entry
+    m.mockup_variants = variants
     db.commit()
     db.refresh(m)
     return _serialize(m)

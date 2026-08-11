@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
+from sqlalchemy import select
 
 logger = logging.getLogger("mockup")
 
@@ -265,19 +266,74 @@ def canon_variation(variation: str | None) -> str:
     return v
 
 
-def _pick_template(phone_model, var_key: str):
-    """Varyasyona özel gerçek foto şablonu (varsa); yoksa varsayılan şablon.
-    Dönüş: (template_url, rect) ya da (None, None)."""
+def _gecerli_varyant(v) -> bool:
+    return isinstance(v, dict) and bool(v.get("template_url")) and bool(v.get("rect"))
+
+
+def varyasyon_varsayilani(db, tenant_id, var_key: str):
+    """Bu varyasyon için TÜM modellerde geçerli olan varsayılan şablon.
+
+    Parlak/MagSafe gibi varyasyonlarda kılıf fotoğrafı modelden modele pratikte
+    değişmiyor; her model için ayrı foto yüklemek yerine bir kez yüklenen şablon
+    hepsinde kullanılır. Modelin KENDİ şablonu varsa o her zaman önceliklidir.
+
+    Seçim sırası:
+      1) varyantı 'varsayilan: true' ile işaretlenmiş model (elle seçim),
+      2) yoksa şablonu olan EN ESKİ model — sonradan eklenen modele özel
+         şablonlar varsayılanı kaçırmasın diye (en yeni değil, en eski).
+    Dönüş: (template_url, rect) ya da (None, None).
+    """
+    if db is None or not var_key:
+        return None, None
+    from app.models import PhoneModel
+    try:
+        modeller = db.scalars(
+            select(PhoneModel).where(
+                PhoneModel.tenant_id == tenant_id,
+                PhoneModel.mockup_variants.isnot(None),
+            ).order_by(PhoneModel.created_at.asc())
+        ).all()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[mockup] varyasyon varsayılanı okunamadı: {e}")
+        return None, None
+
+    ilk = None
+    for m in modeller:
+        v = (m.mockup_variants or {}).get(var_key)
+        if not _gecerli_varyant(v):
+            continue
+        if v.get("varsayilan"):
+            return v["template_url"], v["rect"]
+        if ilk is None:
+            ilk = v
+    if ilk is not None:
+        return ilk["template_url"], ilk["rect"]
+    return None, None
+
+
+def _pick_template(phone_model, var_key: str, db=None, tenant_id=None):
+    """Şablon seçimi: modelin kendi varyant şablonu > varyasyon varsayılanı >
+    modelin varsayılan şablonu. Dönüş: (template_url, rect) ya da (None, None)."""
     if not phone_model:
         return None, None
     variants = getattr(phone_model, "mockup_variants", None) or {}
     v = variants.get(var_key) if isinstance(variants, dict) else None
-    if isinstance(v, dict) and v.get("template_url") and v.get("rect"):
+    if _gecerli_varyant(v):
         return v["template_url"], v["rect"]
+
+    # Modelin bu varyasyonda şablonu yok — başka bir modelin şablonuna düş.
+    # SİYAH kanonik "varsayılan" olduğu için ayrı bir varyant anahtarı değil;
+    # onda bu zincir çalışmaz, modelin kendi varsayılan şablonuna düşer.
+    if var_key and var_key != "SİYAH":
+        _u, _r = varyasyon_varsayilani(db, tenant_id, var_key)
+        if _u and _r:
+            return _u, _r
+
     return getattr(phone_model, "mockup_template_url", None), getattr(phone_model, "mockup_rect", None)
 
 
-def generate_mockup_url(design, tenant_id, variation: str = "siyah", phone_model=None) -> str | None:
+def generate_mockup_url(design, tenant_id, variation: str = "siyah", phone_model=None,
+                        db=None) -> str | None:
     """Tasarımdan mockup üret, storage'a kaydet, /storage göreli URL döndür.
 
     Varyasyona özel gerçek foto şablonu (phone_model.mockup_variants) varsa onu;
@@ -290,7 +346,7 @@ def generate_mockup_url(design, tenant_id, variation: str = "siyah", phone_model
     try:
         from app.services.storage import STORAGE_ROOT
         var_key = canon_variation(variation)
-        tpl_url, rect = _pick_template(phone_model, var_key)
+        tpl_url, rect = _pick_template(phone_model, var_key, db=db, tenant_id=tenant_id)
         suffix = var_key.replace("İ", "I")
         mock = None
         if tpl_url and rect and str(tpl_url).startswith("/storage/"):

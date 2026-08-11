@@ -402,7 +402,10 @@ function MockupEditor({ model, onClose, onSaved }) {
   const buildVariants = (m) => {
     const out = { '': { tplUrl: m.mockup_template_url || '', rect: normRect(m.mockup_rect) } }
     const mv = m.mockup_variants || {}
-    for (const k of Object.keys(mv)) out[k] = { tplUrl: mv[k]?.template_url || '', rect: normRect(mv[k]?.rect) }
+    for (const k of Object.keys(mv)) out[k] = {
+      tplUrl: mv[k]?.template_url || '', rect: normRect(mv[k]?.rect),
+      varsayilan: !!mv[k]?.varsayilan,
+    }
     return out
   }
   // Tüm varyasyonların (foto+rect) verisi tek state'te; '' = Varsayılan (Siyah)
@@ -554,6 +557,25 @@ function MockupEditor({ model, onClose, onSaved }) {
         <p className="text-[11px] text-gray-500 mb-2">
           {varSel ? `"${varSel}" varyasyonu için ayrı gerçek foto + tasarım alanı.` : 'Varsayılan şablon — diğer varyasyonlar foto yüklenmezse buna düşer.'}
         </p>
+        {/* Parlak/MagSafe fotoğrafı modelden modele değişmiyor: bir kez yüklenen
+            şablon, kendi şablonu OLMAYAN tüm modellerde kullanılır. */}
+        {varSel && tplUrl && (
+          <label className="flex items-center gap-2 text-[11px] text-gray-300 mb-2 cursor-pointer">
+            <input type="checkbox" checked={!!cur.varsayilan} disabled={saving}
+              onChange={async e => {
+                const aktif = e.target.checked
+                setSaving(true); setErr('')
+                try {
+                  await api.post(`/api/phone-models/${model.id}/mockup-varsayilan?variation=${encodeURIComponent(varSel)}&aktif=${aktif}`, {})
+                  setVariants(vs => ({ ...vs, [varSel]: { ...vs[varSel], varsayilan: aktif } }))
+                  onSaved?.()
+                } catch (e2) { setErr(e2?.detail || 'Varsayılan ayarlanamadı') }
+                finally { setSaving(false) }
+              }}
+              className="w-3.5 h-3.5 accent-accent" />
+            Kendi şablonu olmayan <b className="text-accent">tüm modellerde</b> bu {varSel} şablonu kullanılsın
+          </label>
+        )}
 
         {!tplUrl ? (
           <label className="block border border-dashed border-brand-border rounded-lg p-8 text-center text-sm text-gray-400 cursor-pointer hover:border-accent">

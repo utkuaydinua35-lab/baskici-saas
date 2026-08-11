@@ -17,7 +17,8 @@ from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
-from app.services import activity, mold_planner, shipments as shipments_svc, storage
+from app.services import (activity, kargo_takip, mold_planner,
+                          shipments as shipments_svc, storage)
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
 router = APIRouter(prefix="/api/orders", tags=["order_detail"],
@@ -572,7 +573,13 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
         # kargo kartı bunu okur; yanıtta yoktu, takip no hiç görünmüyordu
         "kargo_info": ({
             "takip_no": (order.kargo_info or {}).get("takip_no"),
-            "takip_url": (order.kargo_info or {}).get("takip_url"),
+            # Kayıtlı URL yoksa firmadan üretilir — kendi anlaşma ve Basit Kargo
+            # akışında takip URL'i hiçbir yerden gelmiyor.
+            "takip_url": kargo_takip.coz(
+                (order.kargo_info or {}).get("handler_name"),
+                (order.kargo_info or {}).get("takip_no"),
+                (order.kargo_info or {}).get("takip_url"),
+            ),
             "handler_name": (order.kargo_info or {}).get("handler_name"),
             "kaynak": (order.kargo_info or {}).get("kaynak"),
             # Basit Kargo gerçek kargo takip kodunu dönmezse KENDİ barkodunu

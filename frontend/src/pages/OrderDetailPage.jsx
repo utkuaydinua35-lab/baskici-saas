@@ -1013,14 +1013,20 @@ function TakipSatiri({ detail }) {
       {liste.map((t, i) => (
         <div key={`${t.takip_no}-${i}`} className="text-xs text-gray-400 flex items-center gap-2 flex-wrap">
           <span>📦</span> Takip No:
-          <span className="font-mono text-gray-200 select-all">{t.takip_no}</span>
+          {/* Numaranın kendisi doğrudan kargo firmasının takip sayfasına gider.
+              Firma tanınmazsa link üretilemiyor; o zaman düz metin kalır. */}
+          {t.url ? (
+            <a href={t.url} target="_blank" rel="noopener noreferrer"
+               title={`${t.firma || 'Kargo'} takip sayfasında aç`}
+               className="font-mono text-accent hover:underline underline-offset-2">
+              {t.takip_no} ↗
+            </a>
+          ) : (
+            <span className="font-mono text-gray-200 select-all">{t.takip_no}</span>
+          )}
           {t.firma && <span className="text-gray-500">· {t.firma}</span>}
           <button onClick={() => kopyala(t.takip_no)}
                   className="text-gray-500 hover:text-gray-300" title="Kopyala">⧉</button>
-          {t.url && (
-            <a href={t.url} target="_blank" rel="noopener noreferrer"
-               className="text-accent hover:underline">takip et →</a>
-          )}
         </div>
       ))}
       {/* Basit Kargo gerçek takip kodunu dönmediğinde kendi barkodunu yazıyor;

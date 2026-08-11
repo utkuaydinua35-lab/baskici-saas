@@ -56,6 +56,7 @@ def is_fully_shipped(order: Order) -> bool:
 
 
 def serialize(order: Order) -> dict:
+    from app.services import kargo_takip as _kargo_takip
     """Panel için gönderi durumu özeti."""
     kalan = remaining_counts(order)
     return {
@@ -64,7 +65,9 @@ def serialize(order: Order) -> dict:
                 "id": str(s.id),
                 "takip_no": s.takip_no,
                 "kargo_firma": s.kargo_firma,
-                "takip_url": s.takip_url,
+                # Kayitli URL yoksa firmadan uretilir; panel numarayi dogrudan
+                # firmanin takip sayfasina baglayabilsin.
+                "takip_url": _kargo_takip.coz(s.kargo_firma, s.takip_no, s.takip_url),
                 "items": s.items or [],
                 "note": s.note,
                 "created_by": s.created_by,

@@ -3,7 +3,8 @@
 PNG çıktısı (design_render.py) ekranla birebir aynı görüntüyü verir ama her şey
 rasterdir ve renkler RGB'dir. Matbaa/RIP tarafında istenen dosya ise:
   • yazılar ve şekiller VEKTÖR (punto ne olursa olsun kenarlar keskin),
-  • renkler CMYK (RIP'in tahmin yürütmesine gerek kalmaz),
+  • renk uzayı DOĞRU: mağazanın ICC profili yüklüyse gerçek CMYK, yüklü
+    değilse sRGB (profil gömülü) — profilsiz "sözde CMYK" ÜRETİLMEZ,
   • sayfa GERÇEK fiziksel ölçüde (70×145 mm gibi).
 
 Bu modül aynı katman listesinden PDF üretir. Fotoğraflar vektöre çevrilemez
@@ -33,8 +34,13 @@ VEKTOR_UZANTILARI = {".pdf", ".svg", ".eps", ".ai"}
 
 
 def hex_to_cmyk(hex_renk: str | None) -> tuple[float, float, float, float]:
-    """#rrggbb → (c, m, y, k) 0-1. Basılabilir beyaz kuralı burada da geçerli:
-    saf beyaz baskıda 'mürekkep yok' demek olduğu için K=%5'e çekilir."""
+    """#rrggbb → (c, m, y, k) 0-1 — PROFİLSİZ, kaba dönüşüm.
+
+    DİKKAT: bu formülün ürettiği CMYK hiçbir baskı makinesine ait değildir;
+    gerçek bir CMYK uzayında yorumlandığında renk solar. Yalnız ICC profili
+    yokken ve CMYK zorunluysa son çare olarak kullanılır — normal yol
+    _renk_cevirici()'dir.
+    """
     s = _basilabilir_renk(hex_renk).lstrip("#")
     r, g, b = (int(s[i:i + 2], 16) / 255 for i in (0, 2, 4))
     k = 1 - max(r, g, b)
@@ -43,9 +49,69 @@ def hex_to_cmyk(hex_renk: str | None) -> tuple[float, float, float, float]:
     return ((1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k)
 
 
-def _cmyk_jpeg(img: Image.Image, icc: bytes | None) -> bytes:
-    """Raster görseli CMYK JPEG'e çevir. ICC profili varsa onunla (doğru
-    dönüşüm), yoksa Pillow'un basit dönüşümüyle (kaba ama çalışır)."""
+def _rgb01(hex_renk: str | None) -> tuple[float, float, float]:
+    s = _basilabilir_renk(hex_renk).lstrip("#")
+    return tuple(int(s[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _renk_cevirici(icc: bytes | None):
+    """hex → PDF rengi. ICC varsa profille CMYK, yoksa sRGB.
+
+    Yazı ve şekiller de görsellerle AYNI uzayda olmalı: biri CMYK biri RGB
+    olursa aynı bordo iki farklı tonda basılır.
+    """
+    if not icc:
+        return _rgb01
+    try:
+        from PIL import ImageCms
+        kaynak = ImageCms.createProfile("sRGB")
+        hedef = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+        donusum = ImageCms.buildTransform(
+            kaynak, hedef, "RGB", "CMYK",
+            renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC)
+    except Exception:  # noqa: BLE001 — bozuk profil baskıyı durdurmasın
+        log.warning("ICC ile renk dönüşümü kurulamadı — sRGB kullanılıyor",
+                    exc_info=True)
+        return _rgb01
+
+    bellek: dict[str, tuple] = {}
+
+    def cevir(hex_renk: str | None) -> tuple:
+        anahtar = _basilabilir_renk(hex_renk)
+        if anahtar not in bellek:
+            tek = Image.new("RGB", (1, 1), tuple(
+                round(x * 255) for x in _rgb01(anahtar)))
+            c, m, y, k = ImageCms.applyTransform(tek, donusum).getpixel((0, 0))
+            bellek[anahtar] = (c / 255, m / 255, y / 255, k / 255)
+        return bellek[anahtar]
+
+    return cevir
+
+
+def _srgb_profil() -> bytes | None:
+    """Gömülecek sRGB profili — kaynak rengin hangi uzayda olduğunu söyler."""
+    try:
+        from PIL import ImageCms
+        return ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _baski_jpeg(img: Image.Image, icc: bytes | None) -> bytes:
+    """Raster görseli baskı PDF'ine gömülecek JPEG'e çevir.
+
+    ICC PROFİLİ VARSA → gerçek CMYK'ya dönüştürülür (matbaanın makinesine
+    göre doğru renk).
+
+    PROFİL YOKSA → sRGB olarak, profili GÖMÜLÜ hâlde bırakılır.
+    Eskiden burada Pillow'un basit dönüşümü (C=1−R…) yapılıyordu. O dönüşüm
+    matematiksel olarak kayıpsızdır ama ürettiği CMYK değerlerinin hiçbir
+    baskı makinesiyle ilgisi yoktur: gerçek bir CMYK uzayında yorumlandığında
+    renkler SOLUK ve MAT çıkar (koyu bordo kirli kırmızıya, altın sarısı
+    soluk hardala döner) — kullanıcının bildirdiği tam olarak buydu.
+    sRGB bırakmak matbaanın RIP'inin kendi (doğru) profiliyle çevirmesini
+    sağlar; profilsiz naif CMYK'dan HER ZAMAN daha iyi sonuç verir.
+    """
     if img.mode in ("RGBA", "LA", "P"):
         zemin = Image.new("RGB", img.size, (255, 255, 255))
         img = img.convert("RGBA")
@@ -54,21 +120,25 @@ def _cmyk_jpeg(img: Image.Image, icc: bytes | None) -> bytes:
     elif img.mode != "RGB":
         img = img.convert("RGB")
 
+    profil = _srgb_profil()
     if icc:
         try:
             from PIL import ImageCms
             kaynak = ImageCms.createProfile("sRGB")
             hedef = ImageCms.ImageCmsProfile(io.BytesIO(icc))
-            img = ImageCms.profileToProfile(img, kaynak, hedef, outputMode="CMYK")
+            img = ImageCms.profileToProfile(
+                img, kaynak, hedef, outputMode="CMYK",
+                # Algısal niyet: gamut dışı renkleri kırpmak yerine yumuşakça
+                # sıkıştırır — fotoğraf ve dolgu renklerde doğru tercih
+                renderingIntent=ImageCms.Intent.PERCEPTUAL)
+            profil = icc
         except Exception:  # noqa: BLE001 — bozuk profil baskıyı durdurmasın
-            log.warning("ICC profili uygulanamadı — basit dönüşüme düşülüyor",
+            log.warning("ICC profili uygulanamadı — sRGB olarak gömülüyor",
                         exc_info=True)
-            img = img.convert("CMYK")
-    else:
-        img = img.convert("CMYK")
 
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=95, subsampling=0)
+    img.save(buf, "JPEG", quality=95, subsampling=0,
+             **({"icc_profile": profil} if profil else {}))
     return buf.getvalue()
 
 
@@ -96,14 +166,15 @@ def render_print_pdf(db, design, template, icc: bytes | None = None) -> bytes:
 
     belge = pymupdf.open()
     sayfa = belge.new_page(width=W, height=H)
+    renk_fn = _renk_cevirici(icc)
 
     for katman in (design.layers or []):
         tip = katman.get("type")
         try:
             if tip == "text":
-                _yazi(sayfa, katman, W, H)
+                _yazi(sayfa, katman, W, H, renk_fn)
             elif tip == "sekil":
-                _sekil(sayfa, katman, W, H)
+                _sekil(sayfa, katman, W, H, renk_fn)
             elif tip == "image":
                 _gorsel(db, sayfa, katman, W, H, icc)
             elif tip == "overlay":
@@ -116,7 +187,7 @@ def render_print_pdf(db, design, template, icc: bytes | None = None) -> bytes:
     return çıktı
 
 
-def _yazi(sayfa, k: dict, W: float, H: float) -> None:
+def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
     """VEKTÖREL metin — font PDF'e gömülür, punto ne olursa olsun keskin."""
     import pymupdf
 
@@ -126,7 +197,7 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
     dosya = FONT_FILES.get(str(k.get("font") or "poppins")) or FONT_FILES["poppins"]
     yol = FONT_DIR / dosya
     boy = float(k.get("size", 0.1)) * H
-    renk = hex_to_cmyk(k.get("color"))
+    renk = renk_fn(k.get("color"))
     kutu_gen = float(k.get("w", 0.8)) * W
 
     sol = float(k.get("x", 0)) * W
@@ -176,7 +247,7 @@ def _yazi(sayfa, k: dict, W: float, H: float) -> None:
     )
 
 
-def _sekil(sayfa, k: dict, W: float, H: float) -> None:
+def _sekil(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
     """Vektör şekil — şimdilik ilerleme çubuğu (Spotify)."""
     import pymupdf
 
@@ -188,8 +259,8 @@ def _sekil(sayfa, k: dict, W: float, H: float) -> None:
     kal = float(k.get("kalinlik", 0.004)) * H
     yari = float(k.get("boyut", 0.012)) * H
     oran = max(0.0, min(1.0, float(k.get("oran", 0))))
-    renk = hex_to_cmyk(k.get("renk"))
-    pasif = hex_to_cmyk(k.get("renk_pasif"))
+    renk = renk_fn(k.get("renk"))
+    pasif = renk_fn(k.get("renk_pasif"))
 
     sayfa.draw_rect(pymupdf.Rect(x, y - kal / 2, x + w, y + kal / 2),
                     color=pasif, fill=pasif, width=0)
@@ -229,7 +300,7 @@ def _yerlestir(sayfa, yol: Path, kutu, icc: bytes | None, crop: dict | None = No
         )
         if kutu_px[2] > kutu_px[0] and kutu_px[3] > kutu_px[1]:
             img = img.crop(kutu_px)
-    sayfa.insert_image(kutu, stream=_cmyk_jpeg(img, icc))
+    sayfa.insert_image(kutu, stream=_baski_jpeg(img, icc))
 
 
 def _gorsel(db, sayfa, k: dict, W: float, H: float, icc: bytes | None) -> None:

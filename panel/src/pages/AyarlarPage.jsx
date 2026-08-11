@@ -366,17 +366,30 @@ export default function AyarlarPage() {
         <p className="text-xs text-panel-muted -mt-1">
           Tasarım stüdyosundan gelen her sipariş için <b>iki dosya</b> üretilir:
           ekrandakiyle birebir <b>PNG</b> (300 DPI, RGB) ve matbaa/RIP için
-          <b> PDF</b> — yazılar vektörel, renkler CMYK, sayfa gerçek mm ölçüsünde.
+          <b> PDF</b> — yazılar vektörel, sayfa gerçek mm ölçüsünde.
           İkisi de sipariş detayındaki tasarım kartından indirilir.
         </p>
+        <div className={`text-xs rounded-xl px-3 py-2 border ${cfg.cmyk_icc_ad
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+          {cfg.cmyk_icc_ad ? (
+            <>✅ <b>PDF gerçek CMYK</b> üretiliyor — renkler yüklediğiniz
+            profile ({cfg.cmyk_icc_ad}) göre dönüştürülüyor.</>
+          ) : (
+            <>ℹ️ <b>PDF şu an sRGB</b> (profil gömülü) olarak üretiliyor ve
+            renkler ekrandakiyle aynı çıkıyor; dönüşümü matbaanın RIP'i kendi
+            profiliyle yapar. Profil yüklerseniz dönüşümü biz yaparız ve
+            renk makinenize göre kalibre olur.</>
+          )}
+        </div>
 
         <div className="rounded-xl border border-panel-border p-3 space-y-2">
           <div className="text-sm font-medium">CMYK renk profili (ICC)</div>
           <p className="text-xs text-panel-muted">
-            Baskı makinenizin ya da matbaanızın profilini yükleyin; müşteri
-            fotoğrafları PDF'e bu profille CMYK'ya çevrilir. Yüklenmezse basit
-            dönüşüm kullanılır — çalışır ama renkler makinenizin gerçek
-            gamutuna göre ayarlanmaz.
+            Baskı makinenizin ya da matbaanızın profilini yükleyin; görseller,
+            yazılar ve şekiller PDF'e bu profille CMYK olarak çevrilir.
+            Profili matbaanızdan isteyin — profil MAKİNEYE ve KÂĞIDA özeldir,
+            genel bir profil doğru sonuç vermez.
           </p>
           {cfg.cmyk_icc_ad ? (
             <div className="flex items-center gap-2 text-xs">

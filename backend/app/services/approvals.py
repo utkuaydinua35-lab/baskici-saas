@@ -187,9 +187,13 @@ def _studyo_items(db: Session, order: Order) -> list[dict]:
         gosterilecek = d.proof_path or d.preview_path if d else None
         if not gosterilecek:
             continue
+        from app.services.storage import design_render_url
         out.append({
-            "image_url": _absolute(f"/storage/{gosterilecek}"),
-            "file_url": _absolute(f"/storage/{d.print_path}") if d.print_path else None,
+            # Sürüm damgalı: numune/baskı yeniden üretilince müşteriye ESKİ
+            # kopya gösterilmesin (dosya adı sabit, adres değişmiyordu)
+            "image_url": _absolute(design_render_url(gosterilecek) or ""),
+            "file_url": (_absolute(design_render_url(d.print_path))
+                         if d.print_path else None),
             "file_format": "png",
             "title": f"{d.name} (kendi tasarımı)"
                      + ("" if d.proof_path else " — numune hazırlanmadı"),

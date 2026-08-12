@@ -472,8 +472,9 @@ def get_design(
         "status": d.status,
         "template": t.label if t else d.template_key,
         "preview_url": f"/storage/{d.preview_path}" if d.preview_path else None,
-        "print_url": f"/storage/{d.print_path}" if d.print_path else None,
-        "print_pdf_url": f"/storage/{d.print_pdf_path}" if d.print_pdf_path else None,
+        # Sürüm damgalı — "yeniden üret" sonrası önbellekten eski dosya gelmesin
+        "print_url": storage_svc.design_render_url(d.print_path),
+        "print_pdf_url": storage_svc.design_render_url(d.print_pdf_path),
         # Rötuş sonrası numune — müşteri onayında bu gösterilir
         "proof_url": f"/storage/{d.proof_path}" if d.proof_path else None,
         "print_size": ({"px_w": round(t.print_width_mm / 25.4 * t.print_dpi),
@@ -524,8 +525,8 @@ def rerender_design(
         pdf_hata = str(e)[:200]
     db.commit()
     return {
-        "print_url": f"/storage/{d.print_path}",
-        "print_pdf_url": f"/storage/{d.print_pdf_path}" if d.print_pdf_path else None,
+        "print_url": storage_svc.design_render_url(d.print_path),
+        "print_pdf_url": storage_svc.design_render_url(d.print_pdf_path),
         "bytes": len(veri),
         "pdf_hata": pdf_hata,
     }

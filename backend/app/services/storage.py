@@ -447,6 +447,24 @@ def _vektor_tasarim_kaydet(veri: bytes, ext: str, full_dir: Path, rel_dir: Path,
             genislik, yukseklik)
 
 
+def design_render_url(rel_path: str | None) -> str | None:
+    """Baskı dosyası URL'i + SÜRÜM damgası.
+
+    Dosya adı sabittir (baski.png / baski-pdf.pdf) — "yeniden üret" dosyayı
+    aynı yola yazar. Adres değişmediği için tarayıcı ve Cloudflare ESKİ
+    KOPYAYI veriyordu: kullanıcı yeniden üretiyor, indirdiği dosya bir önceki
+    çıkıyordu. Dosyanın değiştirilme zamanı sorguya eklenerek her yeni üretim
+    yeni bir adres olur, önbellek kendiliğinden atlanır.
+    """
+    if not rel_path:
+        return None
+    url = f"/storage/{rel_path}"
+    try:
+        return f"{url}?v={int((STORAGE_ROOT / rel_path).stat().st_mtime)}"
+    except OSError:
+        return url
+
+
 def save_design_render(tenant_id, store_id, design_id, data: bytes, kind: str) -> str:
     """Tasarımın üretilmiş çıktısı: 'onizleme' (küçük), 'baski' (yüksek
     çözünürlük PNG) veya 'baski-pdf' (vektörel + CMYK)."""

@@ -318,11 +318,16 @@ def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
     if not pid_to_group:
         return {}
 
+    # ACIK siparis = iptal degil, arsivlenmemis, henuz kargoya verilmemis.
+    # Arsiv filtresi eksikti: kapatilmis siparislerin aksesuarlari da ihtiyac
+    # sayilip listeyi sisiriyordu.
+    from sqlalchemy import not_ as _not
     siparisler = db.scalars(
         select(Order).where(
             Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
             Order.current_stage < 8,
+            _not(Order.internal_lists.contains(["arsiv"])),
         )
     ).all()
 
@@ -403,6 +408,9 @@ def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:
             "mevcut": mevcut,
             "total_missing": eksik,
             "siparis_sayisi": len(v["siparisler"]),
+            # Hangi siparislerden geldigi panelde gorunsun — "bunlar gercekten
+            # acik mi?" sorusu veriyle cevaplanabilsin.
+            "siparisler": sorted(v["siparisler"])[:20],
             # Alt kalem hic tanimli degil — stokta "0" degil, KAYIT yok.
             "not_in_system": not eslesenler,
         })

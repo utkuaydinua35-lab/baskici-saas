@@ -220,7 +220,9 @@ export default function BaskiciPaneliPage() {
                         <div className="text-sm text-gray-200 truncate">{it.model}</div>
                         {/* Aksesuar/işleme girmeyen ürünler kalıptan değil, açık
                             siparişlerden geliyor — "kalıpta" yazmak yanıltıcı olur. */}
-                        <div className="text-[10px] text-gray-500">
+                        <div className="text-[10px] text-gray-500"
+                             title={it.kaynak === 'siparis' && it.siparisler?.length
+                               ? `Siparişler: ${it.siparisler.map(n => '#' + n).join(', ')}` : undefined}>
                           {it.kaynak === 'siparis'
                             ? `🎁 ${it.grup} · ${it.siparis_sayisi} siparişte · ihtiyaç ${it.ihtiyac}, stok ${it.mevcut}`
                             : `${it.variation} · ${it.mold_count} kalıpta`}
@@ -265,7 +267,9 @@ export default function BaskiciPaneliPage() {
                       <span className={`font-bold tabular-nums text-sm w-12 ${it.kaynak === 'siparis' ? 'text-red-400' : 'text-accent'}`}>{it.count}×</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 truncate">{it.model}</div>
-                        <div className="text-[10px] text-gray-500">
+                        <div className="text-[10px] text-gray-500"
+                             title={it.kaynak === 'siparis' && it.siparisler?.length
+                               ? `Siparişler: ${it.siparisler.map(n => '#' + n).join(', ')}` : undefined}>
                           {it.kaynak === 'siparis'
                             ? `🎁 ${it.grup} · stok eksiği · ${it.siparis_sayisi} siparişte`
                             : `${it.variation} · ${it.mold_count} kalıpta`}

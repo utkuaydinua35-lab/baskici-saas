@@ -318,17 +318,12 @@ def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
     if not pid_to_group:
         return {}
 
-    # ACIK siparis = iptal degil, arsivlenmemis, henuz kargoya verilmemis.
-    # Arsiv filtresi eksikti: kapatilmis siparislerin aksesuarlari da ihtiyac
-    # sayilip listeyi sisiriyordu.
-    from sqlalchemy import not_ as _not
+    # ACIK siparis olcutu PAKETLEME KUYRUGUYLA ayni yerden gelir. Burada
+    # yeniden yazilinca ayrisiyordu: Shopify'da fulfill edilmis, arsivlenmis
+    # ve iade edilmis siparisler de "acik" sayilip listeyi sisiriyordu.
+    from app.services.order_scope import acik_siparis_filtresi
     siparisler = db.scalars(
-        select(Order).where(
-            Order.tenant_id == tenant_id,
-            Order.is_iptal == False,  # noqa: E712
-            Order.current_stage < 8,
-            _not(Order.internal_lists.contains(["arsiv"])),
-        )
+        select(Order).where(acik_siparis_filtresi(tenant_id))
     ).all()
 
     ihtiyac: dict[tuple, dict] = {}

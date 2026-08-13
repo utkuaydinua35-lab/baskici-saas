@@ -66,6 +66,35 @@ def main() -> None:
             print(f"\n  {bagsiz} ürünün stoğu takip edilmiyor — bunlar eksik listesine GİREMEZ.")
             print("  Stok sayfasında ana kalemi aç, 'Bağlı ürünler'e bu ürünü ekle.")
 
+        # Açık sipariş sayımı — Shopify'daki açık sipariş sayısıyla karşılaştır.
+        # Tutmuyorsa ihtiyaç hesabı da tutmaz; hangi kuralın kaç sipariş elediği
+        # burada görünür.
+        from app.services.order_scope import acik_siparis_filtresi
+        _acik = db.scalars(select(Order).where(acik_siparis_filtresi(tid))).all()
+        _gevsek = db.scalars(select(Order).where(
+            Order.tenant_id == tid, Order.is_iptal == False,  # noqa: E712
+            Order.current_stage < 8)).all()
+        print(f"\n── Açık sipariş ──")
+        print(f"  Paketleme ölçütü (doğru) : {len(_acik)}")
+        print(f"  Yalnız aşama < 8         : {len(_gevsek)}")
+        _sebep: dict = {}
+        for o in _gevsek:
+            if o in _acik:
+                continue
+            if (o.fulfillment_status or "") == "fulfilled":
+                k = "Shopify'da gönderilmiş (fulfilled)"
+            elif o.closed_at is not None:
+                k = "Shopify'da arşivlenmiş (closed)"
+            elif o.cancelled_at is not None:
+                k = "Shopify'da iptal"
+            elif (o.financial_status or "") == "refunded":
+                k = "iade edilmiş"
+            else:
+                k = "diğer"
+            _sebep[k] = _sebep.get(k, 0) + 1
+        for k, v in sorted(_sebep.items(), key=lambda x: -x[1]):
+            print(f"    -{v:<5} {k}")
+
         eksikler = stock_svc.siparis_stok_eksigi(db, tid)
         print(f"\n── Hesaplanan stok eksiği: {len(eksikler)} satır ──")
         if not eksikler:

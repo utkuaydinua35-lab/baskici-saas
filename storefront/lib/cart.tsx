@@ -11,7 +11,23 @@ import {
   useState,
 } from "react";
 
-const CART_KEY = "bernz_cart_v1";
+// Yerel depolama anahtarları MARKASIZ: aynı kurulumda başka markaların
+// vitrinleri de çalışır, kimsenin tarayıcısında yabancı bir marka adı durmaz.
+// Eski anahtar bir kez okunup taşınır — yayındaki müşterilerin sepeti kaybolmasın.
+const CART_KEY = "vitrin_sepet_v1";
+const ESKI_ANAHTARLAR = { sepet: "bernz_cart_v1", kupon: "bernz_coupon_v1" };
+
+function tasi(yeni: string, eski: string): string | null {
+  try {
+    const mevcut = localStorage.getItem(yeni);
+    if (mevcut !== null) return mevcut;
+    const devir = localStorage.getItem(eski);
+    if (devir === null) return null;
+    localStorage.setItem(yeni, devir);
+    localStorage.removeItem(eski);
+    return devir;
+  } catch { return null; }
+}
 const MAX_QTY = 20;
 const MAX_ITEMS = 30;
 
@@ -76,7 +92,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 function load(): CartItem[] {
   try {
-    const raw = localStorage.getItem(CART_KEY);
+    const raw = tasi(CART_KEY, ESKI_ANAHTARLAR.sepet);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.slice(0, MAX_ITEMS) : [];
   } catch {
@@ -84,11 +100,11 @@ function load(): CartItem[] {
   }
 }
 
-const COUPON_KEY = "bernz_coupon_v1";
+const COUPON_KEY = "vitrin_kupon_v1";
 
 function loadCoupon(): AppliedCoupon | null {
   try {
-    const raw = localStorage.getItem(COUPON_KEY);
+    const raw = tasi(COUPON_KEY, ESKI_ANAHTARLAR.kupon);
     return raw ? (JSON.parse(raw) as AppliedCoupon) : null;
   } catch {
     return null;

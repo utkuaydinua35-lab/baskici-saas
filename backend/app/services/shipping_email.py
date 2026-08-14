@@ -66,8 +66,7 @@ def _send(db: Session, order: Order) -> bool:
     status_url = f"{site}/siparis/{session.lookup_token}" if session else None
     takip_url = ki.get("takip_url")
 
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
     firma = ki.get("handler_name") or "Kargo"
     first_name = ""
     if session and isinstance(session.customer, dict):

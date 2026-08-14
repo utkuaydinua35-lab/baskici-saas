@@ -188,6 +188,7 @@ export default async function RootLayout({
           )}
           {payload.support?.enabled !== false && (
             <SupportChat faq={payload.support?.faq ?? []}
+              magaza={payload.store_name}
               whatsappVisible={!!(theme.whatsapp?.enabled && theme.whatsapp.number)} />
           )}
           {custom_code?.body_html && <CustomCode html={custom_code.body_html} />}

@@ -1,4 +1,4 @@
-// BERNZ Support proxy — model uygunluk kontrolü (kurallı asistan).
+// Destek asistanı proxy'si — model uygunluk kontrolü (kurallı asistan).
 import { NextRequest, NextResponse } from "next/server";
 import { getStoreSlug } from "@/lib/api";
 

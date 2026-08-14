@@ -123,7 +123,7 @@ FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
 # özel kod ve mağazaya özel ayarlar KORUNUR (panel tarafı merge eder).
 THEME_PRESETS: dict[str, dict] = {
     "bernz-modern": {
-        "label": "Bernz Modern",
+        "label": "Modern",
         "description": "Sade ve çağdaş varsayılan tasarım — Inter yazı tipi, "
                        "koyu butonlar, amber vurgu.",
         "theme": {

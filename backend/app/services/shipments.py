@@ -222,8 +222,7 @@ def _send_shipment_email(db: Session, order: Order, shipment: OrderShipment,
     site = (config.get("storefront_url")
             or f"https://{config.get('shop_domain', '')}").rstrip("/")
     status_url = f"{site}/siparis/{session.lookup_token}" if session else None
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
     firma = shipment.kargo_firma or "Kargo"
 
     rows = "".join(

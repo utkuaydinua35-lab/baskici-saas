@@ -1,6 +1,8 @@
 "use client";
 
-// BERNZ Support — kurallı 7/24 asistan (AI değildir). Sistem verisiyle çalışır:
+// Destek asistanı — kurallı 7/24 yardım (AI değildir). Sistem verisiyle çalışır.
+// MARKA ADI mağazadan gelir (magaza prop'u): aynı kurulumda birden fazla mağaza
+// olabilir, hiçbiri diğerinin markasını göstermemeli.
 // sipariş durumu (e-posta ile), model uygunluğu (katalog araması), kargo/iade
 // bilgisi ve panelden tanımlanan SSS yanıtları. Sağ altta sohbet balonu.
 import Link from "next/link";
@@ -31,17 +33,21 @@ type Mode = "menu" | "order_email" | "model";
 export default function SupportChat({
   faq = [],
   whatsappVisible = false,
+  magaza = "Destek",
 }: {
   faq?: Faq[];
   whatsappVisible?: boolean;
+  /** Mağazanın adı — asistanın kendini tanıttığı marka */
+  magaza?: string;
 }) {
+  const asistanAdi = `${magaza} Destek`;
   const t = useTexts();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("menu");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([
-    { from: "bot", text: "Merhaba! 👋 Ben BERNZ Support. Siparişiniz, ürünlerimiz ya da kargo hakkında 7/24 yardımcı olurum. Aşağıdan bir konu seçin ya da yazın." },
+    { from: "bot", text: `Merhaba! 👋 Ben ${asistanAdi}. Siparişiniz, ürünlerimiz ya da kargo hakkında 7/24 yardımcı olurum. Aşağıdan bir konu seçin ya da yazın.` },
   ]);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Karşılama baloncuğu: müşteri desteğin orada olduğunu fark etsin.
@@ -182,7 +188,7 @@ export default function SupportChat({
             <button onClick={davetiKapat} aria-label="Kapat"
               className="absolute top-1 right-2 text-zinc-400 hover:text-zinc-700 text-sm leading-none">×</button>
             <button onClick={() => { setOpen(true); davetiKapat(); }} className="text-left">
-              <div className="text-xs font-semibold text-zinc-900">👋 Ben BERNZ Support Bot</div>
+              <div className="text-xs font-semibold text-zinc-900">👋 Ben {asistanAdi}</div>
               <div className="text-[11px] text-zinc-600 mt-0.5 leading-snug">
                 Size nasıl yardımcı olabilirim? Sipariş durumu, model uygunluğu ve kargo
                 sorularınızı 7/24 yanıtlıyorum.
@@ -195,7 +201,7 @@ export default function SupportChat({
       {/* Balon — WhatsApp görünüyorsa üstüne biner */}
       <button
         onClick={() => { setOpen((o) => !o); davetiKapat(); }}
-        aria-label="BERNZ Support"
+        aria-label={asistanAdi}
         className={`vitrin-yuzen fixed right-5 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center
           text-2xl text-white hover:scale-105 transition-transform ${whatsappVisible ? "bottom-24" : "bottom-5"}`}
         style={{ background: "var(--c-primary)" }}
@@ -215,7 +221,7 @@ export default function SupportChat({
             style={{ background: "var(--c-primary)" }}>
             <span className="text-lg">🎧</span>
             <div>
-              <div className="text-sm font-semibold leading-tight">BERNZ Support</div>
+              <div className="text-sm font-semibold leading-tight">{asistanAdi}</div>
               <div className="text-[11px] opacity-80">7/24 otomatik yardım</div>
             </div>
           </div>

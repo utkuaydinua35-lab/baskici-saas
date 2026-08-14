@@ -5,12 +5,13 @@ export const metadata: Metadata = {
   title: "Mesafeli Satış Sözleşmesi",
 };
 
-const SITE_NAME = process.env.SITE_NAME || "Bernz";
+// Marka adı MAĞAZADAN gelir — env tek değer tutar, oysa aynı kurulumda
+// birden fazla mağaza var ve her biri kendi unvanını göstermeli.
 
 // NOT: Şablondur — yayına almadan önce satıcı unvan/adres/MERSİS bilgileri
 // doldurulmalı ve hukuk danışmanına onaylatılmalıdır.
 export default async function DistanceSalesPage() {
-  const { legal } = await getThemePayload();
+  const { legal, store_name: SITE_NAME } = await getThemePayload();
   if (legal.mesafeli_satis) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">

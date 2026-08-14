@@ -64,8 +64,7 @@ def send_welcome(db: Session, store: Store, customer: Customer) -> bool:
     percent = int(config.get("welcome_discount_percent") or WELCOME_DEFAULT_PERCENT)
     site = _site(store)
     dc = _make_welcome_code(db, store, percent)
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
 
     subject, intro = email_service.store_email_text(store, "hosgeldin")
     html = email_service.render_email(
@@ -98,8 +97,7 @@ def send_welcome(db: Session, store: Store, customer: Customer) -> bool:
 # ─── 2) Yorum daveti (teslimden N gün sonra) ─────────────────
 
 def _review_invite_html(store: Store, order: Order, site: str) -> tuple[str, str]:
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
     subject, intro = email_service.store_email_text(store, "yorum_daveti")
     subject = subject or "Siparişinizi değerlendirir misiniz? ⭐"
 

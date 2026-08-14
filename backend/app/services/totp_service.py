@@ -18,7 +18,8 @@ from cryptography.fernet import Fernet
 from app.auth.security import hash_password, verify_password
 from app.config import get_settings
 
-ISSUER = "BERNZ Panel"
+# Authenticator uygulamasında görünen hesap adı — kurulumun markası
+ISSUER = f"{get_settings().brand_name} Panel"
 
 
 def _fernet() -> Fernet:

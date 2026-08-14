@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # Destek görsellerinin servis edildiği public taban URL
     support_public_base_url: str = Field("https://siparistakip.bernzcompany.com", alias="SUPPORT_PUBLIC_BASE_URL")
 
+    # KURULUMUN markası — panel giriş ekranı, passkey/authenticator diyalogu
+    # ve personel bildirimlerinde görünür. MÜŞTERİ yüzeyinde kullanılmaz:
+    # orada marka her zaman MAĞAZANIN kendi adıdır (store.name).
+    brand_name: str = Field("Panel", alias="BRAND_NAME")
+
     # Telegram bildirimi (yeni destek mesaji)
     telegram_bot_token: str = Field("", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field("", alias="TELEGRAM_CHAT_ID")

@@ -217,8 +217,8 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
     if not email:
         return
 
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    # Müşteri e-postasında marka MAĞAZANIN kendisi (kiracı değil)
+    brand = email_service.store_brand_kwargs(store)
 
     rows = "".join(
         f"<tr><td style='padding:6px 0;color:#374151;font-size:14px'>"

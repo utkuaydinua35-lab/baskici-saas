@@ -1,4 +1,4 @@
-// BERNZ Support proxy — e-postayla sipariş durumu (kurallı asistan).
+// Destek asistanı proxy'si — e-postayla sipariş durumu (kurallı asistan).
 import { NextRequest, NextResponse } from "next/server";
 import { getStoreSlug } from "@/lib/api";
 

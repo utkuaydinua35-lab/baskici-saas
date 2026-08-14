@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 
-export const PENDING_COUPON_KEY = "bernz_pending_coupon";
+// Markasız anahtar — bkz. lib/cart.tsx
+export const PENDING_COUPON_KEY = "vitrin_bekleyen_kupon";
 
 export default function CouponInput({ email }: { email?: string }) {
   const { items, coupon, setCoupon } = useCart();

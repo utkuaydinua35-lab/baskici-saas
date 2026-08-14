@@ -448,7 +448,8 @@ def forgot_password(req: _ForgotPasswordRequest, db: Session = Depends(get_db)):
             **email_service.brand_kwargs(tenant),
         )
         text = f"Şifre sıfırlama bağlantınız (1 saat geçerli):\n{link}"
-        email_service.send_email(user.email, "Şifre Sıfırlama — BERNZ", html, text)
+        email_service.send_email(
+            user.email, f"Şifre Sıfırlama — {get_settings().brand_name}", html, text)
 
     return {"ok": True, "message": "E-posta adresiniz kayıtlıysa sıfırlama bağlantısı gönderildi."}
 

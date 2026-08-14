@@ -5,12 +5,13 @@ export const metadata: Metadata = {
   title: "Gizlilik ve KVKK Aydınlatma Metni",
 };
 
-const SITE_NAME = process.env.SITE_NAME || "Bernz";
+// Marka adı MAĞAZADAN gelir — env tek değer tutar, oysa aynı kurulumda
+// birden fazla mağaza var ve her biri kendi unvanını göstermeli.
 
 // NOT: Bu metin bir şablondur — yayına almadan önce şirket unvanı, adres ve
 // iletişim bilgileri doldurulmalı, gerekirse hukuk danışmanına onaylatılmalıdır.
 export default async function PrivacyPage() {
-  const { legal } = await getThemePayload();
+  const { legal, store_name: SITE_NAME } = await getThemePayload();
   if (legal.kvkk) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">

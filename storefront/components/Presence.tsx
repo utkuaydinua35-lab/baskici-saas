@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
 
-const KEY_LS = "bernz_presence_key";
+const KEY_LS = "vitrin_ziyaretci_anahtari";
 const INTERVAL_MS = 20_000;
 
 function sessionKey(): string {

@@ -88,7 +88,9 @@ export interface ThemePayload {
 }
 
 const DEFAULT_PAYLOAD: ThemePayload = {
-  store_name: process.env.SITE_NAME || "Bernz",
+  // Mağaza adı backend'den gelir; bu yalnız backend erişilemezken
+  // görünen NÖTR yedektir — buraya marka adı yazılmaz.
+  store_name: "Mağaza",
   theme: {
     version: 2,
     colors: { primary: "#18181b", accent: "#f59e0b", bg: "#fafafa" },

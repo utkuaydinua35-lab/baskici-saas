@@ -51,8 +51,7 @@ def _notify(db: Session, variant: CatalogVariant) -> int:
             or f"https://{config.get('shop_domain', '')}").rstrip("/")
     url = f"{site}/urun/{product.slug}"
 
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
     variant_label = variant.model_display + (f" · {variant.variation}" if variant.variation else "")
 
     subj_over, intro_over = email_service.store_email_text(store, "stok")

@@ -277,7 +277,7 @@ def list_platforms():
             "id": "shopify",
             "name": "Shopify",
             "fields": [
-                {"key": "store_url", "label": "Mağaza URL", "placeholder": "bernz.myshopify.com", "required": True},
+                {"key": "store_url", "label": "Mağaza URL", "placeholder": "magazaniz.myshopify.com", "required": True},
                 {"key": "access_token", "label": "Access Token", "type": "password", "required": True},
                 {"key": "api_version", "label": "API Versiyonu", "default": "2024-01"},
             ],
@@ -295,7 +295,7 @@ def list_platforms():
             "id": "storefront",
             "name": "Kendi Mağazam (Vitrin)",
             "fields": [
-                {"key": "shop_domain", "label": "Vitrin Alan Adı", "placeholder": "magaza.bernzcompany.com", "required": True},
+                {"key": "shop_domain", "label": "Vitrin Alan Adı", "placeholder": "magaza.alanadiniz.com", "required": True},
                 {"key": "payment_provider", "label": "Ödeme Sağlayıcı (iyzico | paytr)", "default": "iyzico", "required": True},
                 {"key": "iyzico_api_key", "label": "iyzico API Key", "type": "password"},
                 {"key": "iyzico_secret_key", "label": "iyzico Secret Key", "type": "password"},

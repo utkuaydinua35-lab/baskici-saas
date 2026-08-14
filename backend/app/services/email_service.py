@@ -106,9 +106,40 @@ def store_email_text(store, key: str) -> tuple[str | None, str | None]:
     return subject, (f"<p>{escape(intro)}</p>" if intro else None)
 
 
+def store_brand_kwargs(store) -> dict:
+    """MAĞAZANIN markası (ad, tema rengi, logo) — müşteriye giden e-postalar.
+
+    Vitrin e-postalarında marka KİRACI değil MAĞAZA olmalı: aynı kurulumda
+    birden fazla marka olabilir ve müşteri yalnız alışveriş yaptığı mağazayı
+    tanır. Mağazanın teması yoksa kiracıya, o da yoksa boşa düşer (boş marka
+    → e-postada marka satırı hiç basılmaz, yanlış marka görünmez).
+    """
+    if not store:
+        return {}
+    out: dict = {}
+    ad = (getattr(store, "name", None) or "").strip()
+    if ad:
+        out["brand"] = ad
+    try:
+        from app.services.theme import resolve_theme
+        th = resolve_theme(getattr(store, "config", None) or {})
+        renk = (th.get("colors") or {}).get("primary")
+        if renk:
+            out["accent"] = renk
+        if th.get("logo_url"):
+            out["logo_url"] = th["logo_url"]
+    except Exception:  # noqa: BLE001 — tema okunamazsa marka adı yeter
+        pass
+    if "accent" not in out or "logo_url" not in out:
+        # Tema eksikse kiracının kurumsal renkleri yedek
+        for k, v in brand_kwargs(getattr(store, "tenant", None)).items():
+            out.setdefault(k, v)
+    return out
+
+
 def brand_kwargs(tenant) -> dict:
     """Tenant'tan render_email marka parametreleri (brand, accent, logo_url).
-    Tenant yoksa boş döner -> render_email varsayılan BERNZ/mor kullanır."""
+    Tenant yoksa boş döner -> render_email markasız (nötr) e-posta üretir."""
     if not tenant:
         return {}
     out: dict = {}
@@ -142,7 +173,7 @@ def render_email(
     button_url: str = "",
     footer: str = "Bu otomatik bir e-postadır.",
     preheader: str = "",
-    brand: str = "BERNZ",
+    brand: str = "",            # boşsa marka satırı basılmaz (bkz. store_brand_kwargs)
     accent: str = DEFAULT_ACCENT,
     emoji: str = "",
     logo_url: str = "",

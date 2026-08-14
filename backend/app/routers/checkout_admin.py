@@ -273,8 +273,7 @@ def _payment_link(store: Store, session: CheckoutSession) -> str:
 
 def _send_draft_email(session: CheckoutSession, store: Store, link: str) -> bool:
     cust = session.customer or {}
-    tenant = getattr(store, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
     subj_over, intro_over = email_service.store_email_text(store, "odeme_linki")
     rows = "".join(
         f"<tr><td style='padding:5px 0;color:#374151;font-size:14px'>"

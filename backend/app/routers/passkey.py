@@ -38,7 +38,10 @@ _EXPECTED_ORIGINS = [
 ] or [_ORIGIN]
 if _ORIGIN not in _EXPECTED_ORIGINS:
     _EXPECTED_ORIGINS.append(_ORIGIN)
-_RP_NAME = "BERNZ"
+# Passkey diyaloğunda görünen ad — kurulumun markası. Kiracı bazında
+# değiştirmek RP kimliğini DEĞİŞTİRMEZ (kayıtlı passkey'ler geçerli kalır),
+# ama tek bir kurulumda tek ad görünür: bu yüzden env'den okunur.
+_RP_NAME = get_settings().brand_name
 
 
 def _sign_state(data: dict) -> str:

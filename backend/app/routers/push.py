@@ -98,7 +98,7 @@ def test_push(
     if not push_svc.push_enabled():
         return {"ok": False, "sent": 0, "reason": "Sunucuda VAPID anahtarlari tanimli degil"}
     sent = push_svc.send_to_user(
-        db, user.id, "BERNZ — deneme bildirimi",
+        db, user.id, f"{get_settings().brand_name} — deneme bildirimi",
         "Mobil bildirimler calisiyor ✅", url="/", tag="test",
     )
     return {"ok": sent > 0, "sent": sent}

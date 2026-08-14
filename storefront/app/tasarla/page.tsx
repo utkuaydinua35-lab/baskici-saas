@@ -22,9 +22,9 @@ import type {
   StudioOverlay, TextLayer,
 } from "@/components/studio/types";
 
-const TASLAK_ANAHTAR = "bernz_studyo_taslak";
-const UYARI_ANAHTAR = "bernz_studyo_uyari_onay";
-const OGRETICI_ANAHTAR = "bernz_studyo_ogretici_goruldu";
+const TASLAK_ANAHTAR = "studyo_taslak";
+const UYARI_ANAHTAR = "studyo_uyari_onay";
+const OGRETICI_ANAHTAR = "studyo_ogretici_goruldu";
 
 // Editör turu — ilk ziyarette uyarı onaylanınca açılır, sonra "?" ile tekrar.
 const TUR_ADIMLARI: TurAdimi[] = [

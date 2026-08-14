@@ -45,8 +45,7 @@ def send_stok_eksik(db: Session, order: Order, urun: str) -> tuple[bool, str]:
         return False, "Bu ürün için zaten bildirim gönderilmiş"
 
     store = db.scalar(select(Store).where(Store.id == order.store_id)) if order.store_id else None
-    tenant = getattr(store, "tenant", None) or getattr(order, "tenant", None)
-    brand = email_service.brand_kwargs(tenant) if tenant else {}
+    brand = email_service.store_brand_kwargs(store)
 
     ad = (order.customer_name or "").split(" ")[0]
     siparis = order.name or f"#{order.order_number or ''}"

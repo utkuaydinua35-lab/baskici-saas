@@ -889,7 +889,16 @@ def verify_domain(
                        "(birkaç saat sonra tekrar deneyin) veya kayıt eksik.",
         }
 
-    verified = bool(expected_ip) and expected_ip in resolved
+    # ASIL SORU "IP tutuyor mu" değil, "bu alan adı BİZİM vitrine ulaşıyor mu".
+    # Alan adı Cloudflare gibi bir vekilin arkasındaysa A kaydı sunucunun IP'sine
+    # değil vekilin IP'lerine çözümlenir; IP karşılaştırması o kurulumda ASLA
+    # tutmaz ve kullanıcı doğru kurduğu hâlde "doğrulanamadı" görür. Bu yüzden
+    # karar GERÇEK BİR İSTEĞE dayanır: alan adına gidip vitrinin kimlik ucunu
+    # okuruz; dönen mağaza bu mağazaysa alan adı bağlanmış demektir.
+    ulasti, neden = _vitrine_ulasiyor_mu(domain, store.slug)
+    ip_tutuyor = bool(expected_ip) and expected_ip in resolved
+    verified = ulasti or ip_tutuyor
+
     if verified:
         config = dict(store.config or {})
         config["custom_domain_verified_at"] = datetime.now(timezone.utc).isoformat()
@@ -897,16 +906,28 @@ def verify_domain(
         flag_modified(store, "config")
         db.commit()
 
+    if verified:
+        mesaj = "Alan adı doğrulandı ✓" + (
+            " (vekil/CDN arkasından yanıt veriyor)" if ulasti and not ip_tutuyor else "")
+    else:
+        mesaj = (f"Alan adı şu an {', '.join(resolved)} adresine çözümleniyor "
+                 f"ama vitrine ulaşmıyor: {neden}. ")
+        if expected_ip:
+            mesaj += (f"Doğrudan bağlıyorsanız A kaydı {expected_ip} olmalı; "
+                      "Cloudflare kullanıyorsanız kayıt proxy'li (turuncu bulut) "
+                      "olabilir — o durumda IP farklı görünür, önemli değil. ")
+        else:
+            mesaj += ("Sunucuda SERVER_IP tanımlı olmadığı için IP karşılaştırması "
+                      "yapılamıyor (yalnız bilgi amaçlı; doğrulama isteğe dayanır). ")
+        mesaj += "DNS değişikliği yayılıyorsa birkaç saat sonra tekrar deneyin."
+
     return {
         "verified": verified,
         "domain": domain,
         "resolved_ips": resolved,
         "expected_ip": expected_ip or None,
-        "message": "Alan adı doğrulandı ✓" if verified else (
-            f"Alan adı şu an {', '.join(resolved)} adresine işaret ediyor; "
-            f"beklenen {expected_ip or 'SERVER_IP tanımsız'}. DNS değişikliği "
-            f"yayılıyorsa birkaç saat sonra tekrar deneyin."
-        ),
+        "vitrine_ulasiyor": ulasti,
+        "message": mesaj,
     }
 
 
@@ -1140,3 +1161,47 @@ def entegrasyon_anahtari_iptal(
                     entity_type="entegrasyon", entity_label=kayit.label)
     db.commit()
     return {"ok": True}
+
+
+def _kimlik_sor(url: str, beklenen_slug: str) -> tuple[bool | None, str]:
+    """Tek adrese sor. (True/False/None, açıklama) — None = kesin cevap yok."""
+    import requests
+
+    try:
+        r = requests.get(url, timeout=6, allow_redirects=False,
+                         headers={"User-Agent": "magaza-panel-dogrulama"})
+    except requests.RequestException as e:
+        return None, f"bağlantı kurulamadı ({type(e).__name__})"
+    if r.status_code in (301, 302, 307, 308):
+        return None, f"{r.headers.get('location', 'başka adrese')} adresine yönlendiriyor"
+    if r.status_code != 200:
+        return None, f"HTTP {r.status_code} döndü (bu adres başka bir siteye bağlı olabilir)"
+    try:
+        d = r.json()
+    except ValueError:
+        return None, "yanıt veriyor ama vitrin kimliği okunamadı"
+    if not d.get("vitrin"):
+        return False, "adres başka bir siteye bağlı"
+    if str(d.get("magaza")) != str(beklenen_slug):
+        return False, f"adres BAŞKA bir mağazaya bağlı ({d.get('magaza')})"
+    return True, "vitrin yanıt verdi"
+
+
+def _vitrine_ulasiyor_mu(domain: str, beklenen_slug: str) -> tuple[bool, str]:
+    """Alan adına GERÇEK istek atıp vitrinin kimlik ucunu okur.
+
+    HTTPS belirleyicidir (müşteri de oradan girer). Yalnız HTTPS'e hiç
+    bağlanılamazsa http denenir — http'nin https'e yönlendirmesi normaldir,
+    hata sayılmaz. Yönlendirme İZLENMEZ: başka bir adrese giden alan adı
+    "bağlanmış" sayılmamalı.
+    """
+    sonuc, neden = _kimlik_sor(f"https://{domain}/api/dogrulama", beklenen_slug)
+    if sonuc is not None:
+        return sonuc, neden
+    https_neden = neden
+    sonuc2, neden2 = _kimlik_sor(f"http://{domain}/api/dogrulama", beklenen_slug)
+    if sonuc2 is True:
+        return True, "vitrin yanıt verdi (yalnız http — TLS kurulmalı)"
+    if sonuc2 is False:
+        return False, neden2
+    return False, f"https: {https_neden}"

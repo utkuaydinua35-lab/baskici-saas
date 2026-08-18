@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
+import EmptyState from '../components/EmptyState'
 import ManualOrderDialog from '../components/ManualOrderDialog'
 
 function ExportButton({ storeId }) {
@@ -1200,9 +1201,8 @@ function TopluTakipDialog({ onClose, onDone }) {
               <button onClick={loadBekleyen} className="ml-2 underline hover:text-red-200">tekrar dene</button>
             </div>
           ) : bekleyen.items.length === 0 ? (
-            <div className="px-3 py-3 text-xs text-gray-500">
-              Bekleyen gönderi yok. Paketlemede “Kargoya Ver”e bastığın siparişler burada listelenir.
-            </div>
+            <EmptyState dar ikon="📦" baslik="Bekleyen gönderi yok"
+              aciklama="Paketlemede “Kargoya Ver”e bastığın siparişler, takip numarası gelene kadar burada listelenir." />
           ) : (
             <div className="max-h-40 overflow-y-auto">
               <table className="w-full text-[11px]">

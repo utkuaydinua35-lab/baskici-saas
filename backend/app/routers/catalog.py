@@ -1233,7 +1233,11 @@ CSV_COLUMNS = [
     "etiketler", "koleksiyonlar", "seo_baslik", "seo_aciklama",
     "model_key", "model_adi", "renk", "sku", "varyant_fiyat", "stok", "varyant_aktif",
 ]
-IMPORT_ROW_LIMIT = 5000
+# Shopify export'u VARYANT BAŞINA bir satır üretir: 200 ürün × 60 telefon
+# modeli = 12.000 satır. 5000'lik eski sınır normal bir kılıf kataloğunu
+# ortasından kesiyor ve kalanı sessizce atıyordu. Sınır hâlâ var (kaçak/bozuk
+# dosya sunucuyu meşgul etmesin) ama gerçek bir kataloğa yetecek kadar geniş.
+IMPORT_ROW_LIMIT = 50000
 
 
 def _shopify_to_native_rows(reader) -> list[dict]:
@@ -1783,10 +1787,18 @@ async def import_csv(
         except InvalidOperation:
             raise ValueError(f"{alan} geçersiz sayı: {val}")
 
+    okunan = 0
     for n, row in enumerate(reader, start=2):  # 1 = başlık
         if n - 1 > IMPORT_ROW_LIMIT:
-            stats["errors"].append({"satir": n, "mesaj": f"Satır limiti ({IMPORT_ROW_LIMIT}) aşıldı — kalanlar atlandı"})
+            # Kesilme bir "satır hatası" değil, DOSYANIN YARISININ atılmasıdır;
+            # hata listesinin sonunda kaybolmasın diye ayrı bayrakla bildirilir
+            stats["truncated"] = True
+            stats["errors"].append({
+                "satir": n,
+                "mesaj": f"Satır limiti ({IMPORT_ROW_LIMIT}) aşıldı — bu satır ve "
+                         f"sonrası işlenmedi"})
             break
+        okunan += 1
         try:
             raw_slug = (row.get("urun_slug") or "").strip()
             if not raw_slug:
@@ -1911,8 +1923,13 @@ async def import_csv(
                                      f"{stats['products_updated']} güncel",
                         detail={k: v for k, v in stats.items() if k != "errors"})
         db.commit()
-    if shopify_note:
-        stats["note"] = shopify_note
+    stats["rows_read"] = okunan
+    notlar = [n for n in (shopify_note,) if n]
+    if stats.get("truncated"):
+        notlar.insert(0, f"DOSYA KESİLDİ: yalnız ilk {okunan} satır işlendi. "
+                         f"Dosyayı parçalara bölüp tekrar aktarın.")
+    if notlar:
+        stats["note"] = " ".join(notlar)
     return stats
 
 

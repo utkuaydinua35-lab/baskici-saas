@@ -470,11 +470,32 @@ function ImportModal({ storeId, onClose, onDone }) {
             <button onClick={() => run(true)} disabled={!file || busy} className="btn-primary w-full">
               {busy ? 'İnceleniyor…' : 'Önizle (henüz uygulanmaz)'}
             </button>
+            {/* Görsel aktarımı eskiden YALNIZ sonuç ekranında çıkıyordu; "Tamam"a
+                basınca bir daha ulaşılamıyor ve ürünler görselsiz kalıyordu.
+                Aynı dosyayla buradan da başlatılabilir. */}
+            {file && (
+              <div className="border-t border-panel-border pt-3">
+                <p className="text-[11px] text-panel-muted mb-1.5">
+                  Ürünleri daha önce aktardıysanız, aynı Shopify dosyasıyla
+                  <b> yalnız görselleri</b> getirebilirsiniz. Görseli olan ürünler
+                  atlanır, tekrar çalıştırmak güvenlidir.
+                </p>
+                <ShopifyImageImport storeId={storeId} file={file}
+                  label="📷 Yalnızca Görselleri Aktar" />
+              </div>
+            )}
           </>
         )}
 
         {preview && !result && (
           <>
+            {preview.note && (
+              <p className={`text-xs rounded-xl px-3 py-2 border ${preview.truncated
+                ? 'text-red-700 bg-red-50 border-red-500/30'
+                : 'text-amber-700 bg-amber-50 border-amber-500/30'}`}>
+                {preview.note}
+              </p>
+            )}
             <div className="grid grid-cols-4 gap-2">
               <Stat n={preview.products_created} label="yeni ürün" />
               <Stat n={preview.products_updated} label="güncellenecek ürün" />
@@ -508,7 +529,9 @@ function ImportModal({ storeId, onClose, onDone }) {
               {result.variants_created} yeni + {result.variants_updated} güncellenen varyant.
             </p>
             {result.note && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-500/30 rounded-xl px-3 py-2">
+              <p className={`text-xs rounded-xl px-3 py-2 border ${result.truncated
+                ? 'text-red-700 bg-red-50 border-red-500/30'
+                : 'text-amber-700 bg-amber-50 border-amber-500/30'}`}>
                 {result.note}
               </p>
             )}
@@ -527,7 +550,7 @@ function ImportModal({ storeId, onClose, onDone }) {
 }
 
 // Shopify görsellerini arka planda indirir — ilerleme çubuğuyla izlenir.
-function ShopifyImageImport({ storeId, file }) {
+function ShopifyImageImport({ storeId, file, label = "📷 Görselleri de Aktar (Shopify CDN'den indirilir)" }) {
   const [job, setJob] = useState(null)     // {running, total, done, added, skipped, errors}
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -558,7 +581,7 @@ function ShopifyImageImport({ storeId, file }) {
     return (
       <div className="space-y-1.5">
         <button onClick={start} className="btn-ghost w-full !py-2 text-xs">
-          📷 Görselleri de Aktar (Shopify CDN'den indirilir)
+          {label}
         </button>
         {err && <p className="text-xs text-red-600">{err}</p>}
         <p className="text-[10px] text-panel-muted">

@@ -3,7 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --accent-rgb: 20 184 166;   /* teal #14b8a6 */
+  --accent-rgb: 124 92 255;   /* mor #7c5cff; tenant brand_color ile override edilir */
+  /* Accent üzerindeki metin rengi — accent'in parlaklığından türetilir (auth.jsx).
+     Sabit koyu metin yalnız açık accent'te doğruydu; koyu bir markada okunmuyordu. */
+  --accent-fg: #ffffff;
 }
 
 @layer base {
@@ -24,10 +27,11 @@
     @apply bg-brand-input border border-brand-border rounded-xl px-3 py-2 text-sm text-gray-100
            focus:outline-none focus:border-accent/60 placeholder:text-gray-600 transition-colors;
   }
-  /* Birincil aksiyon: emerald pill + yeşil glow, koyu metin (Cryptix CTA) */
+  /* Birincil aksiyon: accent pill + glow */
   .btn-primary {
-    @apply bg-accent text-[#04130d] rounded-full px-5 py-2 text-sm font-semibold
+    @apply bg-accent rounded-full px-5 py-2 text-sm font-semibold
            transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+    color: var(--accent-fg);
     box-shadow: 0 8px 26px -8px rgb(var(--accent-rgb) / 0.55);
   }
   .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
@@ -52,7 +56,7 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .tbl thead th {
   text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; font-weight: 500;
   color: #6c7d74; padding: 11px 16px; text-align: left;
-  border-bottom: 1px solid #21302a; white-space: nowrap;
+  border-bottom: 1px solid #262a3a; white-space: nowrap;
 }
 .tbl tbody td { padding: 13px 16px; border-bottom: 1px solid rgb(33 48 42 / 0.55); }
 .tbl tbody tr:last-child td { border-bottom: 0; }
@@ -348,4 +352,4 @@ select.input {
 }
 select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%23e5e7eb' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 /* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
-select.input option, select option { background: #0e1612; color: #f3f4f6; }
+select.input option, select option { background: #171a26; color: #f3f4f6; }

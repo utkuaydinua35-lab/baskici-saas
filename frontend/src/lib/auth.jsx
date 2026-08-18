@@ -9,7 +9,7 @@ import { api, ApiError, getToken, setToken } from './api'
 
 const AuthContext = createContext(null)
 
-const DEFAULT_ACCENT_RGB = '20 184 166'  // teal #14b8a6 (yeni varsayilan tema)
+const DEFAULT_ACCENT_RGB = '124 92 255'  // mor #7c5cff (varsayilan tema)
 
 function _hexToRgb(hex) {
   const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim())
@@ -19,9 +19,23 @@ function _hexToRgb(hex) {
 }
 
 // White-label: tenant markasını uygula (accent renk + sekme başlığı)
+// Accent uzerine gelecek metin rengi. Sabit deger (eskiden koyu yesil) yalnizca
+// o zamanki acik accent icin dogruydu; baska her renkte okunmuyordu.
+// Sabit bir parlaklik ESIGI de yaniltici: iki adayin WCAG kontrastini hesaplayip
+// YUKSEK olani seceriz.
+export function accentFg(rgb) {
+  const [r, g, b] = String(rgb).split(/\s+/).map(Number)
+  const f = (c) => { const x = c / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
+  const lum = (r, g, b) => 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+  const kontrast = (a, b2) => (Math.max(a, b2) + 0.05) / (Math.min(a, b2) + 0.05)
+  const L = lum(r, g, b)
+  return kontrast(L, lum(255, 255, 255)) >= kontrast(L, lum(11, 11, 18)) ? '#ffffff' : '#0b0b12'
+}
+
 function applyBranding(tenant) {
   const rgb = _hexToRgb(tenant?.brand_color) || DEFAULT_ACCENT_RGB
   document.documentElement.style.setProperty('--accent-rgb', rgb)
+  document.documentElement.style.setProperty('--accent-fg', accentFg(rgb))
   const title = tenant?.app_name || tenant?.name
   if (title) document.title = title
 }

@@ -51,7 +51,8 @@ export default function Layout() {
             {tenant?.logo_url ? (
               <img src={tenant.logo_url} alt={tenant?.name || 'Logo'} className="h-9 max-w-[150px] object-contain rounded-lg" />
             ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-teal-600 flex items-center justify-center text-[#04130d] text-sm font-bold shrink-0"
+              <div style={{ color: 'var(--accent-fg)' }}
+                   className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-accent/55 flex items-center justify-center text-sm font-bold shrink-0"
                    style={{ boxShadow: '0 6px 18px -6px rgb(var(--accent-rgb) / 0.6)' }}>
                 {(tenant?.name || 'B').charAt(0).toUpperCase()}
               </div>
@@ -130,7 +131,7 @@ function InstallPrompt() {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] w-[92%] max-w-md animate-fadein">
       <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl p-3 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-teal-600 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
+        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-accent/55 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
         <div className="min-w-0 flex-1">
           {deferred ? (
             <>
@@ -397,7 +398,7 @@ function ProfileDropdown({ user, onLogout }) {
         {user?.avatar_url ? (
           <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
         ) : (
-          <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-teal-600 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
+          <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/55 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
         )}
         <span className="text-xs text-gray-300 hidden sm:block">{user?.full_name || user?.email}</span>
         <span className="text-gray-500 text-xs">⌄</span>

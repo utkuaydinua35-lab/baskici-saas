@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../lib/api'
+import { accentFg } from '../lib/auth'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
 import StoresPage from './StoresPage'
@@ -91,7 +92,12 @@ function BrandIdentity({ onSaved }) {
       setOrig({ color: r.brand_color || '', appName: r.app_name || '' })
       // anında uygula
       const m = /^#?([0-9a-fA-F]{6})$/.exec(color)
-      if (m) { const n = parseInt(m[1], 16); document.documentElement.style.setProperty('--accent-rgb', `${(n>>16)&255} ${(n>>8)&255} ${n&255}`) }
+      if (m) {
+        const n = parseInt(m[1], 16)
+        const rgb = `${(n>>16)&255} ${(n>>8)&255} ${n&255}`
+        document.documentElement.style.setProperty('--accent-rgb', rgb)
+        document.documentElement.style.setProperty('--accent-fg', accentFg(rgb))
+      }
       if (appName) document.title = appName
       toast.success('Marka kimliği kaydedildi')
       onSaved?.()

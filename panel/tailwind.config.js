@@ -4,23 +4,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Baskıcı (studio) ile AYNI koyu tema — Cryptix stili yeşil-siyah.
-        // Kaynak: frontend/tailwind.config.js brand.* paleti.
-        // SOFT tema — Shopify admin'in açık, yumuşak paleti.
-        // Göz yormayan kırık beyaz zemin + beyaz kartlar + koyu lacivert metin.
+        // VISION UI — koyu lacivert + cam kartlar + mor/mavi gradyan.
+        // Kaynak referans: Vision UI Dashboard (Creative Tim). Renkler
+        // demodan ÖLÇÜLDÜ, tahmin edilmedi.
+        //
+        // Token ADLARI kasten korundu (panel-bg, panel-card, …): panelin 32
+        // dosyası bu adları kullanıyor, yalnız değerleri değişince hepsi
+        // birden koyu temaya geçiyor.
         panel: {
-          bg: '#f6f6f7',       // sayfa arka planı (kırık beyaz)
-          card: '#ffffff',     // kart / panel arka planı
-          border: '#e1e3e5',   // ince kenarlık
-          input: '#f1f2f4',    // input / ikincil yüzey
-          ink: '#202223',      // ana metin (koyu gri-siyah)
-          muted: '#6d7175',    // ikincil metin
-          accent: '#008060',   // Shopify yeşili — birincil aksiyon
-          accent2: '#5c6ac4',  // indigo — ikincil vurgu
+          bg: '#0b1437',       // sayfa zemini (üstüne aurora gradyanı biner)
+          card: '#111c44',     // düz kart rengi (cam efekti .card sınıfında)
+          border: 'rgba(255,255,255,0.10)',
+          input: '#0f1535',    // girdi / ikincil yüzey
+          ink: '#ffffff',
+          muted: '#a0aec0',
+          accent: '#0075ff',   // Vision UI marka mavisi
+          accent2: '#4318ff',  // mor vurgu
+          cyan: '#21d4fd',     // gradyanın açık ucu
+          ok: '#01b574',
+          warn: '#ffb547',
+          err: '#e31a1a',
         },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', 'Inter', '-apple-system', 'BlinkMacSystemFont',
+               'Segoe UI', 'Roboto', 'sans-serif'],
       },
     },
   },

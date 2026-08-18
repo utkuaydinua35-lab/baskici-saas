@@ -152,7 +152,7 @@ export default function AyarlarPage() {
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-3.5 py-2 text-[13px] whitespace-nowrap rounded-t-xl border-b-2 transition-all duration-150 ${
               tab === t.key
-                ? 'border-panel-accent text-emerald-700 font-semibold bg-emerald-50'
+                ? 'border-panel-accent text-emerald-300 font-semibold bg-emerald-500/10'
                 : 'border-transparent text-panel-muted hover:text-panel-ink hover:bg-panel-input'}`}>
             <span className="mr-1.5">{t.icon}</span>{t.label}
           </button>
@@ -199,7 +199,7 @@ export default function AyarlarPage() {
         {/* Eşik var ama ücret yoksa HER siparişte kargo bedava olur — eşik
             hiçbir işe yaramaz ve fark ancak siparişte görülür. */}
         {Number(cfg.free_shipping_over || 0) > 0 && !(Number(cfg.shipping_fee || 0) > 0) && (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
             ⚠️ <b>Kargo ücreti boş.</b> Ücretsiz kargo eşiği
             {' '}{Number(cfg.free_shipping_over).toLocaleString('tr-TR')} ₺ olarak girilmiş,
             ama kargo ücreti girilmediği için <b>her siparişte kargo ücretsiz</b> oluyor —
@@ -343,8 +343,8 @@ export default function AyarlarPage() {
           </div>
           {odemeSonuc && (
             <div className={`text-xs rounded-xl px-3 py-2 border ${odemeSonuc.ok
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'}`}>
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
               <div className="font-medium">
                 {odemeSonuc.ok ? '✅ Bağlantı çalışıyor' : '❌ Bağlantı kurulamadı'}
                 <span className="font-normal opacity-70">
@@ -370,8 +370,8 @@ export default function AyarlarPage() {
           İkisi de sipariş detayındaki tasarım kartından indirilir.
         </p>
         <div className={`text-xs rounded-xl px-3 py-2 border ${cfg.cmyk_icc_ad
-          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-          : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
           {cfg.cmyk_icc_ad ? (
             <>✅ <b>PDF gerçek CMYK</b> üretiliyor — renkler yüklediğiniz
             profile ({cfg.cmyk_icc_ad}) göre dönüştürülüyor.</>
@@ -393,13 +393,13 @@ export default function AyarlarPage() {
           </p>
           {cfg.cmyk_icc_ad ? (
             <div className="flex items-center gap-2 text-xs">
-              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">
+              <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300">
                 ✓ {cfg.cmyk_icc_ad}
               </span>
               <button onClick={() => iccRef.current?.click()} className="underline text-panel-muted">
                 değiştir
               </button>
-              <button onClick={iccSil} className="underline text-red-600 ml-auto">kaldır</button>
+              <button onClick={iccSil} className="underline text-red-300 ml-auto">kaldır</button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -407,12 +407,12 @@ export default function AyarlarPage() {
                 className="btn-ghost !py-1.5 text-xs disabled:opacity-40">
                 {iccBusy ? 'Yükleniyor…' : '📥 ICC profili yükle'}
               </button>
-              <span className="text-xs text-amber-700">
+              <span className="text-xs text-amber-300">
                 Profil yok — basit dönüşüm kullanılıyor
               </span>
             </div>
           )}
-          {iccHata && <p className="text-xs text-red-600">{iccHata}</p>}
+          {iccHata && <p className="text-xs text-red-300">{iccHata}</p>}
           <input ref={iccRef} type="file" accept=".icc,.icm" className="hidden"
             onChange={e => iccYukle(e.target.files?.[0])} />
         </div>
@@ -451,7 +451,7 @@ export default function AyarlarPage() {
               <summary className="text-sm font-medium cursor-pointer flex items-center gap-2">
                 {label}
                 {(t.subject || t.intro) && (
-                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">özel</span>
+                  <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">özel</span>
                 )}
               </summary>
               <div className="mt-2 space-y-2">
@@ -559,7 +559,7 @@ export default function AyarlarPage() {
                     support_faq: c.support_faq.map((x, j) => j === i ? { ...x, q: e.target.value } : x) }))} />
                 <button onClick={() => setCfg(c => ({ ...c,
                   support_faq: c.support_faq.filter((_, j) => j !== i) }))}
-                  className="text-red-600 hover:text-red-600 text-sm">×</button>
+                  className="text-red-300 hover:text-red-300 text-sm">×</button>
               </div>
               <textarea className="input" rows={2} maxLength={2000} value={f.a}
                 placeholder="Asistanın vereceği yanıt"
@@ -601,13 +601,13 @@ export default function AyarlarPage() {
           </p>
           {cfg.cmyk_icc_ad ? (
             <div className="flex items-center gap-2 text-xs">
-              <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">
+              <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300">
                 ✓ {cfg.cmyk_icc_ad}
               </span>
               <button onClick={() => iccRef.current?.click()} className="underline text-panel-muted">
                 değiştir
               </button>
-              <button onClick={iccSil} className="underline text-red-600 ml-auto">kaldır</button>
+              <button onClick={iccSil} className="underline text-red-300 ml-auto">kaldır</button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -615,12 +615,12 @@ export default function AyarlarPage() {
                 className="btn-ghost !py-1.5 text-xs disabled:opacity-40">
                 {iccBusy ? 'Yükleniyor…' : '📥 ICC profili yükle'}
               </button>
-              <span className="text-xs text-amber-700">
+              <span className="text-xs text-amber-300">
                 Profil yok — basit dönüşüm kullanılıyor
               </span>
             </div>
           )}
-          {iccHata && <p className="text-xs text-red-600">{iccHata}</p>}
+          {iccHata && <p className="text-xs text-red-300">{iccHata}</p>}
           <input ref={iccRef} type="file" accept=".icc,.icm" className="hidden"
             onChange={e => iccYukle(e.target.files?.[0])} />
         </div>
@@ -838,7 +838,7 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
           faturayı keser ve fatura numarasını sisteme geri yazar.
         </p>
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
 
         <div className="flex gap-2 items-end">
           <Field label="Anahtar adı (kim kullanacak?)">
@@ -851,12 +851,12 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
         </div>
 
         {yeni && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-1.5">
-            <div className="text-xs font-semibold text-amber-900">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+            <div className="text-xs font-semibold text-amber-300">
               ⚠️ Anahtarı şimdi kopyalayın — bir daha gösterilmeyecek
             </div>
             <div className="flex gap-2 items-center">
-              <code className="flex-1 text-[11px] bg-white rounded-lg px-2 py-1.5 break-all border border-amber-200">
+              <code className="flex-1 text-[11px] bg-white rounded-lg px-2 py-1.5 break-all border border-amber-500/30">
                 {yeni}
               </code>
               <button onClick={() => kopyala(yeni)} className="btn-ghost !py-1 text-xs">Kopyala</button>
@@ -873,15 +873,15 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
               <span className="font-medium">{k.label}</span>
               <code className="text-[11px] text-panel-muted">{k.prefix}…</code>
               {k.is_active
-                ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">aktif</span>
-                : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">iptal</span>}
+                ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300">aktif</span>
+                : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-panel-muted">iptal</span>}
               <span className="ml-auto text-[11px] text-panel-muted">
                 {k.last_used_at
                   ? `son bağlantı: ${new Date(k.last_used_at).toLocaleString('tr-TR')}`
                   : 'henüz bağlanmadı'}
               </span>
               {k.is_active && (
-                <button onClick={() => iptal(k)} className="text-[11px] text-red-600">İptal</button>
+                <button onClick={() => iptal(k)} className="text-[11px] text-red-300">İptal</button>
               )}
             </div>
           ))}
@@ -1031,7 +1031,7 @@ function PasskeySection({ toast }) {
         Baskıcı panelinde de geçerlidir.
       </p>
       {!passkeySupported() && (
-        <p className="text-xs text-amber-700">
+        <p className="text-xs text-amber-300">
           Bu tarayıcı geçiş anahtarını desteklemiyor (güncel Chrome/Safari/Edge gerekir).
         </p>
       )}
@@ -1051,7 +1051,7 @@ function PasskeySection({ toast }) {
                   : 'hiç kullanılmadı'}
               </span>
               <button onClick={() => remove(k)}
-                className="ml-auto text-xs text-red-600 hover:text-red-600">Sil</button>
+                className="ml-auto text-xs text-red-300 hover:text-red-300">Sil</button>
             </div>
           ))}
         </div>
@@ -1115,7 +1115,7 @@ function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
           {busy ? 'Kontrol ediliyor…' : '🔍 DNS Doğrula'}
         </button>
         {result && (
-          <span className={`text-xs ${result.verified ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <span className={`text-xs ${result.verified ? 'text-emerald-300' : 'text-amber-300'}`}>
             {result.message}
           </span>
         )}

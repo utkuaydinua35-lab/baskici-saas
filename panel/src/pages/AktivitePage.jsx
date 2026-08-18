@@ -74,7 +74,7 @@ export default function AktivitePage() {
         {RANGES.map(r => (
           <button key={r.d} onClick={() => setDays(r.d)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${days === r.d
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {r.l}
           </button>
@@ -93,7 +93,7 @@ export default function AktivitePage() {
         )}
       </div>
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-red-300">{err}</p>}
 
       <div className={`space-y-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
         {gruplar.map(([gun, satirlar]) => (

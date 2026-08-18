@@ -160,32 +160,32 @@ export default function UrunDetayPage() {
           )}
           {p.status !== 'active'
             ? <button disabled={busy} onClick={() => patchStatus('active')}
-                className="px-3 py-1.5 rounded-xl text-xs bg-emerald-50 text-emerald-700">Yayınla</button>
+                className="px-3 py-1.5 rounded-xl text-xs bg-emerald-500/10 text-emerald-300">Yayınla</button>
             : <button disabled={busy} onClick={() => patchStatus('draft')}
-                className="px-3 py-1.5 rounded-xl text-xs bg-slate-100 text-slate-600">Taslağa Al</button>}
+                className="px-3 py-1.5 rounded-xl text-xs bg-white/5 text-panel-muted">Taslağa Al</button>}
           <button disabled={busy} onClick={duplicate} className="btn-ghost !py-1.5 text-xs">Çoğalt</button>
           <button disabled={busy} onClick={removeProduct}
-            className="px-3 py-1.5 rounded-xl text-xs bg-red-50 text-red-700">Sil</button>
+            className="px-3 py-1.5 rounded-xl text-xs bg-red-500/10 text-red-300">Sil</button>
           <button disabled={busy} onClick={save} className="btn-primary !py-1.5">Kaydet</button>
         </div>
       </div>
 
       {p.status === 'draft' && (
-        <div className="card !py-2.5 flex items-center gap-3 text-sm border-indigo-500/30 bg-indigo-50">
+        <div className="card !py-2.5 flex items-center gap-3 text-sm border-indigo-500/30 bg-indigo-500/10">
           <span>⏰</span>
           {p.publish_at ? (
             <>
-              <span className="text-indigo-700">
+              <span className="text-indigo-300">
                 <b>{new Date(p.publish_at).toLocaleString('tr-TR', {
                   day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</b>'de
                 otomatik yayınlanacak
               </span>
               <button onClick={() => schedulePublish(null)} disabled={busy}
-                className="ml-auto text-xs text-indigo-700 underline">Planı kaldır</button>
+                className="ml-auto text-xs text-indigo-300 underline">Planı kaldır</button>
             </>
           ) : (
             <>
-              <span className="text-indigo-700">Yayın zamanı planla:</span>
+              <span className="text-indigo-300">Yayın zamanı planla:</span>
               <input type="datetime-local" className="input !w-56 !py-1.5"
                 min={new Date().toISOString().slice(0, 16)}
                 onChange={e => e.target.value && schedulePublish(e.target.value)} />
@@ -245,7 +245,7 @@ export default function UrunDetayPage() {
                     try { await api.del(`/api/catalog/products/${p.id}/video`); await load() }
                     catch { setMsg({ ok: false, text: 'Video kaldırılamadı' }) }
                   }}
-                  className="text-xs text-red-600 hover:text-red-600">Videoyu Kaldır</button>
+                  className="text-xs text-red-300 hover:text-red-300">Videoyu Kaldır</button>
               </>
             ) : (
               <label className="btn-ghost !py-1.5 text-xs cursor-pointer">
@@ -307,7 +307,7 @@ export default function UrunDetayPage() {
                   <span key={c.id}
                     title="Akıllı koleksiyon — üyelik kurala göre otomatik belirlenir"
                     className={`px-3 py-1 rounded-full text-xs border ${active
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300'
                       : 'border-panel-border text-panel-muted opacity-60'}`}>
                     ⚙️ {c.title}
                   </span>
@@ -325,7 +325,7 @@ export default function UrunDetayPage() {
                     } catch { setMsg({ ok: false, text: 'Koleksiyon güncellenemedi' }) }
                   }}
                   className={`px-3 py-1 rounded-full text-xs border transition ${active
-                    ? 'border-panel-accent bg-emerald-50 text-emerald-700'
+                    ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
                     : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                   {c.title}
                 </button>
@@ -380,7 +380,7 @@ export default function UrunDetayPage() {
             {vsets.map(vs => <option key={vs.id} value={vs.id}>{vs.name} ({vs.items.length} model)</option>)}
           </select>
           {p.variant_set_id && (
-            <span className="text-[11px] text-emerald-700">
+            <span className="text-[11px] text-emerald-300">
               ✓ Set düzenlenince bu ürün otomatik güncellenir
             </span>
           )}
@@ -476,7 +476,7 @@ function ImagesSection({ product, onChanged, setMsg }) {
 
   return (
     <section
-      className={`card space-y-3 transition ${dropActive ? 'ring-2 ring-panel-accent ring-offset-2 !bg-emerald-50' : ''}`}
+      className={`card space-y-3 transition ${dropActive ? 'ring-2 ring-panel-accent ring-offset-2 !bg-emerald-500/10' : ''}`}
       onDragOver={(e) => {
         if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDropActive(true) }
       }}
@@ -525,7 +525,7 @@ function ImagesSection({ product, onChanged, setMsg }) {
             </div>
           )
         })}
-        <label className="w-24 h-24 rounded-xl border-2 border-dashed border-panel-border flex flex-col items-center justify-center cursor-pointer text-panel-muted hover:text-panel-ink hover:border-slate-400">
+        <label className="w-24 h-24 rounded-xl border-2 border-dashed border-panel-border flex flex-col items-center justify-center cursor-pointer text-panel-muted hover:text-panel-ink hover:border-panel-border">
           <span className="text-xl">+</span>
           <span className="text-[10px]">{busy ? 'Yükleniyor…' : 'Görsel ekle'}</span>
           <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden"
@@ -698,7 +698,7 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
                     <input type="checkbox" checked={v.is_active} onChange={() => toggleActive(v)} />
                   </td>
                   <td className="px-2 py-1.5 text-right">
-                    <button onClick={() => remove(v)} className="text-red-600 hover:text-red-600">×</button>
+                    <button onClick={() => remove(v)} className="text-red-300 hover:text-red-300">×</button>
                   </td>
                 </tr>
               ))}
@@ -770,9 +770,9 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
         <div className="flex gap-2 flex-wrap">
           {picked.map(slug => (
             <span key={slug}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs">
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 text-xs">
               {bySlug[slug]?.title?.slice(0, 30) || slug}
-              <button onClick={() => toggle(slug)} className="hover:text-red-600">×</button>
+              <button onClick={() => toggle(slug)} className="hover:text-red-300">×</button>
             </span>
           ))}
         </div>
@@ -856,7 +856,7 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
                 onChange={e => patchF(i, { required: e.target.checked })} /> zorunlu
             </label>
             <button onClick={() => { setFields(fl => fl.filter((_, j) => j !== i)); setDirtyF(true) }}
-              className="text-red-600 hover:text-red-600 px-1">×</button>
+              className="text-red-300 hover:text-red-300 px-1">×</button>
           </div>
           {f.type === 'color' && (
             <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}
@@ -917,7 +917,7 @@ function InlineCollectionCreate({ storeId, productId, currentIds, onDone, setMsg
           if (e.key === 'Escape') setOpen(false) }}
         placeholder="Koleksiyon adı" />
       <button onClick={create} disabled={busy || !title.trim()}
-        className="text-xs text-emerald-700 font-medium disabled:opacity-40">Oluştur</button>
+        className="text-xs text-emerald-300 font-medium disabled:opacity-40">Oluştur</button>
       <button onClick={() => setOpen(false)} className="text-xs text-panel-muted">Vazgeç</button>
     </span>
   )
@@ -983,7 +983,7 @@ function StudyoModulleri({ form, setForm, storeId }) {
         </div>
       )}
       {secili.length > 0 && (
-        <p className="text-[11px] text-emerald-700">
+        <p className="text-[11px] text-emerald-300">
           {secili.length} kılıf tipi bağlı — ürün sayfasında tasarım seçeneği görünecek.
         </p>
       )}
@@ -1027,7 +1027,7 @@ function StudyoModulleri({ form, setForm, storeId }) {
           </div>
         )}
         {seciliModul.length > 0 && (
-          <p className="text-[11px] text-emerald-700 mt-1.5">
+          <p className="text-[11px] text-emerald-300 mt-1.5">
             {seciliModul.length} hazır tasarım bu ürüne bağlı.
           </p>
         )}

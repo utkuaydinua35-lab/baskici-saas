@@ -33,7 +33,7 @@ export default function KuponlarPage() {
         <h1 className="text-xl font-semibold">Kuponlar</h1>
         <button onClick={() => setEditing('new')} className="btn-primary ml-auto">+ Yeni Kupon</button>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-300">{error}</p>}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -54,11 +54,11 @@ export default function KuponlarPage() {
                 <td className="px-4 py-2.5 font-mono font-semibold">
                   {c.code}
                   {c.is_automatic && (
-                    <span className="ml-1.5 text-[10px] font-sans font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full"
+                    <span className="ml-1.5 text-[10px] font-sans font-medium text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded-full"
                       title="Kod gerekmez — koşulu sağlayan sepete otomatik uygulanır">⚡ otomatik</span>
                   )}
                   {c.combinable && (
-                    <span className="ml-1.5 text-[10px] font-sans font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full"
+                    <span className="ml-1.5 text-[10px] font-sans font-medium text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded-full"
                       title="Birleşebilir işaretli bir kargo/sepet indirimiyle aynı anda uygulanabilir">🔗 birleşir</span>
                   )}
                 </td>
@@ -78,13 +78,13 @@ export default function KuponlarPage() {
                 <td className="px-4 py-2.5">
                   <button onClick={() => toggle(c)}
                     className={`text-xs px-2 py-0.5 rounded-full ${c.is_active
-                      ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>
                     {c.is_active ? 'Aktif' : 'Pasif'}
                   </button>
                 </td>
                 <td className="px-2 py-2.5 text-right whitespace-nowrap">
                   <button onClick={() => setEditing(c)} className="text-xs text-panel-muted hover:text-panel-ink px-1.5">Düzenle</button>
-                  <button onClick={() => remove(c)} className="text-xs text-red-600 hover:text-red-600 px-1.5">Sil</button>
+                  <button onClick={() => remove(c)} className="text-xs text-red-300 hover:text-red-300 px-1.5">Sil</button>
                 </td>
               </tr>
             ))}
@@ -305,7 +305,7 @@ function CouponModal({ storeId, coupon, onClose, onSaved }) {
               placeholder='örn. "3 kılıf al 2 öde — sepette otomatik!"' />
           </label>
         )}
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button disabled={busy} className="btn-primary">

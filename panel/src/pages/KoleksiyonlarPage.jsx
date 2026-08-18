@@ -107,7 +107,7 @@ export default function KoleksiyonlarPage() {
           maxLength={200} placeholder="Yeni koleksiyon adı (örn: Retro, Minimal)" />
         <button disabled={busy || !title.trim()} className="btn-primary">Ekle</button>
       </form>
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-red-300">{err}</p>}
 
       <div className="card !p-0 divide-y divide-panel-border overflow-hidden">
         {collections.map(c => (
@@ -126,14 +126,14 @@ export default function KoleksiyonlarPage() {
             )}
             <span className="font-medium">{c.title}</span>
             {c.is_smart && (
-              <span className="text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full"
+              <span className="text-[10px] font-medium text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded-full"
                 title="Ürünler kurala göre otomatik seçilir">⚙️ akıllı</span>
             )}
             <span className="text-xs text-panel-muted">/{c.slug} · {c.product_count ?? 0} ürün</span>
             <div className="ml-auto flex items-center gap-2">
               <button onClick={() => toggle(c)}
                 className={`text-xs px-2 py-0.5 rounded-full ${c.is_active
-                  ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>
                 {c.is_active ? 'Aktif' : 'Pasif'}
               </button>
               {c.is_smart && (
@@ -149,10 +149,10 @@ export default function KoleksiyonlarPage() {
               )}
               {c.image_url && (
                 <button onClick={() => clearImage(c)}
-                  className="text-xs text-panel-muted hover:text-red-600">Görseli kaldır</button>
+                  className="text-xs text-panel-muted hover:text-red-300">Görseli kaldır</button>
               )}
               <button onClick={() => rename(c)} className="text-xs text-panel-muted hover:text-panel-ink">Adlandır</button>
-              <button onClick={() => remove(c)} className="text-xs text-red-600 hover:text-red-600">Sil</button>
+              <button onClick={() => remove(c)} className="text-xs text-red-300 hover:text-red-300">Sil</button>
             </div>
           </div>
         ))}
@@ -274,7 +274,7 @@ function SmartModal({ storeId, collection, onClose, onSaved }) {
                 )}
                 <button type="button" onClick={() => delRule(i)}
                   disabled={rules.length === 1}
-                  className="text-panel-muted hover:text-red-600 px-1 disabled:opacity-30">×</button>
+                  className="text-panel-muted hover:text-red-300 px-1 disabled:opacity-30">×</button>
               </div>
             )
           })}
@@ -294,7 +294,7 @@ function SmartModal({ storeId, collection, onClose, onSaved }) {
                 </span>
               )}
               {prev.count === 0 && (
-                <span className="block text-xs text-amber-700 mt-0.5">
+                <span className="block text-xs text-amber-300 mt-0.5">
                   Hiçbir ürün eşleşmiyor — koleksiyon vitrinde boş görünür.
                 </span>
               )}
@@ -306,7 +306,7 @@ function SmartModal({ storeId, collection, onClose, onSaved }) {
           ürünleri elle ekleyip çıkaramazsınız — kuralı değiştirin.
         </p>
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button disabled={busy} className="btn-primary">
@@ -388,7 +388,7 @@ function KoleksiyonUrunleri({ storeId, collection, onClose, onSaved }) {
           <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
         </div>
 
-        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+        {err && <p className="text-sm text-red-300 mb-2">{err}</p>}
 
         <div className="flex gap-2 items-center mb-2">
           <input value={ara} onChange={e => setAra(e.target.value)} placeholder="Ürün ara…"

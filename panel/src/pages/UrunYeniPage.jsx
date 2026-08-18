@@ -179,10 +179,10 @@ export default function UrunYeniPage() {
             </label>
             {/* Google önizlemesi */}
             <div className="bg-panel-input rounded-xl p-3">
-              <div className="text-[13px] text-sky-700 truncate">
+              <div className="text-[13px] text-sky-300 truncate">
                 {form.seo_title || form.title || 'Ürün adı'}
               </div>
-              <div className="text-[11px] text-emerald-700/80">magaza.bernzcompany.com › urun</div>
+              <div className="text-[11px] text-emerald-300/80">magaza.bernzcompany.com › urun</div>
               <div className="text-[11px] text-panel-muted line-clamp-2">
                 {form.seo_description || 'SEO açıklaması burada görünecek…'}
               </div>
@@ -230,7 +230,7 @@ export default function UrunYeniPage() {
                     <button key={c.id} type="button"
                       onClick={() => setSelectedCols(x => on ? x.filter(i => i !== c.id) : [...x, c.id])}
                       className={`px-2.5 py-1 rounded-full text-xs border transition ${on
-                        ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+                        ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
                         : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                       {c.title}
                     </button>

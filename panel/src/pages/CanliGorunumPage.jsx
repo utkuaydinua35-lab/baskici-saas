@@ -28,7 +28,7 @@ function Degisim({ yuzde }) {
   if (yuzde === null || yuzde === undefined) return null
   const arti = yuzde >= 0
   return (
-    <span className={`text-xs font-medium ${arti ? 'text-emerald-600' : 'text-red-600'}`}>
+    <span className={`text-xs font-medium ${arti ? 'text-emerald-300' : 'text-red-300'}`}>
       {arti ? '↗' : '↘'} %{SAYI.format(Math.abs(yuzde))}
     </span>
   )
@@ -95,7 +95,7 @@ export default function CanliGorunumPage() {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', cek) }
   }, [storeId])
 
-  if (hata) return <p className="text-sm text-red-600">{hata}</p>
+  if (hata) return <p className="text-sm text-red-300">{hata}</p>
   if (!d) return <p className="text-sm text-panel-muted">Canlı veri yükleniyor…</p>
 
   const saat = d.su_anki_saat ?? 23

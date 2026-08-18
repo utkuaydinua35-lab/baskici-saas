@@ -57,29 +57,31 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Üst bar — koyu, Shopify tarzı */}
-      <header className="h-12 shrink-0 bg-slate-900 flex items-center gap-3 px-3 text-white sticky top-0 z-40">
+      {/* Üst bar — cam; arkasındaki aurora süzülerek görünür */}
+      <header className="h-12 shrink-0 flex items-center gap-3 px-3 text-white sticky top-0 z-40
+        bg-[#060b28]/70 backdrop-blur-2xl border-b border-panel-border">
         {/* Mobil menü düğmesi */}
         <button onClick={() => setMenuOpen(o => !o)} aria-label="Menü"
-          className="lg:hidden w-8 h-8 rounded-lg border border-slate-700 flex items-center justify-center text-slate-600">
+          className="lg:hidden w-8 h-8 rounded-lg border border-panel-border flex items-center justify-center text-panel-muted">
           {menuOpen ? '✕' : '☰'}
         </button>
         <div className="flex items-center gap-2 pr-2">
           <BrandMark />
           <span className="text-[13px] tracking-tight hidden sm:inline">
             <span className="font-bold">BERNZ</span>
-            <span className="text-emerald-700 font-light ml-1">Commerce</span>
+            <span className="font-light ml-1 bg-gradient-to-r from-panel-accent to-panel-cyan
+              bg-clip-text text-transparent">Commerce</span>
           </span>
         </div>
 
         {stores.length > 1 ? (
           <select value={store?.id || ''} onChange={e => setStoreId(e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5
-              focus:outline-none focus:border-emerald-500">
+            className="bg-[#0f1535] border border-panel-border text-white/80 text-xs rounded-[10px] px-2 py-1.5
+              focus:outline-none focus:border-panel-accent transition-colors">
             {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         ) : (
-          <span className="text-xs text-slate-600 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5">
+          <span className="text-xs text-panel-muted bg-white/5 border border-panel-border rounded-[10px] px-2.5 py-1.5">
             🏪 {store?.name || 'Mağaza'}
           </span>
         )}
@@ -87,8 +89,8 @@ export default function Layout() {
         <div className="ml-auto flex items-center gap-2">
           {storefrontUrl && (
             <a href={storefrontUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500
-                rounded-lg px-2.5 py-1.5 transition-colors">
+              className="text-xs text-white/80 hover:text-white border border-panel-border
+                hover:border-white/25 hover:bg-white/5 rounded-[10px] px-2.5 py-1.5 transition-all">
               Vitrini Gör ↗
             </a>
           )}
@@ -103,7 +105,8 @@ export default function Layout() {
             onClick={() => setMenuOpen(false)} />
         )}
         {/* Sol menü — gruplu; mobilde soldan kayan çekmece */}
-        <aside className={`w-56 shrink-0 border-r border-panel-border bg-panel-card flex flex-col
+        <aside className={`w-56 shrink-0 border-r border-panel-border flex flex-col
+          bg-[#060b28]/55 backdrop-blur-2xl
           fixed lg:sticky top-12 h-[calc(100vh-3rem)] z-30
           transition-transform duration-200 lg:translate-x-0
           ${menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}`}>
@@ -147,12 +150,12 @@ function Avatar({ user, size = 'w-7 h-7', ring = true }) {
   const initial = (user?.full_name || user?.email || '?').slice(0, 1).toUpperCase()
   if (user?.avatar_url) {
     return <img src={user.avatar_url} alt="" className={`${size} rounded-full object-cover ${
-      ring ? 'ring-1 ring-slate-600 group-hover:ring-emerald-500' : ''} transition-all`} />
+      ring ? 'ring-1 ring-white/20 group-hover:ring-emerald-500' : ''} transition-all`} />
   }
   return (
     <div className={`${size} rounded-full flex items-center justify-center text-[11px] font-semibold
       bg-gradient-to-br from-slate-600 to-slate-700 ${ring
-        ? 'group-hover:from-emerald-600 group-hover:to-teal-700 ring-1 ring-slate-600 group-hover:ring-emerald-500'
+        ? 'group-hover:from-emerald-600 group-hover:to-teal-700 ring-1 ring-white/20 group-hover:ring-emerald-500'
         : ''} transition-all duration-200 text-white`}>
       {initial}
     </div>
@@ -180,12 +183,12 @@ function ProfileMenu({ user, logout, refresh }) {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 pl-2 border-l border-slate-700 group">
+        className="flex items-center gap-2 pl-2 border-l border-panel-border group">
         <Avatar user={user} />
-        <span className="hidden sm:block text-[11px] font-medium truncate max-w-32 text-slate-300 group-hover:text-white transition-colors">
+        <span className="hidden sm:block text-[11px] font-medium truncate max-w-32 text-white/80 group-hover:text-white transition-colors">
           {user?.full_name || user?.email}
         </span>
-        <span className={`text-slate-500 text-[9px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+        <span className={`text-panel-muted text-[9px] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
       </button>
 
       {open && (
@@ -201,11 +204,11 @@ function ProfileMenu({ user, logout, refresh }) {
           <div className="p-1.5 text-sm">
             {item('👤', 'Hesap bilgileri', () => { setModal('hesap'); setOpen(false) })}
             {item('🛡️', <>Güvenlik (2FA) {user?.totp_enabled &&
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
+              <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
               () => { setModal('guvenlik'); setOpen(false) })}
             {item('🔑', 'Şifre değiştir', () => { setModal('sifre'); setOpen(false) })}
             <div className="my-1 border-t border-panel-border" />
-            {item('🚪', 'Çıkış yap', logout, 'text-red-600 hover:!bg-red-50')}
+            {item('🚪', 'Çıkış yap', logout, 'text-red-300 hover:!bg-red-500/10')}
           </div>
         </div>
       )}
@@ -288,7 +291,7 @@ function AccountModal({ user, refresh, onClose }) {
           </label>
           {user?.avatar_url && (
             <button onClick={removeAvatar} disabled={busy}
-              className="block text-xs text-red-500 hover:underline">Fotoğrafı kaldır</button>
+              className="block text-xs text-red-400 hover:underline">Fotoğrafı kaldır</button>
           )}
         </div>
       </div>
@@ -357,7 +360,7 @@ function SecurityModal({ user, refresh, onClose }) {
     <ModalShell title="🛡️ Güvenlik" onClose={onClose}>
       {backupCodes ? (
         <div className="space-y-3">
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-500/30 rounded-xl px-3 py-2">
+          <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
             Yedek kodlarınızı güvenli bir yere kaydedin — telefonunuza erişemezseniz
             bu kodlarla giriş yaparsınız. <b>Bir daha gösterilmez.</b>
           </p>
@@ -370,7 +373,7 @@ function SecurityModal({ user, refresh, onClose }) {
         </div>
       ) : user?.totp_enabled ? (
         <form onSubmit={disable} className="space-y-3">
-          <p className="text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+          <p className="text-sm text-emerald-300 bg-emerald-500/10 rounded-xl px-3 py-2">
             ✓ İki adımlı doğrulama <b>aktif</b> — girişte authenticator kodu isteniyor.
           </p>
           <label className="block text-sm">
@@ -378,9 +381,9 @@ function SecurityModal({ user, refresh, onClose }) {
             <input className="input mt-1" type="password" value={disablePw} required
               onChange={e => setDisablePw(e.target.value)} />
           </label>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-300">{error}</p>}
           <button disabled={busy} className="w-full px-4 py-2 rounded-xl text-sm font-medium
-            bg-red-50 text-red-700 border border-red-500/30 hover:bg-red-500/20 disabled:opacity-50">
+            bg-red-500/10 text-red-300 border border-red-500/30 hover:bg-red-500/20 disabled:opacity-50">
             {busy ? '…' : '2FA\'yı Kapat'}
           </button>
         </form>
@@ -396,7 +399,7 @@ function SecurityModal({ user, refresh, onClose }) {
           <input className="input font-mono text-center tracking-widest" value={code}
             required maxLength={6} placeholder="000000" autoFocus
             onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-300">{error}</p>}
           <button disabled={busy || code.length !== 6} className="btn-primary w-full">
             {busy ? 'Doğrulanıyor…' : 'Doğrula ve Aktifleştir'}
           </button>
@@ -407,7 +410,7 @@ function SecurityModal({ user, refresh, onClose }) {
             İki adımlı doğrulama (2FA), şifreniz çalınsa bile hesabınızı korur —
             girişte telefonunuzdaki authenticator uygulamasının kodu istenir.
           </p>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-300">{error}</p>}
           <button onClick={start} disabled={busy} className="btn-primary w-full">
             {busy ? 'Hazırlanıyor…' : '🛡️ 2FA Kurulumunu Başlat'}
           </button>
@@ -470,13 +473,13 @@ function PasswordModal({ user, onClose }) {
           <input className="input mt-1" type="password" value={next2} required
             autoComplete="new-password" onChange={e => setNext2(e.target.value)} />
         </label>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-300">{error}</p>}
         <button disabled={busy} className="btn-primary w-full">
           {busy ? 'Güncelleniyor…' : 'Şifreyi Güncelle'}
         </button>
         <div className="text-center pt-1 border-t border-panel-border">
           {mailSent ? (
-            <p className="text-xs text-emerald-700 pt-2">
+            <p className="text-xs text-emerald-300 pt-2">
               📧 Bağlantı gönderildi — gelen kutunuzu kontrol edin (1 saat geçerli).
             </p>
           ) : (

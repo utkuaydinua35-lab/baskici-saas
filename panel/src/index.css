@@ -2,108 +2,249 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SOFT tema — Shopify admin'in açık paleti. Accent: yeşil (#008060). */
+/* ═══════════════════════════════════════════════════════════════
+   VISION UI teması — koyu lacivert zemin, cam kartlar, mor/mavi
+   gradyanlar. Referans: Vision UI Dashboard (Creative Tim); renkler
+   ve cam efekti demodan ölçüldü (kart: blur(120px), 20px köşe,
+   linear-gradient(127.09deg, rgba(6,11,40,.94), rgba(10,14,35,.49))).
+
+   Burası panelin TEK stil kaynağı: 32 sayfa .card/.input/.btn-* ve
+   panel-* tokenlarını kullandığı için tema buradan dönüyor.
+   MAĞAZA TEMALARIYLA İLGİSİ YOK — o ayrı bir sistem (vitrin).
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
-  --accent-rgb: 0 128 96; /* #008060 */
+  --accent-rgb: 0 117 255;              /* #0075ff */
+  --grad-marka: linear-gradient(135deg, #0075ff 0%, #21d4fd 100%);
+  --grad-mor:   linear-gradient(135deg, #4318ff 0%, #9f7aea 100%);
+  --cam: linear-gradient(127.09deg, rgba(6, 11, 40, 0.94) 19.41%, rgba(10, 14, 35, 0.49) 76.65%);
 }
 
+html { background: #0b1437; }
+
 body {
-  @apply bg-panel-bg text-panel-ink antialiased;
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  /* Açık temada glow yok — düz, göz yormayan zemin */
+  @apply text-panel-ink antialiased;
+  font-family: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background: #0b1437;
+  min-height: 100vh;
+}
+
+/* Aurora: zeminde ağır ağır dolaşan renk bulutları. Yalnızca transform
+   animasyonu — düzen (layout) hesabı tetiklemez, GPU'da kalır. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -30%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 18% 22%, rgba(67, 24, 255, 0.42), transparent 62%),
+    radial-gradient(34% 38% at 82% 18%, rgba(0, 117, 255, 0.34), transparent 60%),
+    radial-gradient(42% 46% at 68% 88%, rgba(33, 212, 253, 0.20), transparent 64%),
+    radial-gradient(36% 40% at 12% 82%, rgba(159, 122, 234, 0.22), transparent 60%);
+  filter: blur(28px);
+  animation: aurora 26s ease-in-out infinite alternate;
+}
+@keyframes aurora {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, -2%, 0) scale(1.08); }
+  100% { transform: translate3d(-2%, 2%, 0) scale(1.04); }
 }
 
 h1, h2, h3 { letter-spacing: -0.02em; }
 
-/* Ortak kart/girdi sınıfları — sayfalar kısa yazsın */
+/* ── Kart: cam + üstten ince ışık çizgisi ───────────────────── */
 .card {
-  @apply bg-panel-card border border-panel-border rounded-2xl p-4
-    transition-shadow duration-200;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  @apply relative border border-panel-border rounded-[20px] p-4;
+  background: var(--cam);
+  backdrop-filter: blur(120px);
+  -webkit-backdrop-filter: blur(120px);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s ease, border-color 0.25s ease;
 }
-.card:hover { box-shadow: 0 2px 8px rgb(0 0 0 / 0.08); }
+/* Kartın üst kenarındaki parlama — cam hissini veren asıl detay */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: 20px 20px 0 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
 
-.input { @apply w-full bg-panel-input border border-panel-border rounded-xl px-3 py-2 text-sm text-panel-ink
-         transition-colors duration-150 placeholder:text-gray-400
-         focus:outline-none focus:ring-2 focus:ring-panel-accent/25 focus:border-panel-accent; }
-select.input option, .input option { @apply bg-panel-card text-panel-ink; }
+/* Vurgulu kart — gradyan çerçeve döner (istatistik kartlarında) */
+.card-parlak::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 21px;
+  padding: 1px;
+  background: conic-gradient(from var(--aci, 0deg),
+    transparent 0deg, rgba(0, 117, 255, 0.9) 40deg,
+    rgba(33, 212, 253, 0.9) 80deg, transparent 140deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: cerceve-don 6s linear infinite;
+  pointer-events: none;
+  opacity: 0.55;
+}
+@property --aci { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+@keyframes cerceve-don { to { --aci: 360deg; } }
 
+/* ── Girdiler ───────────────────────────────────────────────── */
+.input {
+  @apply w-full rounded-[14px] px-3 py-2 text-sm text-panel-ink
+         border border-panel-border transition-all duration-200
+         placeholder:text-panel-muted/60
+         focus:outline-none focus:border-panel-accent;
+  background: rgba(15, 21, 53, 0.75);
+}
+.input:focus { box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.22), 0 0 18px rgb(var(--accent-rgb) / 0.25); }
+select.input option, .input option { background: #0f1535; @apply text-panel-ink; }
+
+/* ── Butonlar ───────────────────────────────────────────────── */
 .btn-primary {
-  @apply px-4 py-2 rounded-xl text-white text-sm font-semibold
-    transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
-  background-color: #008060;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  @apply relative overflow-hidden px-4 py-2 rounded-[14px] text-white text-sm font-semibold
+    transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  background: var(--grad-marka);
+  box-shadow: 0 4px 16px rgb(var(--accent-rgb) / 0.38);
 }
-.btn-primary:not(:disabled):hover { background-color: #006e52; }
+/* Üzerine gelince ışık huzmesi butonun içinden geçer */
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.35) 50%, transparent 80%);
+  transform: translateX(-120%);
+  transition: transform 0.6s ease;
+}
+.btn-primary:not(:disabled):hover::after { transform: translateX(120%); }
+.btn-primary:not(:disabled):hover { box-shadow: 0 6px 24px rgb(var(--accent-rgb) / 0.55); transform: translateY(-1px); }
 .btn-primary:not(:disabled):active { transform: scale(0.98); }
 
-.btn-ghost { @apply px-3 py-2 rounded-xl border border-panel-border text-sm text-panel-muted
-             bg-panel-input/60 hover:text-panel-ink hover:bg-panel-input
-             active:scale-[0.98] transition-all duration-150; }
+.btn-ghost {
+  @apply px-3 py-2 rounded-[14px] border border-panel-border text-sm text-panel-muted
+         hover:text-panel-ink active:scale-[0.98] transition-all duration-200;
+  background: rgba(255, 255, 255, 0.04);
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.20); }
 
-/* Sayfa geçişi — route değişince içerik yumuşakça belirir */
+/* ── Sayfa geçişi ───────────────────────────────────────────── */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
-.page-in { animation: page-in 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.page-in { animation: page-in 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* Sol menü öğeleri */
+/* ── Sol menü ───────────────────────────────────────────────── */
 .nav-item {
-  @apply relative flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-[13px]
-    text-panel-muted transition-all duration-150;
+  @apply relative flex items-center gap-2.5 px-3 py-[9px] rounded-[14px] text-[13px]
+    text-panel-muted transition-all duration-200;
 }
-.nav-item:hover { @apply bg-panel-input text-panel-ink; }
-.nav-item.active { @apply bg-panel-accent/10 text-[#008060] font-semibold; }
+.nav-item:hover { background: rgba(255, 255, 255, 0.06); @apply text-panel-ink; }
+.nav-item.active {
+  @apply text-white font-semibold;
+  background: var(--cam);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.35);
+}
+/* Aktif satırın solundaki parlayan çubuk */
 .nav-item.active::before {
   content: '';
-  @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-full bg-panel-accent;
+  @apply absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full;
+  background: var(--grad-marka);
+  box-shadow: 0 0 12px rgb(var(--accent-rgb) / 0.9);
 }
-.nav-item .nav-icon { @apply text-[15px] leading-none transition-transform duration-150; }
-.nav-item:hover .nav-icon { transform: scale(1.15); }
+/* Aktif ikon gradyan kutuda dursun — Vision UI'ın imza detayı */
+.nav-item.active .nav-icon {
+  background: var(--grad-marka);
+  box-shadow: 0 4px 14px rgb(var(--accent-rgb) / 0.45);
+  @apply rounded-[10px] w-7 h-7 flex items-center justify-center text-[14px];
+}
+.nav-item .nav-icon { @apply text-[15px] leading-none transition-transform duration-200; }
+.nav-item:hover .nav-icon { transform: scale(1.18); }
 
 .nav-group-label {
-  @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-panel-muted/70 select-none;
+  @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-panel-muted/60 select-none;
 }
 
-/* Yükleme iskeleti */
+/* ── Yükleme iskeleti (koyu) ────────────────────────────────── */
 @keyframes shimmer {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
 .skeleton {
-  @apply rounded-lg;
-  background: linear-gradient(90deg, #eceef0 25%, #f6f7f8 50%, #eceef0 75%);
+  @apply rounded-xl;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%,
+              rgba(255,255,255,0.11) 50%, rgba(255,255,255,0.04) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 
-/* Sayı/istatistik vurgusu — dashboard kartları */
+/* ── Ortak animasyon yardımcıları ───────────────────────────── */
 @keyframes pop-in {
   0% { opacity: 0; transform: scale(0.92); }
   100% { opacity: 1; transform: none; }
 }
 .pop-in { animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-/* Toast girişi */
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to { opacity: 1; transform: none; }
 }
 .toast-in { animation: toast-in 0.25s ease-out; }
 
-/* İnce kaydırma çubukları (WebKit) */
+/* Süzülme — küre ve öne çıkan görseller için */
+@keyframes suzul {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.suzul { animation: suzul 7s ease-in-out infinite; }
+
+/* Nabız halkası — canlı göstergeler */
+@keyframes nabiz-halka {
+  0%   { transform: scale(0.9); opacity: 0.8; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.nabiz-halka { animation: nabiz-halka 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+/* Gradyan metin — büyük sayılar */
+.grad-metin {
+  background: linear-gradient(97.89deg, #ffffff 40%, rgba(160, 174, 192, 0.75) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Değer değişince kısa parlama — "bu sayı az önce güncellendi" */
+@keyframes parla {
+  0%   { filter: brightness(2.2) drop-shadow(0 0 14px rgb(var(--accent-rgb) / 0.9)); }
+  100% { filter: none; }
+}
+.parla { animation: parla 0.9s ease-out; }
+
+/* ── Kaydırma çubukları (koyu) ──────────────────────────────── */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
-*::-webkit-scrollbar-thumb { background: #c9cccf; border-radius: 999px; }
-*::-webkit-scrollbar-thumb:hover { background: #a8adb2; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
 *::-webkit-scrollbar-track { background: transparent; }
 
-/* Tablolar */
+/* ── Tablolar ───────────────────────────────────────────────── */
 .card table { font-variant-numeric: tabular-nums; }
-.card tbody tr { transition: background-color 0.12s ease; }
-.card tbody tr:hover { background: rgb(0 0 0 / 0.02); }
+.card tbody tr { transition: background-color 0.15s ease; }
+.card tbody tr:hover { background: rgb(255 255 255 / 0.045); }
 
-/* Ana panelle BİRLEŞİK menü: dropdown açılış + mobil çekmece animasyonları */
+/* ── Menü açılışları ────────────────────────────────────────── */
 @keyframes menu-pop {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -116,10 +257,16 @@ select.input option, .input option { @apply bg-panel-card text-panel-ink; }
 }
 .animate-slidein { animation: slidein-left 0.3s ease-out both; }
 
-@media (prefers-reduced-motion: reduce) {
-  .menu-pop, .animate-slidein { animation: none; }
-}
-
-/* Yatay menüde kaydırma çubuğunu gizle (üst bar taşmasın) */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Hareket azaltma tercihi: SÜREKLİ dönen/kayan her şey durur.
+   Tek seferlik giriş geçişleri kalır — onlar rahatsız etmiyor. */
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  .card-parlak::after,
+  .suzul,
+  .nabiz-halka,
+  .skeleton { animation: none; }
+  .menu-pop, .animate-slidein { animation: none; }
+}

@@ -189,7 +189,7 @@ function FieldsApp({ storeId, products, onClose }) {
               <button disabled={busy}
                 onClick={() => window.confirm(`"${p.name}" düzeni silinsin mi? (Ürünlerdeki alanlar etkilenmez)`)
                   && saveAll(presets.filter((_, j) => j !== i))}
-                className="text-xs text-red-600 hover:text-red-600">Sil</button>
+                className="text-xs text-red-300 hover:text-red-300">Sil</button>
             </span>
           </div>
         ))}
@@ -247,7 +247,7 @@ function PresetEditor({ value, busy, onSave, onCancel }) {
                 onChange={e => patchF(i, { required: e.target.checked })} /> zorunlu
             </label>
             <button onClick={() => setFields(fl => fl.filter((_, j) => j !== i))}
-              className="text-red-600 hover:text-red-600 px-1">×</button>
+              className="text-red-300 hover:text-red-300 px-1">×</button>
           </div>
           {f.type === 'color' && (
             <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}

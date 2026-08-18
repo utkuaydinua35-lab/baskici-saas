@@ -78,24 +78,24 @@ export default function YorumlarPage() {
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${tab === t.key
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {t.label}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-300">{error}</p>}
 
       <div className="space-y-2">
         {items.map(r => (
           <div key={r.id} className="card">
             <div className="flex items-center gap-2 text-sm">
               {r.kind === 'question'
-                ? <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700">❓ soru</span>
-                : <span className="text-amber-500">{'★'.repeat(r.rating || 0)}{'☆'.repeat(5 - (r.rating || 0))}</span>}
+                ? <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-300">❓ soru</span>
+                : <span className="text-amber-400">{'★'.repeat(r.rating || 0)}{'☆'.repeat(5 - (r.rating || 0))}</span>}
               <span className="font-medium">{r.author_name}</span>
               {r.verified && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300">
                   ✓ doğrulanmış alıcı
                 </span>
               )}
@@ -125,19 +125,19 @@ export default function YorumlarPage() {
             <div className="flex gap-2 mt-3">
               {r.status !== 'approved' && r.kind !== 'question' && (
                 <button onClick={() => moderate(r.id, 'approve')} disabled={busyId === r.id}
-                  className="px-3 py-1 rounded-lg text-xs bg-emerald-50 text-emerald-700 disabled:opacity-50">
+                  className="px-3 py-1 rounded-lg text-xs bg-emerald-500/10 text-emerald-300 disabled:opacity-50">
                   Onayla
                 </button>
               )}
               {r.status !== 'rejected' && (
                 <button onClick={() => moderate(r.id, 'reject')} disabled={busyId === r.id}
-                  className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50"
+                  className="px-3 py-1 rounded-lg text-xs bg-red-500/10 text-red-300 disabled:opacity-50"
                   title="Vitrinde görünmez, kayıt 'Reddedilen' sekmesinde durur">
                   Reddet
                 </button>
               )}
               <button onClick={() => sil(r.id)} disabled={busyId === r.id}
-                className="ml-auto px-3 py-1 rounded-lg text-xs text-panel-muted hover:text-red-700 hover:bg-red-50 disabled:opacity-50"
+                className="ml-auto px-3 py-1 rounded-lg text-xs text-panel-muted hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                 title="Kalıcı olarak sil — geri alınamaz">
                 🗑 Sil
               </button>

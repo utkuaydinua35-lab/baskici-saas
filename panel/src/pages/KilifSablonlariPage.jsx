@@ -54,7 +54,7 @@ export default function KilifSablonlariPage() {
         </p>
       </div>
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-red-300">{err}</p>}
 
       {data.suggested?.length > 0 && (
         <div className="card !py-3">
@@ -89,7 +89,7 @@ export default function KilifSablonlariPage() {
                 <span className="font-medium text-sm truncate">{t.label}</span>
                 <button onClick={() => durum(t)}
                   className={`ml-auto text-[10px] px-2 py-0.5 rounded-full ${t.is_active
-                    ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>
                   {t.is_active ? 'Yayında' : 'Kapalı'}
                 </button>
               </div>
@@ -98,13 +98,13 @@ export default function KilifSablonlariPage() {
                 <span className="block">baskı dosyası: {t.print.px_w}×{t.print.px_h} px</span>
               </div>
               {!t.image_url && (
-                <div className="text-[11px] text-amber-700">Görsel yüklenmeden müşteriye görünmez.</div>
+                <div className="text-[11px] text-amber-300">Görsel yüklenmeden müşteriye görünmez.</div>
               )}
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setEditing(t)} className="btn-ghost !py-1 text-xs flex-1">
                   🎯 Alanları Düzenle
                 </button>
-                <button onClick={() => sil(t)} className="text-xs text-red-600 px-2">Sil</button>
+                <button onClick={() => sil(t)} className="text-xs text-red-300 px-2">Sil</button>
               </div>
             </div>
           </div>
@@ -196,7 +196,7 @@ function HazirSablonlar({ storeId, templates }) {
         </p>
       </div>
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {err && <p className="text-sm text-red-300">{err}</p>}
 
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-xs text-panel-muted">
@@ -256,10 +256,10 @@ function HazirSablonlar({ storeId, templates }) {
                 <div className="flex items-center gap-1">
                   <button onClick={() => durum(o)}
                     className={`text-[10px] px-1.5 py-0.5 rounded-full ${o.is_active
-                      ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>
                     {o.is_active ? 'Yayında' : 'Kapalı'}
                   </button>
-                  <button onClick={() => sil(o)} className="ml-auto text-[10px] text-red-600">Sil</button>
+                  <button onClick={() => sil(o)} className="ml-auto text-[10px] text-red-300">Sil</button>
                 </div>
               </div>
             </div>
@@ -293,7 +293,7 @@ function KartOnizleme({ t }) {
       <div className="absolute inset-0 pointer-events-none">
         {kutu(t.area, 'border-emerald-500/70 bg-emerald-500/10')}
         {(t.cutouts || []).map((c, i) => (
-          <span key={i}>{kutu(c, 'border-amber-400/80 bg-amber-400/20')}</span>
+          <span key={i}>{kutu(c, 'border-amber-500/30 bg-amber-400/20')}</span>
         ))}
       </div>
     </div>
@@ -450,7 +450,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     <div key={i ?? 'baski'}
       onMouseDown={secili ? (e => basla(e, 'tasi')) : undefined}
       className={`absolute border-2 ${renk === 'yesil'
-        ? 'border-emerald-500 bg-emerald-500/15' : 'border-amber-400 bg-amber-400/25'}`}
+        ? 'border-emerald-500 bg-emerald-500/15' : 'border-amber-500/30 bg-amber-400/25'}`}
       style={{
         left: `${kutu.x * 100}%`, top: `${kutu.y * 100}%`,
         width: `${kutu.w * 100}%`, height: `${kutu.h * 100}%`,
@@ -473,7 +473,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     if (!aktif) return null
     return TUTAMAKLAR.map(([h, lx, ly, cur]) => (
       <div key={h} onMouseDown={e => basla(e, h)}
-        className="absolute w-3.5 h-3.5 bg-white border border-slate-600 rounded-sm shadow"
+        className="absolute w-3.5 h-3.5 bg-white border border-panel-border rounded-sm shadow"
         style={{
           left: `${(aktif.x + (lx / 100) * aktif.w) * 100}%`,
           top: `${(aktif.y + (ly / 100) * aktif.h) * 100}%`,
@@ -540,14 +540,14 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
                 <div className="flex flex-col gap-1">
                   <button onClick={() => setSel('baski')}
                     className={`text-left px-2.5 py-1.5 rounded-lg text-xs border ${sel === 'baski'
-                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700 font-medium'
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 font-medium'
                       : 'border-panel-border text-panel-muted'}`}>
                     🟩 Baskı alanı (müşteri buraya tasarım yapar)
                   </button>
                   {kesikler.map((c, i) => (
                     <button key={i} onClick={() => setSel(i)}
                       className={`text-left px-2.5 py-1.5 rounded-lg text-xs border ${sel === i
-                        ? 'border-amber-400 bg-amber-50 text-amber-700 font-medium'
+                        ? 'border-amber-500/30 bg-amber-500/10 text-amber-300 font-medium'
                         : 'border-panel-border text-panel-muted'}`}>
                       🟨 {c.label || `Basılamaz bölge ${i + 1}`}
                     </button>
@@ -585,7 +585,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
               )}
 
               {sel !== 'baski' && (
-                <button onClick={kesikSil} className="text-xs text-red-600">Bu bölgeyi sil</button>
+                <button onClick={kesikSil} className="text-xs text-red-300">Bu bölgeyi sil</button>
               )}
 
               <div className="pt-2 border-t border-panel-border space-y-2">
@@ -633,7 +633,7 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
           Üstteki listeden hangi alanı düzenlediğinizi seçersiniz.
         </p>
 
-        {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
+        {err && <p className="text-sm text-red-300 mt-2">{err}</p>}
         <div className="flex justify-end gap-2 mt-3">
           <button onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button onClick={kaydet} disabled={saving || !t.image_url} className="btn-primary">
@@ -884,7 +884,7 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
           <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
         </div>
 
-        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+        {err && <p className="text-sm text-red-300 mb-2">{err}</p>}
 
         <label className="block text-xs text-panel-muted mb-3">
           Modül / tema adı — vitrinde şablonlar bu başlık altında gruplanır
@@ -1000,7 +1000,7 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                   onClick={() => setSel(i)}>
                   <span>{{ yazi: '🔤', gorsel: '🖼️', foto: '📷', ilerleme: '⏱' }[a.tip]}</span>
                   <span className="truncate">{a.etiket}</span>
-                  <button className="ml-auto text-red-600"
+                  <button className="ml-auto text-red-300"
                     onClick={(e) => {
                       e.stopPropagation()
                       setAlanlar(ls => ls.filter((_, j) => j !== i))

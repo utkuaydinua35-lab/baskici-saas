@@ -82,7 +82,7 @@ export default function RichTextEditor({ value, onChange, placeholder }) {
         data-placeholder={placeholder || 'Ürün açıklaması…'}
         className="rte-alan min-h-32 max-h-80 overflow-y-auto px-3 py-2 text-sm outline-none
           [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold
-          [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-emerald-700 [&_a]:underline
+          [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-emerald-300 [&_a]:underline
           empty:before:content-[attr(data-placeholder)] before:text-panel-muted/60" />
     </div>
   )

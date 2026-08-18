@@ -138,19 +138,19 @@ export default function UrunlerPage() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-300">{error}</p>}
       {loading && <p className="text-sm text-panel-muted">Yükleniyor…</p>}
 
       {/* Varyantsız ürünler satın ALINAMAZ — sessiz satış kaybı, tek tık düzeltme */}
       {noVariantCount > 0 && (
-        <div className="card !py-2.5 border-amber-300 bg-amber-50 flex items-center gap-3 text-sm">
+        <div className="card !py-2.5 border-amber-500/30 bg-amber-500/10 flex items-center gap-3 text-sm">
           <span>⚠️</span>
           <div className="min-w-0">
             <b>{noVariantCount} ürün varyantsız</b> — müşteri telefon modeli
             seçemediği için sepete ekleyemiyor.
           </div>
           <button onClick={() => setShowFixVariants(true)}
-            className="ml-auto shrink-0 px-3 py-1 rounded-lg text-xs bg-amber-50 text-amber-700">
+            className="ml-auto shrink-0 px-3 py-1 rounded-lg text-xs bg-amber-500/10 text-amber-300">
             🧩 Hepsine set uygula
           </button>
         </div>
@@ -183,7 +183,7 @@ export default function UrunlerPage() {
             {[['', 'Tümü'], ['active', 'Yayında'], ['draft', 'Taslak'], ['archived', 'Arşiv']].map(([v, l]) => (
               <button key={v} onClick={() => setDurum(v)}
                 className={`px-2.5 py-1 rounded-lg text-xs border transition ${durum === v
-                  ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+                  ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
                   : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                 {l}
                 <span className="ml-1 opacity-60">
@@ -196,7 +196,7 @@ export default function UrunlerPage() {
               ['maliyetsiz', '💰 Maliyeti yok'], ['indirimli', '🏷️ İndirimli']].map(([v, l]) => (
               <button key={v} onClick={() => setOzel(ozel === v ? '' : v)}
                 className={`px-2.5 py-1 rounded-lg text-xs border transition ${ozel === v
-                  ? 'border-indigo-300 bg-indigo-50 text-indigo-700 font-medium'
+                  ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 font-medium'
                   : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                 {l}
               </button>
@@ -214,21 +214,21 @@ export default function UrunlerPage() {
         <div className="card !py-2.5 flex items-center gap-3 text-sm">
           <span className="font-medium">{checked.size} ürün seçili</span>
           <button disabled={bulkBusy} onClick={() => bulkStatus('active')}
-            className="px-3 py-1 rounded-lg text-xs bg-emerald-50 text-emerald-700 disabled:opacity-50">Yayınla</button>
+            className="px-3 py-1 rounded-lg text-xs bg-emerald-500/10 text-emerald-300 disabled:opacity-50">Yayınla</button>
           <button disabled={bulkBusy} onClick={() => bulkStatus('draft')}
-            className="px-3 py-1 rounded-lg text-xs bg-slate-100 text-slate-600 disabled:opacity-50">Taslağa Al</button>
+            className="px-3 py-1 rounded-lg text-xs bg-white/5 text-panel-muted disabled:opacity-50">Taslağa Al</button>
           <button disabled={bulkBusy} onClick={() => bulkStatus('archived')}
-            className="px-3 py-1 rounded-lg text-xs bg-amber-50 text-amber-700 disabled:opacity-50">Arşivle</button>
+            className="px-3 py-1 rounded-lg text-xs bg-amber-500/10 text-amber-300 disabled:opacity-50">Arşivle</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkEdit(true)}
-            className="px-3 py-1 rounded-lg text-xs bg-indigo-50 text-indigo-700 disabled:opacity-50"
+            className="px-3 py-1 rounded-lg text-xs bg-indigo-500/10 text-indigo-300 disabled:opacity-50"
             title="Seçili ürünlerin HEPSİNE aynı işlem (ör. %10 zam)">✏️ Toplu Düzenle</button>
           <button disabled={bulkBusy} onClick={() => setShowTablo(true)}
-            className="px-3 py-1 rounded-lg text-xs bg-violet-50 text-violet-700 disabled:opacity-50"
+            className="px-3 py-1 rounded-lg text-xs bg-violet-500/10 text-violet-300 disabled:opacity-50"
             title="Her ürünü tabloda tek tek düzenle">📊 Tablo Düzenleyici</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkSet(true)}
-            className="px-3 py-1 rounded-lg text-xs bg-teal-50 text-teal-700 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
+            className="px-3 py-1 rounded-lg text-xs bg-teal-500/10 text-teal-300 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
           <button disabled={bulkBusy} onClick={bulkDelete}
-            className="px-3 py-1 rounded-lg text-xs bg-red-50 text-red-700 disabled:opacity-50">🗑️ Sil</button>
+            className="px-3 py-1 rounded-lg text-xs bg-red-500/10 text-red-300 disabled:opacity-50">🗑️ Sil</button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
         </div>
       )}
@@ -342,11 +342,11 @@ export default function UrunlerPage() {
 
 export function StatusBadge({ status }) {
   const map = {
-    draft: ['Taslak', 'bg-slate-100 text-slate-600'],
-    active: ['Yayında', 'bg-emerald-50 text-emerald-700'],
-    archived: ['Arşiv', 'bg-amber-50 text-amber-700'],
+    draft: ['Taslak', 'bg-white/5 text-panel-muted'],
+    active: ['Yayında', 'bg-emerald-500/10 text-emerald-300'],
+    archived: ['Arşiv', 'bg-amber-500/10 text-amber-300'],
   }
-  const [label, cls] = map[status] || [status, 'bg-slate-100 text-slate-600']
+  const [label, cls] = map[status] || [status, 'bg-white/5 text-panel-muted']
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${cls} shrink-0`}>{label}</span>
 }
 
@@ -409,7 +409,7 @@ function CreateProductModal({ storeId, onClose, onCreated }) {
           <textarea className="input mt-1" rows={4} value={description}
             onChange={e => setDescription(e.target.value)} maxLength={20000} />
         </label>
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button disabled={busy} className="btn-primary">
@@ -461,7 +461,7 @@ function ImportModal({ storeId, onClose, onDone }) {
 
         {!preview && !result && (
           <>
-            <label className="block border-2 border-dashed border-panel-border rounded-xl p-6 text-center cursor-pointer hover:border-slate-400">
+            <label className="block border-2 border-dashed border-panel-border rounded-xl p-6 text-center cursor-pointer hover:border-panel-border">
               <input type="file" accept=".csv,text/csv" className="hidden"
                 onChange={e => setFile(e.target.files?.[0] || null)} />
               {file ? <span className="text-sm font-medium">{file.name}</span>
@@ -491,8 +491,8 @@ function ImportModal({ storeId, onClose, onDone }) {
           <>
             {preview.note && (
               <p className={`text-xs rounded-xl px-3 py-2 border ${preview.truncated
-                ? 'text-red-700 bg-red-50 border-red-500/30'
-                : 'text-amber-700 bg-amber-50 border-amber-500/30'}`}>
+                ? 'text-red-300 bg-red-500/10 border-red-500/30'
+                : 'text-amber-300 bg-amber-500/10 border-amber-500/30'}`}>
                 {preview.note}
               </p>
             )}
@@ -503,12 +503,12 @@ function ImportModal({ storeId, onClose, onDone }) {
               <Stat n={preview.variants_updated} label="güncellenecek varyant" />
             </div>
             {preview.errors.length > 0 && (
-              <div className="bg-amber-50 border border-amber-500/30 rounded-xl p-3 max-h-32 overflow-y-auto">
-                <div className="text-xs font-medium text-amber-700 mb-1">
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 max-h-32 overflow-y-auto">
+                <div className="text-xs font-medium text-amber-300 mb-1">
                   {preview.errors.length} satır atlanacak:
                 </div>
                 {preview.errors.map((e, i) => (
-                  <div key={i} className="text-[11px] text-amber-700">Satır {e.satir}: {e.mesaj}</div>
+                  <div key={i} className="text-[11px] text-amber-300">Satır {e.satir}: {e.mesaj}</div>
                 ))}
               </div>
             )}
@@ -530,8 +530,8 @@ function ImportModal({ storeId, onClose, onDone }) {
             </p>
             {result.note && (
               <p className={`text-xs rounded-xl px-3 py-2 border ${result.truncated
-                ? 'text-red-700 bg-red-50 border-red-500/30'
-                : 'text-amber-700 bg-amber-50 border-amber-500/30'}`}>
+                ? 'text-red-300 bg-red-500/10 border-red-500/30'
+                : 'text-amber-300 bg-amber-500/10 border-amber-500/30'}`}>
                 {result.note}
               </p>
             )}
@@ -543,7 +543,7 @@ function ImportModal({ storeId, onClose, onDone }) {
           </div>
         )}
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
       </div>
     </Modal>
   )
@@ -583,7 +583,7 @@ function ShopifyImageImport({ storeId, file, label = "📷 Görselleri de Aktar 
         <button onClick={start} className="btn-ghost w-full !py-2 text-xs">
           {label}
         </button>
-        {err && <p className="text-xs text-red-600">{err}</p>}
+        {err && <p className="text-xs text-red-300">{err}</p>}
         <p className="text-[10px] text-panel-muted">
           Arka planda çalışır; görseli olan ürünler atlanır, pencereyi kapatabilirsiniz.
         </p>
@@ -649,7 +649,7 @@ function BulkApplySetModal({ ids, storeId, onClose, onDone, allWithoutVariants =
             ? '(varyantsız TÜM ürünler)' : `(${ids.length} ürün)`}
         </h2>
         {allWithoutVariants && (
-          <p className="text-[11px] text-amber-700 -mt-1">
+          <p className="text-[11px] text-amber-300 -mt-1">
             Mağazadaki varyantı olmayan tüm ürünlere uygulanır — bu ürünler şu an
             müşteri tarafından sepete eklenemiyor.
           </p>
@@ -688,7 +688,7 @@ function BulkApplySetModal({ ids, storeId, onClose, onDone, allWithoutVariants =
                 ))}
               </select>
             )}
-            {err && <p className="text-sm text-red-600">{err}</p>}
+            {err && <p className="text-sm text-red-300">{err}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
               <button disabled={busy || !setId} className="btn-primary">
@@ -779,7 +779,7 @@ export function BulkEditModal({ ids, storeId, onClose, onDone }) {
             placeholder="yaz-koleksiyonu, indirim (virgülle)" maxLength={300} />
         </fieldset>
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-ghost">Vazgeç</button>
           <button disabled={busy} className="btn-primary">
@@ -828,7 +828,7 @@ export function VariantSetsModal({ storeId, onClose }) {
         varyantları otomatik güncellenir (stok adetleri korunur). Sete bağlamayı
         ürün detayından yaparsınız.
       </p>
-      {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+      {err && <p className="text-sm text-red-300 mb-2">{err}</p>}
       <div className="space-y-2">
         {sets.map(vs => (
           <div key={vs.id} className="flex items-center gap-2 border border-panel-border rounded-xl px-3 py-2.5 text-sm">
@@ -840,7 +840,7 @@ export function VariantSetsModal({ storeId, onClose }) {
               <button onClick={() => setEditing(vs)}
                 className="text-xs text-panel-muted hover:text-panel-ink">Düzenle</button>
               <button onClick={() => remove(vs)}
-                className="text-xs text-red-600 hover:text-red-600">Sil</button>
+                className="text-xs text-red-300 hover:text-red-300">Sil</button>
             </span>
           </div>
         ))}
@@ -969,10 +969,10 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
                   )}
                   <span className="font-normal normal-case">({groupRows.length} model)</span>
                   <button type="button" onClick={() => addModelTo(brand)}
-                    className="ml-auto text-emerald-700 normal-case font-normal hover:underline">+ model</button>
+                    className="ml-auto text-emerald-300 normal-case font-normal hover:underline">+ model</button>
                   <button type="button"
                     onClick={() => setItems(rows => rows.filter(r => (r.brand || 'Diğer') !== brand))}
-                    className="text-red-600 hover:text-red-600 normal-case font-normal">markayı sil</button>
+                    className="text-red-300 hover:text-red-300 normal-case font-normal">markayı sil</button>
                 </div>
                 {!collapsed[brand] && groupRows.map(([r, i]) => (
                   <div key={i} className="flex gap-1.5 pl-3">
@@ -985,7 +985,7 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
                       value={r.price_override ?? ''}
                       onChange={e => patchRow(i, { price_override: e.target.value })} placeholder="₺ (ops.)" />
                     <button type="button" onClick={() => setItems(rows => rows.filter((_, j) => j !== i))}
-                      className="text-red-600 hover:text-red-600 px-1">×</button>
+                      className="text-red-300 hover:text-red-300 px-1">×</button>
                   </div>
                 ))}
               </div>
@@ -1023,12 +1023,12 @@ function VariantSetEditor({ storeId, vset, onClose, onSaved }) {
         </details>
 
         {!isNew && (
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+          <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
             ⚠ Kaydedince bu sete bağlı <b>tüm ürünlerin</b> varyantları bu listeye göre güncellenir
             (listeden çıkan modeller ürünlerden silinir; stoklar korunur).
           </p>
         )}
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        {err && <p className="text-sm text-red-300">{err}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-ghost">Geri</button>
           <button disabled={busy} className="btn-primary">
@@ -1108,7 +1108,7 @@ export function TabloDuzenleyici({ urunler, onClose, onDone }) {
           <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
         </div>
 
-        {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
+        {err && <p className="text-sm text-red-300 mb-2">{err}</p>}
 
         <div className="flex-1 overflow-auto border border-panel-border rounded-xl">
           <table className="w-full text-sm">
@@ -1139,7 +1139,7 @@ export function TabloDuzenleyici({ urunler, onClose, onDone }) {
               {satirlar.map((r, i) => {
                 const degisti = JSON.stringify(r) !== JSON.stringify(ilkler[i])
                 return (
-                  <tr key={r.id} className={degisti ? 'bg-amber-50/60' : ''}>
+                  <tr key={r.id} className={degisti ? 'bg-amber-500/10' : ''}>
                     <td className="px-2 py-1">
                       <input value={r.title} maxLength={300}
                         onChange={e => yaz(i, 'title', e.target.value)}

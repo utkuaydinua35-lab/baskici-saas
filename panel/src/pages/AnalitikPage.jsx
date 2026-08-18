@@ -58,13 +58,13 @@ export default function AnalitikPage() {
         {RANGES.map(r => (
           <button key={r.key} onClick={() => setRange(r.key)}
             className={`px-3 py-1.5 rounded-xl text-xs border transition ${range === r.key
-              ? 'border-panel-accent bg-emerald-50 text-emerald-700 font-medium'
+              ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {r.label}
           </button>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-300">{error}</p>}
 
       {data && (
         <div className={`space-y-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
@@ -191,7 +191,7 @@ function FunnelCard({ funnel }) {
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] text-panel-muted uppercase tracking-wide">Checkout Hunisi</span>
         {funnel.abandoned_count > 0 && (
-          <span className="text-[11px] text-amber-700">
+          <span className="text-[11px] text-amber-300">
             terk edilen: {funnel.abandoned_count} sepet · {fmtTl(funnel.abandoned_amount)}
           </span>
         )}
@@ -235,7 +235,7 @@ function ProfitCard({ p }) {
       <div className="flex items-center justify-between mb-3">
         <span className="text-[11px] text-panel-muted uppercase tracking-wide">Kâr Marjı</span>
         {p.fallback_units > 0 && !kurulmamis && (
-          <span className="text-[11px] text-amber-700">
+          <span className="text-[11px] text-amber-300">
             {fmtNum(p.fallback_units)} adet varsayılan maliyetle hesaplandı
           </span>
         )}
@@ -257,17 +257,17 @@ function ProfitCard({ p }) {
             </div>
             <div>
               <div className="text-[11px] text-panel-muted">Giderler</div>
-              <div className="text-lg font-semibold tabular-nums text-red-600">−{fmtTl(p.costs.total)}</div>
+              <div className="text-lg font-semibold tabular-nums text-red-300">−{fmtTl(p.costs.total)}</div>
             </div>
             <div>
               <div className="text-[11px] text-panel-muted">Net kâr</div>
-              <div className={`text-lg font-semibold tabular-nums ${p.profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+              <div className={`text-lg font-semibold tabular-nums ${p.profit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
                 {fmtTl(p.profit)}
               </div>
             </div>
             <div>
               <div className="text-[11px] text-panel-muted">Marj</div>
-              <div className={`text-lg font-semibold tabular-nums ${p.margin_pct >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+              <div className={`text-lg font-semibold tabular-nums ${p.margin_pct >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
                 %{p.margin_pct}
               </div>
             </div>
@@ -315,7 +315,7 @@ function ProfitCard({ p }) {
                         <td className="py-1 pr-2 truncate max-w-[220px]">
                           {r.title}
                           {r.cost_source === 'varsayilan' && (
-                            <span className="ml-1 text-amber-700" title="Ürün maliyeti girilmemiş">*</span>
+                            <span className="ml-1 text-amber-300" title="Ürün maliyeti girilmemiş">*</span>
                           )}
                         </td>
                         <td className="text-right tabular-nums">{fmtNum(r.quantity)}</td>

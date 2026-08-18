@@ -8,11 +8,13 @@ export default {
     extend: {
       colors: {
         // Marka renkleri — BERNZ paletinden esinlenildi, gerekirse değiştir
+        // Koyu mor + cam tema. Kartlar YARI SAYDAM (.card) olduğu icin bu
+        // renkler zeminin ustune biner; opak karsiliklari fallback'tir.
         brand: {
-          bg:     '#0e0f17',   // sayfa arka plan (koyu mor-lacivert)
-          card:   '#171a26',   // kart / panel arka plan
-          input:  '#1f2231',   // input arka plan
-          border: '#262a3a',   // ince kenarlık
+          bg:     '#0a0613',   // sayfa zemini (mor-siyah)
+          card:   '#17102b',   // kart zemini (saydamlik .card'da)
+          input:  '#1e1638',   // input / ikincil yuzey
+          border: '#2e2450',   // ince kenarlik
         },
         // Accent runtime CSS değişkeninden gelir (white-label per-tenant override).
         // Opacity modifier'lar (accent/15 vb.) için RGB kanalları kullanılır.

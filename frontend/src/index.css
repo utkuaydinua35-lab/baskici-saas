@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  --accent-rgb: 124 92 255;   /* mor #7c5cff; tenant brand_color ile override edilir */
+  --accent-rgb: 139 92 246;   /* menekşe #8b5cf6; tenant brand_color ile override edilir */
   /* Accent üzerindeki metin rengi — accent'in parlaklığından türetilir (auth.jsx).
      Sabit koyu metin yalnız açık accent'te doğruydu; koyu bir markada okunmuyordu. */
   --accent-fg: #ffffff;
@@ -15,8 +15,14 @@
   }
   body {
     @apply bg-brand-bg text-gray-200 font-sans antialiased;
-    /* Üstten yumuşak yeşil ışıma (Cryptix hero glow) */
-    background-image: radial-gradient(1100px 520px at 50% -180px, rgb(var(--accent-rgb) / 0.14), transparent 72%);
+    /* Mor atmosfer: üstten ana ışıma + iki yandan sıcak/soğuk mor lekeler.
+       Kartlar yarı saddam olduğu için bu katman onların içinden görünür —
+       cam etkisini asıl veren bu. background-attachment: fixed => scroll'da
+       ışıma sabit kalır, kartlar üzerinde kayar. */
+    background-image:
+      radial-gradient(1200px 560px at 50% -200px, rgb(var(--accent-rgb) / 0.20), transparent 70%),
+      radial-gradient(760px 520px at 8% 18%, rgb(147 51 234 / 0.13), transparent 68%),
+      radial-gradient(720px 520px at 96% 34%, rgb(99 102 241 / 0.11), transparent 66%);
     background-attachment: fixed;
   }
 }
@@ -29,20 +35,46 @@
   }
   /* Birincil aksiyon: accent pill + glow */
   .btn-primary {
-    @apply bg-accent rounded-full px-5 py-2 text-sm font-semibold
+    @apply rounded-full px-5 py-2 text-sm font-semibold
            transition-all disabled:opacity-50 disabled:cursor-not-allowed;
     color: var(--accent-fg);
-    box-shadow: 0 8px 26px -8px rgb(var(--accent-rgb) / 0.55);
+    /* Degrade + isima: referanstaki pill görünümü. Renk accent'ten türediği
+       için tenant kendi markasını seçince de bozulmuyor. */
+    background: linear-gradient(180deg,
+      rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.82));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.22),
+      0 10px 30px -10px rgb(var(--accent-rgb) / 0.75);
   }
-  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28),
+                0 14px 38px -10px rgb(var(--accent-rgb) / 0.9);
+  }
   .btn-secondary {
     @apply bg-brand-input/60 hover:bg-brand-input border border-brand-border text-gray-200
            rounded-full px-5 py-2 text-sm font-medium transition-colors;
   }
-  /* Kart: opak (scroll'da backdrop-blur glitch'i olmasın) + ince üst-ışık çizgisi */
+  /* Cam kart. backdrop-filter BİLEREK kullanılmıyor: uzun listelerde scroll
+     sırasında yeniden boyama hatası yapıyordu. Cam hissi saydamlık + üst kenar
+     ışığı + mor dış gölge ile kuruluyor; zemindeki ışıma kartın içinden geçiyor. */
   .card {
-    @apply bg-brand-card border border-brand-border rounded-2xl p-5;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
+    @apply border border-brand-border rounded-2xl p-5;
+    background:
+      linear-gradient(160deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.015) 46%, transparent),
+      rgb(23 16 43 / 0.72);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.07),
+      0 18px 40px -24px rgb(0 0 0 / 0.85),
+      0 0 0 1px rgb(var(--accent-rgb) / 0.045);
+  }
+  /* Gerçek bulanıklık isteyen yüzeyler (modal, hero) — scroll içinde KULLANMA. */
+  .glass {
+    background: rgb(23 16 43 / 0.58);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgb(255 255 255 / 0.09);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 60px -28px rgb(0 0 0 / 0.9);
   }
 }
 
@@ -55,10 +87,10 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .tbl thead th {
   text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; font-weight: 500;
-  color: #6c7d74; padding: 11px 16px; text-align: left;
-  border-bottom: 1px solid #262a3a; white-space: nowrap;
+  color: #8b7fa8; padding: 11px 16px; text-align: left;
+  border-bottom: 1px solid #2e2450; white-space: nowrap;
 }
-.tbl tbody td { padding: 13px 16px; border-bottom: 1px solid rgb(33 48 42 / 0.55); }
+.tbl tbody td { padding: 13px 16px; border-bottom: 1px solid rgb(46 36 80 / 0.6); }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl tbody tr { transition: background-color 0.12s ease; }
 .tbl tbody tr:hover { background: rgb(255 255 255 / 0.025); }
@@ -352,4 +384,4 @@ select.input {
 }
 select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%23e5e7eb' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 /* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
-select.input option, select option { background: #171a26; color: #f3f4f6; }
+select.input option, select option { background: #17102b; color: #f3f4f6; }

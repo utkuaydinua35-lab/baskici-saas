@@ -2,15 +2,40 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "yonetim",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "frontend",
+        "--",
+        "--port",
+        "5174"
+      ],
+      "port": 5174
+    },
+    {
       "name": "panel",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "panel", "--", "--port", "5176"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "panel",
+        "--",
+        "--port",
+        "5176"
+      ],
       "port": 5176
     },
     {
       "name": "vitrin",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd storefront && STORE_SLUG=bernz npx next dev -p 3003"],
+      "runtimeArgs": [
+        "-c",
+        "cd storefront && STORE_SLUG=bernz npx next dev -p 3003"
+      ],
       "port": 3003
     }
   ]

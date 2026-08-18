@@ -118,7 +118,7 @@ function TemplatePreview({ tpl }) {
       <div className="text-[11px] text-gray-500 mb-2">Kutu yerleşimi önizlemesi (şablondan okunan):</div>
       <div className="bg-brand-bg border border-brand-border rounded-lg overflow-hidden">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 360 }}>
-          <rect x="0" y="0" width={W} height={H} fill="#0e0f17" />
+          <rect x="0" y="0" width={W} height={H} fill="#0a0613" />
           {tpl.boxes.map((b, i) => (
             <g key={i}>
               <rect x={b.x0} y={b.y0} width={b.w} height={b.h}

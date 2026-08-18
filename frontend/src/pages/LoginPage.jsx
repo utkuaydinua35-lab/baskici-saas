@@ -12,7 +12,7 @@ function AuthBackground() {
       <div className="login-blob absolute top-1/3 -right-32 w-[30rem] h-[30rem] rounded-full opacity-25 blur-3xl"
         style={{ background: 'radial-gradient(circle, #9b5cff 0%, transparent 70%)', animationDelay: '4s' }} />
       <div className="login-blob absolute -bottom-32 left-1/4 w-[24rem] h-[24rem] rounded-full opacity-20 blur-3xl"
-        style={{ background: 'radial-gradient(circle, #2dd4bf 0%, transparent 70%)', animationDelay: '8s' }} />
+        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)', animationDelay: '8s' }} />
       <div className="absolute inset-0 opacity-[0.05]"
         style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
     </div>

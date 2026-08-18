@@ -9,7 +9,7 @@ import { api, ApiError, getToken, setToken } from './api'
 
 const AuthContext = createContext(null)
 
-const DEFAULT_ACCENT_RGB = '124 92 255'  // mor #7c5cff (varsayilan tema)
+const DEFAULT_ACCENT_RGB = '139 92 246'  // menekse #8b5cf6 (koyu mor cam tema)
 
 function _hexToRgb(hex) {
   const m = /^#?([0-9a-fA-F]{6})$/.exec((hex || '').trim())

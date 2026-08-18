@@ -270,6 +270,7 @@ def list_molds(
                 "tamamlandi_at": mo.tamamlandi_at.isoformat() if mo.tamamlandi_at else None,
                 "current_stage": mo.current_stage,
                 "is_hatali": mo.is_hatali,
+                "slot_kilitli": bool(getattr(mo, "slot_kilitli", False)),
                 "created_at": mo.created_at.isoformat() if mo.created_at else None,
                 "items": [
                     {

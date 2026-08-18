@@ -19,6 +19,7 @@ const TerkSepetlerPage = lazy(() => import('./pages/TerkSepetlerPage'))
 const MusterilerPage = lazy(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazy(() => import('./pages/AnalitikPage'))
 const CanliGorunumPage = lazy(() => import('./pages/CanliGorunumPage'))
+const Onizleme = lazy(() => import('./pages/_Onizleme'))
 const TemaPage = lazy(() => import('./pages/TemaPage'))
 const TemaEditorPage = lazy(() => import('./pages/TemaEditorPage'))
 const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
@@ -72,6 +73,9 @@ export default function App() {
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/_onizleme" element={<Onizleme />}>
+          <Route index element={<CanliGorunumPage />} />
+        </Route>
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />

@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
+import EmptyState from '../components/EmptyState'
+import SlotHaritasi from '../components/SlotHaritasi'
+import { renk } from '../lib/durum'
 
+// Renkler ortak olcekten (lib/durum) — ayni anlam her sayfada ayni renk.
 const PRINT_STATUSES = [
-  { value: 'bekliyor', label: 'Bekliyor', icon: '⏳', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
-  { value: 'basildi', label: 'Basıldı', icon: '✓', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
-  { value: 'eksik_var', label: 'Eksik Var', icon: '⚠️', cls: 'text-red-300 bg-red-500/10 border-red-500/30' },
-  { value: 'hatali_basildi', label: 'Hatalı Basıldı', icon: '✕', cls: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },
+  { value: 'bekliyor',       label: 'Bekliyor',       icon: '⏳', cls: renk('bekliyor').cls },
+  { value: 'basildi',        label: 'Basıldı',        icon: '✓',  cls: renk('tamam').cls },
+  { value: 'eksik_var',      label: 'Eksik Var',      icon: '⚠️', cls: renk('uyari').cls },
+  { value: 'hatali_basildi', label: 'Hatalı Basıldı', icon: '✕',  cls: renk('hata').cls },
 ]
 const STATUS_MAP = Object.fromEntries(PRINT_STATUSES.map(s => [s.value, s]))
 
@@ -184,8 +188,18 @@ export default function BaskiciPaneliPage() {
       {loading ? (
         <div className="space-y-3">{[0,1,2].map(i => <div key={i} className="card"><div className="skeleton h-5 w-44 mb-3 rounded" /><div className="skeleton h-3 w-full rounded" /></div>)}</div>
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-12 text-gray-500"><div className="text-4xl mb-2">🖨️</div>
-          {molds.length === 0 ? 'Henüz kalıp yok. Kalıp Oluşturucu\'dan kalıp üret.' : 'Bu filtrede kalıp yok.'}</div>
+        <div className="card !p-0">
+          {molds.length === 0 ? (
+            <EmptyState ikon="🖨️" baslik="Henüz kalıp yok"
+              aciklama="Siparişler kalıba alındığında burada listelenir. Kalıp Oluşturucu'dan yeni kalıp üretebilirsin."
+              aksiyon={<a href="/kalip-olustur" className="btn-primary !text-sm">🧩 Kalıp Oluşturucu</a>} />
+          ) : (
+            <EmptyState ikon="🔍" baslik="Bu filtrede kalıp yok"
+              aciklama="Seçili durum ve aramayla eşleşen kalıp bulunamadı."
+              aksiyon={<button onClick={() => { setFilter('all'); setSearch('') }}
+                               className="btn-secondary !text-sm">Filtreyi temizle</button>} />
+          )}
+        </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {filtered.map(m => (
@@ -204,7 +218,8 @@ export default function BaskiciPaneliPage() {
               <button onClick={() => setTotalMissing(null)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
             </div>
             {totalMissing.items.length === 0 ? (
-              <div className="text-center py-8 text-emerald-300">✓ Hiç stok eksiği yok — kalıplar ve aksesuarlar için yeterli.</div>
+              <EmptyState dar ikon="✅" baslik="Hiç stok eksiği yok"
+                aciklama="Panel kalıpları ve açık siparişlerdeki aksesuarlar için stok yeterli." />
             ) : (
               <>
                 <div className="text-xs text-gray-500 mb-3">
@@ -253,7 +268,8 @@ export default function BaskiciPaneliPage() {
               </div>
             </div>
             {requiredModels.items.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">Panelde (basılmamış) kalıp ve stok eksiği yok.</div>
+              <EmptyState dar ikon="📋" baslik="Hazırlanacak bir şey yok"
+                aciklama="Panelde basılmamış kalıp ve açık siparişlerde stok eksiği bulunmuyor." />
             ) : (
               <>
                 <div className="text-xs text-gray-500 mb-3">
@@ -387,6 +403,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
         </div>
         <span className={`text-[11px] px-2 py-1 rounded-lg border whitespace-nowrap ${st.cls}`}>{st.icon} {st.label}</span>
       </div>
+
+      <SlotHaritasi items={mold.items || []} kilitli={mold.slot_kilitli} />
 
       {/* Analiz sonucu */}
       {an && an.total_cases > 0 && (

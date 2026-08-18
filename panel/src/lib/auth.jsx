@@ -5,7 +5,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { api, ApiError, getToken, setToken } from './api'
 
-const AuthContext = createContext(null)
+export const AuthContext = createContext(null)
 
 const ADMIN_ROLES = ['yonetici', 'owner']
 

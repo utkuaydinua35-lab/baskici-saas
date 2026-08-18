@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { api } from './api'
 import { useAuth } from './auth'
 
-const StoreContext = createContext(null)
+export const StoreContext = createContext(null)
 const STORE_KEY = 'magaza_store_id'
 
 export function StoreProvider({ children }) {

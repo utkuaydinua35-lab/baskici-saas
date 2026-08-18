@@ -34,16 +34,18 @@ def _gradyan(boy: int) -> Image.Image:
 
 
 def ikon(boy: int) -> Image.Image:
+    """Kenardan kenara DOLU, saydamlığı OLMAYAN kare ikon.
+
+    Köşeleri bilerek yuvarlatmıyoruz: iOS ve Android ikona KENDİ maskesini
+    uygular. Saydam köşeli bir PNG verildiğinde iOS köşeleri siyaha boyar,
+    Android'in maskable ikonu ise kırpılmış görünür. Doğrusu tam kare vermek;
+    glif zaten güvenli alanın içinde (genişliğin ~%34'ü) kalıyor.
+    """
     # 4x çiz, sonra küçült — kenarlar yumuşasın (Pillow'da anti-aliasing yok)
     S = boy * 4
     k = S / 32.0                                  # favicon.svg viewBox ölçeği
 
-    zemin = _gradyan(S).convert("RGBA")
-    maske = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(maske).rounded_rectangle([0, 0, S - 1, S - 1], radius=int(8 * k), fill=255)
-    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    im.paste(zemin, (0, 0), maske)
-
+    im = _gradyan(S).convert("RGBA")
     d = ImageDraw.Draw(im)
     beyaz = (255, 255, 255, 245)
 
@@ -65,7 +67,8 @@ def ikon(boy: int) -> Image.Image:
     d.arc([(16 - 2.4) * k, (15 - 2.4) * k, (16 + 2.4) * k, (15 + 2.4) * k],
           start=0, end=180, fill=KOYU, width=max(1, int(1.2 * k)))
 
-    return im.resize((boy, boy), Image.LANCZOS)
+    # Saydamlık kalmasın (iOS siyah köşe basar)
+    return im.convert("RGB").resize((boy, boy), Image.LANCZOS)
 
 
 if __name__ == "__main__":

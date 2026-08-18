@@ -11,7 +11,11 @@
     <meta name="theme-color" content="#0b1437" />
     <!-- PWA: telefonda "Ana Ekrana Ekle" ile uygulama gibi kurulur -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- ?v=2: iOS ana ekran ikonunu ADRESE göre önbelleğe alır ve bir daha
+         sormaz. İlk kurulumda dosya bozuk geldiyse (Cloudflare index.html
+         serviyordu) ikon "C" harfi olarak çakılı kalır; sürüm eki olmadan
+         uygulamayı silip yeniden eklemek bile düzeltmez. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Commerce" />

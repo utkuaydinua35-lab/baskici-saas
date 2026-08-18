@@ -517,6 +517,7 @@ def odeme_testi(
     from types import SimpleNamespace
 
     from app.payments import get_payment_provider
+    from app.services.checkout import build_callback_url
 
     store = _get_store(db, user, store_id)
     config = store.config or {}
@@ -529,6 +530,8 @@ def odeme_testi(
     sahte = SimpleNamespace(
         id=uuid.uuid4(),
         token=f"test-{uuid.uuid4().hex[:12]}",
+        # provider: dönüş adresi sağlayıcıya göre farklı kuruluyor
+        provider=saglayici,
         amount=Decimal("1.00"),
         shipping_amount=Decimal("0"),
         currency="TRY",
@@ -543,7 +546,10 @@ def odeme_testi(
     )
     try:
         provider = get_payment_provider(store)
-        init = provider.create_checkout(sahte, f"{(config.get('storefront_url') or '').rstrip('/')}/odeme/sonuc")
+        # Dönüş adresi GERÇEK ödemedeki ile aynı yoldan kurulur; testin
+        # kendi adresini uydurması, gerçekte patlayan bir kurulumun testte
+        # "çalışıyor" görünmesine (ve tersine) yol açıyordu
+        init = provider.create_checkout(sahte, build_callback_url(store, sahte))
         return {
             "ok": True,
             "saglayici": saglayici, "ortam": ortam,
@@ -562,25 +568,33 @@ def odeme_testi(
 def _odeme_ipucu(hata: str, saglayici: str) -> str:
     """Sağlayıcının ham hatasını anlaşılır bir öneriye çevirir."""
     h = (hata or "").lower()
+    marka = "PayTR" if saglayici == "paytr" else "iyzico"
+    if "vitrin adresi" in h or "dönüş adresi" in h:
+        return ("Mağazanın alan adı kayıtlı değil. Ayarlar → Alan Adı'ndan "
+                "kaydedin; ödeme sağlayıcısı müşteriyi oraya geri döndürür.")
+    if "json dönmedi" in h:
+        return (f"{marka} beklenen cevabı vermedi — yukarıdaki ham cevap sebebi "
+                "gösterir. En sık: üye iş yeri bilgileri hatalı ya da dönüş "
+                "adresi kabul edilmedi.")
     if "anahtar" in h or "eksik" in h:
         return ("Ayarlar → Ödeme bölümünde API ve güvenlik anahtarları boş. "
-                "iyzico panelinden alıp buraya yapıştırın.")
+                f"{marka} panelinden alıp buraya yapıştırın.")
     if ("api bilgileri" in h or "bulunamadı" in h or "invalid api" in h
             or "signature" in h or "imza" in h or "unauthorized" in h or "5001" in h):
         return ("Anahtarlar kabul edilmedi. En sık sebep: SANDBOX anahtarını "
-                "CANLI adreste (veya tersini) kullanmak — “iyzico ortamı” seçimi "
-                "ile anahtar takımı aynı olmalı. Anahtarları iyzico panelinden "
+                "CANLI adreste (veya tersini) kullanmak — ortam seçimi ile "
+                f"anahtar takımı aynı olmalı. Anahtarları {marka} panelinden "
                 "yeniden kopyalayıp (baştaki/sondaki boşluklara dikkat) kaydedin.")
     if "ip" in h and ("izin" in h or "restrict" in h or "not allowed" in h):
-        return ("iyzico hesabınızda IP kısıtlaması var. Sunucunun IP adresini "
-                "(91.132.49.107) iyzico panelinde izinli listesine ekleyin.")
+        return (f"{marka} hesabınızda IP kısıtlaması var. Sunucunun IP adresini "
+                f"(91.132.49.107) {marka} panelinde izinli listesine ekleyin.")
     if "timeout" in h or "connection" in h or "resolve" in h:
         return ("Sunucudan sağlayıcıya bağlanılamadı. Güvenlik duvarı dış "
                 "bağlantıyı engelliyor olabilir.")
     if "merchant" in h:
         return "Üye iş yeri bilgileri hatalı — mağaza numarası/anahtarını kontrol edin."
     return ("Sağlayıcının mesajını yukarıda görüyorsunuz. Anahtarlar, ortam "
-            "(test/canlı) ve iyzico hesabının aktif olup olmadığını kontrol edin.")
+            f"(test/canlı) ve {marka} hesabının aktif olup olmadığını kontrol edin.")
 
 
 def _revalidate_storefront(store: Store) -> None:

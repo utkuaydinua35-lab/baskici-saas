@@ -18,16 +18,40 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from decimal import Decimal
 
 import requests
 
 from app.payments.base import CheckoutInit, PaymentProvider, PaymentResult, RefundResult
 
+log = logging.getLogger("odeme.paytr")
+
 GET_TOKEN_URL = "https://www.paytr.com/odeme/api/get-token"
 IFRAME_URL = "https://www.paytr.com/odeme/guvenli/{token}"
 REFUND_URL = "https://www.paytr.com/odeme/iade"
 _TIMEOUT = 30
+
+
+def _json_coz(resp, ne: str) -> dict:
+    """PayTR cevabını JSON'a çevir; değilse SEBEBİ görünür bir hataya dönüştür.
+
+    resp.json() ham JSONDecodeError fırlatıyordu ("Expecting value: line 1
+    column 1") — panelde bu mesaj görünüyor ama PayTR'nin ne dediği kayboluyordu.
+    Sağlayıcı hata durumunda HTML dönebiliyor (geçersiz merchant_ok_url, IP
+    kısıtı, bakım sayfası); teşhis için gövdenin başı gerekiyor.
+    """
+    govde = (resp.text or "").strip()
+    try:
+        return resp.json()
+    except ValueError:
+        ozet = " ".join(govde.split())[:200] or "(cevap boş)"
+        # Panelde kısaltılmış hâli görünür; tam gövde günlükte kalsın
+        log.error("paytr %s cevabi JSON degil: HTTP %s ct=%s govde=%r",
+                  ne, resp.status_code, resp.headers.get("content-type"), govde[:1000])
+        raise ValueError(
+            f"PayTR {ne} isteğine JSON dönmedi (HTTP {resp.status_code}): {ozet}"
+        ) from None
 
 
 class PayTRProvider(PaymentProvider):
@@ -52,6 +76,13 @@ class PayTRProvider(PaymentProvider):
     def create_checkout(self, session, callback_url: str) -> CheckoutInit:
         if not self.merchant_id or not self.merchant_key or not self.merchant_salt:
             raise ValueError("PayTR anahtarları eksik (mağaza ayarları)")
+        # PayTR merchant_ok_url/fail_url'i MUTLAK ister. Vitrin adresi tanımsız
+        # kalınca "/odeme/sonuc" gibi göreli bir adres gidiyor ve istek daha
+        # anlamsız bir hatayla reddediliyordu — sebebi burada söylüyoruz.
+        if not str(callback_url or "").startswith(("http://", "https://")):
+            raise ValueError(
+                "Vitrin adresi tanımlı değil, PayTR'ye geçerli bir dönüş adresi "
+                "verilemiyor. Ayarlar → Genel'de mağazanın alan adını kaydedin.")
 
         cust = session.customer or {}
         # PayTR: tutar kuruş cinsinden tamsayı (349.90 → 34990)
@@ -109,7 +140,7 @@ class PayTRProvider(PaymentProvider):
 
         resp = requests.post(GET_TOKEN_URL, data=payload, timeout=_TIMEOUT)
         resp.raise_for_status()
-        data = resp.json()
+        data = _json_coz(resp, "ödeme başlatma")
         if data.get("status") != "success":
             raise ValueError(f"PayTR başlatılamadı: {data.get('reason', 'bilinmeyen hata')}")
 
@@ -180,7 +211,7 @@ class PayTRProvider(PaymentProvider):
                 "paytr_token": paytr_token,
             }, timeout=_TIMEOUT)
             resp.raise_for_status()
-            data = resp.json()
+            data = _json_coz(resp, "iade")
         except (requests.RequestException, ValueError) as e:
             return RefundResult(status="failed", error=f"PayTR iade isteği başarısız: {e}")
 

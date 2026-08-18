@@ -1225,6 +1225,12 @@ function MobilSection({ toast }) {
             Sunucuda bildirim anahtarı (VAPID) tanımlı değil — kurulum için
             sunucu .env dosyasına eklenmeli.
           </p>
+        ) : !durum.swHazir ? (
+          <p className="text-xs text-amber-300">
+            Uygulamanın arka plan servisi yüklenemedi. Uygulamayı tamamen
+            kapatıp yeniden açın; sürmesi hâlinde ana ekrandaki simgeyi silip
+            yeniden ekleyin.
+          </p>
         ) : durum.permission === 'denied' ? (
           <p className="text-xs text-amber-300">
             Bildirim izni engellenmiş. Tarayıcı/telefon ayarlarından bu siteye

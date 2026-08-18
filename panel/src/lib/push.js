@@ -20,24 +20,39 @@ export function pushSupported() {
     && 'Notification' in window
 }
 
+// navigator.serviceWorker.ready, kayitli bir service worker YOKSA hicbir
+// zaman cozulmez ve REDDETMEZ de — sonsuza kadar bekleyen bir soz doner.
+// try/catch bunu yakalayamaz. Panelde "Bildirimler / Yukleniyor..." bu
+// yuzden asili kaliyordu (2026-08-19: Cloudflare /sw.js yerine index.html
+// serviyordu, kayit basarisiz oldu, ekran kilitlendi).
+const SW_BEKLEME_MS = 4000
+
 async function getRegistration() {
   if (!('serviceWorker' in navigator)) return null
-  // main.jsx zaten register ediyor; hazir olani bekle
-  return navigator.serviceWorker.ready
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((cozumle) => setTimeout(() => cozumle(null), SW_BEKLEME_MS)),
+  ])
 }
 
 export async function getPushState() {
   const supported = pushSupported()
-  if (!supported) return { supported: false, serverEnabled: false, permission: 'unsupported', subscribed: false }
+  if (!supported) {
+    return { supported: false, serverEnabled: false, permission: 'unsupported',
+             subscribed: false, swHazir: false }
+  }
   let serverEnabled = false
   try { const r = await api.get('/api/push/vapid-key'); serverEnabled = !!r.enabled } catch { /* yoksay */ }
   let subscribed = false
+  let swHazir = false
   try {
     const reg = await getRegistration()
+    swHazir = !!reg
     const sub = reg && await reg.pushManager.getSubscription()
     subscribed = !!sub
   } catch { /* yoksay */ }
-  return { supported: true, serverEnabled, permission: Notification.permission, subscribed }
+  return { supported: true, serverEnabled, permission: Notification.permission,
+           subscribed, swHazir }
 }
 
 export async function enablePush() {
@@ -49,7 +64,7 @@ export async function enablePush() {
   if (perm !== 'granted') throw new Error('Bildirim izni verilmedi')
 
   const reg = await getRegistration()
-  if (!reg) throw new Error('Service worker hazır değil')
+  if (!reg) throw new Error('Uygulama arka plan servisi yüklenemedi — uygulamayı kapatıp yeniden açın')
 
   let sub = await reg.pushManager.getSubscription()
   if (!sub) {

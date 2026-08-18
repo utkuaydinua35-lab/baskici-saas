@@ -30,6 +30,7 @@ const NAV_GROUPS = [
     { to: '/kuponlar', label: 'İndirimler', icon: '🎟️' },
     { to: '/terk-sepetler', label: 'Terk Sepetler', icon: '🛒' },
     { to: '/analitik', label: 'Analitik', icon: '📈' },
+    { to: '/canli', label: 'Canlı Görünüm', icon: '🌐' },
   ]},
   { label: 'Online Mağaza', items: [
     { to: '/tema', label: 'Tema', icon: '🎨' },

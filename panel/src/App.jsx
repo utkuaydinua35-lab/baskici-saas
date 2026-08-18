@@ -18,6 +18,7 @@ const KuponlarPage = lazy(() => import('./pages/KuponlarPage'))
 const TerkSepetlerPage = lazy(() => import('./pages/TerkSepetlerPage'))
 const MusterilerPage = lazy(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazy(() => import('./pages/AnalitikPage'))
+const CanliGorunumPage = lazy(() => import('./pages/CanliGorunumPage'))
 const TemaPage = lazy(() => import('./pages/TemaPage'))
 const TemaEditorPage = lazy(() => import('./pages/TemaEditorPage'))
 const SayfalarPage = lazy(() => import('./pages/SayfalarPage'))
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="/terk-sepetler" element={<TerkSepetlerPage />} />
             <Route path="/musteriler" element={<MusterilerPage />} />
             <Route path="/analitik" element={<AnalitikPage />} />
+            <Route path="/canli" element={<CanliGorunumPage />} />
             <Route path="/tema" element={<TemaPage />} />
             <Route path="/sayfalar" element={<SayfalarPage />} />
             <Route path="/blog" element={<BlogPage />} />

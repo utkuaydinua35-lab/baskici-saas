@@ -1711,6 +1711,9 @@ class StorefrontPresence(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
     cart_items: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # Ülke kodu (ISO-3166 alpha-2), Cloudflare'in CF-IPCountry başlığından.
+    # IP ADRESİ SAKLANMAZ — canlı görünümdeki konum dağılımı için tek veri bu.
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     # Ulaşılan EN İLERİ huni aşaması (geri gitmez) — "nerede vazgeçti" analizi
     stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
     stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

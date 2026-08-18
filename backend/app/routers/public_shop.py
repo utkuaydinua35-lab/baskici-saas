@@ -2154,6 +2154,18 @@ class PresenceIn(BaseModel):
 
 presence_rate_limit = make_rate_limiter(max_hits=12, window=60.0)
 
+# Cloudflare ülkeyi bilmediğinde ya da Tor çıkışında bu kodları döner —
+# gerçek ülke değiller, konum listesinde "Bilinmiyor" sayılsınlar
+_ULKE_YOK = {"XX", "T1", "", "ZZ"}
+
+
+def _ulke_kodu(request: Request) -> str | None:
+    """Vitrin proxy'sinin ilettiği ülke kodu (Cloudflare kaynaklı)."""
+    ham = (request.headers.get("x-visitor-country") or "").strip().upper()[:2]
+    if ham in _ULKE_YOK or not ham.isalpha():
+        return None
+    return ham
+
 
 @router.post("/{store_slug}/presence")
 def presence_ping(
@@ -2163,9 +2175,10 @@ def presence_ping(
     _rl: None = Depends(presence_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """Ziyaretçi ping'i (~20 sn'de bir) — panel Canlı Görünüm kartını besler.
+    """Ziyaretçi ping'i (~20 sn'de bir) — panel Canlı Görünüm'ünü besler.
 
-    Kişisel veri yok: yalnız istemcinin ürettiği rastgele oturum anahtarı."""
+    Kişisel veri yok: istemcinin ürettiği rastgele oturum anahtarı ve
+    Cloudflare'in bildirdiği ÜLKE KODU. IP adresi saklanmaz."""
     from datetime import datetime, timezone
 
     from app.models import StorefrontPresence
@@ -2186,6 +2199,9 @@ def presence_ping(
     row.last_seen = now
     row.last_path = (body.path or "")[:300] or None
     row.cart_items = body.cart_items
+    # Ülke bir kez yazılır; sonraki ping'lerde değişmez (aynı oturum)
+    if not row.country:
+        row.country = _ulke_kodu(request)
     # Ulaşılan en ileri huni aşaması — "nerede vazgeçti" analizi
     from app.services import funnel
     new_stage = funnel.merge_stage(

@@ -646,16 +646,13 @@ def live_view(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Panel Canlı Görünüm (Shopify live view) — anlık ziyaretçi/sepet/ödeme.
+    """Canlı Görünüm — panelin tam ekran Live View sayfası ve dashboard kartı.
 
-    Vitrin presence ping'leri + checkout oturumlarından türetilir; kart
-    ~10 sn'de bir yeniler."""
-    from datetime import datetime, timedelta, timezone
-    from zoneinfo import ZoneInfo
-
-    from sqlalchemy import func as sql_func
-
-    from app.models import CheckoutSession, Store as _Store, StorefrontPresence
+    Hesabın tamamı services/live_view.py'de; burası yalnız mağaza yetkisini
+    doğrular. İki tüketici de AYNI yanıtı okur (kart eski adları kullanır),
+    böylece iki ayrı yerde ayrışan iki hesap oluşmuyor."""
+    from app.models import Store as _Store
+    from app.services import live_view as lv
 
     store = db.scalar(select(_Store).where(
         _Store.id == store_id, _Store.tenant_id == user.tenant_id,
@@ -663,44 +660,26 @@ def live_view(
     if not store:
         raise HTTPException(404, "Vitrin mağazası bulunamadı")
 
+    _presence_buda_seyrek(db, store.id)
+    return lv.canli_gorunum(db, store)
+
+
+# Budama saatte bir yeter; uç 10 sn'de bir çağrılıyor ve her seferinde DELETE
+# atmak boşuna yük (eski hâli böyleydi).
+_SON_BUDAMA: dict[str, datetime] = {}
+
+
+def _presence_buda_seyrek(db: Session, store_id) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from app.services import live_view as lv
+
+    anahtar = str(store_id)
     now = datetime.now(timezone.utc)
-    # "Bugün" Türkiye günüdür — gece yarısı TR'de sıfırlanır
-    tr_now = now.astimezone(ZoneInfo("Europe/Istanbul"))
-    day_start = tr_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-
-    def _count(*conds) -> int:
-        return db.scalar(select(sql_func.count()).select_from(StorefrontPresence).where(
-            StorefrontPresence.store_id == store.id, *conds)) or 0
-
-    paid_q = (CheckoutSession.store_id == store.id,
-              CheckoutSession.status == "paid")
-    today_orders = db.scalar(select(sql_func.count()).select_from(CheckoutSession).where(
-        *paid_q, CheckoutSession.paid_at >= day_start)) or 0
-    today_revenue = db.scalar(select(sql_func.coalesce(sql_func.sum(CheckoutSession.amount), 0))
-        .where(*paid_q, CheckoutSession.paid_at >= day_start)) or 0
-
-    # Bakım: 7 günden eski presence satırlarını buda (uç seyrek çağrılır)
-    db.query(StorefrontPresence).filter(
-        StorefrontPresence.store_id == store.id,
-        StorefrontPresence.last_seen < now - timedelta(days=7),
-    ).delete(synchronize_session=False)
-    db.commit()
-
-    return {
-        "current_visitors": _count(StorefrontPresence.last_seen > now - timedelta(minutes=5)),
-        "today_sessions": _count(StorefrontPresence.first_seen >= day_start),
-        "active_carts": _count(
-            StorefrontPresence.cart_items > 0,
-            StorefrontPresence.last_seen > now - timedelta(minutes=30)),
-        "checking_out": db.scalar(select(sql_func.count()).select_from(CheckoutSession).where(
-            CheckoutSession.store_id == store.id,
-            CheckoutSession.status == "pending",
-            CheckoutSession.created_at > now - timedelta(minutes=30))) or 0,
-        "purchased_recent": db.scalar(select(sql_func.count()).select_from(CheckoutSession).where(
-            *paid_q, CheckoutSession.paid_at > now - timedelta(minutes=15))) or 0,
-        "today_orders": today_orders,
-        "today_revenue": str(today_revenue),
-    }
+    if now - _SON_BUDAMA.get(anahtar, datetime.min.replace(tzinfo=timezone.utc)) < timedelta(hours=1):
+        return
+    _SON_BUDAMA[anahtar] = now
+    lv.presence_buda(db, store_id, now)
 
 
 @router.get("/_stats", response_model=dict)

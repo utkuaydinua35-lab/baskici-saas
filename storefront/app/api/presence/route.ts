@@ -15,6 +15,11 @@ export async function POST(req: NextRequest) {
         "X-Forwarded-For":
           req.headers.get("cf-connecting-ip") ||
           req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1",
+        // Ülke Cloudflare'den gelir (her planda var). IP backend'e YAZILMAZ,
+        // yalnız bu iki harf saklanır — canlı görünümdeki konum dağılımı.
+        // "XX"/"T1" = Cloudflare bilinmiyor/Tor diyor; onları boş geçiyoruz.
+        "X-Visitor-Country":
+          (req.headers.get("cf-ipcountry") || "").toUpperCase().slice(0, 2),
       },
       body: JSON.stringify({
         key: String(body.key || "").slice(0, 64),

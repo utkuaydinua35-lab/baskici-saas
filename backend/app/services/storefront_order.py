@@ -337,7 +337,39 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
     except Exception as e:  # e-posta hatası siparişi geri almaz
         print(f"[vitrin] onay e-postası gönderilemedi: {e}")
 
+    try:
+        _yeni_siparis_bildirimi(db, session, order, store)
+    except Exception as e:  # noqa: BLE001 — bildirim hatası siparişi geri almaz
+        print(f"[vitrin] sipariş bildirimi gönderilemedi: {e}")
+
     return order
+
+
+def _yeni_siparis_bildirimi(db, session, order, store) -> None:
+    """Mağaza sahibinin telefonuna anlık "yeni sipariş" bildirimi.
+
+    Panel PWA olarak ana ekrana kurulduğunda en çok beklenen şey bu. Push
+    altyapısı zaten vardı ama tetikleyicileri baskıcı tarafındaydı (yorum,
+    destek, sabah özeti); satışın kendisi bildirim üretmiyordu.
+
+    send_to_tenant: aynı kiracının TÜM kayıtlı cihazlarına gider — mağaza
+    paneli ve baskıcı paneli aynı hesabı paylaşıyor. Bildirime tıklayınca
+    açılan adres MAĞAZA PANELİNE göredir; baskıcı panelinden abone olunmuş
+    bir cihazda o yol bulunamaz ve uygulama ana sayfada açılır (zararsız).
+    VAPID tanımlı değilse servis sessizce hiçbir şey yapmaz.
+    """
+    from app.services import push
+
+    kalem = len(session.cart_snapshot or [])
+    musteri = (session.customer or {}).get("first_name") or "Müşteri"
+    magaza = f" · {store.name}" if store and store.name else ""
+    push.send_to_tenant(
+        db, session.tenant_id,
+        f"🛍️ Yeni sipariş{magaza}",
+        f"{musteri} · {kalem} ürün · {session.amount} TL",
+        url=f"/siparisler/{order.id}",
+        tag=f"siparis-{order.order_number}",
+    )
 
 
 def _tasarimlari_isle(db, session, order, store) -> None:

@@ -1,0 +1,21 @@
+{
+  "name": "BERNZ Commerce — Mağaza Yönetimi",
+  "short_name": "Commerce",
+  "description": "Sipariş, ürün, stok ve canlı mağaza takibi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b1437",
+  "theme_color": "#0b1437",
+  "lang": "tr",
+  "icons": [
+    { "src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Canlı Görünüm", "url": "/canli", "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }] },
+    { "name": "Siparişler", "url": "/siparisler", "icons": [{ "src": "/pwa-192.png", "sizes": "192x192" }] }
+  ]
+}

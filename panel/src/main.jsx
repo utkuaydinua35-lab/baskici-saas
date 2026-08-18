@@ -20,3 +20,11 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 )
+
+// PWA: ana ekrana eklenebilirlik + Web Push. Service worker cache YAPMAZ
+// (bkz. public/sw.js) — yalnız kurulabilirlik ve bildirim için.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}

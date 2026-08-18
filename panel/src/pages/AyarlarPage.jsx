@@ -17,6 +17,7 @@ const TABS = [
   { key: 'pazarlama', label: 'Pazarlama', icon: '🎯' },
   { key: 'destek', label: 'Destek', icon: '🎧' },
   { key: 'guvenlik', label: 'Güvenlik', icon: '🔐' },
+  { key: 'mobil', label: 'Mobil Uygulama', icon: '📱' },
   { key: 'entegrasyon', label: 'Entegrasyon', icon: '🔌' },
   { key: 'yayin', label: 'Yayın & Domain', icon: '🌐' },
   { key: 'yasal', label: 'Yasal', icon: '📄' },
@@ -672,6 +673,8 @@ export default function AyarlarPage() {
 
       {tab === 'guvenlik' && <PasskeySection toast={toast} />}
 
+      {tab === 'mobil' && <MobilSection toast={toast} />}
+
       {tab === 'entegrasyon' && <EntegrasyonSection storeId={storeId} cfg={cfg} toast={toast} />}
 
       {tab === 'yayin' && (<>
@@ -1126,5 +1129,134 @@ function DomainVerify({ storeId, customDomain, onUseAsDomain }) {
         </button>
       )}
     </div>
+  )
+}
+
+// ── Mobil uygulama (PWA) ──────────────────────────────────────
+// Panel ayrı bir mobil uygulama DEĞİL: telefonda "Ana ekrana ekle" ile
+// kurulur, tam ekran açılır ve bildirim alabilir. Kurulum cihaz başınadır,
+// bildirim aboneliği de öyle — bu yüzden durum sunucudan değil TARAYICIDAN
+// okunuyor.
+function MobilSection({ toast }) {
+  const [durum, setDurum] = useState(null)   // getPushState sonucu
+  const [busy, setBusy] = useState(false)
+
+  const oku = async () => {
+    try {
+      const { getPushState } = await import('../lib/push')
+      setDurum(await getPushState())
+    } catch { setDurum({ supported: false }) }
+  }
+  useEffect(() => { oku() }, [])
+
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const iosCihaz = /iphone|ipad|ipod/i.test(ua)
+  // iOS'ta bildirim YALNIZCA ana ekrana eklenmiş uygulamada çalışır
+  const kuruluMu = typeof window !== 'undefined'
+    && (window.navigator.standalone === true
+        || window.matchMedia?.('(display-mode: standalone)')?.matches)
+
+  const sar = async (fn, basarili) => {
+    setBusy(true)
+    try {
+      await fn()
+      toast.success(basarili)
+      await oku()
+    } catch (e) { toast.error(e?.message || 'İşlem başarısız') }
+    finally { setBusy(false) }
+  }
+
+  const dene = async () => {
+    try {
+      const { testPush } = await import('../lib/push')
+      const r = await testPush()
+      if (r.sent > 0) toast.success('Deneme bildirimi gönderildi')
+      else toast.error(r.reason || 'Gönderilemedi — önce bildirimi aç')
+    } catch { toast.error('Gönderilemedi') }
+  }
+
+  return (
+    <>
+      <Section title="Telefona Kur" icon="📱">
+        <p className="text-xs text-panel-muted -mt-1">
+          Bu panel telefonda <b>uygulama gibi</b> çalışır: ana ekrana eklenir,
+          kendi ikonuyla tam ekran açılır, adres çubuğu görünmez. App Store /
+          Play Store gerekmez.
+        </p>
+        <div className={`text-xs rounded-xl px-3 py-2 border ${kuruluMu
+          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+          : 'bg-white/5 border-panel-border text-panel-muted'}`}>
+          {kuruluMu
+            ? '✅ Şu anda kurulu uygulamadan açtınız.'
+            : 'Şu anda tarayıcıdan açtınız — aşağıdaki adımlarla ana ekrana ekleyin.'}
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 text-xs">
+          <div className="rounded-xl border border-panel-border bg-white/[0.03] p-3">
+            <div className="font-semibold mb-1.5">📱 iPhone / iPad (Safari)</div>
+            <ol className="list-decimal pl-4 space-y-1 text-panel-muted">
+              <li>Bu sayfayı <b>Safari</b> ile açın (Chrome olmaz)</li>
+              <li>Alttaki <b>Paylaş</b> simgesine dokunun</li>
+              <li><b>Ana Ekrana Ekle</b> → <b>Ekle</b></li>
+            </ol>
+          </div>
+          <div className="rounded-xl border border-panel-border bg-white/[0.03] p-3">
+            <div className="font-semibold mb-1.5">🤖 Android (Chrome)</div>
+            <ol className="list-decimal pl-4 space-y-1 text-panel-muted">
+              <li>Sağ üstteki <b>⋮</b> menüsüne dokunun</li>
+              <li><b>Uygulamayı yükle</b> (ya da Ana ekrana ekle)</li>
+              <li>Onaylayın</li>
+            </ol>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Bildirimler" icon="🔔">
+        <p className="text-xs text-panel-muted -mt-1">
+          Telefonunuza şunlar bildirilir: <b>yeni sipariş</b>, yeni ürün yorumu,
+          destek mesajı, müşteri tasarım onayı ve sabah özeti. Bildirim
+          <b> cihaz başına</b> açılır — her telefonda ayrıca açmanız gerekir.
+        </p>
+        {!durum ? (
+          <p className="text-xs text-panel-muted">Yükleniyor…</p>
+        ) : !durum.supported ? (
+          <p className="text-xs text-amber-300">Bu tarayıcı bildirim desteklemiyor.</p>
+        ) : !durum.serverEnabled ? (
+          <p className="text-xs text-amber-300">
+            Sunucuda bildirim anahtarı (VAPID) tanımlı değil — kurulum için
+            sunucu .env dosyasına eklenmeli.
+          </p>
+        ) : durum.permission === 'denied' ? (
+          <p className="text-xs text-amber-300">
+            Bildirim izni engellenmiş. Tarayıcı/telefon ayarlarından bu siteye
+            izin verip tekrar deneyin.
+          </p>
+        ) : iosCihaz && !kuruluMu ? (
+          <p className="text-xs text-amber-300">
+            iPhone'da bildirim yalnızca <b>ana ekrana eklenmiş</b> uygulamada
+            çalışır. Önce yukarıdaki adımlarla kurun, sonra uygulamadan açıp
+            bildirimi etkinleştirin.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {durum.subscribed ? (
+              <>
+                <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300
+                  border border-emerald-500/30">Bu cihazda açık</span>
+                <button onClick={dene} className="btn-ghost !py-1.5 text-xs">🔔 Deneme gönder</button>
+                <button disabled={busy} className="btn-ghost !py-1.5 text-xs"
+                  onClick={() => sar(async () => (await import('../lib/push')).disablePush(),
+                                     'Bildirimler kapatıldı')}>Kapat</button>
+              </>
+            ) : (
+              <button disabled={busy} className="btn-primary !py-1.5 text-xs"
+                onClick={() => sar(async () => (await import('../lib/push')).enablePush(),
+                                   'Bildirimler açıldı')}>
+                {busy ? 'Açılıyor…' : '🔔 Bildirimleri Aç'}
+              </button>
+            )}
+          </div>
+        )}
+      </Section>
+    </>
   )
 }

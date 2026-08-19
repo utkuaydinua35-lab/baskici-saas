@@ -432,6 +432,11 @@ async def create_design(
 @router.patch("/{design_id}", response_model=None)
 async def update_design(
     design_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    # Tasarim DOSYASINI degistirme. Onceden yalnizca bilgi alanlari
+    # guncellenebiliyordu; yanlis formatta (or. .pdf yerine .jpg) yuklenen bir
+    # tasarimi duzeltmenin tek yolu silip yeniden yuklemekti.
+    file: UploadFile | None = File(None),
     code: str | None = Form(None),
     name: str | None = Form(None),
     product_id: str | None = Form(None),
@@ -451,6 +456,39 @@ async def update_design(
     design = db.scalar(select(Design).where(Design.id == design_id, Design.tenant_id == user.tenant_id))
     if not design:
         raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
+
+    # ── Dosya degisimi ──
+    _eski_path = None
+    if file is not None and (file.filename or "").strip():
+        if not storage.is_allowed_extension(file.filename or ""):
+            raise HTTPException(
+                status_code=400,
+                detail=f"İzin verilen formatlar: {', '.join(sorted(storage.ALLOWED_EXTENSIONS))}",
+            )
+        _yeni = await file.read()
+        if not _yeni:
+            raise HTTPException(status_code=400, detail="Boş dosya")
+        if len(_yeni) > storage.MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)",
+            )
+        # Uzanti degisirse dosya adi da degisir; eskisini SONRA sil (yeni kayit
+        # basarili olmadan silersek tasarim dosyasiz kalirdi).
+        _eski_path = design.file_path
+        try:
+            _bilgi = storage.save_design_file(
+                tenant_id=user.tenant_id, design_id=design.id,
+                file_data=_yeni, original_filename=file.filename or "design",
+                skip_thumbnail=True,   # thumbnail arka planda
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Dosya kaydedilemedi: {str(e)[:200]}") from e
+        design.file_path = _bilgi["relative_path"]
+        design.file_format = _bilgi["format"]
+        design.file_size_bytes = _bilgi["size"]
 
     if code is not None and code.strip():
         design.code = code.strip()
@@ -477,6 +515,19 @@ async def update_design(
         raise HTTPException(status_code=409, detail="Bu kod zaten kullanılıyor") from e
 
     db.refresh(design)
+
+    if _eski_path:
+        # Yeni dosya kaydedildi ve commit gecti — eskisini simdi sil.
+        # Ayni yol ise (uzanti degismedi) uzerine yazilmistir, silme.
+        if _eski_path != design.file_path:
+            try:
+                storage.delete_design_file(_eski_path)
+            except Exception:  # noqa: BLE001
+                pass
+        if design.file_format == "pdf":
+            background_tasks.add_task(storage.generate_design_thumbnail,
+                                      user.tenant_id, design.id)
+
     return _serialize(design)
 
 

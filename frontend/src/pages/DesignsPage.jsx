@@ -1010,6 +1010,7 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
   const toast = useToast()
   const [uploadingPrint, setUploadingPrint] = useState(false)
   const [printDone, setPrintDone] = useState(false)   // baskı dosyası bu oturumda yüklendi
+  const [yeniDosya, setYeniDosya] = useState(null)    // tasarım dosyasını değiştir (kaydedince gider)
   const [code, setCode] = useState(design.code || '')
   const [name, setName] = useState(design.name || '')
   const [kalipTipi, setKalipTipi] = useState(design.kalip_tipi || '')
@@ -1046,6 +1047,9 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
       fd.append('cmyk_hazirlanmis', String(cmykDone))
       fd.append('is_kisiye_ozel', String(isKisiyeOzel))
       fd.append('notes', notes)
+      // Yeni dosya secildiyse tasarim dosyasini da degistir (or. yanlislikla
+      // .jpg yuklenmis bir tasarimi .pdf ile duzeltmek).
+      if (yeniDosya) fd.append('file', yeniDosya)
 
       const res = await fetch(`/api/designs/${design.id}`, {
         method: 'PATCH',
@@ -1062,6 +1066,16 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Dosya değişimi — kaydedilene kadar yalnızca seçili tutulur, yüklenmez.
+  const dosyaSec = (f) => {
+    if (!f) { setYeniDosya(null); return }
+    const izin = ['svg', 'png', 'jpg', 'jpeg', 'pdf']
+    const uz = (f.name || '').split('.').pop().toLowerCase()
+    if (!izin.includes(uz)) { setError(`İzin verilen formatlar: ${izin.join(', ')}`); return }
+    if (f.size > 75 * 1024 * 1024) { setError('Dosya çok büyük (max 75 MB)'); return }
+    setError(''); setYeniDosya(f)
   }
 
   const uploadPrintFile = async (f) => {
@@ -1102,6 +1116,33 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
         </div>
 
         <div className="overflow-y-auto px-5 py-4 flex-1">
+          {/* Tasarım dosyasını değiştir — yanlış formatta yüklenmiş bir tasarımı
+              silip yeniden oluşturmadan düzeltmek için. */}
+          <div className="mb-4 rounded-lg border border-brand-border bg-brand-input/40 p-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-200">📄 Tasarım dosyası</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">
+                  Şu an: <span className="font-mono text-gray-400">.{design.file_format || '—'}</span>
+                  {design.file_size_bytes ? ` · ${(design.file_size_bytes / 1024 / 1024).toFixed(1)} MB` : ''}
+                </div>
+              </div>
+              <label className="btn-secondary !text-xs cursor-pointer inline-flex whitespace-nowrap">
+                {yeniDosya ? 'Başka dosya seç' : '🔄 Dosyayı değiştir'}
+                <input type="file" accept=".svg,.png,.jpg,.jpeg,.pdf" className="hidden"
+                  onChange={e => { dosyaSec(e.target.files?.[0]); e.target.value = '' }} />
+              </label>
+            </div>
+            {yeniDosya && (
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-accent">
+                <span className="truncate">Yeni: {yeniDosya.name} · {(yeniDosya.size / 1024 / 1024).toFixed(1)} MB</span>
+                <button type="button" onClick={() => setYeniDosya(null)}
+                        className="text-gray-500 hover:text-gray-300 shrink-0">vazgeç</button>
+                <span className="text-gray-500 shrink-0">— Kaydet'e basınca değişir</span>
+              </div>
+            )}
+          </div>
+
           {/* Baskı dosyası yok — temiz baskı dosyası yükle (CMYK'ye çevrilir) */}
           {design.baski_dosyasi_yok && !printDone && (
             <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3">

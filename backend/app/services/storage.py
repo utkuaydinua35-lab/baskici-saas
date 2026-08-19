@@ -21,7 +21,7 @@ import secrets
 from pathlib import Path
 
 ALLOWED_EXTENSIONS = {"svg", "png", "jpg", "jpeg", "pdf"}
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_FILE_SIZE = 75 * 1024 * 1024  # 75 MB (tasarim dosyalarinin TEK sinir kaynagi)
 
 STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "./storage")).resolve()
 

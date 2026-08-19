@@ -53,8 +53,11 @@ async def upload_template(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Sadece PDF şablon kabul edilir")
     data = await file.read()
-    if len(data) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Dosya çok büyük (max 50MB)")
+    from app.services import storage as _st
+    if len(data) > _st.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dosya çok büyük (max {_st.MAX_FILE_SIZE // 1024 // 1024} MB)")
 
     try:
         parsed = template_parser.parse_template(data)

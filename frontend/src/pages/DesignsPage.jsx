@@ -815,7 +815,7 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
                   <>
                     <div className="text-2xl mb-1">📤</div>
                     <div className="text-sm text-gray-300">Dosya seçmek için tıklayın</div>
-                    <div className="text-[10px] text-gray-500 mt-1">SVG, PNG, JPG veya PDF · max 50 MB</div>
+                    <div className="text-[10px] text-gray-500 mt-1">SVG, PNG, JPG veya PDF · max 75 MB</div>
                   </>
                 )}
               </div>

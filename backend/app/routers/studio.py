@@ -342,8 +342,10 @@ async def cmyk_tool(
         raw = await file.read()
         if not raw:
             raise HTTPException(400, "Boş dosya")
-        if len(raw) > 50 * 1024 * 1024:
-            raise HTTPException(413, "Dosya çok büyük (max 50 MB)")
+        from app.services import storage as _st
+        if len(raw) > _st.MAX_FILE_SIZE:
+            raise HTTPException(
+                413, f"Dosya çok büyük (max {_st.MAX_FILE_SIZE // 1024 // 1024} MB)")
         token = uuid.uuid4().hex[:12]
         (cdir / f"{token}.src").write_bytes(raw)
         (cdir / f"{token}.name").write_text((file.filename or "tasarim")[:80])

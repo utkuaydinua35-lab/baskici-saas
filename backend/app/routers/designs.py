@@ -255,8 +255,9 @@ async def upload_print_file(
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "Boş dosya")
-    if len(raw) > 50 * 1024 * 1024:
-        raise HTTPException(413, "Dosya çok büyük (max 50 MB)")
+    if len(raw) > storage.MAX_FILE_SIZE:
+        raise HTTPException(
+            413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
 
     from app.services import product_studio as ps
     name = (file.filename or "").lower()

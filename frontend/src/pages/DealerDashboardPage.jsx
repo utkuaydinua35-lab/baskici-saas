@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import { useToast } from '../components/Toast'
 import { OrderDialog, CariDialog, AddOrderItemsDialog } from './DealersPage'
 
 const STAGE_LABEL = {
@@ -15,6 +16,7 @@ export default function DealerDashboardPage() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [ordering, setOrdering] = useState(false)
+  const toast = useToast()
   const [cari, setCari] = useState(false)
   const [addTo, setAddTo] = useState(null)
 
@@ -32,6 +34,39 @@ export default function DealerDashboardPage() {
   useEffect(() => { load() }, [id])
 
   const fmt = (n, cur) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: cur || 'TRY' }).format(n || 0)
+
+  // Sipariş silme — cari borç da geri alınır. Tutarı onay metninde AÇIKÇA
+  // gösteriyoruz; para işlemi olduğu için ne olacağı sürpriz olmamalı.
+  const [silinen, setSilinen] = useState(null)
+  const siparisSil = async (o, force = false) => {
+    const urun = Number(o.total_price) || 0
+    const kargo = Number(o.shipping_fee) || 0
+    const satirlar = [
+      urun > 0 ? `${fmt(urun, o.currency)} ürün bedeli` : null,
+      kargo > 0 ? `${fmt(kargo, 'TRY')} kargo` : null,
+    ].filter(Boolean)
+    const mesaj = `#${o.order_number} silinecek.\n\n` +
+      (satirlar.length
+        ? `Bayinin cari borcundan düşülecek:\n• ${satirlar.join('\n• ')}\n\n`
+        : 'Bu siparişin cari borç kaydı yok.\n\n') +
+      'Sipariş çöp kutusuna gider, geri alırsan borç tekrar yazılır. Devam?'
+    if (!force && !confirm(mesaj)) return
+    setSilinen(o.id)
+    try {
+      const q = force ? '?force=true' : ''
+      await api.del(`/api/dealers/${id}/orders/${o.id}${q}`)
+      toast.success(`#${o.order_number} silindi, borç geri alındı`)
+      load()
+    } catch (e) {
+      const d = e?.detail || ''
+      // Kargoya verilmiş sipariş — sunucu onay istiyor.
+      if (String(d).includes('kargoya verilmiş')) {
+        if (confirm(d + '\n\nYine de silinsin mi?')) return siparisSil(o, true)
+      } else {
+        toast.error(d || 'Silinemedi')
+      }
+    } finally { setSilinen(null) }
+  }
 
   if (loading) return <div className="mx-auto w-full max-w-[1200px] page-enter"><div className="card">Yükleniyor…</div></div>
   if (!data) return <div className="mx-auto w-full max-w-[1200px] page-enter"><div className="card text-red-300">Bayii bulunamadı.</div></div>
@@ -80,10 +115,18 @@ export default function DealerDashboardPage() {
                   <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/orders/${o.id}`, { state: { from: `/bayiler/${id}` } })}>
                     <td className="font-medium text-accent whitespace-nowrap">{o.order_number}</td>
                     <td className="whitespace-nowrap">
-                      {!o.is_iptal && (
-                        <button onClick={e => { e.stopPropagation(); setAddTo(o) }}
-                          className="text-[11px] px-2 py-0.5 rounded-lg border border-accent/40 text-accent hover:bg-accent/10" title="Bu siparişe ürün ekle">+ Ürün</button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {!o.is_iptal && (
+                          <button onClick={e => { e.stopPropagation(); setAddTo(o) }}
+                            className="text-[11px] px-2 py-0.5 rounded-lg border border-accent/40 text-accent hover:bg-accent/10" title="Bu siparişe ürün ekle">+ Ürün</button>
+                        )}
+                        <button onClick={e => { e.stopPropagation(); siparisSil(o) }}
+                          disabled={silinen === o.id}
+                          className="text-[11px] px-2 py-0.5 rounded-lg border border-red-500/35 text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                          title="Siparişi sil — cari borç geri alınır">
+                          {silinen === o.id ? '…' : '🗑'}
+                        </button>
+                      </div>
                     </td>
                     <td className="text-gray-300">{o.customer_name || '—'}</td>
                     <td className="tabular-nums">{o.total_qty}</td>

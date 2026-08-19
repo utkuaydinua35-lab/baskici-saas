@@ -794,38 +794,14 @@ def _bulk_log(db, order, user, action, from_stage=None, to_stage=None, note=None
 
 
 def _adjust_dealer_debt(db, order, *, reverse: bool):
-    """Bayi siparişinin cari borcunu sil(reverse=True)/geri al(reverse=False).
+    """Bayi siparişinin cari borcunu geri al (reverse=True) / tekrar uygula.
 
-    Sil-geri al kesin sıralı (silinmiş tekrar silinemez, silinmeden geri alınamaz)
-    olduğundan bakiye tutarlı kalır. Her işlem bir 'duzeltme' hareketi yazar.
+    Hesap app.services.dealer_debt'te — bayi panelindeki silme de AYNI servisi
+    kullanıyor, iki yol ayrışamaz. Servis idempotent: aynı işlem iki kez
+    çalışırsa ikinci sefer hiçbir kayıt yazmıyor.
     """
-    from decimal import Decimal as _Dec
-    from app.models import Dealer as _Dealer, DealerTransaction as _DTx
-
-    # ÜRÜN (siparis) + KARGO borcunu birlikte geri al — kargo iptalde takılı kalmasın.
-    # (kargo TRY, urun bayi para biriminde; tx.currency ile dogru bakiyeye islenir.)
-    txs = db.scalars(
-        select(_DTx).where(_DTx.ref_order_id == order.id, _DTx.kind.in_(["siparis", "kargo"]))
-    ).all()
-    for tx in txs:
-        dealer = db.scalar(select(_Dealer).where(_Dealer.id == tx.dealer_id))
-        if not dealer:
-            continue
-        delta = -_Dec(str(tx.amount)) if reverse else _Dec(str(tx.amount))
-        cur = (tx.currency or "TRY").upper()
-        if cur == "USD":
-            new_bal = _Dec(str(dealer.balance_usd or 0)) + delta
-            dealer.balance_usd = new_bal
-        else:
-            new_bal = _Dec(str(dealer.balance or 0)) + delta
-            dealer.balance = new_bal
-        _desc = (f"Sipariş #{order.order_number} silindi — borç iptali" if reverse
-                 else f"Sipariş #{order.order_number} geri alındı — borç tekrar")
-        db.add(_DTx(
-            tenant_id=order.tenant_id, dealer_id=dealer.id,
-            amount=delta, kind="duzeltme", currency=cur,
-            description=_desc, ref_order_id=order.id, balance_after=new_bal,
-        ))
+    from app.services import dealer_debt
+    return dealer_debt.uygula(db, order, reverse=reverse)
 
 
 @router.post("/_bulk", response_model=dict)
@@ -1642,6 +1618,10 @@ def restore_order(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Sipariş bulunamadı")
+    if order.deleted_at is None:
+        # Zaten silinmemis. Servis idempotent oldugu icin zarar vermezdi ama
+        # cagriyi burada kesmek dogru davranis.
+        return {"ok": True, "degisiklik": False}
     order.deleted_at = None
     _adjust_dealer_debt(db, order, reverse=False)  # geri alınınca borcu tekrar uygula
     db.commit()

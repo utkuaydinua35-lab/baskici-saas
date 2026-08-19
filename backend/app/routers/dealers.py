@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import Dealer, DealerTransaction, LineItem, Order, Store, User
+from app.models import (Dealer, DealerTransaction, LineItem, Order,
+                        OrderStatusHistory, Store, User)
 from app.services import storage
 
 router = APIRouter(prefix="/api/dealers", tags=["dealers"])
@@ -629,6 +630,66 @@ def create_dealer_order(
         "total_qty": total_qty,
         "new_balance": float(urun_bakiye),
     }
+
+
+@router.delete("/{dealer_id}/orders/{order_id}", response_model=dict)
+def delete_dealer_order(
+    dealer_id: uuid.UUID,
+    order_id: uuid.UUID,
+    force: bool = Query(False, description="Kargoya verilmiş siparişi de sil"),
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Bayi siparişini sil + cari borcunu geri al.
+
+    Soft-delete: sipariş çöp kutusuna gider, geri alınırsa borç TEKRAR yazılır
+    (app.services.dealer_debt idempotent).
+
+    Kargoya verilmiş sipariş (aşama >= 8) kazayla silinip borcu sıfırlanmasın
+    diye ayrıca onay ister: force=true.
+    """
+    from app.services import dealer_debt
+
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+
+    order = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not order:
+        raise HTTPException(404, "Sipariş bulunamadı")
+
+    # SAHIPLIK: siparis gercekten BU bayinin mi? Kontrol edilmezse baska bir
+    # bayinin borcu geri alinabilirdi. Bayi siparisleri kendi magazasinda acilir;
+    # raw.dealer_id de yaziliyor, ikisi de sinanir.
+    _raw = order.raw or {}
+    _rd = str(_raw.get("dealer_id") or "")
+    # raw.dealer_id VARSA kesin ölçüt odur; yoksa mağaza eşleşmesine düşülür.
+    # (OR ile bakmak, iki bayi aynı mağazayı paylaşırsa birinin diğerinin
+    # siparişini silmesine izin verirdi.)
+    _sahip = (_rd == str(d.id)) if _rd else (order.store_id == d.store_id)
+    if not _sahip:
+        raise HTTPException(403, "Bu sipariş bu bayiye ait değil")
+
+    if (order.current_stage or 0) >= 8 and not force:
+        raise HTTPException(
+            409,
+            "Bu sipariş kargoya verilmiş. Silersen bayinin borcu da geri alınır — "
+            "emin isen onaylayarak tekrar dene.",
+        )
+
+    ozet = dealer_debt.uygula(db, order, reverse=True)
+    order.deleted_at = datetime.now(UTC)
+    db.add(OrderStatusHistory(
+        tenant_id=order.tenant_id, order_id=order.id,
+        from_stage=order.current_stage, to_stage=order.current_stage,
+        action="silindi",
+        note=f"Bayi panelinden silindi ({d.name}) · borç iadesi: "
+             + (", ".join(f"{x['delta']:.2f} {x['currency']}" for x in ozet) or "yok"),
+        created_by=user.full_name or user.email,
+    ))
+    db.commit()
+    return {"ok": True, "order_id": str(order.id), "iade": ozet}
 
 
 class AddOrderItemsIn(BaseModel):

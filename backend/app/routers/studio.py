@@ -242,7 +242,7 @@ def delete_mockup(mockup_id: str, store_id: uuid.UUID, user: User = Depends(requ
 
 
 @router.post("/mockup-test", response_model=dict)
-async def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(None),
+def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = Form(None),
                       design: UploadFile | None = File(None),
                       user: User = Depends(require_permission("tasarim")), db: Session = Depends(get_db)):
     """Seçili (ya da verilen) mockup'ı bir tasarımla derler — AI harcamadan çalışıp
@@ -263,7 +263,7 @@ async def mockup_test(store_id: uuid.UUID = Form(...), mockup_id: str | None = F
     test = None
     if design is not None:
         try:
-            _raw = await design.read()
+            _raw = design.file.read()
             if _raw:
                 test = Image.open(io.BytesIO(_raw)).convert("RGB")
         except Exception:  # noqa: BLE001

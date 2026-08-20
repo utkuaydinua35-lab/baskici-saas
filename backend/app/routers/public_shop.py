@@ -31,6 +31,7 @@ from app.payments import get_payment_provider
 from app.services import checkout as checkout_svc
 from app.services import storage as storage_svc
 from app.services.rate_limit import client_ip, make_rate_limiter
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/shop", tags=["public-shop"])
 
@@ -1544,7 +1545,8 @@ async def customer_upload(
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(413, "Dosya 25MB'ı aşamaz")
     try:
-        url = storage_svc.save_store_asset(
+        url = await run_in_threadpool(
+            storage_svc.save_store_asset,
             store.tenant_id, store.id, "musteri",
             data, getattr(file, "filename", None) or "musteri.jpg")
     except ValueError as e:
@@ -2642,7 +2644,8 @@ async def upload_design_asset(
         raise HTTPException(422, "Dosya gerekli")
     data = await file.read()
     try:
-        orijinal, onizleme, gen, yuk = storage_svc.save_design_original(
+        orijinal, onizleme, gen, yuk = await run_in_threadpool(
+            storage_svc.save_design_original,
             store.tenant_id, store.id, data,
             getattr(file, "filename", None) or "tasarim.png")
     except ValueError as e:

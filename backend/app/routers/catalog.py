@@ -1736,7 +1736,7 @@ def export_csv(
 
 
 @router.post("/import", response_model=dict)
-async def import_csv(
+def import_csv(
     store_id: uuid.UUID,
     file: UploadFile = File(...),
     dry_run: bool = Query(True),
@@ -1756,7 +1756,7 @@ async def import_csv(
 
     _get_storefront_store(db, user.tenant_id, store_id)
 
-    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    raw = file.file.read().decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(raw))
     shopify_note = None
     if reader.fieldnames and "Handle" in reader.fieldnames and "Title" in reader.fieldnames:
@@ -1941,7 +1941,7 @@ MAX_IMAGES_PER_PRODUCT = 5
 
 
 @router.post("/import/shopify-images", response_model=dict)
-async def import_shopify_images(
+def import_shopify_images(
     store_id: uuid.UUID,
     file: UploadFile = File(...),
     user: User = Depends(require_permission("vitrin")),
@@ -1961,7 +1961,7 @@ async def import_shopify_images(
     if _IMG_JOBS.get(key, {}).get("running"):
         raise HTTPException(409, "Görsel aktarımı zaten sürüyor — durumunu bekleyin")
 
-    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    raw = file.file.read().decode("utf-8-sig", errors="replace")
     reader = csv.DictReader(io.StringIO(raw))
     if not reader.fieldnames or "Handle" not in reader.fieldnames \
             or "Image Src" not in reader.fieldnames:

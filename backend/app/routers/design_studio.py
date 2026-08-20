@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.services import activity
 from app.services import storage as storage_svc
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/case-templates", tags=["design-studio"],
                    dependencies=[Depends(require_permission("vitrin"))])
@@ -220,7 +221,8 @@ async def upload_template_image(
     data = await file.read()
     try:
         # Şablon görseli saydamlık taşıyabilir (şeffaf kılıf) → orijinal korunur
-        url, _prev, _w, _h = storage_svc.save_design_original(
+        url, _prev, _w, _h = await run_in_threadpool(
+            storage_svc.save_design_original,
             user.tenant_id, t.store_id, data,
             getattr(file, "filename", None) or "sablon.png")
     except ValueError as e:
@@ -324,7 +326,8 @@ async def create_overlay(
     data = await file.read()
     try:
         # Saydamlık korunmalı → orijinal saklanır, tuval için hafif önizleme
-        url, onizleme, _w, _h = storage_svc.save_design_original(
+        url, onizleme, _w, _h = await run_in_threadpool(
+            storage_svc.save_design_original,
             user.tenant_id, store_id, data,
             getattr(file, "filename", None) or "hazir-sablon.png")
     except ValueError as e:
@@ -419,7 +422,8 @@ async def upload_overlay_field_image(
         raise HTTPException(422, "Dosya gerekli")
     data = await file.read()
     try:
-        url, _prev, _w, _h = storage_svc.save_design_original(
+        url, _prev, _w, _h = await run_in_threadpool(
+            storage_svc.save_design_original,
             user.tenant_id, o.store_id, data,
             getattr(file, "filename", None) or "alan.png")
     except ValueError as e:
@@ -554,7 +558,8 @@ async def upload_proof(
         raise HTTPException(422, "Dosya gerekli")
     data = await file.read()
     try:
-        url, _prev, _w, _h = storage_svc.save_design_original(
+        url, _prev, _w, _h = await run_in_threadpool(
+            storage_svc.save_design_original,
             d.tenant_id, d.store_id, data,
             getattr(file, "filename", None) or "numune.png")
     except ValueError as e:

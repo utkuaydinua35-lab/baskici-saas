@@ -16,6 +16,7 @@ Gizli ölçü modülü yalnızca burada okunur; ölçüler API'den dışa verilm
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -123,6 +124,49 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
     return out
 
 
+# Baski cozunurlugu. Slotun fiziksel olcusu bunu belirler; uzerindeki her piksel
+# kagida ASLA cikmaz ama PDF'i buyutur ve bellegi doldurur.
+BASKI_DPI = int(os.environ.get("MOLD_PDF_DPI", "300"))
+
+
+def _olceklenmis_gorsel(src_path, w_pt, h_pt) -> tuple[bytes, str] | None:
+    """Gorseli slotun BASKI cozunurlugune indir. (bytes, uzanti) ya da None.
+
+    Neden: 48 MP'lik bir tasarim 7.9x17 cm'lik slota tam cozunurlukte gomuluyordu.
+    O slot 300 DPI'da en fazla ~1.9 MP tasir — fazlasi kagida cikmaz, yalnizca
+    dosyayi ve bellegi sisirir. 27 slotluk bir kalip 1.2 GB'a ciktigi icin PDF
+    uretimi takasa dusup 524 veriyordu. Kucultme YALNIZCA asagi yonlu; zaten
+    kucuk gorseller oldugu gibi birakilir.
+    """
+    try:
+        from PIL import Image
+    except Exception:  # noqa: BLE001
+        return None
+    hedef_w = max(1, int(round(w_pt / 72.0 * BASKI_DPI)))
+    hedef_h = max(1, int(round(h_pt / 72.0 * BASKI_DPI)))
+    try:
+        with Image.open(src_path) as im:
+            if im.width <= hedef_w and im.height <= hedef_h:
+                return None          # zaten yeterince kucuk — dokunma
+            im = im.copy()
+            saydam = im.mode in ("RGBA", "LA") or (
+                im.mode == "P" and "transparency" in im.info)
+            # thumbnail() DEGIL resize(): insert_image zaten keep_proportion=False
+            # ile rect'i esnetiyor. Orani korursak esnetme sonrasi bir eksende
+            # cozunurluk hedefin altina duser (or. 3:4 tasarim 1:2 slota
+            # girerken dikeyde ~186 DPI kalirdi). Dogrudan hedef olcuye
+            # getirmek geometriyi degistirmez, iki eksende de tam DPI verir.
+            im = im.resize((hedef_w, hedef_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            if saydam:
+                im.convert("RGBA").save(buf, format="PNG", optimize=True)
+                return buf.getvalue(), "png"
+            im.convert("RGB").save(buf, format="JPEG", quality=92, optimize=True)
+            return buf.getvalue(), "jpg"
+    except Exception:  # noqa: BLE001
+        return None      # kucultemezsek orijinali kullan, baski bozulmasin
+
+
 def _make_clipped_image(src_path, w_pt, h_pt, radius):
     """Ham gorseli (PNG/JPG) w×h sayfaya tam doldurarak koy + yuvarlak kose VEKTOR
     clip uygula. Kisiye ozel tasarimlar (gorsel) icin — PDF'lerle ayni olcu/ovallik.
@@ -130,7 +174,11 @@ def _make_clipped_image(src_path, w_pt, h_pt, radius):
     tmp = fitz.open()
     pg = tmp.new_page(width=w_pt, height=h_pt)
     # Gorseli rect'i TAM doldur (keep_proportion=False) — sag-alt yaslama + dogru olcu
-    pg.insert_image(pg.rect, filename=str(src_path), keep_proportion=False)
+    _kucuk = _olceklenmis_gorsel(src_path, w_pt, h_pt)
+    if _kucuk is not None:
+        pg.insert_image(pg.rect, stream=_kucuk[0], keep_proportion=False)
+    else:
+        pg.insert_image(pg.rect, filename=str(src_path), keep_proportion=False)
 
     if radius > 0:
         rr = min(radius, w_pt / 2, h_pt / 2)

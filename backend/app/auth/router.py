@@ -9,7 +9,7 @@ Endpoints:
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -159,6 +159,11 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
     }
 
 
+# NOT: bu sayaçlar SÜREÇ BELLEĞİNDE. Tek worker'da doğru çalışır; uvicorn birden
+# fazla worker ile açılırsa her worker kendi sayacını tutar ve deneme hakkı worker
+# sayısı kadar KATLANIR (brute-force koruması zayıflar). Bu yüzden asıl sayım
+# login_attempts tablosundan yapılıyor (_basarisiz_sayim); bellek yalnızca db
+# verilmediği durumlarda yedek.
 _login_hits: dict[str, list[float]] = {}
 _LOGIN_WINDOW = 300   # 5 dakika
 _LOGIN_MAX = 10       # IP basina 5 dakikada en fazla 10 basarisiz deneme
@@ -201,12 +206,38 @@ def _record_attempt(db, request: Request, email: str | None, reason: str,
             pass
 
 
+def _basarisiz_sayim(db, ip: str) -> tuple[int, int, int] | None:
+    """login_attempts'ten (bu IP, toplam, farkli IP) son pencere sayilari.
+
+    Sayim TABLODAN yapilir; boylece coklu worker'da tum surecler AYNI sayaci
+    gorur. 'engellendi' kayitlari haric: aksi halde engellenen kullanicinin
+    kendi tekrar denemeleri sayaci besleyip engeli sonsuza uzatirdi.
+    """
+    if db is None:
+        return None
+    try:
+        from sqlalchemy import distinct, func as _f
+        from app.models import LoginAttempt as _LA
+        esik = datetime.now(UTC) - timedelta(seconds=_LOGIN_WINDOW)
+        temel = (_LA.created_at >= esik, _LA.reason != "engellendi")
+        bu_ip = db.scalar(select(_f.count()).select_from(_LA).where(*temel, _LA.ip == ip)) or 0
+        toplam = db.scalar(select(_f.count()).select_from(_LA).where(*temel)) or 0
+        farkli = db.scalar(select(_f.count(distinct(_LA.ip))).where(*temel)) or 0
+        return int(bu_ip), int(toplam), int(farkli)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _login_rate_limit(request: Request, db=None, email: str | None = None) -> None:
     """Basarisiz giris denemelerini IP basina sinirla (brute-force korumasi)."""
     import time as _t
     ip = _login_client_ip(request)
     now = _t.time()
-    arr = [x for x in _login_hits.get(ip, []) if now - x < _LOGIN_WINDOW]
+    _sayim = _basarisiz_sayim(db, ip)
+    if _sayim is not None:
+        arr = [now] * _sayim[0]          # tablodan gelen sayi (worker'lar ortak)
+    else:
+        arr = [x for x in _login_hits.get(ip, []) if now - x < _LOGIN_WINDOW]
     if len(arr) >= _LOGIN_MAX:
         _record_attempt(db, request, email, "engellendi")
         # Brute-force tespiti — platform yoneticilerine anlik uyari (throttle'li)
@@ -241,13 +272,17 @@ def _login_record_fail(request: Request, db=None, email: str | None = None,
     cutoff = now - _LOGIN_WINDOW
     while _global_fails and _global_fails[0] < cutoff:
         _global_fails.pop(0)
-    if len(_global_fails) >= _DISTRIB_THRESHOLD:
-        active_ips = sum(1 for v in _login_hits.values() if v and v[-1] >= cutoff)
+    # Dagitik saldiri sayimi da TABLODAN (coklu worker'da bellek bolunur)
+    _s = _basarisiz_sayim(db, ip)
+    _toplam = _s[1] if _s else len(_global_fails)
+    active_ips = _s[2] if _s else sum(
+        1 for v in _login_hits.values() if v and v[-1] >= cutoff)
+    if _toplam >= _DISTRIB_THRESHOLD:
         try:
             from app.services import security_alert
             security_alert.alert(
                 "distributed", "Dağıtık giriş saldırısı şüphesi",
-                f"Son 5 dk'da {len(_global_fails)} başarısız giriş, ~{active_ips} farklı IP.",
+                f"Son 5 dk'da {_toplam} başarısız giriş, ~{active_ips} farklı IP.",
             )
         except Exception:  # noqa: BLE001
             pass

@@ -1,7 +1,17 @@
-"""Saatlik otomatik senkronizasyon — APScheduler."""
+"""Saatlik otomatik senkronizasyon — APScheduler.
+
+ÇOKLU WORKER UYARISI: zamanlayıcı uygulama sürecinin İÇİNDE çalışır. uvicorn
+birden fazla worker ile açılırsa her worker kendi zamanlayıcısını başlatır ve
+yedekleme, senkron, günlük özet maili worker sayısı kadar TEKRARLANIR.
+Bunu önlemek için dosya kilidi kullanılıyor: kilidi alan tek süreç zamanlayıcıyı
+çalıştırır, diğerleri atlar. Kilidi tutan süreç ölürse kilit serbest kalır ve
+uvicorn yeni worker açtığında onu bir sonraki alır.
+"""
 from __future__ import annotations
 
+import fcntl
 import logging
+import os
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,6 +25,26 @@ from app.services import daily_summary
 logger = logging.getLogger("scheduler")
 logging.basicConfig(level=logging.INFO)
 _scheduler: BackgroundScheduler | None = None
+# Kilit dosyası tanıtıcısı — süreç ömrü boyunca AÇIK kalmalı, yoksa kilit düşer.
+_kilit_fd = None
+
+
+def _zamanlayici_kilidi() -> bool:
+    """Zamanlayıcıyı yalnız BİR süreç çalıştırsın. Kilidi alabildiysek True."""
+    global _kilit_fd
+    yol = os.environ.get("SCHEDULER_LOCK", "/tmp/baskici-scheduler.lock")
+    try:
+        fd = open(yol, "w")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError):
+        return False
+    _kilit_fd = fd
+    try:
+        fd.write(str(os.getpid()))
+        fd.flush()
+    except OSError:
+        pass
+    return True
 
 
 def _sync_job(reason="interval"):
@@ -216,6 +246,10 @@ def start_scheduler():
     global _scheduler
     if _scheduler is not None:
         return _scheduler
+    if not _zamanlayici_kilidi():
+        logger.info("[scheduler] kilit baska surecte — bu worker zamanlayici calistirmiyor")
+        return None
+    logger.info(f"[scheduler] kilit alindi (pid={os.getpid()}) — isler bu surecte")
     _scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
     # Saat başı senk
     _scheduler.add_job(lambda: _sync_job("interval"), "interval", hours=1,

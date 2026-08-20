@@ -5,10 +5,11 @@ import { useAuth } from '../lib/auth'
 import { useStore } from '../lib/store'
 import { useToast } from './Toast'
 import BrandMark from './BrandMark'
+import KomutPaleti from './KomutPaleti'
 
 // Shopify yerleşim mantığı: koyu üst bar (marka + mağaza + vitrin linki +
 // profil menüsü), solda GRUPLU menü, Ayarlar en altta sabit.
-const NAV_GROUPS = [
+export const NAV_GROUPS = [
   { label: null, items: [
     { to: '/', label: 'Ana Sayfa', icon: '🏠', end: true },
   ]},
@@ -48,6 +49,19 @@ export default function Layout() {
   const { stores, store, setStoreId } = useStore()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)  // mobil çekmece
+  const [paletAcik, setPaletAcik] = useState(false)
+
+  // ⌘K / Ctrl+K — panelde en sık yapılan iş sipariş aramak
+  useEffect(() => {
+    const tus = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setPaletAcik(o => !o)
+      }
+    }
+    window.addEventListener('keydown', tus)
+    return () => window.removeEventListener('keydown', tus)
+  }, [])
 
   // Sayfa değişince mobil menü kapansın
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
@@ -87,6 +101,15 @@ export default function Layout() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setPaletAcik(true)} aria-label="Ara (⌘K)"
+            className="flex items-center gap-2 text-xs text-panel-muted hover:text-white
+              border border-panel-border hover:border-white/25 bg-white/5 hover:bg-white/10
+              rounded-[10px] px-2.5 py-1.5 transition-all">
+            <span aria-hidden="true">🔍</span>
+            <span className="hidden md:inline">Ara</span>
+            <kbd className="hidden md:inline text-[9px] px-1 py-0.5 rounded bg-white/10
+              border border-panel-border">⌘K</kbd>
+          </button>
           {storefrontUrl && (
             <a href={storefrontUrl} target="_blank" rel="noopener noreferrer"
               className="text-xs text-white/80 hover:text-white border border-panel-border
@@ -97,6 +120,8 @@ export default function Layout() {
           <ProfileMenu user={user} logout={logout} refresh={refresh} />
         </div>
       </header>
+
+      <KomutPaleti acik={paletAcik} kapat={() => setPaletAcik(false)} />
 
       <div className="flex-1 flex min-h-0">
         {/* Mobil çekmece örtüsü */}

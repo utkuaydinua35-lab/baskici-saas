@@ -7,7 +7,10 @@ import { Modal } from './UrunlerPage'
 export default function MusterilerPage() {
   const { storeId } = useStore()
   const [data, setData] = useState({ items: [], total: 0, page: 1, per_page: 50 })
-  const [q, setQ] = useState('')
+  // Komut paleti müşteriye ?ara=<e-posta> ile geliyor; müşterinin ayrı
+  // detay sayfası olmadığı için liste doğrudan filtreli açılır
+  const [q, setQ] = useState(
+    () => new URLSearchParams(window.location.search).get('ara') || '')
   const [sort, setSort] = useState('last_order_at')
   const [subscribed, setSubscribed] = useState(false)
   const [segment, setSegment] = useState('')

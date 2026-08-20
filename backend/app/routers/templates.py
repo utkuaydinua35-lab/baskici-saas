@@ -43,7 +43,7 @@ def get_template(user: User = Depends(get_current_user), db: Session = Depends(g
 
 
 @router.post("/upload", response_model=None)
-async def upload_template(
+def upload_template(
     file: UploadFile = File(...),
     name: str = Query("Varsayılan Kalıp"),
     user: User = Depends(get_current_user),
@@ -52,7 +52,7 @@ async def upload_template(
     """Şablon PDF yükle, kutu koordinatlarını otomatik çıkar ve kaydet."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Sadece PDF şablon kabul edilir")
-    data = await file.read()
+    data = file.file.read()
     from app.services import storage as _st
     if len(data) > _st.MAX_FILE_SIZE:
         raise HTTPException(

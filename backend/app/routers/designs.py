@@ -239,7 +239,7 @@ def get_design(
 
 
 @router.post("/{design_id}/print-file", response_model=None)
-async def upload_print_file(
+def upload_print_file(
     design_id: uuid.UUID,
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
@@ -252,7 +252,7 @@ async def upload_print_file(
     design = db.scalar(select(Design).where(Design.id == design_id, Design.tenant_id == user.tenant_id))
     if not design:
         raise HTTPException(status_code=404, detail="Tasarım bulunamadı")
-    raw = await file.read()
+    raw = file.file.read()
     if not raw:
         raise HTTPException(400, "Boş dosya")
     if len(raw) > storage.MAX_FILE_SIZE:
@@ -288,7 +288,7 @@ async def upload_print_file(
 
 
 @router.post("", response_model=None, status_code=status.HTTP_201_CREATED)
-async def create_design(
+def create_design(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     store_id: uuid.UUID = Form(...),
@@ -321,7 +321,7 @@ async def create_design(
             detail=f"İzin verilen formatlar: {', '.join(sorted(storage.ALLOWED_EXTENSIONS))}",
         )
 
-    file_data = await file.read()
+    file_data = file.file.read()
     if len(file_data) > storage.MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
@@ -430,7 +430,7 @@ async def create_design(
 
 
 @router.patch("/{design_id}", response_model=None)
-async def update_design(
+def update_design(
     design_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     # Tasarim DOSYASINI degistirme. Onceden yalnizca bilgi alanlari
@@ -465,7 +465,7 @@ async def update_design(
                 status_code=400,
                 detail=f"İzin verilen formatlar: {', '.join(sorted(storage.ALLOWED_EXTENSIONS))}",
             )
-        _yeni = await file.read()
+        _yeni = file.file.read()
         if not _yeni:
             raise HTTPException(status_code=400, detail="Boş dosya")
         if len(_yeni) > storage.MAX_FILE_SIZE:

@@ -280,7 +280,7 @@ _IMG_MAX = 3 * 1024 * 1024
 
 
 @router.post("/campaigns/upload-image", response_model=dict)
-async def upload_campaign_image(
+def upload_campaign_image(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -289,7 +289,7 @@ async def upload_campaign_image(
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
     if ext not in _IMG_EXT:
         raise HTTPException(400, "İzin verilen formatlar: png, jpg, webp, gif")
-    data = await file.read()
+    data = file.file.read()
     if len(data) > _IMG_MAX:
         raise HTTPException(400, f"Görsel çok büyük (max {_IMG_MAX // 1024 // 1024} MB)")
     url = storage.save_logo(user.tenant_id, "campaign", data, ext)

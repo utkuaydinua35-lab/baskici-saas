@@ -1381,7 +1381,7 @@ def takip_baslangic_ayarla(
 
 
 @router.post("/_takip-xlsx", response_model=None)
-async def takip_xlsx(
+def takip_xlsx(
     dosya: UploadFile = File(...),
     uygula: bool = Query(False),
     mail_gonder: bool = Query(True),
@@ -1403,7 +1403,7 @@ async def takip_xlsx(
     from app.services import kargo_eslestir, shipments as _sh
     from app.services.xlsx_reader import XlsxError, read_rows, sutun_bul
 
-    ham = await dosya.read()
+    ham = dosya.file.read()
     if len(ham) > 10 * 1024 * 1024:
         raise HTTPException(413, "Dosya çok büyük (en fazla 10 MB).")
     try:

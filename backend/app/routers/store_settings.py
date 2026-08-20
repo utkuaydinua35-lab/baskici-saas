@@ -842,7 +842,7 @@ def list_theme_presets(
 
 
 @router.post("/{store_id}/assets", response_model=dict)
-async def upload_asset(
+def upload_asset(
     store_id: uuid.UUID,
     file: UploadFile = File(...),
     kind: str = Form(...),
@@ -853,7 +853,7 @@ async def upload_asset(
     from app.services import storage as storage_svc
 
     store = _get_store(db, user, store_id)
-    data = await file.read()
+    data = file.file.read()
     try:
         url = storage_svc.save_store_asset(
             user.tenant_id, store.id, kind, data, file.filename or "asset.png")

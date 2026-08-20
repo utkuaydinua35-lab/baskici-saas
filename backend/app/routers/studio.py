@@ -129,7 +129,7 @@ def set_config(req: ConfigIn, user: User = Depends(require_permission("tasarim")
 
 
 @router.post("/mockup", response_model=dict)
-async def upload_mockup(
+def upload_mockup(
     store_id: uuid.UUID = Form(...),
     file: UploadFile = File(...),
     user: User = Depends(require_permission("tasarim")),
@@ -141,7 +141,7 @@ async def upload_mockup(
     name = (file.filename or "").lower()
     if not name.endswith((".psd", ".psb")):
         raise HTTPException(400, "Yalnızca .psd/.psb yükleyin")
-    data = await file.read()
+    data = file.file.read()
     if len(data) > 200 * 1024 * 1024:
         raise HTTPException(413, "Dosya çok büyük (max 200 MB)")
     d = _studio_dir(user.tenant_id, store_id)
@@ -319,7 +319,7 @@ def _prune_dir(d: Path, max_age_sec: int = 86400) -> None:
 
 
 @router.post("/cmyk-tool", response_model=dict)
-async def cmyk_tool(
+def cmyk_tool(
     store_id: uuid.UUID = Form(...),
     file: UploadFile | None = File(None),
     token: str | None = Form(None),
@@ -339,7 +339,7 @@ async def cmyk_tool(
     default_off = int((s.config or {}).get("cmyk_k_offset", 5) or 0)
     off = default_off if offset is None else max(-50, min(50, int(offset)))
     if file is not None:
-        raw = await file.read()
+        raw = file.file.read()
         if not raw:
             raise HTTPException(400, "Boş dosya")
         from app.services import storage as _st
@@ -376,7 +376,7 @@ async def cmyk_tool(
 
 
 @router.post("/cmyk-apply", response_model=dict)
-async def cmyk_apply(
+def cmyk_apply(
     store_id: uuid.UUID = Form(...),
     token: str = Form(...),
     offset: int | None = Form(None),
@@ -420,7 +420,7 @@ def _existing_studio_codes(tenant_id, store_id) -> set:
 
 
 @router.post("/analyze", response_model=dict)
-async def analyze(
+def analyze(
     store_id: uuid.UUID = Form(...),
     files: list[UploadFile] = File(...),
     ready_mockup: bool = Form(False),   # görsel zaten mockup'a oturtulmuş -> render etme
@@ -448,7 +448,7 @@ async def analyze(
     reserved = set(_existing_studio_codes(user.tenant_id, store_id))
     results = []
     for f in files:
-        raw = await f.read()
+        raw = f.file.read()
         try:
             img = Image.open(io.BytesIO(raw)).convert("RGB")
         except Exception:  # noqa: BLE001

@@ -598,7 +598,7 @@ def delete_variant(
 
 @router.post("/products/{product_id}/images", response_model=dict,
              status_code=status.HTTP_201_CREATED)
-async def upload_images(
+def upload_images(
     product_id: uuid.UUID,
     files: list[UploadFile] = File(...),
     alt: str | None = Form(None),
@@ -615,7 +615,7 @@ async def upload_images(
     next_pos = max([im.position for im in product.images], default=-1) + 1
     uploaded, errors = [], []
     for n, file in enumerate(files):
-        data = await file.read()
+        data = file.file.read()
         image_id = uuid.uuid4()
         try:
             rel_path = storage_svc.save_catalog_image(
@@ -1309,7 +1309,7 @@ def publish_due_products(db: Session) -> int:
 
 
 @router.post("/products/{product_id}/video", response_model=dict)
-async def upload_product_video(
+def upload_product_video(
     product_id: uuid.UUID,
     file: UploadFile = File(...),
     user: User = Depends(require_permission("vitrin")),
@@ -1317,7 +1317,7 @@ async def upload_product_video(
 ):
     """Ürün videosu yükle (mp4/webm/mov, max 100MB) — galeride ▶ karesi olur."""
     product = _get_product(db, user.tenant_id, product_id)
-    data = await file.read()
+    data = file.file.read()
     try:
         url = storage_svc.save_store_video(
             user.tenant_id, product.store_id, data, file.filename or "video.mp4")

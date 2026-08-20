@@ -338,7 +338,7 @@ def update_model(
 
 
 @router.post("/{model_id}/mockup-template", response_model=dict)
-async def upload_mockup_template(
+def upload_mockup_template(
     model_id: uuid.UUID,
     file: UploadFile = File(...),
     variation: str | None = Query(None),  # boş/SİYAH=varsayılan; BEYAZ/ŞEFFAF/PARLAK/MAGSAFE
@@ -354,7 +354,7 @@ async def upload_mockup_template(
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
     if ext not in {"png", "jpg", "jpeg", "webp"}:
         raise HTTPException(400, "İzin verilen formatlar: png, jpg, webp")
-    data = await file.read()
+    data = file.file.read()
     if len(data) > 5 * 1024 * 1024:
         raise HTTPException(400, "Görsel çok büyük (max 5 MB)")
     from app.services import storage

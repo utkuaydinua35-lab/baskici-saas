@@ -342,7 +342,7 @@ def add_payment(dealer_id: uuid.UUID, req: PaymentIn, user: User = Depends(requi
 
 
 @router.post("/{dealer_id}/transactions/{tx_id}/dekont", response_model=dict)
-async def upload_dekont(
+def upload_dekont(
     dealer_id: uuid.UUID, tx_id: uuid.UUID,
     file: UploadFile = File(...),
     user: User = Depends(require_permission("bayii")),
@@ -356,7 +356,7 @@ async def upload_dekont(
     ))
     if not tx:
         raise HTTPException(404, "Hareket bulunamadı")
-    data = await file.read()
+    data = file.file.read()
     if not data:
         raise HTTPException(400, "Boş dosya")
     try:

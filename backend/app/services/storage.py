@@ -23,7 +23,28 @@ from pathlib import Path
 ALLOWED_EXTENSIONS = {"svg", "png", "jpg", "jpeg", "pdf"}
 MAX_FILE_SIZE = 75 * 1024 * 1024  # 75 MB (tasarim dosyalarinin TEK sinir kaynagi)
 
-STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "./storage")).resolve()
+def _storage_root() -> Path:
+    """Depolama kökü. Sıra: süreç ortamı > backend/.env > ./storage
+
+    .env DE okunmalı: os.environ tek başına yalnızca systemd'nin verdiği ortamı
+    görür. Elle çalıştırılan betikler ve cron o ortamı almadığı için sessizce
+    BAŞKA bir köke düşüyordu — tanı betikleri "dosya yok" diyordu, oysa dosyalar
+    servisin kullandığı kökte duruyordu. Yazma yapan bir betik yanlış diske
+    yazabilirdi.
+    """
+    v = os.environ.get("STORAGE_ROOT")
+    if not v:
+        env = Path(__file__).resolve().parent.parent.parent / ".env"
+        if env.exists():
+            for satir in env.read_text(encoding="utf-8", errors="replace").splitlines():
+                satir = satir.strip()
+                if satir.startswith("STORAGE_ROOT=") and not satir.startswith("#"):
+                    v = satir.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+    return Path(v or "./storage").resolve()
+
+
+STORAGE_ROOT = _storage_root()
 
 
 def ensure_storage_root() -> None:

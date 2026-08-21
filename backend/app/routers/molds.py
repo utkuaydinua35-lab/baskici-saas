@@ -1745,18 +1745,19 @@ def required_models(
     ]
     items.sort(key=lambda x: (-x["count"], x["model"] or ""))
 
-    # Kalıba girmeyen ürünler (aksesuar / işleme girmeden gönderilenler): bu liste
-    # kalıp odaklı olduğu için onları hiç göstermiyordu. Yalnızca stoğu YETMEYENLER
-    # eklenir — tedarik edilmesi gereken şey o.
+    # Kalıba GİRMEYEN ürünler (magsafe düz kılıf, ekran koruyucu...): bu liste
+    # kalıp odaklı olduğu için onları hiç göstermiyordu. Baskıcı "ne
+    # hazırlayacağım" diye baktığında bunlar da lazım, o yüzden stok bakılmadan
+    # İHTİYAÇ olarak ekleniyor (kalıp satırları da stok bakmadan geliyor).
     from app.services import stock as stock_svc
-    siparis_eksik = stock_svc.siparis_stok_eksigi(db, user.tenant_id)
-    items.extend({**s, "count": s["total_missing"], "mold_count": 0} for s in siparis_eksik)
+    siparis_ihtiyac = stock_svc.aksesuar_ihtiyaci(db, user.tenant_id)
+    items.extend({**s, "mold_count": 0} for s in siparis_ihtiyac)
 
     return {
         "items": items,
         "total_models": len(items),
         "total_count": sum(i["count"] for i in items),
-        "siparis_kalem_sayisi": len(siparis_eksik),
+        "siparis_kalem_sayisi": len(siparis_ihtiyac),
     }
 
 

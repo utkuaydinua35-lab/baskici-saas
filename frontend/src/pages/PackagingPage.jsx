@@ -40,11 +40,14 @@ export default function PackagingPage() {
   const [search, setSearch] = useState('')
   const [source, setSource] = useState('')   // '' | 'store:<id>' | 'dealer:<id>'
   const [readyOnly, setReadyOnly] = useState(false)
+  // "Eksiği olanlar": en az bir ürünü hazır ama hepsi değil. Kargoya verilemez
+  // ama hazırlanan kılıflar dükkanda ayrı duruyor — sistemde de görünsün.
+  const [eksigiOlanlar, setEksigiOlanlar] = useState(false)
   const { clock, h, m, passed } = useCargoCountdown()
 
   // Filtreleri ref'te tut — loadIndex kimliği stabil kalsın
-  const filtersRef = useRef({ search: '', source: '', readyOnly: false })
-  filtersRef.current = { search, source, readyOnly }
+  const filtersRef = useRef({ search: '', source: '', readyOnly: false, eksigiOlanlar: false })
+  filtersRef.current = { search, source, readyOnly, eksigiOlanlar }
 
   const loadIndex = useCallback(async (idx) => {
     setLoading(true); setMsg(null); setManualAddr(false); setLabelPending(null)
@@ -55,6 +58,7 @@ export default function PackagingPage() {
       if (f.source.startsWith('store:')) params.set('store_id', f.source.slice(6))
       else if (f.source.startsWith('dealer:')) params.set('dealer_id', f.source.slice(7))
       if (f.readyOnly) params.set('ready_only', 'true')
+      if (f.eksigiOlanlar) params.set('eksigi_olanlar', 'true')
       const r = await api.get(`/api/packaging/queue?${params}`)
       setQueue(r)
       try { localStorage.setItem(LAST_INDEX_KEY, String(r.index)) } catch {}
@@ -76,12 +80,27 @@ export default function PackagingPage() {
     if (_first.current) { _first.current = false; return }
     const t = setTimeout(() => loadIndex(0), 300)
     return () => clearTimeout(t)
-  }, [search, source, readyOnly, loadIndex])
+  }, [search, source, readyOnly, eksigiOlanlar, loadIndex])
 
   const total = queue.total || 0
   const index = queue.index || 0
   const order = queue.order
   const go = (idx) => { if (total === 0) return; const c = Math.max(0, Math.min(idx, total - 1)); loadIndex(c) }
+
+  // Kalemi "kenara ayrıldı" işaretle/kaldır. İyimser güncelleme: tık anında
+  // görünsün, sunucu hata verirse geri alınsın.
+  const ayrildiToggle = async (it) => {
+    const yeni = !it.ayrildi
+    setQueue(q => ({ ...q, order: { ...q.order,
+      items: q.order.items.map(x => x.line_item_id === it.line_item_id ? { ...x, ayrildi: yeni } : x) } }))
+    try {
+      await api.patch(`/api/packaging/kalem/${it.line_item_id}/ayrildi`, { ayrildi: yeni })
+    } catch (e) {
+      setQueue(q => ({ ...q, order: { ...q.order,
+        items: q.order.items.map(x => x.line_item_id === it.line_item_id ? { ...x, ayrildi: !yeni } : x) } }))
+      setMsg({ ok: false, text: e?.detail || 'İşaretlenemedi' })
+    }
+  }
 
   const downloadLabel = async () => {
     if (!order) return
@@ -205,7 +224,7 @@ export default function PackagingPage() {
             : <span className="text-gray-300">KARGO SAATİNE <b className="text-gray-100">{h} SAAT {m} DAKİKA</b> KALDI</span>}
         </div>
         <div className="text-sm text-gray-400">
-          {readyOnly ? 'PAKETLEMEYE UYGUN' : 'KALAN PAKETLENECEK'} SİPARİŞ: <b className="text-gray-100">{total} ADET</b>
+          {eksigiOlanlar ? 'EKSİĞİ OLAN' : readyOnly ? 'PAKETLEMEYE UYGUN' : 'KALAN PAKETLENECEK'} SİPARİŞ: <b className="text-gray-100">{total} ADET</b>
         </div>
       </div>
 
@@ -229,12 +248,19 @@ export default function PackagingPage() {
             </optgroup>
           )}
         </select>
-        <button onClick={() => setReadyOnly(v => !v)}
+        <button onClick={() => { setReadyOnly(v => !v); if (!readyOnly) setEksigiOlanlar(false) }}
           title="Sadece tüm ürünleri basılı kalıpta / hazır olan siparişler"
           className={`!text-sm px-4 py-2 rounded-full border whitespace-nowrap transition-colors ${
             readyOnly ? 'bg-accent/15 text-accent border-accent/40' : 'bg-brand-input/60 text-gray-300 border-brand-border hover:text-gray-100'
           }`}>
           {readyOnly ? '✓ ' : ''}Paketlemeye uygun
+        </button>
+        <button onClick={() => { setEksigiOlanlar(v => !v); if (!eksigiOlanlar) setReadyOnly(false) }}
+          title="En az bir ürünü hazır ama hepsi değil — kargoya verilemez, hazırlananlar kenara ayrılır"
+          className={`!text-sm px-4 py-2 rounded-full border whitespace-nowrap transition-colors ${
+            eksigiOlanlar ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-brand-input/60 text-gray-300 border-brand-border hover:text-gray-100'
+          }`}>
+          {eksigiOlanlar ? '✓ ' : ''}Eksiği olanlar
         </button>
       </div>
 
@@ -250,7 +276,7 @@ export default function PackagingPage() {
       {!loading && total === 0 && (
         <div className="card text-center py-16 text-gray-500">
           <div className="text-3xl mb-2">📦</div>
-          {search || source || readyOnly
+          {search || source || readyOnly || eksigiOlanlar
             ? 'Filtreyle eşleşen sipariş yok.'
             : 'Paketlenecek (gönderilmemiş) sipariş yok.'}
         </div>
@@ -263,11 +289,30 @@ export default function PackagingPage() {
             <div className="grid grid-cols-2 gap-3">
               {order.items.map((it) => (
                 <div key={it.line_item_id} className="card !p-0 overflow-hidden">
-                  <div className="aspect-square bg-brand-input/40 flex items-center justify-center overflow-hidden">
+                  {/* Görsele tıkla = "hazırlandı, kenara ayrıldı". Sipariş eksik olsa
+                      da hazırlanan kılıflar dükkanda ayrı duruyor; işaret o ayrımı
+                      sistemde de gösteriyor. */}
+                  <button type="button" onClick={() => ayrildiToggle(it)}
+                    title={it.ayrildi ? 'Kenara ayrıldı — kaldırmak için tıkla' : 'Hazırlandı, kenara ayrıldı olarak işaretle'}
+                    className="relative w-full aspect-square bg-brand-input/40 flex items-center justify-center overflow-hidden group">
                     {it.thumbnail_url
                       ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-cover" />
                       : <div className="text-4xl opacity-30">📱</div>}
-                  </div>
+                    {it.ayrildi && (
+                      <>
+                        <span className="absolute inset-0 bg-emerald-500/20" />
+                        <svg viewBox="0 0 40 40" className="absolute top-1.5 left-1.5 w-8 h-8 drop-shadow">
+                          <circle cx="20" cy="20" r="17" fill="rgb(16 185 129 / 0.92)" />
+                          <path d="M12 20.5 l5.5 5.5 L28 14" fill="none" stroke="white" strokeWidth="3.4"
+                                strokeLinecap="round" strokeLinejoin="round"
+                                className="tik-ciz" pathLength="1" />
+                        </svg>
+                      </>
+                    )}
+                    {!it.ayrildi && (
+                      <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                    )}
+                  </button>
                   <div className="flex items-center justify-between px-2.5 py-2 gap-2">
                     {/* Couple: kutuya İKİ kılıf giriyor — iki modeli de göster */}
                     {it.is_couple ? (

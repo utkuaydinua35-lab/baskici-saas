@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
-import SlotHaritasi from '../components/SlotHaritasi'
 import { renk } from '../lib/durum'
 
 // Renkler ortak olcekten (lib/durum) — ayni anlam her sayfada ayni renk.
@@ -132,7 +131,7 @@ export default function BaskiciPaneliPage() {
     const text = requiredModels.items
       .map(it => it.kaynak === 'siparis'
         // Aksesuarda varyasyon yok; tedarikçiye grup adıyla gitmeli.
-        ? `${it.count} ad ${it.grup} — ${it.model} (stok eksiği)`
+        ? `${it.count} ad ${it.grup} — ${it.model}`
         : `${it.count} ad ${String(it.variation || '').toUpperCase()} ${it.model}`)
       .join('\n')
     try { await navigator.clipboard.writeText(text); toast.success('Liste kopyalandı') }
@@ -275,7 +274,7 @@ export default function BaskiciPaneliPage() {
                 <div className="text-xs text-gray-500 mb-3">
                   {requiredModels.total_models} satır · toplam {requiredModels.total_count} adet · kalıplar için stok bakılmadı
                   {requiredModels.siparis_kalem_sayisi > 0 &&
-                    ` · ${requiredModels.siparis_kalem_sayisi} aksesuar kalemi stok eksiğinden eklendi`}
+                    ` · ${requiredModels.siparis_kalem_sayisi} kalem kalıba girmeyen ürün (magsafe, ekran koruyucu…)`}
                 </div>
                 <div className="space-y-1.5">
                   {requiredModels.items.map((it, i) => (
@@ -287,7 +286,7 @@ export default function BaskiciPaneliPage() {
                              title={it.kaynak === 'siparis' && it.siparisler?.length
                                ? `Siparişler: ${it.siparisler.map(n => '#' + n).join(', ')}` : undefined}>
                           {it.kaynak === 'siparis'
-                            ? `🎁 ${it.grup} · stok eksiği · ${it.siparis_sayisi} siparişte`
+                            ? `🎁 ${it.grup} · ${it.siparis_sayisi} siparişte (kalıba girmez)`
                             : `${it.variation} · ${it.mold_count} kalıpta`}
                         </div>
                       </div>
@@ -434,8 +433,6 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
         </div>
         <span className={`text-[11px] px-2 py-1 rounded-lg border whitespace-nowrap ${st.cls}`}>{st.icon} {st.label}</span>
       </div>
-
-      <SlotHaritasi items={mold.items || []} kilitli={mold.slot_kilitli} />
 
       {/* Analiz sonucu */}
       {an && an.total_cases > 0 && (

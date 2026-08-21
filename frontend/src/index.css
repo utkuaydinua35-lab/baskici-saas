@@ -385,3 +385,11 @@ select.input {
 select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%23e5e7eb' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 /* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
 select.input option, select option { background: #17102b; color: #f3f4f6; }
+
+/* Paketlemede "kenara ayrıldı" tiki — çizilerek belirir (tek seferlik) */
+@keyframes tik-ciz { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.tik-ciz {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: tik-ciz 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}

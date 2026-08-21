@@ -348,6 +348,32 @@ def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
     return ihtiyac
 
 
+def aksesuar_ihtiyaci(db: Session, tenant_id) -> list[dict]:
+    """Acik siparislerdeki aksesuar/islemsiz urun IHTIYACI — stok BAKILMADAN.
+
+    Magsafe duz kilif, ekran koruyucu gibi urunler kalip planina girmiyor;
+    "Gerekli Modeller" listesi kalip odakli oldugu icin onlari hic goremiyordu.
+    Baskiciya "ne hazirlayacagim" derken bunlar da lazim.
+
+    Stok kontrolu YOK: bu liste ihtiyaci soyler, eksigi degil (eksik icin
+    siparis_stok_eksigi kullanilir).
+    """
+    ihtiyac = aksesuar_talebi(db, tenant_id)
+    out = [
+        {
+            "kaynak": "siparis",
+            "grup": v["grup"],
+            "model": v["model"] or "(model belirtilmemiş)",
+            "count": v["adet"],
+            "siparis_sayisi": len(v["siparisler"]),
+            "siparisler": sorted(v["siparisler"])[:20],
+        }
+        for v in ihtiyac.values()
+    ]
+    out.sort(key=lambda x: (-x["count"], x["model"]))
+    return out
+
+
 def _eslesen_alt_kalemler(db: Session, grup_ids) -> dict:
     """{grup_id(str): [StockItem]} — aktif alt kalemler, tek sorgu."""
     from app.models import StockItem as _SI

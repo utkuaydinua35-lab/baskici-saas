@@ -494,6 +494,8 @@ def _order_payload(db, order) -> dict:
             "quantity": li.quantity or 1,
             "kalip_kodu": kod_label,        # "A5" / "A5 P1" / None
             "thumbnail_url": thumb,         # gorsel ya da None
+            # Hazırlanıp kenara ayrıldı mı (paketlemede görsele tıklayınca)
+            "ayrildi": bool(getattr(li, "paketleme_ayrildi", False)),
         })
     if _img_filled:
         try:
@@ -574,57 +576,102 @@ def _couple_ids(db, tenant_id) -> set:
     }
 
 
-def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
-    """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar.
-    Herhangi bir ürün basılmamış kalıpta ya da henüz hazırlanmamışsa -> False.
+def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot) -> bool | None:
+    """Tek kalem üretildi mi. None = aksesuar (kalıp gerekmez, sayıma girmez).
 
-    ÇİFT KILIF: bir kalem = 2 ayrı kılıf. Eskiden yalnızca "bulunan slotların hepsi
-    basıldı mı" bakılıyordu; ikinci kılıf hiç kalıba girmemişse liste [True] oluyor,
-    all() geçiyor ve sipariş EKSİK haliyle paketlemeye hazır görünüyordu. Artık
-    BEKLENEN slot sayısı da aranır."""
+    _order_ready ve _eksigi_var AYNI kuralı kullanmalı; kopyalanırsa biri
+    düzeltilip diğeri eskide kalır.
+    """
+    if li.product_id and str(li.product_id) in acc_ids:
+        return None                       # aksesuar — kalıp gerekmez
+    _qty0 = max(1, int(getattr(li, "quantity", 1) or 1))
+    _couple = bool(li.product_id and str(li.product_id) in couple_ids)
+
+    if _couple:
+        # ÇİFT KILIF: bir kalem = 2 ayrı kılıf, her yarı AYRI değerlendirilir.
+        # Bir yarı ya elle hazır işaretli ya da kendi kalıbı basılmış olmalı.
+        for _manual, _did in (
+            (getattr(li, "is_hazir", False), li.assigned_design_id),
+            (getattr(li, "is_hazir_2", False), li.assigned_design_id_2),
+        ):
+            if _manual:
+                continue
+            _ms = by_slot.get((str(li.id), str(_did) if _did else None))
+            if not _ms or len(_ms) < _qty0 or not all(_ms):
+                return False
+        return True
+
+    if getattr(li, "is_hazir", False):
+        return True                       # elle hazır işaretli — üretildi sayılır
+    # Kalıba eklenmemiş (hiç eklenmemiş YA DA tamamlanan kalıptan geri çıkarılmış)
+    if not getattr(li, "is_kaliba_eklendi", False):
+        return False
+    ms = by_li.get(str(li.id))
+    if not ms and onum:
+        ms = by_om.get((onum, _nm(_extract_model(li))))
+    _beklenen = _qty0 * (2 if _couple else 1)
+    if not ms or len(ms) < _beklenen or not all(ms):
+        return False
+    return True
+
+
+def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
+    """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar."""
     couple_ids = couple_ids or set()
     by_slot = by_slot or {}
     onum = str(order.order_number) if order.order_number is not None else None
     has_item = False
     for li in (order.line_items or []):
         has_item = True
-        if li.product_id and str(li.product_id) in acc_ids:
-            continue  # aksesuar — kalıp gerekmez
-        _qty0 = max(1, int(getattr(li, "quantity", 1) or 1))
-        _couple = bool(li.product_id and str(li.product_id) in couple_ids)
-
-        if _couple:
-            # ÇİFT KILIF: her yarı AYRI değerlendirilir. Bir yarı ya elle hazır
-            # işaretlenmiş ya da kendi kalıbı basılmış olmalı. Biri eksikse sipariş
-            # paketlemeye HAZIR DEĞİLDİR (eskiden tek yarı yeterli sayılıyordu).
-            for _manual, _did in (
-                (getattr(li, "is_hazir", False), li.assigned_design_id),
-                (getattr(li, "is_hazir_2", False), li.assigned_design_id_2),
-            ):
-                if _manual:
-                    continue
-                _ms = by_slot.get((str(li.id), str(_did) if _did else None))
-                if not _ms or len(_ms) < _qty0 or not all(_ms):
-                    return False
-            continue
-
-        if getattr(li, "is_hazir", False):
-            continue  # elle hazır işaretli — üretildi sayılır
-        # Kalıba eklenmemiş (hiç eklenmemiş YA DA tamamlanan kalıptan geri çıkarılmış) ->
-        # üretilmedi, sipariş paketlemeye uygun değil. (geri planla is_kaliba_eklendi=False yapar.)
-        if not getattr(li, "is_kaliba_eklendi", False):
-            return False
-        # Kalıpta: o kalıp(lar) basılı/ tamamlanmış mı?
-        ms = by_li.get(str(li.id))
-        if not ms and onum:
-            ms = by_om.get((onum, _nm(_extract_model(li))))
-        # Beklenen kılıf adedi: çift kılıfta adet x2, diğerlerinde adet.
-        _qty = max(1, int(getattr(li, "quantity", 1) or 1))
-        _beklenen = _qty * (2 if (li.product_id and str(li.product_id) in couple_ids) else 1)
-        # Eşleşen kalıp yok / beklenenden AZ slot var / biri bile basılmadı -> hazır değil
-        if not ms or len(ms) < _beklenen or not all(ms):
+        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot)
+        if d is False:
             return False
     return has_item
+
+
+def _eksigi_var(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
+    """EN AZ BİR ürünü hazır ama HEPSİ değil — yani kargoya verilemez ama
+    hazırlanan kılıflar kenara ayrılmalı.
+
+    6 ürünlü siparişin 5'i hazırsa o 5 kılıf dükkanda ayrı durur; sistemde de
+    görünsün diye bu filtre var.
+    """
+    couple_ids = couple_ids or set()
+    by_slot = by_slot or {}
+    onum = str(order.order_number) if order.order_number is not None else None
+    hazir = eksik = 0
+    for li in (order.line_items or []):
+        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot)
+        if d is None:
+            continue
+        if d:
+            hazir += 1
+        else:
+            eksik += 1
+    return hazir > 0 and eksik > 0
+
+
+class AyrildiIn(BaseModel):
+    ayrildi: bool = True
+
+
+@router.patch("/kalem/{line_item_id}/ayrildi", response_model=dict)
+def kalem_ayrildi(line_item_id: uuid.UUID, body: AyrildiIn,
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalemi "hazırlandı, kenara ayrıldı" olarak işaretle / işareti kaldır.
+
+    Siparişin tamamı hazır olmasa da hazırlanan kılıflar dükkanda ayrı duruyor;
+    bu işaret aynı ayrımı sistemde de gösteriyor.
+    """
+    li = db.scalar(
+        select(LineItem).join(Order, Order.id == LineItem.order_id)
+        .where(LineItem.id == line_item_id, Order.tenant_id == user.tenant_id)
+    )
+    if not li:
+        raise HTTPException(404, "Kalem bulunamadı")
+    li.paketleme_ayrildi = bool(body.ayrildi)
+    db.commit()
+    return {"ok": True, "line_item_id": str(line_item_id), "ayrildi": li.paketleme_ayrildi}
 
 
 @router.get("/queue", response_model=dict)
@@ -634,6 +681,7 @@ def packaging_queue(
     store_id: str | None = None,
     dealer_id: str | None = None,
     ready_only: bool = False,
+    eksigi_olanlar: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -668,7 +716,8 @@ def packaging_queue(
 
     by_li = by_om = by_slot = None
     acc_ids: set = set()
-    if ready_only:
+    couple_ids: set = set()
+    if ready_only or eksigi_olanlar:
         by_li, by_om, by_slot = _printed_maps(db, user.tenant_id)
         acc_ids = _accessory_ids(db, user.tenant_id)
         couple_ids = _couple_ids(db, user.tenant_id)
@@ -680,9 +729,11 @@ def packaging_queue(
             return False
         if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids, by_slot):
             return False
+        if eksigi_olanlar and not _eksigi_var(o, by_li, by_om, acc_ids, couple_ids, by_slot):
+            return False
         return True
 
-    filtered = [o for o in orders if _passes(o)] if (_dealer or ready_only) else orders
+    filtered = [o for o in orders if _passes(o)] if (_dealer or ready_only or eksigi_olanlar) else orders
     total = len(filtered)
     base = {
         "stages": stage_defs.all_stages_payload(),
@@ -692,6 +743,7 @@ def packaging_queue(
         "store_id": store_id or None,
         "dealer_id": _dealer or None,
         "ready_only": ready_only,
+        "eksigi_olanlar": eksigi_olanlar,
     }
     if total == 0:
         return {"total": 0, "index": 0, "order": None, **base}

@@ -46,8 +46,12 @@ def extract_phone_model(line_item: LineItem) -> str | None:
 
 # Müşterinin seçtiği kılıf varyasyonu — KESİN anahtar eşleşmesi (yanlış pozitif düşük).
 # Spesifik olanlar önce; SİYAH en sonda (varsayılan/zayıf).
+# "OFF WHITE" bir MARKA/desen adi, kilif rengi degil. Onune bakmadan WHITE
+# eslestirmek "OFF WHITE Just Black" adli SIYAH tasarimlari BEYAZ kaliba
+# sokuyordu (yanlis renk baski = maddi zarar).
+_MARKA_YANLIS = re.compile(r"\bOFF[\s-]?WHITE\b")
 _VAR_PATTERNS = [
-    ("BEYAZ", re.compile(r"\b(BEYAZ|WHITE)\b")),
+    ("BEYAZ", re.compile(r"(?<!OFF )(?<!OFF-)\b(BEYAZ|WHITE)\b")),
     ("ŞEFFAF", re.compile(r"\b(ŞEFFAF|SEFFAF|CLEAR|TRANSPARAN)\b")),
     ("PARLAK", re.compile(r"\b(PARLAK|GLITTER|SİMLİ|SIMLI)\b")),
     ("MAGSAFE", re.compile(r"\b(MAGSAFE|MAG ?SAFE)\b")),
@@ -59,6 +63,8 @@ _CASE_HINT = re.compile(r"KILIF|KILIF|RENK|VARYASYON|KAPAK|COVER|CASE|COLOR|TİP
 
 def _match_variation(text: str) -> str | None:
     t = (text or "").upper()
+    # Marka adini once cikar: "OFF WHITE" icindeki WHITE renk degil.
+    t = _MARKA_YANLIS.sub(" ", t)
     for var, pat in _VAR_PATTERNS:
         if pat.search(t):
             return var
@@ -86,12 +92,36 @@ def variation_from_props(line_item) -> str | None:
     return other
 
 
-def variation_from_title(line_item) -> str | None:
+def _tasarim_adini_cikar(metin: str, design) -> str:
+    """Ürün adından TASARIM ADINI çıkar.
+
+    Ürün adı çoğu zaman tasarım adını içeriyor ("OFF WHITE Just Black Telefon
+    Kılıfı"). Tasarım adındaki renk kelimeleri KILIF rengi değil, desenin adı.
+    Onları çıkarınca geriye kalan kısım gerçekten kılıfı tarif eder
+    ("... Special PARLAK Telefon Kılıfı" gibi).
+    """
+    if design is None:
+        return metin
+    out = metin
+    for alan in ("name", "code"):
+        ad = (getattr(design, alan, None) or "").strip()
+        if len(ad) >= 3:
+            out = re.sub(re.escape(ad), " ", out, flags=re.I)
+    return out
+
+
+def variation_from_title(line_item, design=None) -> str | None:
     """Ürün/varyant ADINDAKİ kılıf varyasyonu — örn "... BERNZ Special PARLAK Telefon Kılıfı".
-    Müşterinin satın aldığı ürünün adı, tasarımın varsayılan kalip_tipi'sinden DAHA
-    belirleyicidir: property'de varyasyon yoksa buraya bakılır (yoksa yanlış kalıba girer)."""
+
+    Müşterinin satın aldığı ürünün adı, tasarımın varsayılan kalip_tipi'sinden
+    DAHA belirleyicidir: property'de varyasyon yoksa buraya bakılır.
+
+    AMA tasarım adı ürün adının içindeyse önce ÇIKARILIR — yoksa desen adındaki
+    renk kelimesi kılıf rengi sanılıyor ("OFF WHITE ..." adlı siyah tasarımlar
+    beyaz kalıba giriyordu).
+    """
     for t in (getattr(line_item, "variant_title", None), getattr(line_item, "title", None)):
-        v = _match_variation(t or "")
+        v = _match_variation(_tasarim_adini_cikar(t or "", design))
         if v:
             return v
     return None
@@ -138,7 +168,7 @@ def resolve_line_variation_detail(line_item, design=None, slot: int = 1) -> tupl
     v = variation_from_props(line_item)
     if v:
         return v, "ozellik"
-    v = variation_from_title(line_item)
+    v = variation_from_title(line_item, design)
     if v:
         return v, "urun_adi"
     dkt = ((getattr(design, "kalip_tipi", None) or "").strip() if design is not None else "")

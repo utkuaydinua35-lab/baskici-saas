@@ -296,21 +296,37 @@ export default function PackagingPage() {
                     title={it.ayrildi ? 'Kenara ayrıldı — kaldırmak için tıkla' : 'Hazırlandı, kenara ayrıldı olarak işaretle'}
                     className="relative w-full aspect-square bg-brand-input/40 flex items-center justify-center overflow-hidden group">
                     {it.thumbnail_url
-                      ? <img src={it.thumbnail_url} alt="" className="w-full h-full object-cover" />
-                      : <div className="text-4xl opacity-30">📱</div>}
+                      ? <img src={it.thumbnail_url} alt=""
+                             className={`w-full h-full object-cover ${it.ayrildi ? 'ayrildi-gorsel' : ''}`} />
+                      : <div className={`text-4xl opacity-30 ${it.ayrildi ? 'ayrildi-gorsel' : ''}`}>📱</div>}
                     {it.ayrildi && (
                       <>
-                        <span className="absolute inset-0 bg-emerald-500/20" />
-                        <svg viewBox="0 0 40 40" className="absolute top-1.5 left-1.5 w-8 h-8 drop-shadow">
-                          <circle cx="20" cy="20" r="17" fill="rgb(16 185 129 / 0.92)" />
-                          <path d="M12 20.5 l5.5 5.5 L28 14" fill="none" stroke="white" strokeWidth="3.4"
-                                strokeLinecap="round" strokeLinejoin="round"
-                                className="tik-ciz" pathLength="1" />
+                        {/* Köşeden yayılan yumuşak yeşil — düz renk perdesi yerine */}
+                        <span className="absolute inset-0 ayrildi-perde"
+                              style={{ background: 'radial-gradient(120% 120% at 12% 10%, rgb(16 185 129 / 0.42), rgb(16 185 129 / 0.10) 45%, transparent 72%)' }} />
+                        <span className="absolute inset-0 ring-2 ring-emerald-400/70 rounded-[inherit] ayrildi-perde" />
+                        <svg viewBox="0 0 48 48" className="absolute top-2 left-2 w-9 h-9 overflow-visible">
+                          <circle cx="24" cy="24" r="15" className="ayrildi-halka"
+                                  fill="none" stroke="rgb(52 211 153)" strokeWidth="3" />
+                          <g className="ayrildi-rozet">
+                            <circle cx="24" cy="24" r="15" fill="rgb(16 185 129)" />
+                            <circle cx="24" cy="24" r="15" fill="none"
+                                    stroke="rgb(255 255 255 / 0.55)" strokeWidth="1.2" />
+                            <path d="M15.5 24.5 l6 6 L32.5 17.5" fill="none" stroke="white"
+                                  strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round"
+                                  className="ayrildi-tik" pathLength="1" />
+                          </g>
                         </svg>
                       </>
                     )}
                     {!it.ayrildi && (
-                      <span className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0
+                                       group-hover:bg-black/35 transition-colors">
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity
+                                         text-[10px] text-white/90 bg-black/50 px-2 py-1 rounded-full">
+                          kenara ayır
+                        </span>
+                      </span>
                     )}
                   </button>
                   <div className="flex items-center justify-between px-2.5 py-2 gap-2">

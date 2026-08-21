@@ -386,10 +386,57 @@ select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Cs
 /* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
 select.input option, select option { background: #17102b; color: #f3f4f6; }
 
-/* Paketlemede "kenara ayrıldı" tiki — çizilerek belirir (tek seferlik) */
-@keyframes tik-ciz { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-.tik-ciz {
+/* ── Paketleme: "kenara ayrıldı" işareti ─────────────────────────
+   Tek bir tik değil, kısa bir olay: halka dalgası yayılır, rozet
+   yaylanarak oturur, tik çizilir, görsel arkaya çekilir. Sıralama
+   gecikmelerle kurgulanıyor (kütüphane yok). */
+
+@keyframes ayrildi-halka {
+  0%   { transform: scale(0.55); opacity: 0.5; }
+  70%  { opacity: 0.12; }
+  100% { transform: scale(2.4);  opacity: 0; }
+}
+@keyframes ayrildi-rozet {
+  0%   { transform: scale(0.3) rotate(-14deg); opacity: 0; }
+  45%  { transform: scale(1.14) rotate(3deg);  opacity: 1; }
+  70%  { transform: scale(0.95) rotate(-1deg); }
+  100% { transform: scale(1)    rotate(0deg);  opacity: 1; }
+}
+@keyframes ayrildi-tik {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes ayrildi-perde {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.ayrildi-halka {
+  animation: ayrildi-halka 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: center;
+}
+.ayrildi-rozet {
+  animation: ayrildi-rozet 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: center;
+  filter: drop-shadow(0 3px 10px rgb(16 185 129 / 0.5));
+}
+.ayrildi-tik {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: tik-ciz 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: ayrildi-tik 0.34s cubic-bezier(0.65, 0, 0.35, 1) 0.24s forwards;
+}
+.ayrildi-perde {
+  animation: ayrildi-perde 0.45s ease-out forwards;
+}
+/* İşaretli görsel geri plana çekilir — "bu iş bitti" hissi */
+.ayrildi-gorsel {
+  filter: grayscale(0.35) brightness(0.72);
+  transition: filter 0.45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ayrildi-halka, .ayrildi-rozet, .ayrildi-tik, .ayrildi-perde {
+    animation-duration: 0.01ms;
+    animation-delay: 0ms;
+  }
 }

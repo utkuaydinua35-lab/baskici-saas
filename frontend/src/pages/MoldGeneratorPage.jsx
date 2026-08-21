@@ -408,12 +408,20 @@ function ExistingMolds({ molds, onOpen, onDelete }) {
   const [durumlar, setDurumlar] = useState({})   // {mold_id: {durum}}
   const [busy, setBusy] = useState(false)
 
-  const bekleyen = useMemo(
-    () => molds.filter(m => m.status !== 'basildi')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [molds])
-  const basilmis = useMemo(
-    () => molds.filter(m => m.status === 'basildi')
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [molds])
+  // "Basılmış" ÜÇ ayrı alandan gelebiliyor ve yalnız birine bakmak yanlıştı:
+  //   status       : olusturuldu | basildi | tamamlandi | iptal
+  //   print_status : bekliyor | basildi | eksik_var | hatali_basildi
+  //   current_stage: 5 = tamamlandı
+  // 'tamamlandi' olan kalıplar bu yüzden bekleyende görünüyordu.
+  const basildiMi = (m) => (
+    m.print_status === 'basildi'
+    || m.status === 'basildi'
+    || m.status === 'tamamlandi'
+    || (m.current_stage || 0) >= 5
+  )
+  const yeni = (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+  const bekleyen = useMemo(() => molds.filter(m => !basildiMi(m)).sort(yeni), [molds])
+  const basilmis = useMemo(() => molds.filter(basildiMi).sort(yeni), [molds])
 
   const durumSor = async (ids) => {
     if (!ids.length) return
@@ -506,10 +514,47 @@ function ExistingMolds({ molds, onOpen, onDelete }) {
     </div>
   )
 
+  const kodOf = (id) => molds.find(m => m.id === id)?.kod || id.slice(0, 6)
+  const surenler = Object.entries(durumlar).filter(([, v]) => v?.durum === 'hazirlaniyor')
+  const hazirSayi = Object.values(durumlar).filter(v => v?.durum === 'hazir').length
+
   return (
     <div>
       <Liste baslik="⏳ Bekleyen Kalıplar" veri={bekleyen} secilebilir />
       <Liste baslik="✓ Basılmış Kalıplar" veri={basilmis} secilebilir={false} />
+      <HazirlikPaneli surenler={surenler} hazirSayi={hazirSayi} kodOf={kodOf} />
+    </div>
+  )
+}
+
+// Sağ altta sabit ilerleme paneli — üretim dakikalar sürdüğü için "çalışıyor mu?"
+// sorusu ekranda cevaplanmalı. Hazırlanan kalmadığında kendiliğinden kaybolur.
+function HazirlikPaneli({ surenler, hazirSayi, kodOf }) {
+  if (!surenler.length) return null
+  const sure = (sn) => sn >= 60 ? `${Math.floor(sn / 60)} dk ${sn % 60} sn` : `${sn} sn`
+  return (
+    <div className="fixed bottom-4 right-4 z-[120] w-72 card !p-3 shadow-2xl border-accent/30">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-gray-200">
+          📄 PDF hazırlanıyor ({surenler.length})
+        </span>
+        {hazirSayi > 0 && (
+          <span className="text-[10px] text-emerald-300">{hazirSayi} hazır</span>
+        )}
+      </div>
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {surenler.map(([id, v]) => (
+          <div key={id} className="flex items-center gap-2 text-[11px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+            <span className="font-mono text-gray-300 truncate flex-1">{kodOf(id)}</span>
+            <span className="text-gray-500 tabular-nums shrink-0">{sure(v.gecen_sn || 0)}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-500 mt-2 leading-snug">
+        Sıra ile üretiliyor · kalıp başına birkaç dakika. Sayfadan ayrılabilirsin,
+        üretim sunucuda sürer.
+      </p>
     </div>
   )
 }

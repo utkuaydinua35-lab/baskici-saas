@@ -114,6 +114,8 @@ def durum(mold_id, anahtar: str) -> dict:
 def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None:
     from app.services import mold_pdf
     pdf, meta = yollar(mold_id, anahtar)
+    _t0 = time.time()
+    logger.info("[kalip-pdf] uretim BASLADI: kalip=%s slot=%s", mold_id, len(slot_items))
     try:
         veri, rapor = mold_pdf.render_mold_pdf(slot_items, template=template)
         # Atomik yazım: yarım dosya indirilmesin
@@ -121,11 +123,13 @@ def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None
         gecici.write_bytes(veri)
         meta.write_text(json.dumps(rapor, default=str), encoding="utf-8")
         gecici.replace(pdf)
-        logger.info("[kalip-pdf] hazir: %s (%.1f MB)", anahtar, len(veri) / 1024 / 1024)
+        logger.info("[kalip-pdf] HAZIR: kalip=%s %.1f MB %.0f sn",
+                    mold_id, len(veri) / 1024 / 1024, time.time() - _t0)
         with _kilit:
             _isler.pop(anahtar, None)
     except Exception as e:  # noqa: BLE001
-        logger.exception("[kalip-pdf] uretim hatasi: %s", e)
+        logger.exception("[kalip-pdf] HATA: kalip=%s (%.0f sn) %s",
+                         mold_id, time.time() - _t0, e)
         with _kilit:
             _isler[anahtar] = {"durum": "hata", "baslangic": time.time(),
                                "mesaj": str(e)[:200]}

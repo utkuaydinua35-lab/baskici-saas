@@ -7,7 +7,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sqlalchemy import desc, func as sql_func, or_ as sa_or, select
 from sqlalchemy.orm import Session, selectinload
@@ -584,6 +584,9 @@ class MoldItemPatch(BaseModel):
     is_hazir: bool
 
 
+# ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
+# _pdf_gecersiz(mold_id) çağrılmalı, yoksa panel "hazır" gösterip eski
+# içerikli PDF indirilmiş gibi görünür (dosya sunulmaz ama durum yanıltır).
 @router.patch("/{mold_id}/items/{item_id}", response_model=None)
 def update_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: MoldItemPatch,
                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -592,6 +595,7 @@ def update_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: MoldItemPa
     if not it:
         raise HTTPException(status_code=404, detail="Slot bulunamadı")
     it.is_hazir = payload.is_hazir
+    _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     return {"ok": True, "id": str(it.id), "is_hazir": it.is_hazir}
 
@@ -621,6 +625,9 @@ def mold_history(mold_id: uuid.UUID, user: User = Depends(get_current_user), db:
     ]}
 
 
+# ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
+# _pdf_gecersiz(mold_id) çağrılmalı, yoksa panel "hazır" gösterip eski
+# içerikli PDF indirilmiş gibi görünür (dosya sunulmaz ama durum yanıltır).
 @router.post("/{mold_id}/history/{hist_id}/undo", response_model=None)
 def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -695,6 +702,7 @@ def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
     flag_modified(h, "payload")
     _log_mold(db, mo, user, action="item_undo",
               note=f"Geri alındı — slot #{_slot} · {itd.get('kalip_kodu') or ''} · {itd.get('design_code') or ''}")
+    _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)
     return _serialize_mold_detail(mo, db)
@@ -803,6 +811,9 @@ class RemoveItemRequest(BaseModel):
     musteriye_mail: bool = False
 
 
+# ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
+# _pdf_gecersiz(mold_id) çağrılmalı, yoksa panel "hazır" gösterip eski
+# içerikli PDF indirilmiş gibi görünür (dosya sunulmaz ama durum yanıltır).
 @router.post("/{mold_id}/items/{item_id}/remove", response_model=None)
 def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItemRequest,
                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -896,6 +907,7 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
             _d["_ref"].slot_index = _d["slot_index"]
     # kalıp boşaldıysa kilif_sayisi güncelle
     mo.kilif_sayisi = max(0, mo.kilif_sayisi - 1)
+    _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)
     _out = _serialize_mold_detail(mo, db)
@@ -904,16 +916,25 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     return _out
 
 
-@router.get("/{mold_id}/pdf", response_model=None)
-def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
-                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Kalıp için baskıya hazır PDF. Hazırsa indirir, değilse arka planda üretir.
+def _pdf_gecersiz(mold_id) -> None:
+    """Kalıp değişti — hazırlanmış PDF'ini sil. Hata olsa da akışı bozma."""
+    try:
+        from app.services import mold_pdf_job as _job
+        n = _job.gecersiz_kil(mold_id)
+        if n:
+            import logging as _lg
+            _lg.getLogger("molds").info(
+                "[kalip-pdf] %s degisti -> %s hazir dosya silindi", mold_id, n)
+    except Exception:  # noqa: BLE001
+        pass
 
-    Üretim ~200 sn sürebiliyor (karmaşık vektör tasarımlar, vektör KORUNUYOR).
-    Cloudflare 100 sn'de vazgeçtiği için iş isteğin dışına alındı: ilk çağrı
-    üretimi başlatıp 202 döner, panel hazır olunca indirir.
+
+def _pdf_girdi(db, mo, tenant_id):
+    """Kalıptan PDF üretimi için (slot_items, template) hazırla.
+
+    İndirme ve "PDF Hazırla" uçları AYNI girdiyi kullanmalı; ikisi ayrışırsa
+    hazırlanan PDF ile indirilen farklı olur.
     """
-    mo = _get_mold(db, mold_id, user.tenant_id)
     # slot verisini tasarım dosya yollarıyla hazırla
     design_ids = {it.design_id for it in mo.items if it.design_id}
     dmap = {}
@@ -930,14 +951,14 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
             # Ölçüyü BURADA çöz: panelden eklenen modeller yalnızca DB'de durur.
             # PDF motoru tek başına baseline kataloğa bakıyordu ve bu modellerin
             # slotlarını sessizce boş basıyordu.
-            "spec": pm.get_spec(db, user.tenant_id, it.model or ""),
+            "spec": pm.get_spec(db, tenant_id, it.model or ""),
             "design_file_path": d.file_path if d else None,
             "design_format": d.file_format if d else None,
         })
     # Tenant'ın aktif kalıp şablonu
     tpl = db.scalar(
         select(MoldTemplate).where(
-            MoldTemplate.tenant_id == user.tenant_id,
+            MoldTemplate.tenant_id == tenant_id,
             MoldTemplate.is_active == True,  # noqa: E712
         ).order_by(MoldTemplate.created_at.desc())
     )
@@ -950,13 +971,92 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
         "page_w_pt": tpl.page_w_pt, "page_h_pt": tpl.page_h_pt,
         "cols": tpl.cols, "rows": tpl.rows, "boxes": tpl.boxes,
     }
+    return slot_items, template_data
+
+
+class PdfHazirlaIn(BaseModel):
+    mold_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=60)
+
+
+@router.post("/pdf/hazirla", response_model=dict)
+def pdf_hazirla(body: PdfHazirlaIn, arka_plan: BackgroundTasks,
+                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Seçili kalıpların PDF'ini ÖNCEDEN hazırla (arka planda).
+
+    Baskıya başlamadan önce çalıştırılır; baskı sırasında beklemek gerekmez.
+    Zaten hazır olan ya da üretimi süren kalıp yeniden kuyruğa alınmaz.
+    """
+    from app.services import mold_pdf_job as _job
+    sonuc = []
+    for mid in body.mold_ids:
+        mo = db.scalar(select(Mold).where(Mold.id == mid, Mold.tenant_id == user.tenant_id))
+        if not mo:
+            sonuc.append({"mold_id": str(mid), "durum": "bulunamadi"})
+            continue
+        try:
+            slot_items, tpl = _pdf_girdi(db, mo, user.tenant_id)
+        except HTTPException as e:
+            sonuc.append({"mold_id": str(mid), "kod": mo.kod,
+                          "durum": "hata", "mesaj": str(e.detail)[:160]})
+            continue
+        anahtar = _job.anahtar_uret(mo, slot_items, tpl)
+        d = _job.durum(mo.id, anahtar)
+        if d["durum"] == "hazir":
+            sonuc.append({"mold_id": str(mid), "kod": mo.kod, "durum": "hazir"})
+            continue
+        _job.baslat(arka_plan, mo.id, anahtar, slot_items, tpl)
+        sonuc.append({"mold_id": str(mid), "kod": mo.kod, "durum": "hazirlaniyor"})
+    return {"ok": True, "items": sonuc,
+            "kuyruga_alinan": sum(1 for x in sonuc if x["durum"] == "hazirlaniyor")}
+
+
+@router.get("/pdf/durum", response_model=dict)
+def pdf_durum(ids: str = Query("", description="virgülle ayrılmış mold id"),
+              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalıpların PDF hazırlık durumu: hazir | hazirlaniyor | yok | hata."""
+    from app.services import mold_pdf_job as _job
+    _ids = []
+    for x in (ids or "").split(","):
+        x = x.strip()
+        if not x:
+            continue
+        try:
+            _ids.append(uuid.UUID(x))
+        except ValueError:
+            continue
+    out = {}
+    for mid in _ids[:120]:
+        mo = db.scalar(select(Mold).where(Mold.id == mid, Mold.tenant_id == user.tenant_id))
+        if not mo:
+            continue
+        try:
+            slot_items, tpl = _pdf_girdi(db, mo, user.tenant_id)
+            anahtar = _job.anahtar_uret(mo, slot_items, tpl)
+            out[str(mid)] = _job.durum(mo.id, anahtar)
+        except HTTPException as e:
+            out[str(mid)] = {"durum": "hata", "mesaj": str(e.detail)[:160]}
+    return {"items": out}
+
+
+@router.get("/{mold_id}/pdf", response_model=None)
+def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalıp için baskıya hazır PDF. Hazırsa indirir, değilse arka planda üretir.
+
+    Üretim ~200 sn sürebiliyor (karmaşık vektör tasarımlar, vektör KORUNUYOR).
+    Cloudflare 100 sn'de vazgeçtiği için iş isteğin dışına alındı: ilk çağrı
+    üretimi başlatıp 202 döner, panel hazır olunca indirir.
+    """
+    mo = _get_mold(db, mold_id, user.tenant_id)
+    slot_items, template_data = _pdf_girdi(db, mo, user.tenant_id)
+
     from app.services import mold_pdf_job as _job
     _anahtar = _job.anahtar_uret(mo, slot_items, template_data)
-    _d = _job.durum(_anahtar)
+    _d = _job.durum(mo.id, _anahtar)
     if _d["durum"] == "hata":
         raise HTTPException(500, f"PDF üretilemedi: {_d.get('mesaj')}")
     if _d["durum"] != "hazir":
-        _yeni = _job.baslat(arka_plan, _anahtar, slot_items, template_data)
+        _yeni = _job.baslat(arka_plan, mo.id, _anahtar, slot_items, template_data)
         # 202 DEGIL 409: 202 bir BASARI kodu oldugu icin res.ok kontrolu yapan
         # istemciler (ve onbellekte kalmis eski panel) JSON govdesini PDF sanip
         # 1 KB'lik bozuk dosya indiriyordu. 4xx ile hatali durumda dosya inmez,
@@ -970,7 +1070,7 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
                                "Sayfayı kapatma, hazır olunca inecek."},
         )
 
-    _pdf_yolu, _ = _job.yollar(_anahtar)
+    _pdf_yolu, _ = _job.yollar(mo.id, _anahtar)
     pdf_bytes = _pdf_yolu.read_bytes()
     report = _d.get("rapor") or {}
 
@@ -1056,6 +1156,9 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
 
 # === BU BLOĞU molds.py'NİN EN SONUNA EKLE ===
 
+# ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
+# _pdf_gecersiz(mold_id) çağrılmalı, yoksa panel "hazır" gösterip eski
+# içerikli PDF indirilmiş gibi görünür (dosya sunulmaz ama durum yanıltır).
 @router.delete("/{mold_id}")
 def delete_mold(
     mold_id: uuid.UUID,
@@ -1072,6 +1175,7 @@ def delete_mold(
         raise HTTPException(404, "Kalıp bulunamadı")
 
     kalip_kodu, items_count = _delete_mold_inner(db, mold, user)
+    _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     return {"ok": True, "deleted_mold": kalip_kodu, "released_items": items_count}
 
@@ -1348,6 +1452,9 @@ class AssignSlotRequest(BaseModel):
     model: str | None = None
 
 
+# ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
+# _pdf_gecersiz(mold_id) çağrılmalı, yoksa panel "hazır" gösterip eski
+# içerikli PDF indirilmiş gibi görünür (dosya sunulmaz ama durum yanıltır).
 @router.post("/{mold_id}/slots/assign", response_model=None)
 def assign_slot(
     mold_id: uuid.UUID,
@@ -1523,6 +1630,7 @@ def assign_slot(
         note=f"Slot ataması: {body.kalip_kodu} · {design_code or '?'} · {model or '?'} · {src_label}",
     )
 
+    _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     return {"ok": True, "mold_id": str(mo.id), "slot_index": next_slot_index}
 

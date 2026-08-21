@@ -89,6 +89,7 @@ export default function MoldDetailPage() {
   }
 
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfDurum, setPdfDurum] = useState(null)   // {durum: hazir|hazirlaniyor|yok|hata}
   const doRename = async () => {
     const v = renameVal.trim()
     if (!v) return
@@ -128,12 +129,47 @@ export default function MoldDetailPage() {
     finally { setUndoBusy(null) }
   }
 
+  // PDF hazırlığı: üretim dakikalar sürebiliyor (karmaşık vektör, vektör
+  // KORUNUYOR). Baskıdan önce hazırlanır; kalıp değişirse sunucu hazır PDF'i
+  // siler ve durum "yok"a döner.
+  const durumSor = async () => {
+    try {
+      const r = await api.get(`/api/molds/pdf/durum?ids=${moldId}`)
+      setPdfDurum((r.items || {})[moldId] || { durum: 'yok' })
+    } catch { /* sessiz */ }
+  }
+  useEffect(() => { if (moldId) durumSor() }, [moldId])
+  useEffect(() => {
+    if (pdfDurum?.durum !== 'hazirlaniyor') return
+    const t = setInterval(durumSor, 5000)
+    return () => clearInterval(t)
+  }, [pdfDurum])
+
+  const hazirlaPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const r = await api.post('/api/molds/pdf/hazirla', { mold_ids: [moldId] })
+      const it = (r.items || [])[0] || {}
+      if (it.durum === 'hazir') toast.success("PDF zaten hazır — indirebilirsin")
+      else if (it.durum === 'hata') toast.error(it.mesaj || 'Hazırlanamadı')
+      else toast.info('PDF hazırlanıyor — birkaç dakika sürebilir')
+      durumSor()
+    } catch (e) { toast.error(e?.detail || 'Hazırlanamadı') }
+    finally { setPdfBusy(false) }
+  }
+
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
       const res = await fetch(`/api/molds/${moldId}/pdf`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
       })
+      if (res.status === 409) {
+        // Henüz hazır değil — üretim başladı, kullanıcı beklemesin
+        toast.info('PDF henüz hazır değil, hazırlanıyor. Hazır olunca tekrar indir.')
+        durumSor()
+        return
+      }
       if (!res.ok) {
         // Sunucu NEDEN üretmediğini yazıyor (eksik ölçü / tasarım yok vb.).
         // Eskiden gövde hiç okunmuyordu ve ekranda sadece "PDF üretilemedi" çıkıyordu.
@@ -142,7 +178,12 @@ export default function MoldDetailPage() {
         if (detay) { alert(detay); return }
         throw new Error(`PDF üretilemedi (HTTP ${res.status})`)
       }
+      const tip = res.headers.get('content-type') || ''
       const blob = await res.blob()
+      if (!tip.includes('pdf') || blob.size < 5000) {
+        toast.error(`Beklenen PDF gelmedi (tür ${tip || '?'}, ${blob.size} B)`)
+        return
+      }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -324,6 +365,14 @@ export default function MoldDetailPage() {
             <div className="card">
               <h2 className="text-sm font-medium text-gray-200 mb-3">İşlemler</h2>
               <div className="space-y-2">
+                <button onClick={hazirlaPdf}
+                  disabled={pdfBusy || pdfDurum?.durum === 'hazirlaniyor' || pdfDurum?.durum === 'hazir'}
+                  title="Baskıdan önce PDF'i hazırla — baskı sırasında beklemezsin"
+                  className="btn-secondary !text-sm disabled:opacity-50 whitespace-nowrap">
+                  {pdfDurum?.durum === 'hazir' ? '✓ PDF hazır'
+                    : pdfDurum?.durum === 'hazirlaniyor' ? `⏳ Hazırlanıyor… ${pdfDurum.gecen_sn || 0} sn`
+                    : '📄 PDF Hazırla'}
+                </button>
                 <button onClick={downloadPdf} disabled={pdfBusy}
                   className="btn-primary w-full !text-sm disabled:opacity-50">
                   {pdfBusy ? '⏳ Hazırlanıyor...' : '⬇ PDF İndir'}

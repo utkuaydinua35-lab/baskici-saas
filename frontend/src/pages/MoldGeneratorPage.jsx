@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
+import EmptyState from '../components/EmptyState'
 import SlotAssignDialog from '../components/SlotAssignDialog'
 import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
@@ -367,31 +368,11 @@ export default function MoldGeneratorPage() {
       )}
 
       {tab === 'existing' && (
-        <div className="space-y-3">
-          {molds.length === 0 ? (
-            <div className="card text-center py-12 text-gray-500">
-              <div className="text-3xl mb-2">🧩</div>
-              Henüz kalıp oluşturulmamış.
-            </div>
-          ) : (
-            <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
-              {[...molds].sort((a, b) => {
-                // Basilmamis (olusturuldu) ustte, basilmis (basildi) altta
-                const rank = s => (s === 'olusturuldu' ? 0 : s === 'basildi' ? 2 : 1)
-                const d = rank(a.status) - rank(b.status)
-                if (d !== 0) return d
-                return new Date(b.created_at || 0) - new Date(a.created_at || 0)
-              }).map(m => (
-                <MoldRow
-                  key={m.id}
-                  mold={m}
-                  onClick={() => navigate(`/kalip/${m.id}`)}
-                  onDelete={() => setDeleteTarget({ id: m.id, kod: m.kod })}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <ExistingMolds
+          molds={molds}
+          onOpen={(id) => navigate(`/kalip/${id}`)}
+          onDelete={(m) => setDeleteTarget({ id: m.id, kod: m.kod })}
+        />
       )}
 
       <DeleteMoldDialog
@@ -411,6 +392,142 @@ export default function MoldGeneratorPage() {
         onAssigned={() => { setAssignTarget(null); loadExisting(); loadPlan() }}
       />
     </div>
+  )
+}
+
+
+// Oluşturulan kalıplar: bekleyen / basılmış ayrımı + toplu "PDF Hazırla".
+//
+// PDF üretimi karmaşık vektör tasarımlarda dakikalar sürüyor ve vektör
+// KORUNUYOR (rasterleştirme kalite kaybı yapardı). Bu yüzden baskıdan ÖNCE
+// hazırlanır; baskı sırasında beklenmez. Kalıp değişirse sunucu hazır PDF'i
+// siler ve durum "yok"a döner — o kalıp yeniden hazırlanmalıdır.
+function ExistingMolds({ molds, onOpen, onDelete }) {
+  const toast = useToast()
+  const [secili, setSecili] = useState(() => new Set())
+  const [durumlar, setDurumlar] = useState({})   // {mold_id: {durum}}
+  const [busy, setBusy] = useState(false)
+
+  const bekleyen = useMemo(
+    () => molds.filter(m => m.status !== 'basildi')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [molds])
+  const basilmis = useMemo(
+    () => molds.filter(m => m.status === 'basildi')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)), [molds])
+
+  const durumSor = async (ids) => {
+    if (!ids.length) return
+    try {
+      const r = await api.get(`/api/molds/pdf/durum?ids=${ids.join(',')}`)
+      setDurumlar(d => ({ ...d, ...(r.items || {}) }))
+    } catch { /* sessiz */ }
+  }
+  useEffect(() => { durumSor(bekleyen.map(m => m.id)) }, [molds])
+
+  // Hazırlanan varsa periyodik sor — hazır olunca rozet kendiliğinden değişsin
+  useEffect(() => {
+    const suren = Object.entries(durumlar)
+      .filter(([, v]) => v?.durum === 'hazirlaniyor').map(([k]) => k)
+    if (!suren.length) return
+    const t = setInterval(() => durumSor(suren), 5000)
+    return () => clearInterval(t)
+  }, [durumlar])
+
+  const hazirla = async (ids) => {
+    if (!ids.length) { toast.info('Önce kalıp seç'); return }
+    setBusy(true)
+    try {
+      const r = await api.post('/api/molds/pdf/hazirla', { mold_ids: ids })
+      const n = r.kuyruga_alinan || 0
+      const hazir = (r.items || []).filter(x => x.durum === 'hazir').length
+      const hata = (r.items || []).filter(x => x.durum === 'hata')
+      toast.success(
+        n ? `${n} kalıp hazırlanıyor${hazir ? ` · ${hazir} zaten hazırdı` : ''}`
+          : (hazir ? `${hazir} kalıbın PDF'i zaten hazır` : 'İşlem yapılmadı'))
+      if (hata.length) toast.error(`${hata.length} kalıpta sorun: ${hata[0].mesaj || ''}`)
+      setSecili(new Set())
+      durumSor(ids)
+    } catch (e) { toast.error(e?.detail || 'Hazırlanamadı') }
+    finally { setBusy(false) }
+  }
+
+  const sec = (id) => setSecili(s => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+
+  if (!molds.length) {
+    return (
+      <div className="card !p-0">
+        <EmptyState ikon="🧩" baslik="Henüz kalıp oluşturulmamış"
+          aciklama="Bekleyen siparişlerden kalıp üretmek için Kalıp Oluşturucu sekmesini kullan." />
+      </div>
+    )
+  }
+
+  const Liste = ({ baslik, veri, secilebilir }) => (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="text-sm font-medium text-gray-200">
+          {baslik} <span className="text-gray-500">({veri.length})</span>
+        </div>
+        {secilebilir && veri.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSecili(new Set(veri.map(m => m.id)))}
+                    className="text-[11px] text-gray-400 hover:text-gray-200 underline">tümünü seç</button>
+            {secili.size > 0 && (
+              <button onClick={() => setSecili(new Set())}
+                      className="text-[11px] text-gray-500 hover:text-gray-300 underline">temizle</button>
+            )}
+            <button onClick={() => hazirla(secili.size ? [...secili] : veri.map(m => m.id))}
+                    disabled={busy} className="btn-primary !text-xs disabled:opacity-50">
+              {busy ? '…' : secili.size ? `📄 ${secili.size} kalıbın PDF'ini hazırla` : "📄 Tümünün PDF'ini hazırla"}
+            </button>
+          </div>
+        )}
+      </div>
+      {veri.length === 0 ? (
+        <div className="card !p-0"><EmptyState dar ikon="—" baslik={`${baslik} yok`} /></div>
+      ) : (
+        <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
+          {veri.map(m => (
+            <div key={m.id} className="flex items-center gap-2 pl-3">
+              {secilebilir && (
+                <input type="checkbox" checked={secili.has(m.id)} onChange={() => sec(m.id)}
+                       onClick={e => e.stopPropagation()} className="w-4 h-4 accent-accent shrink-0" />
+              )}
+              <PdfRozet d={durumlar[m.id]} />
+              <div className="flex-1 min-w-0">
+                <MoldRow mold={m} onClick={() => onOpen(m.id)} onDelete={() => onDelete(m)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div>
+      <Liste baslik="⏳ Bekleyen Kalıplar" veri={bekleyen} secilebilir />
+      <Liste baslik="✓ Basılmış Kalıplar" veri={basilmis} secilebilir={false} />
+    </div>
+  )
+}
+
+function PdfRozet({ d }) {
+  const t = d?.durum
+  const map = {
+    hazir:        { m: 'PDF hazır',    c: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
+    hazirlaniyor: { m: 'hazırlanıyor', c: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
+    hata:         { m: 'hata',         c: 'text-red-300 bg-red-500/10 border-red-500/30' },
+  }
+  const v = map[t]
+  if (!v) return <span className="text-[10px] text-gray-600 w-[76px] shrink-0">PDF yok</span>
+  return (
+    <span title={d?.mesaj || (t === 'hazirlaniyor' ? `${d?.gecen_sn || 0} sn` : '')}
+          className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 w-[76px] text-center ${v.c}`}>
+      {v.m}
+    </span>
   )
 }
 

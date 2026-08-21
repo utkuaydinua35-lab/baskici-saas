@@ -65,14 +65,35 @@ def anahtar_uret(mold, slot_items: list[dict], template: dict) -> str:
     return h.hexdigest()[:32]
 
 
-def yollar(anahtar: str) -> tuple[Path, Path]:
+def yollar(mold_id, anahtar: str) -> tuple[Path, Path]:
+    """Dosya adı kalıp kimliğiyle başlar — bir kalıbın TÜM hazır PDF'leri
+    (eski anahtarlar dahil) tek desenle bulunup silinebilsin."""
     d = _dizin()
-    return d / f"{anahtar}.pdf", d / f"{anahtar}.json"
+    return d / f"{mold_id}_{anahtar}.pdf", d / f"{mold_id}_{anahtar}.json"
 
 
-def durum(anahtar: str) -> dict:
+def gecersiz_kil(mold_id) -> int:
+    """Kalıbın hazırlanmış PDF'lerini sil. Kalıp DEĞİŞTİĞİNDE çağrılır.
+
+    Anahtar içerikten türediği için bayat bir PDF zaten SUNULMAZ; bu silme
+    diski temiz tutmak ve panelde "PDF yok" durumunun görünmesi için.
+    """
+    n = 0
+    for p in _dizin().glob(f"{mold_id}_*"):
+        try:
+            p.unlink()
+            n += 1
+        except OSError:
+            pass
+    with _kilit:
+        for k in [k for k, v in _isler.items() if v.get("mold_id") == str(mold_id)]:
+            _isler.pop(k, None)
+    return n
+
+
+def durum(mold_id, anahtar: str) -> dict:
     """{durum: hazir|hazirlaniyor|hata|yok, ...}"""
-    pdf, meta = yollar(anahtar)
+    pdf, meta = yollar(mold_id, anahtar)
     if pdf.exists():
         try:
             rapor = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else {}
@@ -90,9 +111,9 @@ def durum(anahtar: str) -> dict:
     return {"durum": "yok"}
 
 
-def _uret(anahtar: str, slot_items: list[dict], template: dict) -> None:
+def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None:
     from app.services import mold_pdf
-    pdf, meta = yollar(anahtar)
+    pdf, meta = yollar(mold_id, anahtar)
     try:
         veri, rapor = mold_pdf.render_mold_pdf(slot_items, template=template)
         # Atomik yazım: yarım dosya indirilmesin
@@ -110,14 +131,16 @@ def _uret(anahtar: str, slot_items: list[dict], template: dict) -> None:
                                "mesaj": str(e)[:200]}
 
 
-def baslat(arka_plan, anahtar: str, slot_items: list[dict], template: dict) -> bool:
+def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
+           template: dict) -> bool:
     """Üretimi arka planda başlat. Zaten çalışıyorsa False."""
     with _kilit:
         i = _isler.get(anahtar)
         if i and i["durum"] == "hazirlaniyor" and time.time() - i["baslangic"] < ZAMAN_ASIMI:
             return False
-        _isler[anahtar] = {"durum": "hazirlaniyor", "baslangic": time.time()}
-    arka_plan.add_task(_uret, anahtar, slot_items, template)
+        _isler[anahtar] = {"durum": "hazirlaniyor", "baslangic": time.time(),
+                           "mold_id": str(mold_id)}
+    arka_plan.add_task(_uret, mold_id, anahtar, slot_items, template)
     return True
 
 

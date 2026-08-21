@@ -425,6 +425,9 @@ def create_design(
     # PDF thumbnail'i arka planda uret (yukleme bekletmesin)
     if file_info["format"] == "pdf":
         background_tasks.add_task(storage.generate_design_thumbnail, user.tenant_id, design.id)
+        # Kalip slot rasteri de simdi uretilsin — kalip PDF'i beklemesin.
+        from app.services import mold_pdf as _mp
+        background_tasks.add_task(_mp.onbellek_hazirla, design.file_path)
 
     return _serialize(design)
 
@@ -527,6 +530,8 @@ def update_design(
         if design.file_format == "pdf":
             background_tasks.add_task(storage.generate_design_thumbnail,
                                       user.tenant_id, design.id)
+            from app.services import mold_pdf as _mp
+            background_tasks.add_task(_mp.onbellek_hazirla, design.file_path)
 
     return _serialize(design)
 

@@ -98,6 +98,82 @@ RASTER_ESIK_MB = float(os.environ.get("MOLD_PDF_RASTER_MB", "3"))
 RASTER_ZORUNLU_MB = float(os.environ.get("MOLD_PDF_RASTER_ZORUNLU_MB", "20"))
 
 
+def _raster_onbellek_yolu(src_path: Path, uzanti: str) -> Path:
+    """Tasarım rasterinin önbellek yolu — kaynak dosyanın kimliğine bağlı.
+
+    Anahtar dosya adı + boyut + mtime: tasarım DEĞİŞİRSE anahtar da değişir,
+    bayat raster kullanılmaz.
+    """
+    st = src_path.stat()
+    ad = f"{src_path.stem}_{st.st_size}_{int(st.st_mtime)}.{uzanti}"
+    return STORAGE_ROOT / "cache" / "tasarim_raster" / ad
+
+
+def _tasarim_rasteri(src_path: Path) -> Path | None:
+    """Tasarımın baskı çözünürlüğündeki rasteri — BİR KEZ üretilir, diske yazılır.
+
+    Neden: bu tasarımlar patolojik derecede karmaşık vektörler (ölçümde slot
+    başına 6-19 sn). Maliyet show_pdf_page'e değil, yolların ÇİZİLMESİNE ait —
+    get_pixmap de aynı işi yapıyor, o yüzden rasterleştirme tek başına
+    yetmedi (378 sn -> 219 sn). Aynı tasarım birden çok slotta ve birden çok
+    kalıpta geçtiği için bedeli bir kez ödemek doğru çözüm: ilk üretimden
+    sonra her kalıp bu rasteri saniyenin altında gömer.
+    """
+    try:
+        from PIL import Image
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        for uz in ("jpg", "png"):
+            hazir = _raster_onbellek_yolu(src_path, uz)
+            if hazir.exists():
+                return hazir
+
+        src = fitz.open(str(src_path))
+        try:
+            if src.page_count == 0:
+                return None
+            sayfa = src[0]
+            # Tasarımın KENDİ fiziksel ölçüsünde 300 DPI — slottan bağımsız,
+            # böylece tek raster tüm slot ölçülerine yeter.
+            olcek = BASKI_DPI / 72.0
+            pix = sayfa.get_pixmap(matrix=fitz.Matrix(olcek, olcek), alpha=True)
+            im = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+        finally:
+            src.close()
+
+        saydam = im.getchannel("A").getextrema()[0] != 255
+        uz = "png" if saydam else "jpg"
+        hedef = _raster_onbellek_yolu(src_path, uz)
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        gecici = hedef.with_suffix(hedef.suffix + ".tmp")
+        if saydam:
+            im.save(gecici, format="PNG", optimize=True)
+        else:
+            im.convert("RGB").save(gecici, format="JPEG", quality=92, optimize=True)
+        gecici.replace(hedef)      # atomik: yarim dosya okunmasin
+        return hedef
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def onbellek_hazirla(rel_path: str) -> bool:
+    """Tasarımın slot rasterini ÖNCEDEN üret (yükleme sonrası arka plan işi).
+
+    Kalıp üretimi sırasında ödenen 6-19 sn'lik çizim maliyeti böylece yüklemeye
+    kayar; kalıp PDF'i her zaman hazır rasteri gömer.
+    """
+    try:
+        p = _abs_path(rel_path)
+        if not p.exists() or p.suffix.lower() != ".pdf":
+            return False
+        if p.stat().st_size / 1024 / 1024 <= RASTER_ESIK_MB:
+            return False        # küçük vektör zaten hızlı, raster'a çevrilmiyor
+        return _tasarim_rasteri(p) is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _gomulu_gorsel_var(src_path) -> bool:
     """Sayfada gomulu raster gorsel var mi. Acma maliyeti olcumde 0.00 sn."""
     try:
@@ -186,16 +262,16 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
     # Yani maliyeti dosya boyutu degil, yol karmasikligi belirliyor. Gomulu
     # gorseli olan PDF vektor yolda kalir; cok buyukse (>ZORUNLU_MB) yine
     # rasterlestirilir, o boyut butun halinde kopyalanmamali.
-    _pix = None
+    _raster = None
     try:
         _mb = src_path.stat().st_size / 1024 / 1024
         if _mb > RASTER_ESIK_MB:
             if _mb > RASTER_ZORUNLU_MB or not _gomulu_gorsel_var(src_path):
-                _pix = _raster_sayfa(src_path, w_pt, h_pt)
+                _raster = _tasarim_rasteri(src_path)
     except OSError:
-        _pix = None
-    if _pix is not None:
-        pg.insert_image(pg.rect, stream=_pix)
+        _raster = None
+    if _raster is not None:
+        pg.insert_image(pg.rect, filename=str(_raster), keep_proportion=False)
         return _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius)
 
     src = fitz.open(str(src_path))

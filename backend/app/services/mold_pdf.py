@@ -88,18 +88,70 @@ def _placement_rect(box, model, spec=None):
     return rect, r_pt
 
 
-def _make_clipped_design(src_path, w_pt, h_pt, radius):
-    """Tasarımı w×h tek sayfaya koy, yuvarlak köşe VEKTÖR clip uygula, KALICI
-    hale getir (tobytes). Dönüş: pdf bytes. Köşe payı şeffaf, pürüzsüz."""
-    tmp = fitz.open()
-    pg = tmp.new_page(width=w_pt, height=h_pt)
-    src = fitz.open(str(src_path))
-    # keep_proportion=False: tasarım rect'i tam doldurur, alt/üst boşluk olmaz
-    # (oran sapması olsa bile clip alanını tam kaplar). Aksi halde yuvarlak clip'imiz
-    # dış katmanda kalır, tasarım iç katmanda kayıp, "alt birden bitiyor" hatası olur.
-    pg.show_pdf_page(pg.rect, src, 0, keep_proportion=False)
-    src.close()
+# Bu boyutun ustundeki PDF kaynaklar VEKTOR kopyalanmak yerine baski
+# cozunurlugunde raster'a cevrilir. Olcum: 6-72 MB'lik saf vektor tasarimlarda
+# show_pdf_page slot basina 5-82 sn suruyor (22 slotluk kalip 378 sn -> 524).
+# Ayni boyutta ama icinde gomulu GORSEL olan PDF 0.09 sn. 7.9x17 cm alanda
+# 300 DPI ustundeki vektor detayi zaten kagida cikmiyor.
+RASTER_ESIK_MB = float(os.environ.get("MOLD_PDF_RASTER_MB", "3"))
+# Bu boyutun ustunde gomulu gorsel olsa DA rasterlestirilir.
+RASTER_ZORUNLU_MB = float(os.environ.get("MOLD_PDF_RASTER_ZORUNLU_MB", "20"))
 
+
+def _gomulu_gorsel_var(src_path) -> bool:
+    """Sayfada gomulu raster gorsel var mi. Acma maliyeti olcumde 0.00 sn."""
+    try:
+        src = fitz.open(str(src_path))
+        try:
+            return bool(src.page_count and src[0].get_images(full=False))
+        finally:
+            src.close()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _raster_sayfa(src_path, w_pt, h_pt) -> bytes | None:
+    """Agir PDF'i hedef olcude raster'a cevir. Sikistirilmis bytes ya da None.
+
+    Pixmap'i dogrudan gommek KAYIPSIZ (PNG) oluyor ve slot basina ~2 MB
+    uretiyordu. Tamamen opak sayfalar JPEG'e, saydamlik tasiyanlar PNG'ye
+    yazilir — saydam tasarimlarin zemini beyaza donmesin.
+    """
+    try:
+        from PIL import Image
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        src = fitz.open(str(src_path))
+        try:
+            if src.page_count == 0:
+                return None
+            sayfa = src[0]
+            hedef_w = max(1, int(round(w_pt / 72.0 * BASKI_DPI)))
+            hedef_h = max(1, int(round(h_pt / 72.0 * BASKI_DPI)))
+            # keep_proportion=False ile ayni davranis: tam hedefe esnet
+            m = fitz.Matrix(hedef_w / sayfa.rect.width, hedef_h / sayfa.rect.height)
+            pix = sayfa.get_pixmap(matrix=m, alpha=True)
+            im = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
+        finally:
+            src.close()
+        buf = io.BytesIO()
+        alfa = im.getchannel("A")
+        if alfa.getextrema()[0] == 255:          # hicbir yeri saydam degil
+            im.convert("RGB").save(buf, format="JPEG", quality=92, optimize=True)
+        else:
+            im.save(buf, format="PNG", optimize=True)
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001
+        return None      # rasterlestiremezsek vektor yola dusulur
+
+
+def _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius):
+    """Yuvarlak köşe VEKTÖR clip'i uygula + kalıcı hale getir. Dönüş: pdf bytes.
+
+    Vektör ve raster yol AYNI yuvarlatmayı kullansın diye ayrıldı; iki yerde
+    kopya durursa biri düzeltilip diğeri unutulur.
+    """
     if radius > 0:
         rr = min(radius, w_pt / 2, h_pt / 2)
         k = 0.5523 * rr  # bezier kappa = matematiksel çeyrek daire
@@ -122,6 +174,38 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
     out = tmp.tobytes(garbage=4, deflate=True)  # clip KALICI
     tmp.close()
     return out
+
+
+def _make_clipped_design(src_path, w_pt, h_pt, radius):
+    """Tasarımı w×h tek sayfaya koy, yuvarlak köşe VEKTÖR clip uygula, KALICI
+    hale getir (tobytes). Dönüş: pdf bytes. Köşe payı şeffaf, pürüzsüz."""
+    tmp = fitz.open()
+    pg = tmp.new_page(width=w_pt, height=h_pt)
+    # Rasterlestirme karari OLCUME dayaniyor: yavas kaynaklarin hepsi SAF VEKTOR
+    # (13 MB -> 18 sn), hizli olanin icinde gomulu gorsel vardi (10 MB -> 0.09 sn).
+    # Yani maliyeti dosya boyutu degil, yol karmasikligi belirliyor. Gomulu
+    # gorseli olan PDF vektor yolda kalir; cok buyukse (>ZORUNLU_MB) yine
+    # rasterlestirilir, o boyut butun halinde kopyalanmamali.
+    _pix = None
+    try:
+        _mb = src_path.stat().st_size / 1024 / 1024
+        if _mb > RASTER_ESIK_MB:
+            if _mb > RASTER_ZORUNLU_MB or not _gomulu_gorsel_var(src_path):
+                _pix = _raster_sayfa(src_path, w_pt, h_pt)
+    except OSError:
+        _pix = None
+    if _pix is not None:
+        pg.insert_image(pg.rect, stream=_pix)
+        return _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius)
+
+    src = fitz.open(str(src_path))
+    # keep_proportion=False: tasarım rect'i tam doldurur, alt/üst boşluk olmaz
+    # (oran sapması olsa bile clip alanını tam kaplar). Aksi halde yuvarlak clip'imiz
+    # dış katmanda kalır, tasarım iç katmanda kayıp, "alt birden bitiyor" hatası olur.
+    pg.show_pdf_page(pg.rect, src, 0, keep_proportion=False)
+    src.close()
+
+    return _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius)
 
 
 # Baski cozunurlugu. Slotun fiziksel olcusu bunu belirler; uzerindeki her piksel

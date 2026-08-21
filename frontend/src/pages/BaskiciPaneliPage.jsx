@@ -373,7 +373,8 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
       while (true) {
         const res = await istek()
 
-        if (res.status === 202) {
+        // 409 = henüz hazır değil (bilerek 4xx: 2xx olsaydı gövde dosya sanılırdı)
+        if (res.status === 409) {
           const gecen = Math.round((Date.now() - basla) / 1000)
           setPdfDurum(`hazırlanıyor… ${gecen} sn`)
           if (Date.now() - basla > AZAMI_MS) {
@@ -391,7 +392,13 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
           return
         }
 
+        // Gelenin gerçekten PDF olduğunu doğrula — aksi halde bozuk dosya iner
+        const tip = res.headers.get('content-type') || ''
         const blob = await res.blob()
+        if (!tip.includes('pdf') || blob.size < 5000) {
+          alert(`Beklenen PDF gelmedi (tür: ${tip || 'bilinmiyor'}, boyut: ${blob.size} B). Sayfayı yenileyip tekrar dene.`)
+          return
+        }
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url; a.download = `kalip_${mold.kod || mold.id}.pdf`

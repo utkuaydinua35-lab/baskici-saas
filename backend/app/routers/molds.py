@@ -957,11 +957,17 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
         raise HTTPException(500, f"PDF üretilemedi: {_d.get('mesaj')}")
     if _d["durum"] != "hazir":
         _yeni = _job.baslat(arka_plan, _anahtar, slot_items, template_data)
+        # 202 DEGIL 409: 202 bir BASARI kodu oldugu icin res.ok kontrolu yapan
+        # istemciler (ve onbellekte kalmis eski panel) JSON govdesini PDF sanip
+        # 1 KB'lik bozuk dosya indiriyordu. 4xx ile hatali durumda dosya inmez,
+        # kullanici mesaji gorur.
         return JSONResponse(
-            status_code=202,
+            status_code=409,
             content={"durum": "hazirlaniyor", "anahtar": _anahtar,
                      "yeni_baslatildi": _yeni,
-                     "mesaj": "PDF hazırlanıyor — bu kalıp için bir kaç dakika sürebilir."},
+                     "gecen_sn": _d.get("gecen_sn", 0),
+                     "detail": "PDF hazırlanıyor — bu kalıp için birkaç dakika sürebilir. "
+                               "Sayfayı kapatma, hazır olunca inecek."},
         )
 
     _pdf_yolu, _ = _job.yollar(_anahtar)

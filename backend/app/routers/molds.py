@@ -366,12 +366,14 @@ def _replan_mold_item(db: Session, tenant_id, mi, *, cancel: bool = False) -> bo
     işareti konur. Eskiden kalem bazında is_hazir=True yazılıyordu ve tek yarıyı
     çıkarmak DİĞER yarıyı da "üretildi" sayıyordu (eksik sipariş riski)."""
     def _apply(li):
-        # Çıkarılan slot 2. kılıf mı? (2. tasarıma eşleşiyor ve 1. tasarımdan farklı)
-        _slot2 = (
-            mi.design_id is not None
-            and getattr(li, "assigned_design_id_2", None) == mi.design_id
-            and getattr(li, "assigned_design_id", None) != mi.design_id
-        )
+        # Çıkarılan slot 2. kılıf mı? Tasarım id'leri TEK KAYNAKTAN çözülür:
+        # normal couple'da kalemin alanları boştur, tasarımlar üründe durur.
+        # (Eskiden yalnız kaleme bakılıyordu; normal couple'da _slot2 HİÇ True
+        # olmuyor ve 2. yarı çıkarılınca 1. yarı hazır işaretlenip hiç
+        # basılmıyordu.)
+        _d1, _d2 = mold_planner.couple_tasarim_idleri(db, li)
+        _mid = str(mi.design_id) if mi.design_id is not None else None
+        _slot2 = (_mid is not None and _d2 == _mid and _d1 != _mid)
         if cancel:
             # kalıcı hariç: planlayıcı atlar, 'kayıp tara' dokunmaz
             if _slot2:

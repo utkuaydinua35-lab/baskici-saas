@@ -576,7 +576,25 @@ def _couple_ids(db, tenant_id) -> set:
     }
 
 
-def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot) -> bool | None:
+def _couple_tasarimlari(db, tenant_id) -> dict:
+    """{product_id: (design_id_1, design_id_2)} — couple ürünün SABİT tasarımları.
+
+    Kişiye özel OLMAYAN couple'da kalemin assigned_design_id alanları BOŞTUR;
+    tasarımlar üründe tanımlıdır. Yalnız kaleme bakmak, kalıp eşleşmesinin hiç
+    tutmamasına ve her iki yarının da "kalıba girmedi" görünmesine yol açıyordu.
+    """
+    out = {}
+    for pid, d1, d2 in db.execute(
+        select(CoupleProduct.product_id, CoupleProduct.design_id_1, CoupleProduct.design_id_2)
+        .join(Store, Store.id == CoupleProduct.store_id)
+        .where(Store.tenant_id == tenant_id, CoupleProduct.product_id.isnot(None))
+    ).all():
+        out[str(pid)] = (str(d1) if d1 else None, str(d2) if d2 else None)
+    return out
+
+
+def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
+                    couple_designs=None) -> bool | None:
     """Tek kalem üretildi mi. None = aksesuar (kalıp gerekmez, sayıma girmez).
 
     _order_ready ve _eksigi_var AYNI kuralı kullanmalı; kopyalanırsa biri
@@ -590,13 +608,20 @@ def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot) -> boo
     if _couple:
         # ÇİFT KILIF: bir kalem = 2 ayrı kılıf, her yarı AYRI değerlendirilir.
         # Bir yarı ya elle hazır işaretli ya da kendi kalıbı basılmış olmalı.
+        #
+        # Tasarım kaynağı İKİ TÜRLÜ: kişiye özel couple'da kalemin kendi
+        # atamaları, normal couple'da ürüne bağlı sabit tasarımlar. Yalnız
+        # kaleme bakmak normal couple'da hep boş dönüyordu.
+        _cp = (couple_designs or {}).get(str(li.product_id), (None, None))
+        _did1 = str(li.assigned_design_id) if li.assigned_design_id else _cp[0]
+        _did2 = str(li.assigned_design_id_2) if li.assigned_design_id_2 else _cp[1]
         for _manual, _did in (
-            (getattr(li, "is_hazir", False), li.assigned_design_id),
-            (getattr(li, "is_hazir_2", False), li.assigned_design_id_2),
+            (getattr(li, "is_hazir", False), _did1),
+            (getattr(li, "is_hazir_2", False), _did2),
         ):
             if _manual:
                 continue
-            _ms = by_slot.get((str(li.id), str(_did) if _did else None))
+            _ms = by_slot.get((str(li.id), _did if _did else None))
             if not _ms or len(_ms) < _qty0 or not all(_ms):
                 return False
         return True
@@ -615,7 +640,8 @@ def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot) -> boo
     return True
 
 
-def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
+def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None,
+                 couple_designs=None) -> bool:
     """Siparişin TÜM ürünleri 'üretildi' mi: ya basılı kalıpta, ya Hazır, ya aksesuar."""
     couple_ids = couple_ids or set()
     by_slot = by_slot or {}
@@ -623,13 +649,14 @@ def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) ->
     has_item = False
     for li in (order.line_items or []):
         has_item = True
-        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot)
+        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot, couple_designs)
         if d is False:
             return False
     return has_item
 
 
-def _eksigi_var(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> bool:
+def _eksigi_var(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None,
+                couple_designs=None) -> bool:
     """EN AZ BİR ürünü hazır ama HEPSİ değil — yani kargoya verilemez ama
     hazırlanan kılıflar kenara ayrılmalı.
 
@@ -641,7 +668,7 @@ def _eksigi_var(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None) -> 
     onum = str(order.order_number) if order.order_number is not None else None
     hazir = eksik = 0
     for li in (order.line_items or []):
-        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot)
+        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot, couple_designs)
         if d is None:
             continue
         if d:
@@ -717,19 +744,23 @@ def packaging_queue(
     by_li = by_om = by_slot = None
     acc_ids: set = set()
     couple_ids: set = set()
+    couple_designs: dict = {}
     if ready_only or eksigi_olanlar:
         by_li, by_om, by_slot = _printed_maps(db, user.tenant_id)
         acc_ids = _accessory_ids(db, user.tenant_id)
         couple_ids = _couple_ids(db, user.tenant_id)
+        couple_designs = _couple_tasarimlari(db, user.tenant_id)
 
     _dealer = (dealer_id or "").strip()
 
     def _passes(o):
         if _dealer and str((o.raw or {}).get("dealer_id") or "") != _dealer:
             return False
-        if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids, by_slot):
+        if ready_only and not _order_ready(o, by_li, by_om, acc_ids, couple_ids,
+                                           by_slot, couple_designs):
             return False
-        if eksigi_olanlar and not _eksigi_var(o, by_li, by_om, acc_ids, couple_ids, by_slot):
+        if eksigi_olanlar and not _eksigi_var(o, by_li, by_om, acc_ids, couple_ids,
+                                              by_slot, couple_designs):
             return False
         return True
 

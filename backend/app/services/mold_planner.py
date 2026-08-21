@@ -235,6 +235,31 @@ def extract_couple_models(line_item: LineItem) -> tuple[str | None, str | None]:
     return model1, model2
 
 
+def couple_tasarim_idleri(db, line_item) -> tuple:
+    """Couple kalemin İKİ tasarım id'si — TEK KAYNAK.
+
+    Tasarım İKİ yerden gelebiliyor:
+      • kişiye özel couple  -> kalemin assigned_design_id / _2 alanları
+      • normal couple       -> ürüne bağlı CoupleProduct.design_id_1 / _2
+    Yalnız kaleme bakmak normal couple'da hep BOŞ dönüyor ve "hangi yarı"
+    sorusu yanlış cevaplanıyordu: paketlemede kalem hiç üretilmemiş sayılıyor,
+    kalıptan yarı çıkarılırken YANLIŞ yarı hazır işaretleniyordu.
+
+    Dönüş: (design_id_1, design_id_2) — str ya da None.
+    """
+    d1 = getattr(line_item, "assigned_design_id", None)
+    d2 = getattr(line_item, "assigned_design_id_2", None)
+    if (d1 is None or d2 is None) and getattr(line_item, "product_id", None) and db is not None:
+        cp = db.scalar(select(CoupleProduct).where(
+            CoupleProduct.product_id == str(line_item.product_id)))
+        if cp is not None:
+            if d1 is None:
+                d1 = cp.design_id_1
+            if d2 is None:
+                d2 = cp.design_id_2
+    return (str(d1) if d1 else None, str(d2) if d2 else None)
+
+
 def couple_modelleri(line_item: LineItem) -> tuple[str, str]:
     """Couple kalemin IKI telefon modeli — elle girilen override'lar uygulanmis.
 

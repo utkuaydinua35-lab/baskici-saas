@@ -148,6 +148,23 @@ def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
     return True
 
 
+def kuyruk() -> list[dict]:
+    """Şu an üretimi süren işler. Panel bunu sorar — hangi kalıpları soracağını
+    bilmesi gerekmez, sunucu ne çalışıyorsa onu söyler."""
+    simdi = time.time()
+    out = []
+    with _kilit:
+        for anahtar, i in list(_isler.items()):
+            if i.get("durum") != "hazirlaniyor":
+                continue
+            if simdi - i["baslangic"] >= ZAMAN_ASIMI:
+                continue
+            out.append({"mold_id": i.get("mold_id"), "anahtar": anahtar,
+                        "gecen_sn": int(simdi - i["baslangic"])})
+    out.sort(key=lambda x: -x["gecen_sn"])
+    return out
+
+
 def temizle(gun: int = 7) -> int:
     """Eski önbellek dosyalarını sil. Dönüş: silinen dosya sayısı."""
     d = _dizin()

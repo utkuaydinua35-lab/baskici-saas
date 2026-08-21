@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
+import PdfHazirlikPaneli from '../components/PdfHazirlikPaneli'
 import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
@@ -581,6 +582,7 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings }) {
         )
       })}
     </div>
+    <PdfHazirlikPaneli />
     </div>
   )
 }

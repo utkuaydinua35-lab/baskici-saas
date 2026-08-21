@@ -1010,6 +1010,28 @@ def pdf_hazirla(body: PdfHazirlaIn, arka_plan: BackgroundTasks,
             "kuyruga_alinan": sum(1 for x in sonuc if x["durum"] == "hazirlaniyor")}
 
 
+@router.get("/pdf/kuyruk", response_model=dict)
+def pdf_kuyruk(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Şu an PDF'i üretilen kalıplar. Panel ilerleme kutusunu bununla besler."""
+    from app.services import mold_pdf_job as _job
+    isler = _job.kuyruk()
+    if not isler:
+        return {"items": []}
+    _ids = {i["mold_id"] for i in isler if i.get("mold_id")}
+    kodlar = {}
+    for mid in _ids:
+        try:
+            mo = db.scalar(select(Mold).where(Mold.id == uuid.UUID(mid),
+                                              Mold.tenant_id == user.tenant_id))
+            if mo:
+                kodlar[mid] = mo.kod
+        except (ValueError, AttributeError):
+            continue
+    # Baska kiraciya ait isler sizmasin
+    return {"items": [{**i, "kod": kodlar.get(i["mold_id"])}
+                      for i in isler if i.get("mold_id") in kodlar]}
+
+
 @router.get("/pdf/durum", response_model=dict)
 def pdf_durum(ids: str = Query("", description="virgülle ayrılmış mold id"),
               user: User = Depends(get_current_user), db: Session = Depends(get_db)):

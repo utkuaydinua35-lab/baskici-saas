@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast'
 import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import EmptyState from '../components/EmptyState'
+import PdfHazirlikPaneli from '../components/PdfHazirlikPaneli'
 import SlotAssignDialog from '../components/SlotAssignDialog'
 import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
@@ -514,65 +515,12 @@ function ExistingMolds({ molds, onOpen, onDelete }) {
     </div>
   )
 
-  const kodOf = (id) => molds.find(m => m.id === id)?.kod || id.slice(0, 6)
-  const surenler = Object.entries(durumlar).filter(([, v]) => v?.durum === 'hazirlaniyor')
-  const hazirSayi = Object.values(durumlar).filter(v => v?.durum === 'hazir').length
-
   return (
     <div>
       <Liste baslik="⏳ Bekleyen Kalıplar" veri={bekleyen} secilebilir />
       <Liste baslik="✓ Basılmış Kalıplar" veri={basilmis} secilebilir={false} />
-      <HazirlikPaneli surenler={surenler} hazirSayi={hazirSayi} kodOf={kodOf} />
+      <PdfHazirlikPaneli />
     </div>
-  )
-}
-
-// Sağ altta sabit ilerleme paneli — üretim dakikalar sürdüğü için "çalışıyor mu?"
-// sorusu ekranda cevaplanmalı. Hazırlanan kalmadığında kendiliğinden kaybolur.
-function HazirlikPaneli({ surenler, hazirSayi, kodOf }) {
-  if (!surenler.length) return null
-  const sure = (sn) => sn >= 60 ? `${Math.floor(sn / 60)} dk ${sn % 60} sn` : `${sn} sn`
-  return (
-    <div className="fixed bottom-4 right-4 z-[120] w-72 card !p-3 shadow-2xl border-accent/30">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-200">
-          📄 PDF hazırlanıyor ({surenler.length})
-        </span>
-        {hazirSayi > 0 && (
-          <span className="text-[10px] text-emerald-300">{hazirSayi} hazır</span>
-        )}
-      </div>
-      <div className="space-y-1.5 max-h-48 overflow-y-auto">
-        {surenler.map(([id, v]) => (
-          <div key={id} className="flex items-center gap-2 text-[11px]">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-            <span className="font-mono text-gray-300 truncate flex-1">{kodOf(id)}</span>
-            <span className="text-gray-500 tabular-nums shrink-0">{sure(v.gecen_sn || 0)}</span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-gray-500 mt-2 leading-snug">
-        Sıra ile üretiliyor · kalıp başına birkaç dakika. Sayfadan ayrılabilirsin,
-        üretim sunucuda sürer.
-      </p>
-    </div>
-  )
-}
-
-function PdfRozet({ d }) {
-  const t = d?.durum
-  const map = {
-    hazir:        { m: 'PDF hazır',    c: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
-    hazirlaniyor: { m: 'hazırlanıyor', c: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
-    hata:         { m: 'hata',         c: 'text-red-300 bg-red-500/10 border-red-500/30' },
-  }
-  const v = map[t]
-  if (!v) return <span className="text-[10px] text-gray-600 w-[76px] shrink-0">PDF yok</span>
-  return (
-    <span title={d?.mesaj || (t === 'hazirlaniyor' ? `${d?.gecen_sn || 0} sn` : '')}
-          className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 w-[76px] text-center ${v.c}`}>
-      {v.m}
-    </span>
   )
 }
 

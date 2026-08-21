@@ -93,7 +93,10 @@ def _placement_rect(box, model, spec=None):
 # show_pdf_page slot basina 5-82 sn suruyor (22 slotluk kalip 378 sn -> 524).
 # Ayni boyutta ama icinde gomulu GORSEL olan PDF 0.09 sn. 7.9x17 cm alanda
 # 300 DPI ustundeki vektor detayi zaten kagida cikmiyor.
-RASTER_ESIK_MB = float(os.environ.get("MOLD_PDF_RASTER_MB", "3"))
+# VARSAYILAN: KAPALI. Rasterlestirme vektor kaybina ve saydam kenarlarda
+# bozulmaya yol aciyor; matbaa ciktisinda kabul edilemez. Yalnizca acikca
+# istenirse (MOLD_PDF_RASTER_MB=<esik>) devreye girer.
+RASTER_ESIK_MB = float(os.environ.get("MOLD_PDF_RASTER_MB", "0") or 0)
 # Bu boyutun ustunde gomulu gorsel olsa DA rasterlestirilir.
 RASTER_ZORUNLU_MB = float(os.environ.get("MOLD_PDF_RASTER_ZORUNLU_MB", "20"))
 
@@ -167,6 +170,8 @@ def onbellek_hazirla(rel_path: str) -> bool:
         p = _abs_path(rel_path)
         if not p.exists() or p.suffix.lower() != ".pdf":
             return False
+        if RASTER_ESIK_MB <= 0:
+            return False        # rasterlestirme kapali
         if p.stat().st_size / 1024 / 1024 <= RASTER_ESIK_MB:
             return False        # küçük vektör zaten hızlı, raster'a çevrilmiyor
         return _tasarim_rasteri(p) is not None
@@ -265,7 +270,7 @@ def _make_clipped_design(src_path, w_pt, h_pt, radius):
     _raster = None
     try:
         _mb = src_path.stat().st_size / 1024 / 1024
-        if _mb > RASTER_ESIK_MB:
+        if RASTER_ESIK_MB > 0 and _mb > RASTER_ESIK_MB:
             if _mb > RASTER_ZORUNLU_MB or not _gomulu_gorsel_var(src_path):
                 _raster = _tasarim_rasteri(src_path)
     except OSError:

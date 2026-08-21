@@ -346,6 +346,7 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
   const [note, setNote] = useState(mold.print_note || '')
   const [noteBusy, setNoteBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfDurum, setPdfDurum] = useState('')   // 'hazırlanıyor… 42 sn'
 
   const saveNote = async () => {
     setNoteBusy(true)
@@ -357,26 +358,49 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
     finally { setNoteBusy(false) }
   }
 
+  // PDF üretimi karmaşık vektör tasarımlarda dakikalar sürebiliyor ve vektör
+  // KORUNUYOR (rasterleştirme kalite kaybı yapardı). Sunucu işi arka planda
+  // yapıp 202 döndüğü için burada hazır olana kadar bekliyoruz.
   const downloadPdf = async () => {
     setPdfBusy(true)
+    setPdfDurum('')
+    const istek = () => fetch(`/api/molds/${mold.id}/pdf`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
+    })
+    const basla = Date.now()
+    const AZAMI_MS = 15 * 60 * 1000
     try {
-      const res = await fetch(`/api/molds/${mold.id}/pdf`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
-      })
-      if (!res.ok) {
-        let detay = ''
-        try { detay = (await res.json())?.detail || '' } catch { /* json değilse geç */ }
-        alert(detay || `PDF üretilemedi (HTTP ${res.status})`)
+      while (true) {
+        const res = await istek()
+
+        if (res.status === 202) {
+          const gecen = Math.round((Date.now() - basla) / 1000)
+          setPdfDurum(`hazırlanıyor… ${gecen} sn`)
+          if (Date.now() - basla > AZAMI_MS) {
+            alert('PDF hazırlanması beklenenden uzun sürdü. Sunucuda üretim sürüyor olabilir — birkaç dakika sonra tekrar dene.')
+            return
+          }
+          await new Promise(r => setTimeout(r, 4000))
+          continue
+        }
+
+        if (!res.ok) {
+          let detay = ''
+          try { detay = (await res.json())?.detail || '' } catch { /* json değilse geç */ }
+          alert(detay || `PDF üretilemedi (HTTP ${res.status})`)
+          return
+        }
+
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `kalip_${mold.kod || mold.id}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
         return
       }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = `kalip_${mold.kod || mold.id}.pdf`
-      document.body.appendChild(a); a.click(); a.remove()
-      URL.revokeObjectURL(url)
     } catch (e) { alert('PDF indirilemedi: ' + (e?.message || '')) }
-    finally { setPdfBusy(false) }
+    finally { setPdfBusy(false); setPdfDurum('') }
   }
 
   const removeSlot = async (it) => {
@@ -504,7 +528,11 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
         <button onClick={() => onOpen?.(mold.id)} className="btn-secondary !text-xs">📋 Detay</button>
         <button onClick={() => onAnalyze(mold, true)} disabled={analyzing}
           className="btn-secondary !text-xs">{analyzing ? 'Analiz…' : (an ? '↻ Yeniden Analiz' : '🔍 Analiz Et')}</button>
-        <button onClick={downloadPdf} disabled={pdfBusy} className="btn-secondary !text-xs">{pdfBusy ? 'PDF…' : '⬇️ PDF'}</button>
+        <button onClick={downloadPdf} disabled={pdfBusy}
+                title={pdfBusy ? 'Karmaşık tasarımlarda üretim birkaç dakika sürebilir' : 'Baskıya hazır PDF'}
+                className="btn-secondary !text-xs whitespace-nowrap">
+          {pdfBusy ? (pdfDurum || 'PDF…') : '⬇️ PDF'}
+        </button>
         <button onClick={() => setNoteOpen(v => !v)} className={`btn-secondary !text-xs ${mold.print_note ? '!text-amber-300' : ''}`}>📝 Not</button>
         <div className="flex-1" />
         {mold.print_status !== 'basildi' && (

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from sqlalchemy import desc, func as sql_func, or_ as sa_or, select
@@ -905,8 +905,14 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
 
 
 @router.get("/{mold_id}/pdf", response_model=None)
-def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Kalıp için baskıya hazır PDF üret ve indir."""
+def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Kalıp için baskıya hazır PDF. Hazırsa indirir, değilse arka planda üretir.
+
+    Üretim ~200 sn sürebiliyor (karmaşık vektör tasarımlar, vektör KORUNUYOR).
+    Cloudflare 100 sn'de vazgeçtiği için iş isteğin dışına alındı: ilk çağrı
+    üretimi başlatıp 202 döner, panel hazır olunca indirir.
+    """
     mo = _get_mold(db, mold_id, user.tenant_id)
     # slot verisini tasarım dosya yollarıyla hazırla
     design_ids = {it.design_id for it in mo.items if it.design_id}
@@ -944,7 +950,23 @@ def mold_pdf_download(mold_id: uuid.UUID, user: User = Depends(get_current_user)
         "page_w_pt": tpl.page_w_pt, "page_h_pt": tpl.page_h_pt,
         "cols": tpl.cols, "rows": tpl.rows, "boxes": tpl.boxes,
     }
-    pdf_bytes, report = mold_pdf.render_mold_pdf(slot_items, template=template_data)
+    from app.services import mold_pdf_job as _job
+    _anahtar = _job.anahtar_uret(mo, slot_items, template_data)
+    _d = _job.durum(_anahtar)
+    if _d["durum"] == "hata":
+        raise HTTPException(500, f"PDF üretilemedi: {_d.get('mesaj')}")
+    if _d["durum"] != "hazir":
+        _yeni = _job.baslat(arka_plan, _anahtar, slot_items, template_data)
+        return JSONResponse(
+            status_code=202,
+            content={"durum": "hazirlaniyor", "anahtar": _anahtar,
+                     "yeni_baslatildi": _yeni,
+                     "mesaj": "PDF hazırlanıyor — bu kalıp için bir kaç dakika sürebilir."},
+        )
+
+    _pdf_yolu, _ = _job.yollar(_anahtar)
+    pdf_bytes = _pdf_yolu.read_bytes()
+    report = _d.get("rapor") or {}
 
     # ★ BOŞ SLOT KORUMASI ★ — bir slotta kalem var ama tasarım basılamadıysa o
     # kalıp eksik basılır: malzeme çöpe gider, ürün eksik kalır. Eskiden bu

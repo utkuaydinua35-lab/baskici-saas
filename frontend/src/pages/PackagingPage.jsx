@@ -109,7 +109,25 @@ export default function PackagingPage() {
   //  • popup engelleyici devreye girmiyor (sekme açılmadığı için)
   // NOT: tarayıcının yazdırma penceresini atlamak (sessiz baskı) web'den mümkün
   // değil; kaldırabildiğimiz adım fazladan sekme ve ikinci tık.
-  const yazdirGomulu = (html, baslik = '') => new Promise((resolve) => {
+  // Etiketin GERÇEK ölçüsünü SVG'den oku (mm). Bulunamazsa 10x15 cm — bizim
+  // adres etiketimizin ölçüsü.
+  const svgOlcu = (svg) => {
+    const al = (ad) => (svg.match(new RegExp(ad + '="([\\d.]+)(mm|cm|px|pt)?"')) || [])
+    const [, w, wb] = al('width')
+    const [, h, hb] = al('height')
+    const mm = (v, birim) => {
+      const n = parseFloat(v)
+      if (!n) return null
+      if (birim === 'mm') return n
+      if (birim === 'cm') return n * 10
+      if (birim === 'pt') return n * 25.4 / 72
+      return n * 25.4 / 96          // px (96 dpi)
+    }
+    const W = mm(w, wb), H = mm(h, hb)
+    return (W && H) ? { w: W, h: H } : { w: 100, h: 150 }
+  }
+
+  const yazdirGomulu = (html, baslik = '', olcu = null) => new Promise((resolve) => {
     const cerceve = document.createElement('iframe')
     cerceve.setAttribute('aria-hidden', 'true')
     cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
@@ -124,10 +142,16 @@ export default function PackagingPage() {
     try {
       const d = cerceve.contentWindow.document
       d.open()
+      // @page size ŞART: verilmezse tarayıcı A4 varsayıp etiketi "sayfaya
+      // sığdır" ile küçültüyor — barkod okunamayacak kadar ufalıyor. Gerçek
+      // ölçüyü yazınca çıktı yazdırma ayarlarından BAĞIMSIZ olarak doğru gelir.
+      const o = olcu || { w: 100, h: 150 }
       d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${baslik}</title>` +
-        `<style>@page{margin:0}html,body{margin:0;padding:0}` +
-        `body{display:flex;justify-content:center;padding:6px}` +
-        `svg,img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`)
+        `<style>@page{size:${o.w}mm ${o.h}mm;margin:0}` +
+        `html,body{margin:0;padding:0;width:${o.w}mm;height:${o.h}mm}` +
+        `body{display:flex;align-items:center;justify-content:center;overflow:hidden}` +
+        `svg,img{width:${o.w}mm;height:${o.h}mm;object-fit:contain}` +
+        `</style></head><body>${html}</body></html>`)
       d.close()
       // Görseller/fontlar yerleşsin diye bir tur bekle
       const bas = () => {
@@ -221,7 +245,7 @@ export default function PackagingPage() {
 
   // SVG kargo etiketi -> SAYFA İÇİNDE yazdır (yeni sekme yok).
   const openLabelSvg = async (svg, takipNo) => {
-    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`)
+    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`, svgOlcu(svg))
     if (ok) return true
     // Gömülü yazdırma engellenirse eski yol (sekme) yedek kalsın
     try {

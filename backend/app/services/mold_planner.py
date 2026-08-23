@@ -371,6 +371,9 @@ def plan_molds(
             Order.tenant_id == tenant_id,
             Order.is_iptal == False,  # noqa: E712
             Order.kalip_haric == False,  # noqa: E712  kullanici kaliptan haric tuttu
+            # Bayi portalinden gelen ama YONETICI ONAYLAMAMIS siparis kaliba
+            # girmez: varyasyonu daha secilmedi ve cari borcu islenmedi.
+            Order.bayii_onay_bekliyor == False,  # noqa: E712
             # Sadece ACIK siparisler: kargoya verilmis (fulfilled) olanlar plana girmez
             (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
             # Iptal/iade edilenler plana girmez

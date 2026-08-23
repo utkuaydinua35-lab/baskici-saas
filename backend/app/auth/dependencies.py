@@ -35,6 +35,38 @@ def _unauthorized(detail: str = "Authentication required") -> HTTPException:
     )
 
 
+# ─── Bayi hesabinin erisebilecegi yollar (VARSAYILAN: KAPALI) ───
+# Bayi kullanicisi yonetimle AYNI tenant icinde. Yalnizca izin adini ayirmak
+# YETMEZ: izin ISTEMEYEN, sadece get_current_user ile korunan her uc bayiye de
+# acik kalir. Denetimde /api/notifications, /api/search, /api/stores ve
+# /api/dashboard/* bu yuzden bayi token'iyla 200 donuyordu.
+#
+# Kapiyi get_current_user'in ICINE koyuyoruz: her korumali uc zaten buradan
+# geciyor, dolayisiyla yarin eklenen bir yonetim ucu de kendiliginden kapali
+# olur. Router basina Depends eklemek bu garantiyi vermezdi.
+BAYI_IZINLI_ONEKLER = (
+    "/api/bayii/",        # portalin kendi uclari
+    "/api/auth/",         # /me, /logout, profil, sifre
+    "/api/push/",         # kendi cihazina bildirim aboneligi
+)
+BAYI_IZINLI_TAM = (
+    "/api/health",
+    "/api/version",
+)
+
+
+def _bayi_kapisi(user: User, yol: str) -> None:
+    """Bayi hesabi yalnizca portal yollarina girebilir."""
+    if not user.dealer_id:
+        return
+    if yol in BAYI_IZINLI_TAM or yol.startswith(BAYI_IZINLI_ONEKLER):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Bayi hesabi bu bolume erisemez",
+    )
+
+
 def get_current_user(
     request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -60,6 +92,8 @@ def get_current_user(
     user = db.scalar(select(User).where(User.id == user_id))
     if not user or not user.is_active:
         raise _unauthorized("Kullanıcı bulunamadı veya pasif")
+
+    _bayi_kapisi(user, request.url.path)
 
     # Tenant izolasyonu için request.state'e yaz — log/audit için faydalı
     request.state.user_id = user.id

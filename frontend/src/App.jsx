@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
+import BayiRoute, { BayiOlmayan } from './components/BayiRoute'
+import BayiLayout from './components/BayiLayout'
 
 // Yeni deploy sonrasi eski index.html cache'liyse chunk adlari degisir ve
 // dynamic import 404 -> bos ekran. Chunk yuklenemezse bir kez otomatik reload
@@ -57,6 +59,13 @@ const PazarlamaPage = lazyWithReload(() => import('./pages/PazarlamaPage'))
 const MusterilerPage = lazyWithReload(() => import('./pages/MusterilerPage'))
 const AnalitikPage = lazyWithReload(() => import('./pages/AnalitikPage'))
 const SosyalMedyaPage = lazyWithReload(() => import('./pages/SosyalMedyaPage'))
+// Bayi portali — bayilerin kendi girisi (yonetim panelinden ayri kabuk)
+const BayiGirisPage = lazyWithReload(() => import('./pages/bayii/BayiGirisPage'))
+const BayiPanelPage = lazyWithReload(() => import('./pages/bayii/BayiPanelPage'))
+const BayiSiparislerPage = lazyWithReload(() => import('./pages/bayii/BayiSiparislerPage'))
+const BayiSiparisDetayPage = lazyWithReload(() => import('./pages/bayii/BayiSiparisDetayPage'))
+const BayiYeniSiparisPage = lazyWithReload(() => import('./pages/bayii/BayiYeniSiparisPage'))
+const BayiCariPage = lazyWithReload(() => import('./pages/bayii/BayiCariPage'))
 
 function PageLoader() {
   return (
@@ -75,7 +84,22 @@ export default function App() {
         <Route path="/sifre-unuttum" element={<ForgotPasswordPage />} />
         <Route path="/sifre-sifirla" element={<ResetPasswordPage />} />
 
+        <Route path="/bayii/giris" element={<BayiGirisPage />} />
+
+        {/* Bayi portali — kendi kabugu, yonetim menusu YOK */}
+        <Route element={<BayiRoute />}>
+          <Route element={<BayiLayout />}>
+            <Route path="/bayii" element={<BayiPanelPage />} />
+            <Route path="/bayii/siparisler" element={<BayiSiparislerPage />} />
+            <Route path="/bayii/siparis/:id" element={<BayiSiparisDetayPage />} />
+            <Route path="/bayii/yeni" element={<BayiYeniSiparisPage />} />
+            <Route path="/bayii/cari" element={<BayiCariPage />} />
+          </Route>
+        </Route>
+
         <Route element={<ProtectedRoute />}>
+          {/* BayiOlmayan: bayi hesabi yonetim rotalarina girerse /bayii'ye doner */}
+          <Route element={<BayiOlmayan />}>
           <Route path="/profil-sec" element={<ProfileSelectPage />} />
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
@@ -110,6 +134,7 @@ export default function App() {
             <Route path="/musteriler" element={<MusterilerPage />} />
             <Route path="/analitik" element={<AnalitikPage />} />
             <Route path="/sosyal-medya" element={<SosyalMedyaPage />} />
+          </Route>
           </Route>
         </Route>
 

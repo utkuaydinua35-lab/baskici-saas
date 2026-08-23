@@ -23,6 +23,11 @@ ALL_PERMISSIONS = [
     "ayarlar",
     "kullanici_yonetimi",
     "bayii",
+    # DIKKAT: bayinin KENDI portali. Yonetim tarafindaki bayi ekranlarinin
+    # izni "bayii"; ayni ad verilseydi bayi kullanicisi
+    # require_any_permission("siparisler", "bayii") ile korunan yonetim
+    # uclarina da girerdi. Bu yuzden AYRI izin.
+    "bayii_portal",
     "pazarlama",
     "vitrin",
     "musteri",
@@ -34,6 +39,8 @@ ROLE_TEMPLATES = {
     "baskici": ["dashboard", "kalip", "stok", "tasarim", "kisiye_ozel", "aksesuar", "couple", "telefon_modelleri"],
     "paketlemeci": ["dashboard", "paketleme", "destek", "siparisler"],
     "grafiker": ["kisiye_ozel", "tasarim"],
+    # Bayi hesabi: SADECE kendi portali. Baska hicbir izin eklenmemeli.
+    "bayii_portal": ["bayii_portal"],
 }
 
 # Yonetici sayilan roller (her zaman tum yetkiler + yonetim)

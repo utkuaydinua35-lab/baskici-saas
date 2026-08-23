@@ -13,6 +13,9 @@ const KALIP_TIPLERI = [
   { value: 'magsafe', label: 'MagSafe' },
 ]
 
+import BayiOnayKuyrugu from '../components/BayiOnayKuyrugu'
+import BayiHesapDialog from '../components/BayiHesapDialog'
+
 export default function DealersPage() {
   const toast = useToast()
   const navigate = useNavigate()
@@ -21,6 +24,7 @@ export default function DealersPage() {
   const [editing, setEditing] = useState(null)   // {} yeni, obj duzenle, null kapali
   const [detail, setDetail] = useState(null)      // cari detay acilan bayi
   const [ordering, setOrdering] = useState(null)  // siparis girilen bayi
+  const [hesaplar, setHesaplar] = useState(null)  // portal hesaplari acilan bayi
 
   const load = async () => {
     setLoading(true)
@@ -41,6 +45,8 @@ export default function DealersPage() {
         </div>
         <a href="/ayarlar" className="text-xs text-gray-500 hover:text-gray-300">⚙ Bayi ekle/düzenle → Ayarlar</a>
       </div>
+
+      <BayiOnayKuyrugu onOnaylandi={load} />
 
       {loading ? (
         <div className="space-y-2">
@@ -73,6 +79,8 @@ export default function DealersPage() {
               <div className="flex gap-1.5">
                 <button onClick={() => navigate(`/bayiler/${d.id}`)} className="btn-primary !text-xs">📋 Bayii menüsü</button>
                 <button onClick={() => setDetail(d)} className="btn-secondary !text-xs">Cari</button>
+                <button onClick={() => setHesaplar(d)} className="btn-secondary !text-xs"
+                        title="Bayi portalı giriş hesapları">🔑 Portal</button>
               </div>
             </div>
           ))}
@@ -82,6 +90,7 @@ export default function DealersPage() {
 
       {editing && <DealerDialog dealer={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {detail && <CariDialog dealer={detail} onClose={() => setDetail(null)} onChanged={load} />}
+      {hesaplar && <BayiHesapDialog dealer={hesaplar} onClose={() => setHesaplar(null)} />}
       {ordering && (
         <ManualOrderDialog
           open={!!ordering}

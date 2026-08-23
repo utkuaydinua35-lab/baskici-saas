@@ -440,3 +440,127 @@ select.input option, select option { background: #17102b; color: #f3f4f6; }
     animation-delay: 0ms;
   }
 }
+
+/* ─── Bayi portali ────────────────────────────────────────────
+   Yonetim panelinden AYRI bir kabuk: ust bar + kayan sekme seridi.
+   Renkler accent degiskeninden turer, tenant markasi degisince uyar. */
+.bayi-ustbar {
+  background: rgb(10 6 19 / 0.72);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+.bayi-marka-nokta {
+  width: 26px; height: 26px; border-radius: 9px; display: block;
+  background: linear-gradient(145deg, rgb(var(--accent-rgb)), rgb(var(--accent-rgb) / 0.55));
+  box-shadow: 0 6px 18px -6px rgb(var(--accent-rgb) / 0.85),
+              inset 0 1px 0 rgb(255 255 255 / 0.35);
+  animation: bayi-nokta-nefes 4.5s ease-in-out infinite;
+}
+@keyframes bayi-nokta-nefes {
+  0%, 100% { box-shadow: 0 6px 18px -6px rgb(var(--accent-rgb) / 0.85), inset 0 1px 0 rgb(255 255 255 / 0.35); }
+  50%      { box-shadow: 0 6px 26px -4px rgb(var(--accent-rgb) / 1), inset 0 1px 0 rgb(255 255 255 / 0.45); }
+}
+.bayi-sekme {
+  font-size: 13.5px; color: #9ca3af; border-radius: 12px;
+  transition: color .18s ease, background-color .18s ease;
+}
+.bayi-sekme:hover { color: #e5e7eb; background: rgb(255 255 255 / 0.04); }
+.bayi-sekme-aktif { color: #fff; }
+/* Aktif sekmenin altindaki serit — konumu JS ile olculur, gecisi CSS yapar */
+.bayi-serit {
+  position: absolute; bottom: -1px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgb(var(--accent-rgb)), transparent);
+  transition: left .32s cubic-bezier(.22,.8,.28,1), width .32s cubic-bezier(.22,.8,.28,1), opacity .2s;
+  pointer-events: none;
+}
+.bayi-cikis {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px;
+  color: #9ca3af; border: 1px solid rgb(255 255 255 / 0.07);
+  background: rgb(255 255 255 / 0.03); transition: all .18s ease;
+}
+.bayi-cikis:hover { color: #fff; background: rgb(255 255 255 / 0.08); }
+
+/* Sayfa gecisi — route degisince icerik yumusak biner */
+.bayi-sayfa { animation: bayi-sayfa-gir .38s cubic-bezier(.22,.8,.28,1) both; }
+@keyframes bayi-sayfa-gir {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Liste ogeleri sirayla belirir — --gecikme satir indeksinden verilir */
+.bayi-sira { animation: bayi-sayfa-gir .42s cubic-bezier(.22,.8,.28,1) both;
+             animation-delay: var(--gecikme, 0ms); }
+
+/* Tiklanabilir kart: hafif kalkis + accent kenar isigi */
+.bayi-kart { transition: transform .2s cubic-bezier(.22,.8,.28,1), box-shadow .2s, border-color .2s; }
+.bayi-kart:hover {
+  transform: translateY(-2px);
+  border-color: rgb(var(--accent-rgb) / 0.35);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08),
+              0 22px 46px -26px rgb(0 0 0 / 0.9),
+              0 0 0 1px rgb(var(--accent-rgb) / 0.12);
+}
+
+/* Sayac: rakam degisince yukaridan akar */
+@keyframes bayi-sayac { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.bayi-sayac { animation: bayi-sayac .45s cubic-bezier(.22,.8,.28,1) both; }
+
+/* Adim gostergesi (yeni siparis sihirbazi) */
+.bayi-adim-cizgi { position: relative; height: 2px; background: rgb(255 255 255 / 0.07); border-radius: 2px; }
+.bayi-adim-dolu {
+  position: absolute; inset: 0 auto 0 0; border-radius: 2px;
+  background: linear-gradient(90deg, rgb(var(--accent-rgb) / 0.5), rgb(var(--accent-rgb)));
+  transition: width .45s cubic-bezier(.22,.8,.28,1);
+}
+.bayi-adim-nokta {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 600; transition: all .3s cubic-bezier(.22,.8,.28,1);
+  border: 1px solid rgb(255 255 255 / 0.1); background: rgb(30 22 56 / 0.9); color: #6b7280;
+}
+.bayi-adim-nokta[data-durum="aktif"] {
+  border-color: rgb(var(--accent-rgb) / 0.8); color: #fff;
+  background: rgb(var(--accent-rgb) / 0.22);
+  box-shadow: 0 0 0 4px rgb(var(--accent-rgb) / 0.12);
+  transform: scale(1.08);
+}
+.bayi-adim-nokta[data-durum="tamam"] {
+  border-color: rgb(52 211 153 / 0.5); color: #34d399; background: rgb(52 211 153 / 0.12);
+}
+
+/* Dosya birakma alani */
+.bayi-birak {
+  border: 1.5px dashed rgb(255 255 255 / 0.14); border-radius: 18px;
+  transition: border-color .2s, background-color .2s, transform .2s;
+}
+.bayi-birak[data-uzerinde="1"] {
+  border-color: rgb(var(--accent-rgb) / 0.75);
+  background: rgb(var(--accent-rgb) / 0.07);
+  transform: scale(1.01);
+}
+
+/* Zaman cizgisi (siparis gecmisi) */
+.bayi-zaman { position: relative; padding-left: 22px; }
+.bayi-zaman::before {
+  content: ''; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1px;
+  background: linear-gradient(180deg, rgb(var(--accent-rgb) / 0.4), rgb(255 255 255 / 0.05));
+}
+.bayi-zaman-nokta {
+  position: absolute; left: 0; top: 5px; width: 11px; height: 11px; border-radius: 50%;
+  background: rgb(10 6 19); border: 2px solid rgb(var(--accent-rgb) / 0.65);
+}
+
+/* Basari onayi — siparis alindiginda cizilen tik */
+@keyframes bayi-tik-ciz { to { stroke-dashoffset: 0; } }
+@keyframes bayi-halka-ac { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.bayi-basari-halka { animation: bayi-halka-ac .45s cubic-bezier(.22,1.2,.36,1) both; }
+.bayi-basari-tik {
+  stroke-dasharray: 32; stroke-dashoffset: 32;
+  animation: bayi-tik-ciz .4s cubic-bezier(.65,0,.35,1) .35s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bayi-sayfa, .bayi-sira, .bayi-sayac, .bayi-basari-halka, .bayi-basari-tik,
+  .bayi-marka-nokta { animation: none; }
+  .bayi-kart:hover { transform: none; }
+}

@@ -103,3 +103,52 @@ def uygula(db: Session, order, *, reverse: bool) -> list[dict]:
         ozet.append({"dealer_id": str(dealer_id), "currency": cur,
                      "delta": float(fark), "balance_after": float(yeni)})
     return ozet
+
+
+# ─── İlk borcu yazma ─────────────────────────────────────────
+# uygula() var olan hareketlerin NET'ini hedefe çeker; hiç hareket yoksa
+# yapacak bir şey bulamaz. Siparişin İLK borcunu yazan yer burası.
+# İki çağıran var: yönetim panelinden bayi siparişi (anında) ve bayi
+# portalinden gelen siparişin ONAYI. İkisi de aynı kodu kullansın diye
+# ortaklaştırıldı — fiyat/kur kuralı tek yerde.
+def ilk_borc(db: Session, dealer, order, *, adet: int, kargo_uygula: bool) -> dict:
+    """Sipariş için ürün (+ kargo) borcunu yaz. Zaten yazılmışsa tekrar yazmaz.
+
+    Ürün bedeli bayinin para biriminde (USD/TRY), kargo HER ZAMAN ₺ ve ayrı
+    hareket olarak işlenir.
+    """
+    from app.models import DealerTransaction
+
+    var = db.scalar(select(DealerTransaction.id).where(
+        DealerTransaction.ref_order_id == order.id,
+        DealerTransaction.kind.in_(tuple(BORC_TURLERI)),
+    ).limit(1))
+    if var:  # idempotent: iki kez onaylanırsa borç ikilenmesin
+        return {"yazildi": False, "urun": 0.0, "kargo": 0.0,
+                "currency": (dealer.currency or "TRY").upper()}
+
+    cur = (dealer.currency or "TRY").upper()
+    urun = _d(dealer.unit_price) * Decimal(int(adet))
+    kargo = _d(dealer.shipping_fee) if (kargo_uygula and dealer.shipping_fee) else Decimal("0")
+
+    if cur == "USD":
+        dealer.balance_usd = _d(dealer.balance_usd) + urun
+        urun_bakiye = dealer.balance_usd
+    else:
+        dealer.balance = _d(dealer.balance) + urun
+        urun_bakiye = dealer.balance
+    db.add(DealerTransaction(
+        tenant_id=order.tenant_id, dealer_id=dealer.id, amount=urun, kind="siparis",
+        currency=cur, description=f"Sipariş #{order.order_number} — {adet} adet",
+        ref_order_id=order.id, balance_after=urun_bakiye,
+    ))
+
+    if kargo > 0:
+        dealer.balance = _d(dealer.balance) + kargo
+        db.add(DealerTransaction(
+            tenant_id=order.tenant_id, dealer_id=dealer.id, amount=kargo, kind="kargo",
+            currency="TRY", description=f"Kargo — Sipariş #{order.order_number}",
+            ref_order_id=order.id, balance_after=dealer.balance,
+        ))
+    return {"yazildi": True, "urun": float(urun), "kargo": float(kargo),
+            "currency": cur, "bakiye": float(urun_bakiye)}

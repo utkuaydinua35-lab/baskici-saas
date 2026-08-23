@@ -106,7 +106,17 @@ def send_to_user(db: Session, user_id, title: str, body: str,
 
 def send_to_tenant(db: Session, tenant_id, title: str, body: str,
                    url: str | None = None, tag: str | None = None) -> int:
-    subs = db.scalars(select(PushSubscription).where(PushSubscription.tenant_id == tenant_id)).all()
+    """Tenant'in PANEL kullanicilarina bildirim.
+
+    Bayi portali hesaplari HARIC: onlar ayni tenant icinde ama yonetim
+    bildirimlerini ("yeni bayi siparisi", senkron ozeti...) gormemeli. Kendi
+    bildirimleri send_to_user ile gonderilir.
+    """
+    bayi_ids = select(User.id).where(User.dealer_id.isnot(None))
+    subs = db.scalars(select(PushSubscription).where(
+        PushSubscription.tenant_id == tenant_id,
+        PushSubscription.user_id.notin_(bayi_ids),
+    )).all()
     return _dispatch(db, list(subs), title, body, url, tag)
 
 

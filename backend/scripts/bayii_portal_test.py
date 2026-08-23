@@ -1,0 +1,368 @@
+"""Bayi portali ucdan uca testi — GERCEK HTTP istekleri, gercek veritabani.
+
+Sinananlar:
+  • yetkisiz erisim (izinsiz kullanici / baska bayinin verisi)
+  • kanal kurallari (trendyol: ad yeter; shopier/instagram: tam adres)
+  • duzenleme kurallari (kaliba girdi / barkod olustu)
+  • onay akisi: borc ONAYDA yazilir, iki kez onay borcu ikilemez
+  • onay bekleyen siparis kalip planina GIRMEZ
+Test verisi sonunda temizlenir.
+"""
+from __future__ import annotations
+
+import io
+import sys
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import select, text  # noqa: E402
+
+from app.auth.security import hash_password  # noqa: E402
+from app.database import SessionLocal  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import (Dealer, DealerTransaction, Design, LineItem, MoldItem,  # noqa: E402
+                        Order, Store, Tenant, User)
+
+ISTEMCI = TestClient(app)
+GECTI, KALDI = 0, 0
+IZ = f"bptest{uuid.uuid4().hex[:6]}"
+
+
+def es(ad, beklenen, gercek):
+    global GECTI, KALDI
+    if beklenen == gercek:
+        GECTI += 1
+        print(f"  ✓ {ad}")
+    else:
+        KALDI += 1
+        print(f"  ✗ {ad}\n      beklenen: {beklenen!r}\n      gercek  : {gercek!r}")
+
+
+def jpg() -> bytes:
+    """Gecerli, kucuk bir JPEG."""
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", (64, 64), (120, 40, 200)).save(b, "JPEG")
+    return b.getvalue()
+
+
+def token(email, sifre="Portal12345!"):
+    r = ISTEMCI.post("/api/auth/login", json={"email": email, "password": sifre})
+    if r.status_code != 200:
+        raise SystemExit(f"login basarisiz {email}: {r.status_code} {r.text[:300]}")
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+# ─── Kurulum ────────────────────────────────────────────────
+db = SessionLocal()
+tenant = db.scalar(select(Tenant).limit(1))
+if not tenant:
+    raise SystemExit("Tenant yok — once uygulamayi bir kez calistir.")
+
+
+def _eski_test_verisini_temizle() -> None:
+    """Yarida kalmis onceki kosulardan artan kayitlari sil (hepsi 'bptest' onekli)."""
+    db.execute(text("""
+        delete from order_status_history where order_id in
+          (select id from orders where store_id in
+             (select id from stores where slug like 'bptest%'))"""))
+    db.execute(text("""
+        delete from mold_items where line_item_id in
+          (select id from line_items where order_id in
+             (select id from orders where store_id in
+                (select id from stores where slug like 'bptest%')))"""))
+    db.execute(text("""
+        delete from line_items where order_id in
+          (select id from orders where store_id in
+             (select id from stores where slug like 'bptest%'))"""))
+    db.execute(text("delete from orders where store_id in "
+                    "(select id from stores where slug like 'bptest%')"))
+    db.execute(text("delete from dealer_transactions where dealer_id in "
+                    "(select id from dealers where name like 'bptest%')"))
+    db.execute(text("delete from designs where store_id in "
+                    "(select id from stores where slug like 'bptest%')"))
+    db.execute(text("delete from users where email like 'bptest%'"))
+    db.execute(text("delete from dealers where name like 'bptest%'"))
+    db.execute(text("delete from stores where slug like 'bptest%'"))
+    db.commit()
+
+
+_eski_test_verisini_temizle()
+
+
+def bayi_kur(ad, birim, kargo, para="TRY"):
+    d = Dealer(tenant_id=tenant.id, name=f"{IZ}-{ad}", unit_price=birim,
+               shipping_fee=kargo, currency=para, is_active=True, balance=0, balance_usd=0)
+    db.add(d); db.flush()
+    st = Store(tenant_id=tenant.id, slug=f"{IZ}-{ad}", name=f"Bayii {ad}",
+               platform="bayii", is_active=True)
+    db.add(st); db.flush()
+    d.store_id = st.id
+    u = User(tenant_id=tenant.id, email=f"{IZ}.{ad}@bayitest.example.com",
+             password_hash=hash_password("Portal12345!"), full_name=f"Bayi {ad}",
+             role="bayii_portal", permissions=["bayii_portal"], dealer_id=d.id,
+             is_active=True)
+    db.add(u); db.flush()
+    return d, u
+
+
+bayi_a, kul_a = bayi_kur("a", 100, 50)
+bayi_b, kul_b = bayi_kur("b", 200, 0)
+# Yetkisiz kullanici: bayi degil, izni de yok
+yabanci = User(tenant_id=tenant.id, email=f"{IZ}.yabanci@bayitest.example.com",
+               password_hash=hash_password("Portal12345!"), full_name="Yabanci",
+               role="operator", permissions=["paketleme"], is_active=True)
+# Bayi izni var ama dealer_id YOK
+kopuk = User(tenant_id=tenant.id, email=f"{IZ}.kopuk@bayitest.example.com",
+             password_hash=hash_password("Portal12345!"), full_name="Kopuk",
+             role="operator", permissions=["bayii_portal"], is_active=True)
+# Yonetici (onay icin)
+admin = User(tenant_id=tenant.id, email=f"{IZ}.admin@bayitest.example.com",
+             password_hash=hash_password("Portal12345!"), full_name="Admin",
+             role="yonetici", permissions=[], is_active=True)
+db.add_all([yabanci, kopuk, admin])
+db.commit()
+
+H_A, H_B = token(kul_a.email), token(kul_b.email)
+H_YABANCI, H_KOPUK, H_ADMIN = token(yabanci.email), token(kopuk.email), token(admin.email)
+
+
+def siparis_ac(h, **alan):
+    veri = {"model": "IPHONE-15", "adet": "1", "kanal": "trendyol",
+            "ad_soyad": "Ali Veli"} | {k: str(v) for k, v in alan.items()}
+    return ISTEMCI.post("/api/bayii/siparis", headers=h, data=veri,
+                        files={"tasarim": ("t.jpg", jpg(), "image/jpeg")})
+
+
+print("\n── 1. Yetki ──")
+es("izinsiz kullanici 403", 403, ISTEMCI.get("/api/bayii/ozet", headers=H_YABANCI).status_code)
+es("token yok 401", 401, ISTEMCI.get("/api/bayii/ozet").status_code)
+es("bayiye bagli olmayan hesap 403", 403,
+   ISTEMCI.get("/api/bayii/ozet", headers=H_KOPUK).status_code)
+es("bayi kendi ozetini gorur", 200, ISTEMCI.get("/api/bayii/ozet", headers=H_A).status_code)
+es("bayi yonetim ucuna giremez", 403,
+   ISTEMCI.get("/api/dealers", headers=H_A).status_code)
+es("bayi siparis paneline giremez", 403,
+   ISTEMCI.get("/api/orders", headers=H_A).status_code)
+
+print("\n── 2. Kanal kurallari ──")
+es("gecersiz kanal 400", 400, siparis_ac(H_A, kanal="hepsiburada").status_code)
+es("ad soyad bos 400", 400, siparis_ac(H_A, ad_soyad="  ").status_code)
+es("shopier: adres eksik 400", 400, siparis_ac(H_A, kanal="shopier").status_code)
+r = siparis_ac(H_A, kanal="shopier", telefon="5551112233", adres="Test sk 1",
+               il="Istanbul", ilce="Kadikoy")
+es("shopier: tam adres 201", 201, r.status_code)
+shopier_id = r.json().get("id")
+r = siparis_ac(H_A, kanal="trendyol", ad_soyad="Ayse Yilmaz")
+es("trendyol: sadece ad 201", 201, r.status_code)
+tr_id = r.json().get("id")
+es("adet 0 reddedilir", 400, siparis_ac(H_A, adet=0).status_code)
+es("model bos reddedilir", 400, siparis_ac(H_A, model=" ").status_code)
+rb = ISTEMCI.post("/api/bayii/siparis", headers=H_A,
+                  data={"model": "IPHONE-15", "adet": "1", "kanal": "trendyol",
+                        "ad_soyad": "X"},
+                  files={"tasarim": ("t.exe", b"MZ", "application/octet-stream")})
+es("izinsiz uzanti 400", 400, rb.status_code)
+
+print("\n── 3. Izolasyon ──")
+es("B bayisi A'nin siparisini goremez", 404,
+   ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_B).status_code)
+es("B, A'nin siparisini duzenleyemez", 404,
+   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun", headers=H_B,
+                 json={"model": "IPHONE-14"}).status_code)
+es("B, A'nin siparisini silemez", 404,
+   ISTEMCI.delete(f"/api/bayii/siparis/{tr_id}", headers=H_B).status_code)
+es("B'nin listesi bos", 0,
+   len(ISTEMCI.get("/api/bayii/siparisler", headers=H_B).json()["items"]))
+es("A'nin listesi 2", 2,
+   len(ISTEMCI.get("/api/bayii/siparisler", headers=H_A).json()["items"]))
+
+print("\n── 4. Onay oncesi: borc YOK, kalip YOK ──")
+db.expire_all()
+db.refresh(bayi_a)
+es("onay oncesi bakiye 0", 0.0, float(bayi_a.balance or 0))
+es("onay oncesi cari hareket yok", 0, db.scalar(
+    text("select count(*) from dealer_transactions where dealer_id=:d")
+    .bindparams(d=bayi_a.id)))
+es("ozet: onay bekleyen 2", 2,
+   ISTEMCI.get("/api/bayii/ozet", headers=H_A).json()["sayilar"]["onay_bekleyen"])
+
+print("\n── 5. Duzenleme kurallari ──")
+d0 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
+es("yeni siparis duzenlenebilir", True, d0["yetkiler"]["urun_degistir"])
+es("yeni siparis adresi degisebilir", True, d0["yetkiler"]["adres_degistir"])
+es("model degisir", 200, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun",
+   headers=H_A, json={"model": "IPHONE-14 PRO"}).status_code)
+d1 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
+es("model yazildi", "IPHONE-14 PRO", d1["kalemler"][0]["model"])
+es("degisiklik gecmise dustu", True,
+   any("IPHONE-14 PRO" in (h["not"] or "") for h in d1["gecmis"]))
+es("tasarim degisir", 200, ISTEMCI.post(
+    f"/api/bayii/siparis/{tr_id}/tasarim", headers=H_A,
+    files={"tasarim": ("y.jpg", jpg(), "image/jpeg")}).status_code)
+es("adres degisir", 200, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/adres",
+   headers=H_A, json={"ad_soyad": "Yeni Alici"}).status_code)
+es("adres yazildi", "Yeni Alici",
+   ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()["adres"]["ad"])
+es("shopier adresi eksik girilemez", 400,
+   ISTEMCI.patch(f"/api/bayii/siparis/{shopier_id}/adres", headers=H_A,
+                 json={"ad_soyad": "Bos Adres"}).status_code)
+
+print("\n── 6. Barkod olustu -> adres kilitli ──")
+o_tr = db.scalar(select(Order).where(Order.id == uuid.UUID(tr_id)))
+o_tr.barkod_kodu = "TESTBARKOD1"
+db.commit()
+d2 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
+es("barkod_var true", True, d2["yetkiler"]["barkod_var"])
+es("adres_degistir false", False, d2["yetkiler"]["adres_degistir"])
+es("adres degisimi 409", 409, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/adres",
+   headers=H_A, json={"ad_soyad": "Olmaz"}).status_code)
+es("model hala degisebilir (kaliba girmedi)", 200,
+   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun", headers=H_A,
+                 json={"model": "IPHONE-13"}).status_code)
+
+print("\n── 7. Kaliba girdi -> her sey kilitli ──")
+li = db.scalar(select(LineItem).where(LineItem.order_id == o_tr.id))
+li.is_kaliba_eklendi = True
+db.commit()
+d3 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
+es("uretimde true", True, d3["yetkiler"]["uretimde"])
+es("urun_degistir false", False, d3["yetkiler"]["urun_degistir"])
+es("model degisimi 409", 409, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun",
+   headers=H_A, json={"model": "X"}).status_code)
+es("tasarim degisimi 409", 409, ISTEMCI.post(
+    f"/api/bayii/siparis/{tr_id}/tasarim", headers=H_A,
+    files={"tasarim": ("z.jpg", jpg(), "image/jpeg")}).status_code)
+es("silme 409", 409, ISTEMCI.delete(f"/api/bayii/siparis/{tr_id}", headers=H_A).status_code)
+
+print("\n── 8. Onay: borc ONAYDA yazilir ──")
+bekleyen = ISTEMCI.get("/api/dealers/portal/onay-bekleyen", headers=H_ADMIN).json()
+benim = [x for x in bekleyen if x["id"] in (tr_id, shopier_id)]
+es("onay kuyrugunda 2 siparis", 2, len(benim))
+kalem_id = [x for x in benim if x["id"] == shopier_id][0]["kalemler"][0]["id"]
+r = ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{shopier_id}", headers=H_ADMIN,
+                 json={"varyasyonlar": {kalem_id: "siyah"}, "apply_shipping": True})
+es("onay 200", 200, r.status_code)
+j = r.json()
+es("urun borcu 100", 100.0, j["urun"])
+es("kargo borcu 50", 50.0, j["kargo"])
+db.expire_all(); db.refresh(bayi_a)
+es("bakiye 150", 150.0, float(bayi_a.balance or 0))
+r2 = ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{shopier_id}", headers=H_ADMIN,
+                  json={"varyasyonlar": {}})
+es("ikinci onay 409", 409, r2.status_code)
+db.expire_all(); db.refresh(bayi_a)
+es("bakiye ikilenmedi", 150.0, float(bayi_a.balance or 0))
+o_sh = db.scalar(select(Order).where(Order.id == uuid.UUID(shopier_id)))
+es("onay bayragi dustu", False, bool(o_sh.bayii_onay_bekliyor))
+# normalize_variation Turkce buyuk harf uretir: "siyah" -> "SIYAH" degil "SİYAH"
+es("varyasyon yazildi", "SİYAH",
+   db.scalar(select(LineItem).where(LineItem.order_id == o_sh.id)).kilif_varyasyon)
+es("bayi onaylanani silemez", 409,
+   ISTEMCI.delete(f"/api/bayii/siparis/{shopier_id}", headers=H_A).status_code)
+
+print("\n── 9. Cari ekrani ──")
+c = ISTEMCI.get("/api/bayii/cari", headers=H_A).json()
+es("cari bakiye 150", 150.0, c["bakiye"])
+es("2 hareket", 2, len(c["items"]))
+es("B bayisinin carisi bos", 0, len(ISTEMCI.get("/api/bayii/cari", headers=H_B).json()["items"]))
+
+print("\n── 10. Kalip plani: onay bekleyen GIRMEZ, onaylanan GIRER ──")
+from app.services.mold_planner import plan_molds  # noqa: E402
+
+
+def _planda_var(order_no: str) -> bool:
+    """Siparis kalip planinda bir slot aldi mi."""
+    p = plan_molds(db, tenant_id=tenant.id, store_id=bayi_a.store_id)
+    for kalip in p.get("molds", []) or []:
+        for it in (kalip.get("items") or []):
+            if str(it.get("order_number") or "") == order_no:
+                return True
+    return False
+
+
+o_tr_no = db.scalar(select(Order.order_number).where(Order.id == uuid.UUID(tr_id)))
+o_sh_no = db.scalar(select(Order.order_number).where(Order.id == uuid.UUID(shopier_id)))
+es("onay BEKLEYEN plana girmedi", False, _planda_var(o_tr_no))
+es("ONAYLANAN plana girdi", True, _planda_var(o_sh_no))
+
+print("\n── 11. Onay beklerken geri cekme ──")
+r = siparis_ac(H_B, kanal="instagram", telefon="5559998877", adres="B sk 2",
+               il="Ankara", ilce="Cankaya")
+b_id = r.json()["id"]
+es("B siparis acti", 201, r.status_code)
+es("B geri cekebilir", 200, ISTEMCI.delete(f"/api/bayii/siparis/{b_id}", headers=H_B).status_code)
+es("geri cekilen listede yok", 0,
+   len(ISTEMCI.get("/api/bayii/siparisler", headers=H_B).json()["items"]))
+db.expire_all(); db.refresh(bayi_b)
+es("geri cekmede borc yok", 0.0, float(bayi_b.balance or 0))
+
+print("\n── 12. Yonetim uclari bayiye KAPALI ──")
+# Bayi yonetimle AYNI tenant icinde. Izin adini ayirmak yetmiyordu: izin
+# ISTEMEYEN uclar (get_current_user'a takilan her sey) bayiye aciktı.
+# Kapi get_current_user'in icinde (_bayi_kapisi) — yarin eklenen uc de kapali.
+SIZAN = [
+    "/api/notifications",     # tum yonetim bildirimleri
+    "/api/search",            # tum siparis/tasarim/musteri aramasi
+    "/api/stores",            # diger bayilerin magazalari + entegrasyon
+    "/api/dashboard/summary", # ciro/siparis istatistikleri
+    "/api/dashboard/worklist",
+    "/api/orders",
+    "/api/dealers",
+    "/api/designs",
+]
+for yol in SIZAN:
+    es(f"kapali: {yol}", 403, ISTEMCI.get(yol, headers=H_A).status_code)
+
+# Kapi portali ve oturum uclarini ENGELLEMEMELI
+es("portal acik", 200, ISTEMCI.get("/api/bayii/ozet", headers=H_A).status_code)
+es("kendi profili acik", 200, ISTEMCI.get("/api/auth/me", headers=H_A).status_code)
+# Yonetici ayni uclarda serbest kalmali
+es("yonetici /api/dealers 200", 200, ISTEMCI.get("/api/dealers", headers=H_ADMIN).status_code)
+es("yonetici /api/notifications 200", 200,
+   ISTEMCI.get("/api/notifications", headers=H_ADMIN).status_code)
+
+# Bayiye giden push, yonetim bildirimlerini ALMAMALI
+from app.services import push as _push  # noqa: E402
+from app.models import PushSubscription as _PS  # noqa: E402
+db.add(_PS(tenant_id=tenant.id, user_id=kul_a.id, endpoint=f"https://ornek/{IZ}",
+           p256dh="x", auth="y"))
+db.commit()
+_secilen = db.scalars(select(_PS).where(
+    _PS.tenant_id == tenant.id,
+    _PS.user_id.notin_(select(User.id).where(User.dealer_id.isnot(None))))).all()
+es("tenant push'unda bayi cihazi yok", False,
+   any(x.user_id == kul_a.id for x in _secilen))
+db.execute(text("delete from push_subscriptions where endpoint like :p")
+           .bindparams(p=f"https://ornek/{IZ}"))
+db.commit()
+
+# ─── Temizlik ───────────────────────────────────────────────
+print("\n── Temizlik ──")
+ids = [d.id for d in db.scalars(select(Dealer).where(Dealer.name.like(f"{IZ}%"))).all()]
+oids = [o.id for o in db.scalars(select(Order).where(
+    Order.store_id.in_(select(Store.id).where(Store.slug.like(f"{IZ}%"))))).all()]
+for t in ("order_status_history", "mold_items", "line_items"):
+    if oids:
+        db.execute(text(f"delete from {t} where order_id = any(:o)"
+                        if t != "mold_items" else
+                        "delete from mold_items where line_item_id in "
+                        "(select id from line_items where order_id = any(:o))")
+                   .bindparams(o=oids))
+if oids:
+    db.execute(text("delete from line_items where order_id = any(:o)").bindparams(o=oids))
+    db.execute(text("delete from orders where id = any(:o)").bindparams(o=oids))
+db.execute(text("delete from dealer_transactions where dealer_id = any(:d)").bindparams(d=ids))
+db.execute(text("delete from designs where store_id in "
+                "(select id from stores where slug like :p)").bindparams(p=f"{IZ}%"))
+db.execute(text("delete from users where email like :p").bindparams(p=f"{IZ}%"))
+db.execute(text("delete from dealers where id = any(:d)").bindparams(d=ids))
+db.execute(text("delete from stores where slug like :p").bindparams(p=f"{IZ}%"))
+db.commit()
+print("  temizlendi")
+
+print(f"\n{'='*46}\nGECTI: {GECTI}   KALDI: {KALDI}\n{'='*46}")
+sys.exit(1 if KALDI else 0)

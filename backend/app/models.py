@@ -96,6 +96,14 @@ class User(Base):
     google_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
 
     role: Mapped[str] = mapped_column(String(30), default="operator")
+    # Bayi portali kullanicisi ise bagli oldugu bayi. Dolu olan kullanici
+    # YALNIZCA kendi bayisinin verisini gorur. Izin adi bilerek 'bayii' DEGIL
+    # 'bayii_portal': 'bayii' yonetim tarafindaki bayi ekranlarinin izni ve
+    # require_any_permission('siparisler','bayii') gibi yerlerde geciyor.
+    dealer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="CASCADE"),
+        nullable=True, index=True
+    )
     permissions: Mapped[list] = mapped_column(JSONB, default=list)
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -407,6 +415,11 @@ class Order(Base):
         Boolean, default=False, server_default=text("false"), nullable=False
     )
     is_iptal: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False, index=True
+    )
+    # Bayi portalinden girilen siparis ONAY bekliyor: yonetici varyasyonu secip
+    # onaylayana kadar kaliba girmez ve cari borc ISLENMEZ. Onayda borc yazilir.
+    bayii_onay_bekliyor: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False, index=True
     )
     # Kullanici tarafindan kalip olusturucuya dahil edilmesin diye isaretlendi

@@ -13,10 +13,10 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func as sql_func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
@@ -780,3 +780,217 @@ def add_dealer_order_items(
         "currency": _cur,
         "new_balance": float(new_balance),
     }
+
+
+# ─── Bayi portali: onay kuyrugu ─────────────────────────────
+# Bayi portalinden gelen siparis 'bayii_onay_bekliyor' ile durur: kaliba
+# girmez ve cari borcu ISLENMEZ. Yonetici varyasyonu secip onaylayinca borc
+# yazilir (app.services.dealer_debt.ilk_borc — idempotent).
+@router.get("/portal/onay-bekleyen", response_model=list[dict])
+def portal_onay_bekleyen(
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    orders = db.scalars(
+        select(Order).where(
+            Order.tenant_id == user.tenant_id,
+            Order.bayii_onay_bekliyor == True,  # noqa: E712
+            Order.is_iptal == False,            # noqa: E712
+        ).options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .order_by(Order.created_at_platform.desc())
+    ).all()
+
+    bayiler = {str(d.id): d for d in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == user.tenant_id)).all()}
+    out = []
+    for o in orders:
+        raw = o.raw or {}
+        d = bayiler.get(str(raw.get("dealer_id") or ""))
+        out.append({
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "bayi": d.name if d else "—",
+            "dealer_id": str(d.id) if d else None,
+            "kanal": raw.get("kanal"),
+            "musteri": o.customer_name,
+            "adres": raw.get("shipping_address") or {},
+            "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "not": o.note,
+            "kalemler": [{
+                "id": str(li.id),
+                "model": li.device_model_override,
+                "adet": li.quantity or 1,
+                "varyasyon": li.kilif_varyasyon,
+                "tasarim_kodu": li.assigned_design.code if li.assigned_design else None,
+                "gorsel": storage.get_thumbnail_url(
+                    li.assigned_design.file_path, li.assigned_design.file_format)
+                if li.assigned_design else None,
+            } for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
+        })
+    return out
+
+
+class PortalOnayIn(BaseModel):
+    # Kalem basina secilen varyasyon: {line_item_id: "SIYAH"|"BEYAZ"|...}
+    varyasyonlar: dict[str, str] = Field(default_factory=dict)
+    apply_shipping: bool = True
+
+
+@router.post("/portal/onay-bekleyen/{order_id}", response_model=dict)
+def portal_onayla(
+    order_id: uuid.UUID,
+    req: PortalOnayIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Bayi siparisini onayla: varyasyonlari yaz, cari borcu isle, kaliba ac."""
+    from app.services import dealer_debt, placement_rules, push
+
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id,
+    ).options(selectinload(Order.line_items)))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    if not o.bayii_onay_bekliyor:
+        raise HTTPException(409, "Bu siparis zaten onaylanmis")
+
+    d = db.scalar(select(Dealer).where(
+        Dealer.id == uuid.UUID(str((o.raw or {}).get("dealer_id"))),
+        Dealer.tenant_id == user.tenant_id)) if (o.raw or {}).get("dealer_id") else None
+    if not d:
+        raise HTTPException(400, "Siparisin bayisi bulunamadi")
+
+    for li in (o.line_items or []):
+        sec = (req.varyasyonlar or {}).get(str(li.id))
+        if sec:
+            li.kilif_varyasyon = placement_rules.normalize_variation(sec) or sec
+
+    adet = sum(int(li.quantity or 1) for li in (o.line_items or []))
+    ozet = dealer_debt.ilk_borc(db, d, o, adet=adet, kargo_uygula=req.apply_shipping)
+
+    # Bayinin gordugu tahmini tutarlar kesinlessin
+    raw = dict(o.raw or {})
+    raw["total_price"] = str(ozet["urun"])
+    raw["shipping_fee"] = str(ozet["kargo"])
+    o.raw = raw
+    o.bayii_onay_bekliyor = False
+
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id,
+        from_stage=o.current_stage, to_stage=o.current_stage,
+        action="bayii_onay",
+        note=f"Bayi siparisi onaylandi ({d.name}) · borc: "
+             f"{ozet['urun']:.2f} {ozet['currency']}"
+             + (f" + {ozet['kargo']:.2f} TRY kargo" if ozet["kargo"] else ""),
+        created_by=user.full_name or user.email,
+    ))
+    # Bayiye haber ver
+    try:
+        for u in db.scalars(select(User).where(User.dealer_id == d.id)).all():
+            push.send_to_user(db, u.id, "Siparisin onaylandi",
+                              f"#{o.order_number} uretime alindi.",
+                              url=f"/bayii/siparis/{o.id}")
+    except Exception:  # noqa: BLE001
+        pass
+    db.commit()
+    return {"ok": True, "order_id": str(o.id), **ozet}
+
+
+# ─── Bayi portali: giris hesaplari ──────────────────────────
+# Bayi hesabi GENEL kullanici ekranindan degil buradan acilir: rol ve izin
+# ZORLA sabitlenir. Rolu 'yonetici' olan bir kullaniciya dealer_id verilseydi
+# permissions.is_admin() yuzunden TUM panellere erisirdi.
+BAYI_ROL = "bayii_portal"
+BAYI_IZIN = ["bayii_portal"]
+
+
+class BayiHesapIn(BaseModel):
+    # EmailStr: login semasi da EmailStr kullaniyor. Burada duz str birakilsaydi
+    # login'in reddettigi bir adresle (ornegin .test/.local gibi ayrilmis alan
+    # adlari) hesap acilir, bayi HIC giris yapamazdi.
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=200)
+    full_name: str | None = None
+
+
+def _ser_hesap(u: User) -> dict:
+    return {"id": str(u.id), "email": u.email, "full_name": u.full_name,
+            "is_active": bool(u.is_active),
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None}
+
+
+@router.get("/{dealer_id}/hesaplar", response_model=list[dict])
+def bayi_hesaplari(dealer_id: uuid.UUID,
+                   user: User = Depends(require_permission("bayii")),
+                   db: Session = Depends(get_db)):
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    return [_ser_hesap(u) for u in db.scalars(
+        select(User).where(User.dealer_id == d.id).order_by(User.created_at)).all()]
+
+
+@router.post("/{dealer_id}/hesaplar", response_model=dict, status_code=201)
+def bayi_hesap_ekle(dealer_id: uuid.UUID, req: BayiHesapIn,
+                    user: User = Depends(require_permission("bayii")),
+                    db: Session = Depends(get_db)):
+    from app.auth.security import hash_password
+
+    d = db.scalar(select(Dealer).where(Dealer.id == dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayii bulunamadi")
+    _ensure_store(db, user.tenant_id, d)   # portal siparisi bu store'a yazilacak
+    email = req.email.strip().lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, "Bu e-posta zaten kayitli")
+    u = User(
+        tenant_id=user.tenant_id, email=email,
+        password_hash=hash_password(req.password),
+        full_name=(req.full_name or d.name).strip(),
+        role=BAYI_ROL, permissions=list(BAYI_IZIN),
+        dealer_id=d.id, is_active=True,
+    )
+    db.add(u)
+    db.commit(); db.refresh(u)
+    return _ser_hesap(u)
+
+
+class BayiHesapGuncelle(BaseModel):
+    password: str | None = Field(None, min_length=8, max_length=200)
+    full_name: str | None = None
+    is_active: bool | None = None
+
+
+@router.patch("/{dealer_id}/hesaplar/{user_id}", response_model=dict)
+def bayi_hesap_guncelle(dealer_id: uuid.UUID, user_id: uuid.UUID, req: BayiHesapGuncelle,
+                        user: User = Depends(require_permission("bayii")),
+                        db: Session = Depends(get_db)):
+    from app.auth.security import hash_password
+
+    u = db.scalar(select(User).where(
+        User.id == user_id, User.dealer_id == dealer_id, User.tenant_id == user.tenant_id))
+    if not u:
+        raise HTTPException(404, "Hesap bulunamadi")
+    if req.password:
+        u.password_hash = hash_password(req.password)
+    if req.full_name is not None:
+        u.full_name = req.full_name.strip()
+    if req.is_active is not None:
+        u.is_active = bool(req.is_active)
+    # Rol/izin her guncellemede sabitlenir: elle yukseltilmis olsa bile geri iner
+    u.role, u.permissions = BAYI_ROL, list(BAYI_IZIN)
+    db.commit(); db.refresh(u)
+    return _ser_hesap(u)
+
+
+@router.delete("/{dealer_id}/hesaplar/{user_id}", response_model=dict)
+def bayi_hesap_sil(dealer_id: uuid.UUID, user_id: uuid.UUID,
+                   user: User = Depends(require_permission("bayii")),
+                   db: Session = Depends(get_db)):
+    u = db.scalar(select(User).where(
+        User.id == user_id, User.dealer_id == dealer_id, User.tenant_id == user.tenant_id))
+    if not u:
+        raise HTTPException(404, "Hesap bulunamadi")
+    db.delete(u)
+    db.commit()
+    return {"ok": True}

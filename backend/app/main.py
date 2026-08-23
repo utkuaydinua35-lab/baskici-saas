@@ -17,6 +17,7 @@ from app.routers import aski
 from app.routers.kisiye_ozel import router as kisiye_ozel_router
 from app.routers.accessories import router as accessories_router
 from app.routers.users import router as users_router
+from app.routers.bayii_portal import router as bayii_portal_router
 from app.routers.dealers import router as dealers_router
 from app.routers.couple import router as couple_router
 from app.routers.order_detail import router as order_detail_router
@@ -154,6 +155,7 @@ app.include_router(kisiye_ozel_router)
 app.include_router(accessories_router)
 app.include_router(users_router)
 app.include_router(dealers_router)
+app.include_router(bayii_portal_router)
 app.include_router(couple_router)
 app.include_router(notifications_router)
 app.include_router(molds_router)

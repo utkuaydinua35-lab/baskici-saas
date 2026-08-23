@@ -1,0 +1,562 @@
+"""Bayi portalı — /api/bayii/*  (bayilerin kendi giriş paneli)
+
+Bayiler kendi hesaplarıyla girer; siparişlerinin durumunu ve carilerini görür,
+yeni sipariş açar. Varyasyon seçimi ve ONAY yönetimde kalır.
+
+GÜVENLİK — buradaki HER sorgu iki şeye kilitli: user.tenant_id ve
+user.dealer_id. Kilit tek yerde (_bayi + _siparis) toplandı; yeni uç eklerken
+mutlaka onları kullan, elle Order sorgusu yazma.
+
+İzin adı bilerek 'bayii_portal', 'bayii' DEĞİL: 'bayii' yönetim tarafındaki
+bayi ekranlarının izni ve require_any_permission("siparisler", "bayii") gibi
+yerlerde geçiyor. Aynı adı verseydik bayi kullanıcısı yönetim uçlarına da
+girerdi.
+
+DEĞİŞİKLİK KURALLARI:
+  • kalıba eklenmiş kalem varsa -> hiçbir değişiklik yok
+  • barkod oluşmuşsa            -> adres değişmez
+  • ikisi de yoksa              -> model, tasarım ve adres değişebilir
+Her değişiklik durum geçmişine yazılır + yöneticiye bildirim gider.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
+                     HTTPException, UploadFile)
+from pydantic import BaseModel, Field
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session, selectinload
+
+from app import stages as stage_defs
+from app.auth.dependencies import get_current_user, require_permission
+from app.database import get_db
+from app.models import (
+    Dealer, DealerTransaction, Design, LineItem, MoldItem, Notification,
+    Order, OrderStatusHistory, User,
+)
+from app.services import storage
+
+router = APIRouter(prefix="/api/bayii", tags=["bayii_portal"])
+_izin = Depends(require_permission("bayii_portal"))
+
+# Siparişin geldiği kanal. Trendyol adresi kendi tarafında tutuyor; bizden
+# yalnızca alıcı adı isteniyor. Diğerlerinde kargo için tam adres şart.
+KANALLAR = ("trendyol", "shopier", "instagram")
+ADRES_ZORUNLU = ("shopier", "instagram")
+# Bayi tasarımı JPG yükler (kullanıcıya söylenen kural); PNG/PDF de kabul.
+IZINLI_UZANTI = ("jpg", "jpeg", "png", "pdf")
+
+
+# ─── Kilitler ────────────────────────────────────────────────
+def _bayi(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Dealer:
+    if not user.dealer_id:
+        raise HTTPException(403, "Bu hesap bir bayiye bağlı değil")
+    d = db.scalar(select(Dealer).where(
+        Dealer.id == user.dealer_id, Dealer.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Bayi bulunamadı")
+    if not d.is_active:
+        raise HTTPException(403, "Bayi hesabınız pasif durumda — bizimle iletişime geçin")
+    return d
+
+
+def _sahibi_mi(o: Order, d: Dealer) -> bool:
+    """Sipariş bu bayinin mi. raw.dealer_id kesin ölçüt; yoksa mağazaya düşülür.
+    (OR ile bakmak iki bayi aynı mağazayı paylaşırsa sızıntı olurdu.)"""
+    rd = str((o.raw or {}).get("dealer_id") or "")
+    return (rd == str(d.id)) if rd else (o.store_id == d.store_id)
+
+
+def _siparis(db: Session, d: Dealer, order_id: uuid.UUID) -> Order:
+    o = db.scalar(
+        select(Order).where(Order.id == order_id, Order.tenant_id == d.tenant_id,
+                            Order.deleted_at.is_(None))
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+    )
+    if not o or not _sahibi_mi(o, d):
+        raise HTTPException(404, "Sipariş bulunamadı")
+    return o
+
+
+def _bayinin_siparisleri(db: Session, d: Dealer, limit: int = 500) -> list[Order]:
+    orders = db.scalars(
+        select(Order).where(Order.tenant_id == d.tenant_id, Order.deleted_at.is_(None))
+        .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .order_by(desc(Order.created_at_platform)).limit(2000)
+    ).all()
+    return [o for o in orders if _sahibi_mi(o, d)][:limit]
+
+
+# ─── Durum yardımcıları ──────────────────────────────────────
+def _kaliba_girdi(db: Session, o: Order) -> bool:
+    if any(getattr(li, "is_kaliba_eklendi", False) for li in (o.line_items or [])):
+        return True
+    return bool(db.scalar(select(MoldItem.id).where(
+        MoldItem.tenant_id == o.tenant_id,
+        MoldItem.order_number == str(o.order_number)).limit(1)))
+
+
+def _barkod_var(o: Order) -> bool:
+    return bool(o.barkod_kodu or (o.kargo_info or {}).get("barcode")
+                or (o.current_stage or 1) >= 3)
+
+
+def _yetkiler(db: Session, o: Order) -> dict:
+    uretimde = _kaliba_girdi(db, o)
+    barkod = _barkod_var(o)
+    return {
+        "urun_degistir": not uretimde,          # telefon modeli + tasarım
+        "adres_degistir": not uretimde and not barkod,
+        "silinebilir": not uretimde and bool(o.bayii_onay_bekliyor),
+        "uretimde": uretimde,
+        "barkod_var": barkod,
+    }
+
+
+def _ser_kalem(li: LineItem) -> dict:
+    d = li.assigned_design
+    return {
+        "id": str(li.id),
+        "baslik": li.title,
+        "model": li.device_model_override,
+        "adet": li.quantity or 1,
+        "varyasyon": li.kilif_varyasyon,
+        "gorsel": storage.get_thumbnail_url(d.file_path, d.file_format) if d else None,
+        "tasarim": storage.get_design_url(d.file_path) if d else None,
+    }
+
+
+def _ser(db: Session, o: Order, detay: bool = False) -> dict:
+    raw = o.raw or {}
+    sa = raw.get("shipping_address") or {}
+    out = {
+        "id": str(o.id),
+        "order_number": o.order_number,
+        "musteri": o.customer_name,
+        "kanal": raw.get("kanal"),
+        "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
+        "asama": o.current_stage or 1,
+        "asama_adi": stage_defs.stage_label(o.current_stage or 1),
+        "onay_bekliyor": bool(o.bayii_onay_bekliyor),
+        "iptal": bool(o.is_iptal),
+        "adet": sum(int(li.quantity or 1) for li in (o.line_items or [])),
+        "tutar": raw.get("total_price"),
+        "kargo_ucreti": raw.get("shipping_fee"),
+        "para_birimi": raw.get("currency", "TRY"),
+        "kargo_takip": (o.kargo_info or {}).get("tracking_number"),
+        "kalemler": [_ser_kalem(li) for li in sorted(
+            o.line_items or [], key=lambda x: x.position or 0)],
+    }
+    if detay:
+        gecmis = db.scalars(
+            select(OrderStatusHistory)
+            .where(OrderStatusHistory.order_id == o.id)
+            .order_by(desc(OrderStatusHistory.created_at)).limit(30)
+        ).all()
+        out |= {
+            "adres": {
+                "ad": sa.get("name") or o.customer_name,
+                "telefon": sa.get("phone"),
+                "adres": sa.get("address1"),
+                "il": sa.get("city"),
+                "ilce": sa.get("province"),
+            },
+            "not": o.note,
+            "yetkiler": _yetkiler(db, o),
+            "gecmis": [
+                {"eylem": h.action, "not": h.note, "kim": h.created_by,
+                 "tarih": h.created_at.isoformat() if h.created_at else None}
+                for h in gecmis
+            ],
+        }
+    return out
+
+
+def _bildir(db: Session, d: Dealer, o: Order, baslik: str, govde: str) -> None:
+    """Yöneticiye haber ver: panel bildirimi + telefona push.
+    Bildirim gönderilemezse ana işlem düşmemeli — hatalar yutulur."""
+    link = f"/orders/{o.id}"
+    try:
+        db.add(Notification(tenant_id=d.tenant_id, store_id=d.store_id,
+                            kind="bayii", title=baslik, body=govde, link=link))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.services import push
+        push.send_to_tenant(db, d.tenant_id, baslik, govde, url=link,
+                            tag=f"bayii-{o.id}")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _gecmise_yaz(db: Session, o: Order, d: Dealer, eylem: str, not_: str) -> None:
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id,
+        from_stage=o.current_stage, to_stage=o.current_stage,
+        action=eylem, note=not_, created_by=f"Bayi: {d.name}",
+    ))
+
+
+# ─── Okuma uçları ────────────────────────────────────────────
+@router.get("/ozet", response_model=dict, dependencies=[_izin])
+def ozet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    siparisler = _bayinin_siparisleri(db, d, limit=2000)
+    acik = [o for o in siparisler if not o.is_iptal]
+    return {
+        "bayi": {"ad": d.name, "para_birimi": (d.currency or "TRY").upper()},
+        "cari": {
+            "bakiye": float(d.balance or 0),
+            "bakiye_usd": float(d.balance_usd or 0),
+            "birim_fiyat": float(d.unit_price or 0),
+            "kargo_ucreti": float(d.shipping_fee or 0),
+        },
+        "sayilar": {
+            "toplam": len(acik),
+            "onay_bekleyen": sum(1 for o in acik if o.bayii_onay_bekliyor),
+            "uretimde": sum(1 for o in acik
+                            if not o.bayii_onay_bekliyor and (o.current_stage or 1) < 8),
+            "kargoda": sum(1 for o in acik if (o.current_stage or 1) >= 8),
+        },
+        "son_siparisler": [_ser(db, o) for o in siparisler[:6]],
+    }
+
+
+@router.get("/siparisler", response_model=dict, dependencies=[_izin])
+def siparisler(d: Dealer = Depends(_bayi), db: Session = Depends(get_db), limit: int = 200):
+    return {"items": [_ser(db, o) for o in _bayinin_siparisleri(db, d, limit=limit)]}
+
+
+@router.get("/siparis/{order_id}", response_model=dict, dependencies=[_izin])
+def siparis_detay(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
+                  db: Session = Depends(get_db)):
+    return _ser(db, _siparis(db, d, order_id), detay=True)
+
+
+@router.get("/cari", response_model=dict, dependencies=[_izin])
+def cari(d: Dealer = Depends(_bayi), db: Session = Depends(get_db), limit: int = 100):
+    hareketler = db.scalars(
+        select(DealerTransaction).where(DealerTransaction.dealer_id == d.id)
+        .order_by(desc(DealerTransaction.created_at)).limit(min(limit, 300))
+    ).all()
+    return {
+        "bakiye": float(d.balance or 0),
+        "bakiye_usd": float(d.balance_usd or 0),
+        "para_birimi": (d.currency or "TRY").upper(),
+        "items": [
+            {"tarih": t.created_at.isoformat() if t.created_at else None,
+             "tur": t.kind, "aciklama": t.description,
+             "tutar": float(t.amount or 0), "para_birimi": t.currency or "TRY",
+             "bakiye_sonra": float(t.balance_after or 0)}
+            for t in hareketler
+        ],
+    }
+
+
+@router.get("/il-ilce", response_model=dict, dependencies=[_izin])
+def il_ilce():
+    """TR il -> ilce listesi (statik).
+
+    Adres serbest metin girilince yazim hatasi kargo etiketini bozuyordu;
+    bayi listeden secsin. Ayni veriyi vitrin de kullaniyor.
+    """
+    from app.services.tr_iller import IL_ILCE
+    return {"items": IL_ILCE}
+
+
+@router.get("/modeller", response_model=dict, dependencies=[_izin])
+def modeller(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    """Sipariş girerken seçilecek telefon modelleri.
+
+    Kalıp üretimi model adına bakıyor; bayinin serbest metin girmesi yerine
+    tanınan modellerden seçmesi hatayı baştan keser.
+    """
+    from app.models import PhoneModel
+    from app.services import phone_models as pm
+
+    adlar: dict[str, str] = {}
+    for m in db.scalars(select(PhoneModel).where(
+            PhoneModel.tenant_id == d.tenant_id,
+            PhoneModel.is_active == True)).all():  # noqa: E712
+        adlar[pm.canonical_key(m.spec_key or "")] = m.display_name or m.spec_key
+    for k in pm.baseline_keys():
+        if pm.is_apple_alias_key(k):
+            continue
+        ck = pm.canonical_key(k)
+        if ck not in adlar:
+            adlar[ck] = pm.baseline_display_name(k)
+    return {"items": sorted(adlar.values(), key=str.lower)}
+
+
+# ─── Sipariş oluşturma ───────────────────────────────────────
+def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
+                    arka: BackgroundTasks | None = None) -> Design:
+    """Yüklenen dosyadan Design üret. Kod çakışmasın diye bayiye özel önek."""
+    ext = storage.get_extension(dosya.filename or "")
+    if ext not in IZINLI_UZANTI:
+        raise HTTPException(400, f"İzin verilen formatlar: {', '.join(IZINLI_UZANTI).upper()}")
+    veri = dosya.file.read()
+    if not veri:
+        raise HTTPException(400, "Dosya boş")
+    if len(veri) > storage.MAX_FILE_SIZE:
+        raise HTTPException(413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
+
+    kod = f"B{d.id.hex[:4]}-{datetime.now(UTC).strftime('%y%m%d%H%M%S%f')[:14]}"
+    tasarim = Design(
+        tenant_id=d.tenant_id, store_id=d.store_id, code=kod,
+        name=etiket[:200] or kod, is_kisiye_ozel=True,
+        notes=f"Bayi portalinden yüklendi — {d.name}",
+        file_path="", file_format="", file_size_bytes=0,
+    )
+    db.add(tasarim)
+    db.flush()
+    try:
+        bilgi = storage.save_design_file(
+            tenant_id=d.tenant_id, design_id=tasarim.id, file_data=veri,
+            original_filename=dosya.filename or f"{kod}.{ext}",
+            skip_thumbnail=True,  # önizleme arka planda üretilir, yükleme beklemesin
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except OSError as e:
+        raise HTTPException(500, f"Dosya kaydedilemedi: {str(e)[:200]}") from e
+    tasarim.file_path = bilgi["relative_path"]
+    tasarim.file_format = bilgi["format"]
+    tasarim.file_size_bytes = bilgi["size"]
+    if arka is not None:
+        # PDF'in onizlemesi (ve kalip onbellegi) YANITTAN SONRA uretilir: bayi
+        # yuklemeyi beklemesin. JPG/PNG'de onizleme dosyanin kendisidir, PDF'te
+        # bu gorev calismazsa panelde gorsel bos kalirdi.
+        arka.add_task(storage.generate_design_thumbnail, d.tenant_id, tasarim.id)
+        try:
+            from app.services import mold_pdf as _mp
+            arka.add_task(_mp.onbellek_hazirla, bilgi["relative_path"])
+        except Exception:  # noqa: BLE001
+            pass
+    return tasarim
+
+
+def _adres_dogrula(kanal: str, ad: str, telefon: str, adres: str, il: str, ilce: str) -> dict:
+    """Kanal kuralı: Trendyol'da ad yeter, diğerlerinde tam adres şart."""
+    ad = (ad or "").strip()
+    if not ad:
+        raise HTTPException(400, "Alıcı adı soyadı gerekli")
+    if kanal not in ADRES_ZORUNLU:
+        return {"name": ad}
+    eksik = [etiket for etiket, deger in (
+        ("telefon numarası", telefon), ("adres", adres), ("il", il), ("ilçe", ilce),
+    ) if not (deger or "").strip()]
+    if eksik:
+        raise HTTPException(400, f"{kanal.title()} siparişinde şunlar zorunlu: {', '.join(eksik)}")
+    return {
+        "name": ad, "phone": telefon.strip(), "address1": adres.strip(),
+        "city": il.strip(), "province": ilce.strip(), "country": "Türkiye",
+    }
+
+
+def _benzersiz_no(db: Session, d: Dealer, simdi: datetime) -> tuple[str, str]:
+    """Benzersiz (external_id, order_number) uret.
+
+    Numara saniye damgasindan turuyor; aynı saniyede iki siparis acilirsa
+    orders(store_id, external_id) tekil kisiti INSERT'i 500 ile dusuruyordu
+    (bayi ust uste tiklayinca ya da iki bayi ayni anda girince). Cakisma
+    varsa saniyeye harf eki verilir.
+    """
+    taban = simdi.strftime("%y%m%d%H%M%S")
+    for i in range(40):
+        seq = taban if i == 0 else f"{taban}{chr(97 + (i - 1) % 26)}{i // 26 or ''}"
+        dis = f"BAYII-{d.id.hex[:6]}-{seq}"
+        # include_deleted: cope atilmis siparisin satiri DURUYOR, tekil kisit
+        # onu da sayar. Global soft-delete suzgeci gizleseydi numarayi bos
+        # sanip ayni cakismayi yeniden uretirdik.
+        var = db.scalar(select(Order.id).where(
+            Order.store_id == d.store_id, Order.external_id == dis
+        ).limit(1).execution_options(include_deleted=True))
+        if not var:
+            return seq, f"B{seq}"
+    raise HTTPException(503, "Sipariş numarası üretilemedi, birkaç saniye sonra tekrar dene")
+
+
+@router.post("/siparis", response_model=dict, status_code=201, dependencies=[_izin])
+def siparis_olustur(
+    arka: BackgroundTasks,
+    tasarim: UploadFile = File(...),
+    model: str = Form(..., max_length=200),
+    adet: int = Form(1),
+    kanal: str = Form(...),
+    ad_soyad: str = Form(...),
+    telefon: str = Form(""),
+    adres: str = Form(""),
+    il: str = Form(""),
+    ilce: str = Form(""),
+    aciklama: str = Form(""),
+    d: Dealer = Depends(_bayi),
+    db: Session = Depends(get_db),
+):
+    """Bayi siparişi açar. Sipariş ONAY BEKLER: yönetici varyasyonu seçip
+    onaylayana kadar kalıba girmez ve cari borç İŞLENMEZ."""
+    kanal = (kanal or "").strip().lower()
+    if kanal not in KANALLAR:
+        raise HTTPException(400, f"Geçersiz kanal. Seçenekler: {', '.join(KANALLAR)}")
+    model = (model or "").strip()
+    if not model:
+        raise HTTPException(400, "Telefon modeli seçilmeli")
+    if not 1 <= adet <= 99:
+        raise HTTPException(400, "Adet 1 ile 99 arasında olmalı")
+
+    if not d.store_id:
+        raise HTTPException(400, "Bayi mağazası tanımlı değil — bizimle iletişime geçin")
+
+    sa = _adres_dogrula(kanal, ad_soyad, telefon, adres, il, ilce)
+    ds = _tasarim_kaydet(db, d, tasarim, f"{model} — {sa['name']}", arka)
+
+    simdi = datetime.now(UTC)
+    seq, order_number = _benzersiz_no(db, d, simdi)
+    raw = {
+        "source": "bayii", "kanal": kanal, "dealer_id": str(d.id),
+        "currency": (d.currency or "TRY").upper(),
+        # Tutarlar ONAYDA kesinleşir; burada bayinin gördüğü tahmini bedel.
+        "total_price": str(Decimal(str(d.unit_price or 0)) * Decimal(adet)),
+        "shipping_fee": str(Decimal(str(d.shipping_fee or 0))) if kanal in ADRES_ZORUNLU else "0",
+        "shipping_address": sa,
+        "customer_phone": sa.get("phone", ""),
+    }
+    o = Order(
+        tenant_id=d.tenant_id, store_id=d.store_id,
+        external_id=f"BAYII-{d.id.hex[:6]}-{seq}",
+        order_number=order_number, name=f"#{order_number}",
+        customer_name=sa["name"], created_at_platform=simdi,
+        note=(aciklama or "").strip() or None,
+        current_stage=1, bayii_onay_bekliyor=True, raw=raw,
+    )
+    db.add(o)
+    db.flush()
+    db.add(LineItem(
+        tenant_id=d.tenant_id, order_id=o.id,
+        title=f"{model} — {ds.code}", quantity=adet, position=0,
+        assigned_design_id=ds.id, device_model_override=model,
+        properties=[], raw={"source": "bayii", "kanal": kanal},
+    ))
+    _gecmise_yaz(db, o, d, "bayii_siparis",
+                 f"Bayi portalinden açıldı · {model} × {adet} · kanal: {kanal}")
+    _bildir(db, d, o, "Yeni bayi siparişi",
+            f"{d.name} — #{order_number} · {model} × {adet} ({kanal}) · onay bekliyor")
+    db.commit()
+    db.refresh(o)
+    return {"ok": True, "id": str(o.id), "order_number": order_number,
+            "mesaj": "Siparişin alındı, onay bekliyor."}
+
+
+# ─── Düzenleme ───────────────────────────────────────────────
+class UrunIn(BaseModel):
+    model: str | None = Field(None, max_length=200)
+
+
+@router.patch("/siparis/{order_id}/urun", response_model=dict, dependencies=[_izin])
+def urun_guncelle(order_id: uuid.UUID, req: UrunIn, d: Dealer = Depends(_bayi),
+                  db: Session = Depends(get_db)):
+    """Telefon modelini değiştir. Sipariş kalıba girdiyse reddedilir."""
+    o = _siparis(db, d, order_id)
+    if not _yetkiler(db, o)["urun_degistir"]:
+        raise HTTPException(409, "Bu sipariş üretime girdi, artık değiştirilemez")
+    yeni = (req.model or "").strip()
+    if not yeni:
+        raise HTTPException(400, "Telefon modeli boş olamaz")
+    kalemler = sorted(o.line_items or [], key=lambda x: x.position or 0)
+    if not kalemler:
+        raise HTTPException(400, "Siparişte ürün yok")
+    eski = kalemler[0].device_model_override or "—"
+    if eski == yeni:
+        return {"ok": True, "degisiklik": False}
+    for li in kalemler:
+        li.device_model_override = yeni
+    _gecmise_yaz(db, o, d, "bayii_guncelleme", f"Telefon modeli: {eski} → {yeni}")
+    _bildir(db, d, o, "Bayi siparişi güncellendi",
+            f"{d.name} — #{o.order_number} · model: {eski} → {yeni}")
+    db.commit()
+    return {"ok": True, "degisiklik": True}
+
+
+@router.post("/siparis/{order_id}/tasarim", response_model=dict, dependencies=[_izin])
+def tasarim_degistir(order_id: uuid.UUID, arka: BackgroundTasks,
+                     tasarim: UploadFile = File(...),
+                     d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    """Tasarımı yenisiyle değiştir. Sipariş kalıba girdiyse reddedilir."""
+    o = _siparis(db, d, order_id)
+    if not _yetkiler(db, o)["urun_degistir"]:
+        raise HTTPException(409, "Bu sipariş üretime girdi, tasarım değiştirilemez")
+    kalemler = sorted(o.line_items or [], key=lambda x: x.position or 0)
+    if not kalemler:
+        raise HTTPException(400, "Siparişte ürün yok")
+    li = kalemler[0]
+    eski = li.assigned_design.code if li.assigned_design else "—"
+    ds = _tasarim_kaydet(db, d, tasarim,
+                         f"{li.device_model_override or ''} — {o.customer_name}", arka)
+    for k in kalemler:
+        k.assigned_design_id = ds.id
+        k.is_hazir = False           # yeni tasarım geldi, hazır işareti düşer
+    li.title = f"{li.device_model_override or ''} — {ds.code}".strip(" —")
+    _gecmise_yaz(db, o, d, "bayii_guncelleme", f"Tasarım değişti: {eski} → {ds.code}")
+    _bildir(db, d, o, "Bayi tasarımı değişti",
+            f"{d.name} — #{o.order_number} · yeni tasarım {ds.code}")
+    db.commit()
+    return {"ok": True, "tasarim_kodu": ds.code,
+            "gorsel": storage.get_thumbnail_url(ds.file_path, ds.file_format)}
+
+
+class AdresIn(BaseModel):
+    ad_soyad: str = Field(..., max_length=200)
+    telefon: str = ""
+    adres: str = ""
+    il: str = ""
+    ilce: str = ""
+
+
+@router.patch("/siparis/{order_id}/adres", response_model=dict, dependencies=[_izin])
+def adres_guncelle(order_id: uuid.UUID, req: AdresIn, d: Dealer = Depends(_bayi),
+                   db: Session = Depends(get_db)):
+    """Adresi güncelle. Barkod oluştuysa reddedilir (kargo etiketi basılmış olur)."""
+    o = _siparis(db, d, order_id)
+    y = _yetkiler(db, o)
+    if y["uretimde"]:
+        raise HTTPException(409, "Bu sipariş üretime girdi, adres değiştirilemez")
+    if not y["adres_degistir"]:
+        raise HTTPException(409, "Barkod oluşturuldu, adres artık değiştirilemez")
+
+    raw = dict(o.raw or {})
+    kanal = raw.get("kanal") or "trendyol"
+    yeni = _adres_dogrula(kanal, req.ad_soyad, req.telefon, req.adres, req.il, req.ilce)
+    eski = raw.get("shipping_address") or {}
+    if eski == yeni:
+        return {"ok": True, "degisiklik": False}
+
+    raw["shipping_address"] = yeni
+    raw["customer_phone"] = yeni.get("phone", "")
+    o.raw = raw            # JSONB: yeni sözlük atanmalı, yerinde değişiklik yazılmaz
+    o.customer_name = yeni["name"]
+    _gecmise_yaz(db, o, d, "bayii_guncelleme",
+                 "Adres güncellendi: " + " · ".join(filter(None, [
+                     yeni.get("name"), yeni.get("phone"), yeni.get("city"),
+                     yeni.get("province")])))
+    _bildir(db, d, o, "Bayi adresi güncelledi",
+            f"{d.name} — #{o.order_number} · alıcı: {yeni['name']}")
+    db.commit()
+    return {"ok": True, "degisiklik": True}
+
+
+@router.delete("/siparis/{order_id}", response_model=dict, dependencies=[_izin])
+def siparis_iptal(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
+                  db: Session = Depends(get_db)):
+    """Bayi kendi siparişini YALNIZCA onay beklerken geri çekebilir.
+    Onaylanan siparişte borç yazılmıştır; silme yönetimde kalır."""
+    o = _siparis(db, d, order_id)
+    if not _yetkiler(db, o)["silinebilir"]:
+        raise HTTPException(409, "Onaylanmış sipariş geri çekilemez — bizimle iletişime geçin")
+    o.deleted_at = datetime.now(UTC)
+    o.is_iptal = True
+    _gecmise_yaz(db, o, d, "silindi", "Bayi onay beklerken siparişi geri çekti")
+    _bildir(db, d, o, "Bayi siparişi geri çekti", f"{d.name} — #{o.order_number} iptal edildi")
+    db.commit()
+    return {"ok": True}

@@ -69,9 +69,40 @@ def main() -> None:
             if gorsel:
                 print("     <image> var → etiketin bir kısmı hazır GÖRSEL olabilir.")
 
-        # ── Font değişimi işe yarıyor mu ──
+        # ── Font değişimi GERÇEKTEN çizime yansıyor mu ──
         yeni = Z.fontlari_sadelestir(svg)
-        print(f"\n2) Font değişimi: {'UYGULANDI' if yeni != svg else 'DEĞİŞİKLİK YOK'}")
+        print(f"\n2) Font değişimi metinde: {'UYGULANDI' if yeni != svg else 'DEĞİŞİKLİK YOK'}")
+
+        import fitz as _f
+
+        def _izi(kaynak):
+            """Çizilen koyu piksel sayısı — font değişirse bu sayı DEĞİŞİR."""
+            d = _f.open(stream=kaynak.encode("utf-8"), filetype="svg")
+            pix = d[0].get_pixmap(matrix=_f.Matrix(2, 2), alpha=False)
+            n = sum(1 for i in range(0, len(pix.samples), pix.n) if pix.samples[i] < 128)
+            d.close()
+            return n
+
+        a, b = _izi(svg), _izi(yeni)
+        print(f"   çizimdeki koyu piksel: {a} -> {b}"
+              f"   {'ÇİZİM DEĞİŞTİ ✓' if a != b else '⚠ ÇİZİM AYNI — font çizime yansımıyor'}")
+
+        # İlk üç <text> ögesi ham haliyle — neyin değiştiği gözle görülsün
+        print("\n   ── SVG'deki ilk <text> ögeleri (ham) ──")
+        for i, m in enumerate(re.finditer(r"<text\b[^>]*>", svg, re.I)):
+            if i >= 3:
+                break
+            print(f"     once : {m.group(0)[:150]}")
+        for i, m in enumerate(re.finditer(r"<text\b[^>]*>", yeni, re.I)):
+            if i >= 3:
+                break
+            print(f"     sonra: {m.group(0)[:150]}")
+
+        # <image> içinde metin olabilir — o zaman font değiştirilemez
+        for m in re.finditer(r"<image\b[^>]*>", svg, re.I):
+            b64 = re.search(r'(?:xlink:)?href\s*=\s*"data:image/([a-z+]+);base64,', m.group(0), re.I)
+            wh = re.findall(r'\b(width|height)\s*=\s*"([^"]+)"', m.group(0))
+            print(f"\n   <image> tur={b64.group(1) if b64 else 'harici'} {dict(wh)}")
 
         # ── ZPL üretimi ──
         t = time.time()

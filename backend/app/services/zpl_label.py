@@ -96,15 +96,35 @@ GUVENLI_SANS = "Helvetica"
 
 
 def fontlari_sadelestir(svg: str, font: str = GUVENLI_SANS) -> str:
-    """SVG'deki font adlarini MuPDF'in tanidigi bir sans ile degistir.
+    """SVG'deki TUM yazilara MuPDF'in tanidigi bir sans font ata.
 
-    Basit Kargo'nun etiketi sunucuda bulunmayan bir font istiyor (or. Roboto).
-    MuPDF bulamayinca Times'a dusuyor ve etiket SERIF basiliyor; tarayicidan
-    basarken ayni sorun yok cunku tarayicida font mevcut. Kalinlik (font-weight)
-    ve olcu (font-size) korunur, yalnizca AILE degisir.
+    Basit Kargo'nun etiketinde 12 <text> var ama font tanimi yalnizca 2'sinde
+    ve o da BOS. Tanimi olmayan yazilar MuPDF'in varsayilanina, yani Times'a
+    (serif) dusuyor ve etiket serif basiliyordu. Tarayicidan basarken sorun yok
+    cunku tarayicinin varsayilani sans.
+
+    Bu yuzden var olan tanimi degistirmek YETMEZ; her <text>/<tspan> ogesine
+    font ATANIR. Kalinlik (font-weight) ve olcu (font-size) korunur.
     """
+    # 1) Mevcut (bos ya da dolu) tanimlari duzelt
     svg = _FONT_NITELIK.sub(lambda m: f'font-family="{font}"', svg)
     svg = _FONT_CSS.sub(lambda m: f"font-family:{font}", svg)
+
+    # 2) Tanimi OLMAYAN yazi ogelerine ekle
+    def _ekle(m):
+        etiket = m.group(0)
+        if re.search(r"font-family", etiket, re.I):
+            return etiket
+        return f"{m.group(1)} font-family=\"{font}\"{m.group(2)}"
+
+    svg = re.sub(r"(<(?:text|tspan)\b)([^>]*>)", _ekle, svg, flags=re.I)
+
+    # 3) Emniyet kemeri: stil bloguyla da tanimla (nitelik yakalanmayan
+    #    bicimlerde devreye girer; nitelik varsa o kazanir, zarari yok)
+    stil = f"<style>text,tspan{{font-family:{font},sans-serif}}</style>"
+    if "<svg" in svg:
+        kapanis = svg.index(">", svg.index("<svg")) + 1
+        svg = svg[:kapanis] + stil + svg[kapanis:]
     return svg
 
 

@@ -21,10 +21,7 @@ export default {
         accent: 'rgb(var(--accent-rgb) / <alpha-value>)',
       },
       fontFamily: {
-        // Sistem fontu — isletim sisteminin kendi arayuz fontu kullanilir.
-        // Inter yesil tema doneminde eklenmisti; renkler geri alinirken
-        // birlikte alinmasi gerekiyordu.
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
     },
   },

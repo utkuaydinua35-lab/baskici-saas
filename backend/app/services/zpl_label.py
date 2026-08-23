@@ -9,6 +9,8 @@ Akış: SVG/PDF -> PyMuPDF ile raster -> eşikle 1-bit -> ^GFA hex -> ZPL
 """
 from __future__ import annotations
 
+import re
+
 import fitz
 
 # GX420t ve GX430t: 203 / 300 dpi. Yanlış dpi = yanlış fiziksel boyut.
@@ -84,11 +86,33 @@ def _belge_zpl(doc: fitz.Document, dpi: int, esik: int,
     )
 
 
+# SVG'deki font adlarini yakala: hem font-family="X" hem style="font-family:X"
+_FONT_NITELIK = re.compile(r'font-family\s*=\s*(["\'])(.*?)\1', re.I)
+_FONT_CSS = re.compile(r'font-family\s*:\s*([^;"\'}]+)', re.I)
+
+# MuPDF'in dahili olarak TANIDIGI sans font. Tanimadigi her adi Times'a
+# (serif) dusuruyor — etiket bu yuzden serif basiliyordu.
+GUVENLI_SANS = "Helvetica"
+
+
+def fontlari_sadelestir(svg: str, font: str = GUVENLI_SANS) -> str:
+    """SVG'deki font adlarini MuPDF'in tanidigi bir sans ile degistir.
+
+    Basit Kargo'nun etiketi sunucuda bulunmayan bir font istiyor (or. Roboto).
+    MuPDF bulamayinca Times'a dusuyor ve etiket SERIF basiliyor; tarayicidan
+    basarken ayni sorun yok cunku tarayicida font mevcut. Kalinlik (font-weight)
+    ve olcu (font-size) korunur, yalnizca AILE degisir.
+    """
+    svg = _FONT_NITELIK.sub(lambda m: f'font-family="{font}"', svg)
+    svg = _FONT_CSS.sub(lambda m: f"font-family:{font}", svg)
+    return svg
+
+
 def svg_to_zpl(svg: str, dpi: int = VARSAYILAN_DPI, esik: int = 128,
                w_mm: float | None = None, h_mm: float | None = None,
                doldur: bool = True) -> str:
     try:
-        doc = fitz.open(stream=svg.encode("utf-8"), filetype="svg")
+        doc = fitz.open(stream=fontlari_sadelestir(svg).encode("utf-8"), filetype="svg")
     except Exception as e:  # noqa: BLE001
         raise ZplError(f"SVG okunamadı: {str(e)[:120]}") from e
     try:

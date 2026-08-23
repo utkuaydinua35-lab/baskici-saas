@@ -93,18 +93,36 @@ export default function BayiSiparislerPage() {
             <button key={o.id} onClick={() => navigate(`/bayii/siparis/${o.id}`)}
                     className="card !p-4 bayi-kart bayi-sira w-full text-left flex items-center gap-4"
                     style={{ '--gecikme': `${Math.min(i, 12) * 45}ms` }}>
-              <div className="w-14 h-14 rounded-xl overflow-hidden bg-white/[0.04] shrink-0
-                              border border-white/6 grid place-items-center">
-                {o.kalemler?.[0]?.gorsel
-                  ? <img src={o.kalemler[0].gorsel} alt="" className="w-full h-full object-cover" />
-                  : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
-                         className="w-6 h-6 text-gray-600"><rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
+              {/* Coklu urunde ilk iki gorsel ustuste; sadece birini gostermek
+                  siparisin tek urunlu oldugu izlenimi veriyordu. */}
+              <div className="relative w-14 h-14 shrink-0">
+                {(o.kalemler || []).slice(0, 2).reverse().map((k, n, dizi) => (
+                  <div key={k.id}
+                       className="absolute w-12 h-12 rounded-xl overflow-hidden bg-brand-input
+                                  border border-white/10 grid place-items-center"
+                       style={{ top: n === dizi.length - 1 ? 0 : 8,
+                                left: n === dizi.length - 1 ? 0 : 8, zIndex: n }}>
+                    {k.gorsel
+                      ? <img src={k.gorsel} alt="" className="w-full h-full object-cover" />
+                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
+                             className="w-5 h-5 text-gray-600">
+                          <rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
+                  </div>
+                ))}
+                {(o.kalemler?.length || 0) > 2 && (
+                  <span className="absolute -bottom-1 -right-1 z-10 text-[10px] px-1.5 py-0.5
+                                   rounded-full bg-accent/25 text-white border border-accent/40">
+                    +{o.kalemler.length - 2}
+                  </span>
+                )}
               </div>
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[14px] text-gray-100 font-medium">
-                    {o.kalemler?.[0]?.model || '—'}
+                    {(o.kalemler?.length || 0) > 1
+                      ? `${o.kalemler.length} ürün`
+                      : (o.kalemler?.[0]?.model || '—')}
                   </span>
                   {o.adet > 1 && <span className="text-[11px] text-gray-500">×{o.adet}</span>}
                   {o.kanal && (

@@ -315,6 +315,24 @@ def modeller(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
 
 
 # ─── Sipariş oluşturma ───────────────────────────────────────
+def _benzersiz_tasarim_kodu(db: Session, d: Dealer) -> str:
+    """Bayi tasarımı için çakışmayan kod.
+
+    Kod eskiden yalnız zaman damgasından türüyordu (santisaniye çözünürlük).
+    Çoklu ürünlü siparişte tasarımlar aynı döngüde arka arkaya kaydedildiği
+    için ikisi aynı santisaniyeye düşüp uq_design_store_code kısıtını bozuyor
+    ve sipariş 500 ile düşüyordu. Artık veritabanına sorularak üretilir.
+    """
+    taban = f"B{d.id.hex[:4]}-{datetime.now(UTC).strftime('%y%m%d%H%M%S')}"
+    for i in range(200):
+        kod = taban if i == 0 else f"{taban}-{i}"
+        var = db.scalar(select(Design.id).where(
+            Design.store_id == d.store_id, Design.code == kod).limit(1))
+        if not var:
+            return kod
+    raise HTTPException(503, "Tasarım kodu üretilemedi, birkaç saniye sonra tekrar dene")
+
+
 def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
                     arka: BackgroundTasks | None = None) -> Design:
     """Yüklenen dosyadan Design üret. Kod çakışmasın diye bayiye özel önek."""
@@ -327,7 +345,7 @@ def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
     if len(veri) > storage.MAX_FILE_SIZE:
         raise HTTPException(413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
 
-    kod = f"B{d.id.hex[:4]}-{datetime.now(UTC).strftime('%y%m%d%H%M%S%f')[:14]}"
+    kod = _benzersiz_tasarim_kodu(db, d)
     tasarim = Design(
         tenant_id=d.tenant_id, store_id=d.store_id, code=kod,
         name=etiket[:200] or kod, is_kisiye_ozel=True,
@@ -403,12 +421,17 @@ def _benzersiz_no(db: Session, d: Dealer, simdi: datetime) -> tuple[str, str]:
     raise HTTPException(503, "Sipariş numarası üretilemedi, birkaç saniye sonra tekrar dene")
 
 
+MAX_KALEM = 20   # tek siparişte en fazla ürün
+
+
 @router.post("/siparis", response_model=dict, status_code=201, dependencies=[_izin])
 def siparis_olustur(
     arka: BackgroundTasks,
-    tasarim: UploadFile = File(...),
-    model: str = Form(..., max_length=200),
-    adet: int = Form(1),
+    # ÇOKLU ÜRÜN: üç liste konum konum eşleşir — tasarim[i] ↔ model[i] ↔ adet[i].
+    # Tek ürünlü sipariş de bu yoldan geçer (tek elemanlı listeler).
+    tasarim: list[UploadFile] = File(...),
+    model: list[str] = Form(...),
+    adet: list[int] = Form(...),
     kanal: str = Form(...),
     ad_soyad: str = Form(...),
     telefon: str = Form(""),
@@ -424,17 +447,26 @@ def siparis_olustur(
     kanal = (kanal or "").strip().lower()
     if kanal not in KANALLAR:
         raise HTTPException(400, f"Geçersiz kanal. Seçenekler: {', '.join(KANALLAR)}")
-    model = (model or "").strip()
-    if not model:
-        raise HTTPException(400, "Telefon modeli seçilmeli")
-    if not 1 <= adet <= 99:
-        raise HTTPException(400, "Adet 1 ile 99 arasında olmalı")
-
     if not d.store_id:
         raise HTTPException(400, "Bayi mağazası tanımlı değil — bizimle iletişime geçin")
 
+    # Listeler aynı boyda olmalı: eşleşme konuma dayanıyor, kayarsa tasarım
+    # yanlış modele bağlanır ve bu ancak baskıda fark edilir.
+    if not (len(tasarim) == len(model) == len(adet)):
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (tasarım/model/adet eşleşmiyor)")
+    if not 1 <= len(tasarim) <= MAX_KALEM:
+        raise HTTPException(400, f"Bir siparişte 1 ile {MAX_KALEM} arası ürün olabilir")
+
+    modeller = [(m or "").strip() for m in model]
+    for i, m in enumerate(modeller, 1):
+        if not m:
+            raise HTTPException(400, f"{i}. üründe telefon modeli seçilmeli")
+    for i, a in enumerate(adet, 1):
+        if not 1 <= a <= 99:
+            raise HTTPException(400, f"{i}. üründe adet 1 ile 99 arasında olmalı")
+
     sa = _adres_dogrula(kanal, ad_soyad, telefon, adres, il, ilce)
-    ds = _tasarim_kaydet(db, d, tasarim, f"{model} — {sa['name']}", arka)
+    toplam_adet = sum(adet)
 
     simdi = datetime.now(UTC)
     seq, order_number = _benzersiz_no(db, d, simdi)
@@ -442,7 +474,7 @@ def siparis_olustur(
         "source": "bayii", "kanal": kanal, "dealer_id": str(d.id),
         "currency": (d.currency or "TRY").upper(),
         # Tutarlar ONAYDA kesinleşir; burada bayinin gördüğü tahmini bedel.
-        "total_price": str(Decimal(str(d.unit_price or 0)) * Decimal(adet)),
+        "total_price": str(Decimal(str(d.unit_price or 0)) * Decimal(toplam_adet)),
         "shipping_fee": str(Decimal(str(d.shipping_fee or 0))) if kanal in ADRES_ZORUNLU else "0",
         "shipping_address": sa,
         "customer_phone": sa.get("phone", ""),
@@ -457,72 +489,94 @@ def siparis_olustur(
     )
     db.add(o)
     db.flush()
-    db.add(LineItem(
-        tenant_id=d.tenant_id, order_id=o.id,
-        title=f"{model} — {ds.code}", quantity=adet, position=0,
-        assigned_design_id=ds.id, device_model_override=model,
-        properties=[], raw={"source": "bayii", "kanal": kanal},
-    ))
+
+    ozet = []
+    for i, (dosya, m, a) in enumerate(zip(tasarim, modeller, adet)):
+        ds = _tasarim_kaydet(db, d, dosya, f"{m} — {sa['name']}", arka)
+        db.add(LineItem(
+            tenant_id=d.tenant_id, order_id=o.id,
+            title=f"{m} — {ds.code}", quantity=a, position=i,
+            assigned_design_id=ds.id, device_model_override=m,
+            properties=[], raw={"source": "bayii", "kanal": kanal},
+        ))
+        ozet.append(f"{m} × {a}")
+
+    metin = " · ".join(ozet)
     _gecmise_yaz(db, o, d, "bayii_siparis",
-                 f"Bayi portalinden açıldı · {model} × {adet} · kanal: {kanal}")
+                 f"Bayi portalinden açıldı · {metin} · kanal: {kanal}")
     _bildir(db, d, o, "Yeni bayi siparişi",
-            f"{d.name} — #{order_number} · {model} × {adet} ({kanal}) · onay bekliyor")
+            f"{d.name} — #{order_number} · {metin} ({kanal}) · onay bekliyor")
     db.commit()
     db.refresh(o)
     return {"ok": True, "id": str(o.id), "order_number": order_number,
+            "kalem_sayisi": len(ozet), "toplam_adet": toplam_adet,
             "mesaj": "Siparişin alındı, onay bekliyor."}
 
 
 # ─── Düzenleme ───────────────────────────────────────────────
 class UrunIn(BaseModel):
     model: str | None = Field(None, max_length=200)
+    adet: int | None = Field(None, ge=1, le=99)
 
 
-@router.patch("/siparis/{order_id}/urun", response_model=dict, dependencies=[_izin])
-def urun_guncelle(order_id: uuid.UUID, req: UrunIn, d: Dealer = Depends(_bayi),
-                  db: Session = Depends(get_db)):
-    """Telefon modelini değiştir. Sipariş kalıba girdiyse reddedilir."""
+def _kalem(o: Order, kalem_id: uuid.UUID) -> LineItem:
+    """Siparişin BU kalemi. Çoklu üründe 'ilk kalem' varsaymak, bayinin
+    2. ürünü düzenlemesini 1.'ye uygulardı."""
+    for li in (o.line_items or []):
+        if li.id == kalem_id:
+            return li
+    raise HTTPException(404, "Ürün bulunamadı")
+
+
+@router.patch("/siparis/{order_id}/kalem/{kalem_id}", response_model=dict,
+              dependencies=[_izin])
+def urun_guncelle(order_id: uuid.UUID, kalem_id: uuid.UUID, req: UrunIn,
+                  d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    """Bir ürünün telefon modelini/adedini değiştir. Kalıba girdiyse reddedilir."""
     o = _siparis(db, d, order_id)
     if not _yetkiler(db, o)["urun_degistir"]:
         raise HTTPException(409, "Bu sipariş üretime girdi, artık değiştirilemez")
-    yeni = (req.model or "").strip()
-    if not yeni:
-        raise HTTPException(400, "Telefon modeli boş olamaz")
-    kalemler = sorted(o.line_items or [], key=lambda x: x.position or 0)
-    if not kalemler:
-        raise HTTPException(400, "Siparişte ürün yok")
-    eski = kalemler[0].device_model_override or "—"
-    if eski == yeni:
+    li = _kalem(o, kalem_id)
+
+    degisiklikler = []
+    if req.model is not None:
+        yeni_m = req.model.strip()
+        if not yeni_m:
+            raise HTTPException(400, "Telefon modeli boş olamaz")
+        if yeni_m != (li.device_model_override or ""):
+            degisiklikler.append(f"model: {li.device_model_override or '—'} → {yeni_m}")
+            li.device_model_override = yeni_m
+    if req.adet is not None and req.adet != (li.quantity or 1):
+        degisiklikler.append(f"adet: {li.quantity or 1} → {req.adet}")
+        li.quantity = req.adet
+
+    if not degisiklikler:
         return {"ok": True, "degisiklik": False}
-    for li in kalemler:
-        li.device_model_override = yeni
-    _gecmise_yaz(db, o, d, "bayii_guncelleme", f"Telefon modeli: {eski} → {yeni}")
-    _bildir(db, d, o, "Bayi siparişi güncellendi",
-            f"{d.name} — #{o.order_number} · model: {eski} → {yeni}")
+    not_ = " · ".join(degisiklikler)
+    _gecmise_yaz(db, o, d, "bayii_guncelleme", not_)
+    _bildir(db, d, o, "Bayi siparişi güncellendi", f"{d.name} — #{o.order_number} · {not_}")
     db.commit()
     return {"ok": True, "degisiklik": True}
 
 
-@router.post("/siparis/{order_id}/tasarim", response_model=dict, dependencies=[_izin])
-def tasarim_degistir(order_id: uuid.UUID, arka: BackgroundTasks,
+@router.post("/siparis/{order_id}/kalem/{kalem_id}/tasarim", response_model=dict,
+             dependencies=[_izin])
+def tasarim_degistir(order_id: uuid.UUID, kalem_id: uuid.UUID, arka: BackgroundTasks,
                      tasarim: UploadFile = File(...),
                      d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
-    """Tasarımı yenisiyle değiştir. Sipariş kalıba girdiyse reddedilir."""
+    """Bir ürünün tasarımını değiştir. Kalıba girdiyse reddedilir."""
     o = _siparis(db, d, order_id)
     if not _yetkiler(db, o)["urun_degistir"]:
         raise HTTPException(409, "Bu sipariş üretime girdi, tasarım değiştirilemez")
-    kalemler = sorted(o.line_items or [], key=lambda x: x.position or 0)
-    if not kalemler:
-        raise HTTPException(400, "Siparişte ürün yok")
-    li = kalemler[0]
+    li = _kalem(o, kalem_id)
     eski = li.assigned_design.code if li.assigned_design else "—"
     ds = _tasarim_kaydet(db, d, tasarim,
                          f"{li.device_model_override or ''} — {o.customer_name}", arka)
-    for k in kalemler:
-        k.assigned_design_id = ds.id
-        k.is_hazir = False           # yeni tasarım geldi, hazır işareti düşer
+    li.assigned_design_id = ds.id
+    li.is_hazir = False          # yeni tasarım geldi, hazır işareti düşer
     li.title = f"{li.device_model_override or ''} — {ds.code}".strip(" —")
-    _gecmise_yaz(db, o, d, "bayii_guncelleme", f"Tasarım değişti: {eski} → {ds.code}")
+    _gecmise_yaz(db, o, d, "bayii_guncelleme",
+                 f"{li.device_model_override or 'Ürün'} tasarımı değişti: {eski} → {ds.code}")
     _bildir(db, d, o, "Bayi tasarımı değişti",
             f"{d.name} — #{o.order_number} · yeni tasarım {ds.code}")
     db.commit()

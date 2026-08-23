@@ -149,7 +149,9 @@ export default function BayiPanelPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-[13.5px] text-gray-200 font-medium truncate">
-                      {o.kalemler?.[0]?.model || o.order_number}
+                      {(o.kalemler?.length || 0) > 1
+                        ? `${o.kalemler.length} ürün`
+                        : (o.kalemler?.[0]?.model || o.order_number)}
                     </span>
                     {o.adet > 1 && (
                       <span className="text-[11px] text-gray-500 shrink-0">×{o.adet}</span>

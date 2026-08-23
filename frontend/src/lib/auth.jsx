@@ -58,7 +58,12 @@ export function AuthProvider({ children }) {
         return
       }
       try {
-        const me = await api.get('/api/auth/me')
+        // index.html /me isteğini paket inmeden başlatmış olabilir; varsa onu
+        // kullan. Tek seferlik: sözü tükettikten sonra siliyoruz, yoksa
+        // logout/login sonrası ESKİ kullanıcı geri gelirdi.
+        const soz = window.__meSozu
+        window.__meSozu = undefined
+        const me = (soz && (await soz)) || (await api.get('/api/auth/me'))
         setUser(me.user)
         setTenant(me.tenant)
       } catch (e) {

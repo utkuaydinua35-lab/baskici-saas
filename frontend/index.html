@@ -22,6 +22,24 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Oturum isteğini JS paketi İNMEDEN başlat.
+         İlk açılışta zincir seriydi: HTML → index.js (indir+ayrıştır) →
+         /api/auth/me → sayfa chunk'ı → sayfanın kendi verisi. AuthProvider
+         /me dönene kadar hiçbir rota render etmediği için bu istek kritik
+         yolda. Buradan başlatınca paketin inme süresi kadar öne çekiliyor;
+         auth.jsx hazırsa bu sözü kullanır, yoksa normal yoldan ister. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('baskici_token')
+          if (!t) return
+          window.__meSozu = fetch('/api/auth/me', {
+            headers: { Accept: 'application/json', Authorization: 'Bearer ' + t },
+          }).then(function (r) { return r.ok ? r.json() : null })
+            .catch(function () { return null })
+        } catch (e) { /* localStorage kapalı olabilir — normal yola düşülür */ }
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

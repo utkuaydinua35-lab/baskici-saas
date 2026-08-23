@@ -16,6 +16,16 @@ export default defineConfig({
       '/storage': 'http://localhost:8000',
     },
   },
+  // `vite preview` URETIM derlemesini servis eder. Ayni vekil buraya da
+  // gerekiyor, yoksa performansi yalnizca dev sunucusunda olcebiliyoruz —
+  // dev, lazy chunk'lari istek aninda derledigi icin yaniltici yavas.
+  preview: {
+    port: 5175,
+    proxy: {
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/storage': 'http://localhost:8000',
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

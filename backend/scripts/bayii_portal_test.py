@@ -130,11 +130,16 @@ H_A, H_B = token(kul_a.email), token(kul_b.email)
 H_YABANCI, H_KOPUK, H_ADMIN = token(yabanci.email), token(kopuk.email), token(admin.email)
 
 
-def siparis_ac(h, **alan):
-    veri = {"model": "IPHONE-15", "adet": "1", "kanal": "trendyol",
-            "ad_soyad": "Ali Veli"} | {k: str(v) for k, v in alan.items()}
-    return ISTEMCI.post("/api/bayii/siparis", headers=h, data=veri,
-                        files={"tasarim": ("t.jpg", jpg(), "image/jpeg")})
+def siparis_ac(h, urunler=None, **alan):
+    """urunler: [(model, adet), ...] — coklu urun. Verilmezse tek urun."""
+    urunler = urunler or [("IPHONE-15", 1)]
+    veri = {"kanal": "trendyol", "ad_soyad": "Ali Veli"}
+    veri |= {k: str(v) for k, v in alan.items()}
+    veri["model"] = [m for m, _ in urunler]
+    veri["adet"] = [str(a) for _, a in urunler]
+    dosyalar = [("tasarim", (f"{i}.jpg", jpg(), "image/jpeg"))
+                for i in range(len(urunler))]
+    return ISTEMCI.post("/api/bayii/siparis", headers=h, data=veri, files=dosyalar)
 
 
 print("\n── 1. Yetki ──")
@@ -159,19 +164,21 @@ shopier_id = r.json().get("id")
 r = siparis_ac(H_A, kanal="trendyol", ad_soyad="Ayse Yilmaz")
 es("trendyol: sadece ad 201", 201, r.status_code)
 tr_id = r.json().get("id")
-es("adet 0 reddedilir", 400, siparis_ac(H_A, adet=0).status_code)
-es("model bos reddedilir", 400, siparis_ac(H_A, model=" ").status_code)
+es("adet 0 reddedilir", 400, siparis_ac(H_A, urunler=[("IPHONE-15", 0)]).status_code)
+es("model bos reddedilir", 400, siparis_ac(H_A, urunler=[(" ", 1)]).status_code)
 rb = ISTEMCI.post("/api/bayii/siparis", headers=H_A,
                   data={"model": "IPHONE-15", "adet": "1", "kanal": "trendyol",
                         "ad_soyad": "X"},
-                  files={"tasarim": ("t.exe", b"MZ", "application/octet-stream")})
+                  files=[("tasarim", ("t.exe", b"MZ", "application/octet-stream"))])
 es("izinsiz uzanti 400", 400, rb.status_code)
 
 print("\n── 3. Izolasyon ──")
 es("B bayisi A'nin siparisini goremez", 404,
    ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_B).status_code)
+_kid = lambda oid, h=None, i=0: ISTEMCI.get(
+    f"/api/bayii/siparis/{oid}", headers=h or H_A).json()["kalemler"][i]["id"]
 es("B, A'nin siparisini duzenleyemez", 404,
-   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun", headers=H_B,
+   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/kalem/{uuid.uuid4()}", headers=H_B,
                  json={"model": "IPHONE-14"}).status_code)
 es("B, A'nin siparisini silemez", 404,
    ISTEMCI.delete(f"/api/bayii/siparis/{tr_id}", headers=H_B).status_code)
@@ -194,14 +201,16 @@ print("\n── 5. Duzenleme kurallari ──")
 d0 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
 es("yeni siparis duzenlenebilir", True, d0["yetkiler"]["urun_degistir"])
 es("yeni siparis adresi degisebilir", True, d0["yetkiler"]["adres_degistir"])
-es("model degisir", 200, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun",
-   headers=H_A, json={"model": "IPHONE-14 PRO"}).status_code)
+tr_kalem = _kid(tr_id)
+es("model degisir", 200, ISTEMCI.patch(
+    f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}",
+    headers=H_A, json={"model": "IPHONE-14 PRO"}).status_code)
 d1 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
 es("model yazildi", "IPHONE-14 PRO", d1["kalemler"][0]["model"])
 es("degisiklik gecmise dustu", True,
    any("IPHONE-14 PRO" in (h["not"] or "") for h in d1["gecmis"]))
 es("tasarim degisir", 200, ISTEMCI.post(
-    f"/api/bayii/siparis/{tr_id}/tasarim", headers=H_A,
+    f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}/tasarim", headers=H_A,
     files={"tasarim": ("y.jpg", jpg(), "image/jpeg")}).status_code)
 es("adres degisir", 200, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/adres",
    headers=H_A, json={"ad_soyad": "Yeni Alici"}).status_code)
@@ -221,7 +230,7 @@ es("adres_degistir false", False, d2["yetkiler"]["adres_degistir"])
 es("adres degisimi 409", 409, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/adres",
    headers=H_A, json={"ad_soyad": "Olmaz"}).status_code)
 es("model hala degisebilir (kaliba girmedi)", 200,
-   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun", headers=H_A,
+   ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}", headers=H_A,
                  json={"model": "IPHONE-13"}).status_code)
 
 print("\n── 7. Kaliba girdi -> her sey kilitli ──")
@@ -231,10 +240,11 @@ db.commit()
 d3 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
 es("uretimde true", True, d3["yetkiler"]["uretimde"])
 es("urun_degistir false", False, d3["yetkiler"]["urun_degistir"])
-es("model degisimi 409", 409, ISTEMCI.patch(f"/api/bayii/siparis/{tr_id}/urun",
-   headers=H_A, json={"model": "X"}).status_code)
+es("model degisimi 409", 409, ISTEMCI.patch(
+    f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}", headers=H_A,
+    json={"model": "X"}).status_code)
 es("tasarim degisimi 409", 409, ISTEMCI.post(
-    f"/api/bayii/siparis/{tr_id}/tasarim", headers=H_A,
+    f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}/tasarim", headers=H_A,
     files={"tasarim": ("z.jpg", jpg(), "image/jpeg")}).status_code)
 es("silme 409", 409, ISTEMCI.delete(f"/api/bayii/siparis/{tr_id}", headers=H_A).status_code)
 
@@ -299,6 +309,84 @@ es("geri cekilen listede yok", 0,
    len(ISTEMCI.get("/api/bayii/siparisler", headers=H_B).json()["items"]))
 db.expire_all(); db.refresh(bayi_b)
 es("geri cekmede borc yok", 0.0, float(bayi_b.balance or 0))
+
+print("\n── 13. Coklu urun ──")
+r = siparis_ac(H_A, urunler=[("IPHONE-15", 2), ("IPHONE-14 PRO", 1), ("SAMSUNG-S23", 3)],
+               kanal="trendyol", ad_soyad="Coklu Musteri")
+es("3 urunlu siparis 201", 201, r.status_code)
+cok_id = r.json().get("id")
+es("kalem sayisi 3", 3, r.json().get("kalem_sayisi"))
+es("toplam adet 6", 6, r.json().get("toplam_adet"))
+
+dc = ISTEMCI.get(f"/api/bayii/siparis/{cok_id}", headers=H_A).json()
+es("detayda 3 kalem", 3, len(dc["kalemler"]))
+es("modeller sirasiyla", ["IPHONE-15", "IPHONE-14 PRO", "SAMSUNG-S23"],
+   [k["model"] for k in dc["kalemler"]])
+es("adetler sirasiyla", [2, 1, 3], [k["adet"] for k in dc["kalemler"]])
+# Her kalemin KENDI tasarimi olmali — hepsi ayni tasarima baglanirsa
+# baski yanlis cikar
+_kodlar = [db.scalar(select(LineItem.assigned_design_id).where(
+    LineItem.id == uuid.UUID(k["id"]))) for k in dc["kalemler"]]
+es("her kalemin ayri tasarimi", 3, len(set(_kodlar)))
+es("listede toplam adet 6", 6,
+   [x for x in ISTEMCI.get("/api/bayii/siparisler", headers=H_A).json()["items"]
+    if x["id"] == cok_id][0]["adet"])
+
+# Duzenleme SADECE hedeflenen kalemi degistirmeli
+k2 = dc["kalemler"][1]["id"]
+es("2. kalemin modeli degisir", 200, ISTEMCI.patch(
+    f"/api/bayii/siparis/{cok_id}/kalem/{k2}", headers=H_A,
+    json={"model": "IPHONE-16"}).status_code)
+dc2 = ISTEMCI.get(f"/api/bayii/siparis/{cok_id}", headers=H_A).json()
+es("sadece 2. kalem degisti", ["IPHONE-15", "IPHONE-16", "SAMSUNG-S23"],
+   [k["model"] for k in dc2["kalemler"]])
+es("adet degisir", 200, ISTEMCI.patch(
+    f"/api/bayii/siparis/{cok_id}/kalem/{k2}", headers=H_A, json={"adet": 5}).status_code)
+es("yeni adet yazildi", [2, 5, 3],
+   [k["adet"] for k in ISTEMCI.get(f"/api/bayii/siparis/{cok_id}",
+                                   headers=H_A).json()["kalemler"]])
+es("baska siparisin kalemi reddedilir", 404, ISTEMCI.patch(
+    f"/api/bayii/siparis/{cok_id}/kalem/{tr_kalem}", headers=H_A,
+    json={"model": "X"}).status_code)
+
+# 2. kalemin tasarimi degisince 1. ve 3. kalem ETKILENMEMELI
+_onceki = [db.scalar(select(LineItem.assigned_design_id).where(
+    LineItem.id == uuid.UUID(k["id"]))) for k in dc2["kalemler"]]
+es("2. kalemin tasarimi degisir", 200, ISTEMCI.post(
+    f"/api/bayii/siparis/{cok_id}/kalem/{k2}/tasarim", headers=H_A,
+    files={"tasarim": ("yeni.jpg", jpg(), "image/jpeg")}).status_code)
+db.expire_all()
+_sonraki = [db.scalar(select(LineItem.assigned_design_id).where(
+    LineItem.id == uuid.UUID(k["id"]))) for k in dc2["kalemler"]]
+es("1. kalemin tasarimi ayni", _onceki[0], _sonraki[0])
+es("2. kalemin tasarimi degisti", True, _onceki[1] != _sonraki[1])
+es("3. kalemin tasarimi ayni", _onceki[2], _sonraki[2])
+
+# Sinirlar
+es("kalem sayisi ustu 400", 400,
+   siparis_ac(H_A, urunler=[("IPHONE-15", 1)] * 21).status_code)
+es("bir kalemde adet 0 -> 400", 400,
+   siparis_ac(H_A, urunler=[("IPHONE-15", 1), ("IPHONE-14", 0)]).status_code)
+# Listeler kayarsa tasarim yanlis modele baglanir; sunucu reddetmeli
+_kayik = ISTEMCI.post("/api/bayii/siparis", headers=H_A,
+                      data={"kanal": "trendyol", "ad_soyad": "Kayik",
+                            "model": ["IPHONE-15", "IPHONE-14"], "adet": ["1", "1"]},
+                      files=[("tasarim", ("a.jpg", jpg(), "image/jpeg"))])
+es("tasarim/model sayisi uyusmazsa 400", 400, _kayik.status_code)
+
+# Onayda borc TOPLAM adet uzerinden
+_kalemler = ISTEMCI.get(f"/api/bayii/siparis/{cok_id}", headers=H_A).json()["kalemler"]
+db.expire_all(); db.refresh(bayi_a)
+_onceki_bakiye = float(bayi_a.balance or 0)
+ro = ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{cok_id}", headers=H_ADMIN,
+                  json={"varyasyonlar": {k["id"]: "beyaz" for k in _kalemler},
+                        "apply_shipping": False})
+es("coklu siparis onaylandi", 200, ro.status_code)
+# 2 + 5 + 3 = 10 adet x 100 birim fiyat
+es("borc 10 adet uzerinden", 1000.0, ro.json()["urun"])
+es("kargo yansitilmadi", 0.0, ro.json()["kargo"])
+db.expire_all(); db.refresh(bayi_a)
+es("bakiye dogru arttı", _onceki_bakiye + 1000.0, float(bayi_a.balance or 0))
 
 print("\n── 12. Yonetim uclari bayiye KAPALI ──")
 # Bayi yonetimle AYNI tenant icinde. Izin adini ayirmak yetmiyordu: izin

@@ -32,6 +32,170 @@ function Kilit({ metin }) {
   )
 }
 
+/**
+ * Tek bir ürün kalemi: görsel + model + adet, kendi düzenleme durumuyla.
+ *
+ * Düzenleme uçları KALEM hedefli (.../kalem/{id}); çoklu üründe "ilk kalem"
+ * varsaymak, bayinin 2. ürününe yaptığı değişikliği 1.'ye uygulardı.
+ */
+function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
+                      onGuncellendi, onHata, onBildirim }) {
+  const [modelDuzenle, setModelDuzenle] = useState(false)
+  const [arama, setArama] = useState('')
+  const [bekle, setBekle] = useState('')
+  const dosyaRef = useRef(null)
+
+  const liste = (() => {
+    const q = arama.trim().toLocaleLowerCase('tr')
+    return (q ? modeller.filter((m) => m.toLocaleLowerCase('tr').includes(q)) : modeller).slice(0, 40)
+  })()
+
+  const modelSec = async (m) => {
+    setBekle('model'); onHata('')
+    try {
+      await api.patch(`/api/bayii/siparis/${siparisId}/kalem/${kalem.id}`, { model: m })
+      setModelDuzenle(false); setArama('')
+      onBildirim('Telefon modeli güncellendi')
+      await onGuncellendi()
+    } catch (e) { onHata(e.detail || 'Güncellenemedi') }
+    finally { setBekle('') }
+  }
+
+  const adetDegis = async (yeni) => {
+    if (yeni < 1 || yeni > 99 || yeni === kalem.adet) return
+    setBekle('adet'); onHata('')
+    try {
+      await api.patch(`/api/bayii/siparis/${siparisId}/kalem/${kalem.id}`, { adet: yeni })
+      onBildirim('Adet güncellendi')
+      await onGuncellendi()
+    } catch (e) { onHata(e.detail || 'Güncellenemedi') }
+    finally { setBekle('') }
+  }
+
+  const tasarimYukle = async (f) => {
+    if (!f) return
+    if (f.size > 75 * 1024 * 1024) { onHata('Dosya çok büyük (max 75 MB).'); return }
+    setBekle('tasarim'); onHata('')
+    try {
+      const fd = new FormData()
+      fd.append('tasarim', f)
+      await api.postForm(`/api/bayii/siparis/${siparisId}/kalem/${kalem.id}/tasarim`, fd)
+      onBildirim('Tasarım güncellendi')
+      await onGuncellendi()
+    } catch (e) { onHata(e.detail || 'Tasarım yüklenemedi') }
+    finally { setBekle(''); if (dosyaRef.current) dosyaRef.current.value = '' }
+  }
+
+  return (
+    <div className={`bayi-sira ${cokluMu
+      ? 'rounded-xl border border-brand-border bg-brand-input/25 p-3.5' : ''}`}
+         style={{ '--gecikme': `${sira * 55}ms` }}>
+      {cokluMu && (
+        <div className="text-[11px] uppercase tracking-[0.14em] text-gray-600 mb-3">
+          {sira + 1}. ürün
+        </div>
+      )}
+      <div className="flex items-start gap-4 flex-wrap">
+        <div className="relative group shrink-0">
+          <div className={`${cokluMu ? 'w-20 h-20' : 'w-28 h-28'} rounded-2xl overflow-hidden
+                           border border-white/8 bg-white/[0.03] grid place-items-center`}>
+            {kalem.gorsel
+              ? <img src={kalem.gorsel} alt="" className="w-full h-full object-cover" />
+              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
+                     className="w-8 h-8 text-gray-600">
+                  <rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
+          </div>
+          {duzenlenebilir && (
+            <>
+              <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
+                     onChange={(e) => tasarimYukle(e.target.files?.[0])} />
+              <button onClick={() => dosyaRef.current?.click()} disabled={bekle === 'tasarim'}
+                      className="absolute inset-0 rounded-2xl grid place-items-center bg-black/65
+                                 opacity-0 group-hover:opacity-100 focus:opacity-100
+                                 transition-opacity text-[11.5px] text-white px-1 text-center">
+                {bekle === 'tasarim'
+                  ? <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  : 'Tasarımı değiştir'}
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-[190px]">
+          <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
+            Telefon modeli
+          </div>
+          {modelDuzenle ? (
+            <div className="animate-popin">
+              <input value={arama} onChange={(e) => setArama(e.target.value)}
+                     placeholder="Model ara…" className="input w-full" autoFocus />
+              <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-brand-border
+                              divide-y divide-white/5">
+                {liste.map((m) => (
+                  <button key={m} onClick={() => modelSec(m)} disabled={bekle === 'model'}
+                          className="w-full text-left px-3.5 py-2 text-[13px] text-gray-300
+                                     hover:bg-accent/10 hover:text-white transition-colors">
+                    {m}
+                  </button>
+                ))}
+                {liste.length === 0 && (
+                  <div className="px-3.5 py-4 text-[12.5px] text-gray-500 text-center">
+                    Eşleşen model yok
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setModelDuzenle(false)}
+                      className="text-[12.5px] text-gray-500 hover:text-gray-300 mt-2 transition">
+                Vazgeç
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`${cokluMu ? 'text-[14.5px]' : 'text-[16px]'} text-white`}>
+                  {kalem.model || '—'}
+                </span>
+                {duzenlenebilir && (
+                  <button onClick={() => setModelDuzenle(true)}
+                          className="text-[12.5px] text-accent hover:brightness-125 transition">
+                    Değiştir
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2.5 mt-2.5">
+                <span className="text-[12px] text-gray-500">Adet</span>
+                {duzenlenebilir ? (
+                  <div className="flex items-center rounded-full border border-brand-border
+                                  bg-brand-input/50">
+                    <button onClick={() => adetDegis((kalem.adet || 1) - 1)}
+                            disabled={bekle === 'adet' || (kalem.adet || 1) <= 1}
+                            className="w-8 h-8 grid place-items-center text-gray-400
+                                       hover:text-white transition-colors disabled:opacity-30">−</button>
+                    <span className="w-8 text-center text-[13.5px] text-white">{kalem.adet || 1}</span>
+                    <button onClick={() => adetDegis((kalem.adet || 1) + 1)}
+                            disabled={bekle === 'adet'}
+                            className="w-8 h-8 grid place-items-center text-gray-400
+                                       hover:text-white transition-colors disabled:opacity-30">+</button>
+                  </div>
+                ) : (
+                  <span className="text-[13.5px] text-gray-300">{kalem.adet || 1}</span>
+                )}
+              </div>
+            </>
+          )}
+          {kalem.varyasyon && (
+            <div className="text-[12px] text-gray-500 mt-2.5">
+              Varyasyon: <span className="text-gray-300">{kalem.varyasyon}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 export default function BayiSiparisDetayPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -40,12 +204,9 @@ export default function BayiSiparisDetayPage() {
   const [bildirim, setBildirim] = useState('')
   const [bekle, setBekle] = useState('')
 
-  const [modelDuzenle, setModelDuzenle] = useState(false)
   const [modeller, setModeller] = useState([])
-  const [modelArama, setModelArama] = useState('')
   const [adresDuzenle, setAdresDuzenle] = useState(false)
   const [adresForm, setAdresForm] = useState(null)
-  const tasarimRef = useRef(null)
 
   const yukle = useCallback(async () => {
     setHata('')
@@ -54,39 +215,16 @@ export default function BayiSiparisDetayPage() {
   }, [id])
   useEffect(() => { yukle() }, [yukle])
 
+  // Model listesi duzenlenebilir siparislerde onden yuklenir; kalem kartlari
+  // paylasir (her kart ayri ayri cekseydi ayni istek N kez giderdi).
+  const duzenlenebilir = !!o?.yetkiler?.urun_degistir
   useEffect(() => {
-    if (modelDuzenle && modeller.length === 0) {
+    if (duzenlenebilir && modeller.length === 0) {
       api.get('/api/bayii/modeller').then((d) => setModeller(d.items || [])).catch(() => {})
     }
-  }, [modelDuzenle, modeller.length])
+  }, [duzenlenebilir, modeller.length])
 
   const y = o?.yetkiler || {}
-  const kalem = o?.kalemler?.[0]
-
-  const modelSec = async (m) => {
-    setBekle('model'); setHata('')
-    try {
-      await api.patch(`/api/bayii/siparis/${id}/urun`, { model: m })
-      setModelDuzenle(false); setModelArama('')
-      setBildirim('Telefon modeli güncellendi')
-      await yukle()
-    } catch (e) { setHata(e.detail || 'Güncellenemedi') }
-    finally { setBekle('') }
-  }
-
-  const tasarimYukle = async (f) => {
-    if (!f) return
-    if (f.size > 75 * 1024 * 1024) { setHata('Dosya çok büyük (max 75 MB).'); return }
-    setBekle('tasarim'); setHata('')
-    try {
-      const fd = new FormData()
-      fd.append('tasarim', f)
-      await api.postForm(`/api/bayii/siparis/${id}/tasarim`, fd)
-      setBildirim('Tasarım güncellendi')
-      await yukle()
-    } catch (e) { setHata(e.detail || 'Tasarım yüklenemedi') }
-    finally { setBekle(''); if (tasarimRef.current) tasarimRef.current.value = '' }
-  }
 
   const adresKaydet = async () => {
     setBekle('adres'); setHata('')
@@ -121,10 +259,6 @@ export default function BayiSiparisDetayPage() {
   }
 
   const adresGerek = ADRES_ZORUNLU.includes(o.kanal)
-  const modelListesi = (() => {
-    const q = modelArama.trim().toLocaleLowerCase('tr')
-    return (q ? modeller.filter((m) => m.toLocaleLowerCase('tr').includes(q)) : modeller).slice(0, 40)
-  })()
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
@@ -185,86 +319,29 @@ export default function BayiSiparisDetayPage() {
         )}
       </div>
 
-      {/* Urun */}
+      {/* Urunler — her kalem KENDI tasarimi ve modeliyle ayri duzenlenir */}
       <div className="card">
-        <h2 className="text-[13px] uppercase tracking-[0.12em] text-gray-500 mb-4">Ürün</h2>
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="relative group">
-            <div className="w-28 h-28 rounded-2xl overflow-hidden border border-white/8
-                            bg-white/[0.03] grid place-items-center">
-              {kalem?.gorsel
-                ? <img src={kalem.gorsel} alt="" className="w-full h-full object-cover" />
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
-                       className="w-9 h-9 text-gray-600"><rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
-            </div>
-            {y.urun_degistir && (
-              <>
-                <input ref={tasarimRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
-                       onChange={(e) => tasarimYukle(e.target.files?.[0])} />
-                <button onClick={() => tasarimRef.current?.click()} disabled={bekle === 'tasarim'}
-                        className="absolute inset-0 rounded-2xl grid place-items-center
-                                   bg-black/65 opacity-0 group-hover:opacity-100 focus:opacity-100
-                                   transition-opacity text-[12px] text-white">
-                  {bekle === 'tasarim'
-                    ? <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    : 'Tasarımı değiştir'}
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-[200px]">
-            <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
-              Telefon modeli
-            </div>
-            {modelDuzenle ? (
-              <div className="animate-popin">
-                <input value={modelArama} onChange={(e) => setModelArama(e.target.value)}
-                       placeholder="Model ara…" className="input w-full" autoFocus />
-                <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-brand-border
-                                divide-y divide-white/5">
-                  {modelListesi.map((m) => (
-                    <button key={m} onClick={() => modelSec(m)} disabled={bekle === 'model'}
-                            className="w-full text-left px-3.5 py-2 text-[13px] text-gray-300
-                                       hover:bg-accent/10 hover:text-white transition-colors">
-                      {m}
-                    </button>
-                  ))}
-                  {modelListesi.length === 0 && (
-                    <div className="px-3.5 py-4 text-[12.5px] text-gray-500 text-center">
-                      Eşleşen model yok
-                    </div>
-                  )}
-                </div>
-                <button onClick={() => setModelDuzenle(false)}
-                        className="text-[12.5px] text-gray-500 hover:text-gray-300 mt-2 transition">
-                  Vazgeç
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-[16px] text-white">{kalem?.model || '—'}</span>
-                {kalem?.adet > 1 && (
-                  <span className="text-[12px] text-gray-500">× {kalem.adet}</span>
-                )}
-                {y.urun_degistir && (
-                  <button onClick={() => setModelDuzenle(true)}
-                          className="text-[12.5px] text-accent hover:brightness-125 transition">
-                    Değiştir
-                  </button>
-                )}
-              </div>
-            )}
-            {kalem?.varyasyon && (
-              <div className="text-[12px] text-gray-500 mt-2">
-                Varyasyon: <span className="text-gray-300">{kalem.varyasyon}</span>
-              </div>
-            )}
-            {!y.urun_degistir && (
-              <Kilit metin="Sipariş üretime alındı — model ve tasarım artık değiştirilemez." />
-            )}
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-[13px] uppercase tracking-[0.12em] text-gray-500">
+            {o.kalemler.length > 1 ? `Ürünler (${o.kalemler.length})` : 'Ürün'}
+          </h2>
+          {o.kalemler.length > 1 && (
+            <span className="text-[12px] text-gray-500">toplam {o.adet} adet</span>
+          )}
         </div>
+
+        <div className="space-y-3">
+          {o.kalemler.map((k, i) => (
+            <KalemKarti key={k.id} kalem={k} sira={i} siparisId={id}
+                        cokluMu={o.kalemler.length > 1}
+                        duzenlenebilir={!!y.urun_degistir} modeller={modeller}
+                        onGuncellendi={yukle} onHata={setHata} onBildirim={setBildirim} />
+          ))}
+        </div>
+
+        {!y.urun_degistir && (
+          <Kilit metin="Sipariş üretime alındı — model ve tasarım artık değiştirilemez." />
+        )}
       </div>
 
       {/* Alici */}

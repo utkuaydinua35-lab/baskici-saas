@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { useAuth } from '../../lib/auth'
 import { paraYaz, tarihYaz } from '../../lib/bayii'
 import { Bos, DurumRozet, Hata, Iskelet, Sayac } from '../../components/BayiParcalar'
 
@@ -19,6 +20,10 @@ export default function BayiPanelPage() {
   const [veri, setVeri] = useState(null)
   const [hata, setHata] = useState('')
   const navigate = useNavigate()
+  const { user } = useAuth()
+  // Ozet gelene kadar oturumdaki ad kullanilir; hesap acilirken full_name
+  // bayi adiyla dolduruluyor. Yoksa ekranda tek basina "Merhaba" kaliyordu.
+  const ad = veri?.bayi?.ad || user?.full_name || ''
 
   const yukle = useCallback(async () => {
     setHata('')
@@ -38,7 +43,7 @@ export default function BayiPanelPage() {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">
-            Merhaba{veri?.bayi?.ad ? `, ${veri.bayi.ad}` : ''}
+            Merhaba{ad ? `, ${ad}` : ''}
           </h1>
           <p className="text-[13px] text-gray-500 mt-1">Siparişlerinin güncel durumu burada.</p>
         </div>
@@ -79,14 +84,18 @@ export default function BayiPanelPage() {
             </Link>
           </div>
 
-          <div className="flex gap-8 ml-auto">
+          <div className="flex gap-8 sm:ml-auto">
             <div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-gray-500 mb-1.5">Birim fiyat</div>
-              <div className="text-lg text-gray-200">{paraYaz(veri?.cari?.birim_fiyat, birim)}</div>
+              {veri
+                ? <div className="text-lg text-gray-200">{paraYaz(veri.cari.birim_fiyat, birim)}</div>
+                : <div className="h-6 w-16 rounded bg-white/5 animate-pulse" />}
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-gray-500 mb-1.5">Kargo</div>
-              <div className="text-lg text-gray-200">{paraYaz(veri?.cari?.kargo_ucreti, 'TRY')}</div>
+              {veri
+                ? <div className="text-lg text-gray-200">{paraYaz(veri.cari.kargo_ucreti, 'TRY')}</div>
+                : <div className="h-6 w-16 rounded bg-white/5 animate-pulse" />}
             </div>
           </div>
         </div>

@@ -366,8 +366,10 @@ input.input, select.input { border-radius: 9999px; padding-left: 1rem; padding-r
 textarea.input { border-radius: 0.75rem; }
 
 input.input:hover:not(:focus), select.input:hover {
-  border-color: #2c3f38;
-  background-color: #1b2721;
+  /* Eski YEŞİL temadan kalmıştı (#2c3f38/#1b2721): mor temada input'a
+     gelince kenarlık yeşile dönüyordu. Artık marka değişkenlerinden. */
+  border-color: rgb(var(--accent-rgb) / 0.35);
+  background-color: rgb(46 36 80 / 0.55);
 }
 .input:focus, .input:focus-visible {
   box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.14);
@@ -377,7 +379,7 @@ input.input:hover:not(:focus), select.input:hover {
 select.input {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%238aa096' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%239b8fb5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.85rem center;
   padding-right: 2.1rem;
@@ -385,6 +387,19 @@ select.input {
 select.input:hover { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7' fill='none'%3E%3Cpath d='M1 1.5L5 5.5L9 1.5' stroke='%23e5e7eb' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 /* Açılan liste koyu temayla uyumlu (OS varsayılanı beyaz kalmasın) */
 select.input option, select option { background: #17102b; color: #f3f4f6; }
+
+/* ─── iOS Safari otomatik yakınlaştırma ──────────────────────────
+   Safari, yazı boyutu 16px'ten KÜÇÜK bir form alanına odaklanınca sayfayı
+   kendiliğinden yakınlaştırır ve zoom sayfadan sayfaya taşınır. Bayi giriş
+   formuna (14px input) yazan kullanıcıda panel yakınlaştırılmış açılıyordu:
+   içerik yana kayıyor, yapışkan üst bar ekran dışında kalıyordu.
+   Çözüm zoom'u YASAKLAMAK değil (erişilebilirliği bozar) — dokunmatik
+   genişlikte form alanlarını 16px yapmak. Görsel fark ihmal edilebilir. */
+@media (max-width: 767px) {
+  input, select, textarea, .input {
+    font-size: 16px;
+  }
+}
 
 /* ── Paketleme: "kenara ayrıldı" işareti ─────────────────────────
    Tek bir tik değil, kısa bir olay: halka dalgası yayılır, rozet

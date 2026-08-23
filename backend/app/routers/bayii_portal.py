@@ -27,7 +27,7 @@ from decimal import Decimal
 from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
                      HTTPException, UploadFile)
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func as sql_func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import stages as stage_defs
@@ -81,13 +81,28 @@ def _siparis(db: Session, d: Dealer, order_id: uuid.UUID) -> Order:
     return o
 
 
+def _bayinin_sql_suzgeci(d: Dealer):
+    """Bayinin siparislerini VERITABANINDA suz.
+
+    Bayi siparisleri her zaman bayinin kendi magazasinda acilir ve raw'a
+    dealer_id yazilir; ikisinden biri yeterli. Bu suzgec olmadan tenant'in TUM
+    siparisleri cekilip Python'da eleniyordu — dev'de anlikti, canlida binlerce
+    siparis + line_item + tasarim yuklenip panel hic acilmiyordu.
+    """
+    kosul = Order.raw["dealer_id"].astext == str(d.id)
+    if d.store_id:
+        kosul = or_(kosul, Order.store_id == d.store_id)
+    return (Order.tenant_id == d.tenant_id) & (Order.deleted_at.is_(None)) & kosul
+
+
 def _bayinin_siparisleri(db: Session, d: Dealer, limit: int = 500) -> list[Order]:
     orders = db.scalars(
-        select(Order).where(Order.tenant_id == d.tenant_id, Order.deleted_at.is_(None))
+        select(Order).where(_bayinin_sql_suzgeci(d))
         .options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
-        .order_by(desc(Order.created_at_platform)).limit(2000)
+        .order_by(desc(Order.created_at_platform)).limit(min(limit, 500))
     ).all()
-    return [o for o in orders if _sahibi_mi(o, d)][:limit]
+    # SQL suzgeci genis (magaza VEYA raw); son soz yine _sahibi_mi'de.
+    return [o for o in orders if _sahibi_mi(o, d)]
 
 
 # ─── Durum yardımcıları ──────────────────────────────────────
@@ -203,8 +218,17 @@ def _gecmise_yaz(db: Session, o: Order, d: Dealer, eylem: str, not_: str) -> Non
 # ─── Okuma uçları ────────────────────────────────────────────
 @router.get("/ozet", response_model=dict, dependencies=[_izin])
 def ozet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
-    siparisler = _bayinin_siparisleri(db, d, limit=2000)
-    acik = [o for o in siparisler if not o.is_iptal]
+    # Sayaclar SQL'de sayilir: satirlari cekip Python'da saymak canlida
+    # (binlerce siparis) paneli hic actirmiyordu.
+    temel = _bayinin_sql_suzgeci(d) & (Order.is_iptal == False)  # noqa: E712
+
+    def _say(*ek) -> int:
+        return int(db.scalar(select(sql_func.count(Order.id))
+                             .where(temel, *ek)) or 0)
+
+    onay = _say(Order.bayii_onay_bekliyor == True)  # noqa: E712
+    kargoda = _say(Order.current_stage >= 8)
+    toplam = _say()
     return {
         "bayi": {"ad": d.name, "para_birimi": (d.currency or "TRY").upper()},
         "cari": {
@@ -214,13 +238,13 @@ def ozet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
             "kargo_ucreti": float(d.shipping_fee or 0),
         },
         "sayilar": {
-            "toplam": len(acik),
-            "onay_bekleyen": sum(1 for o in acik if o.bayii_onay_bekliyor),
-            "uretimde": sum(1 for o in acik
-                            if not o.bayii_onay_bekliyor and (o.current_stage or 1) < 8),
-            "kargoda": sum(1 for o in acik if (o.current_stage or 1) >= 8),
+            "toplam": toplam,
+            "onay_bekleyen": onay,
+            # Uretimde = onay bekleyen ve kargoya verilen disindaki her sey
+            "uretimde": max(0, toplam - onay - kargoda),
+            "kargoda": kargoda,
         },
-        "son_siparisler": [_ser(db, o) for o in siparisler[:6]],
+        "son_siparisler": [_ser(db, o) for o in _bayinin_siparisleri(db, d, limit=6)],
     }
 
 

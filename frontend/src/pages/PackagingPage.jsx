@@ -145,6 +145,16 @@ export default function PackagingPage() {
     } catch { /* bozuk kayıt */ }
     return { w: 100, h: 150 }
   })
+  // Etiketi tamamen doldur mu, oranı koru mu. Kaynak etiketin oranı stoğunkiyle
+  // aynı olmadığı için oran korunduğunda kenarda boşluk kalıyor.
+  const [doldur, setDoldur] = useState(() => {
+    try { return localStorage.getItem('etiket_doldur') !== '0' } catch { return true }
+  })
+  const doldurKaydet = (v) => {
+    setDoldur(v)
+    try { localStorage.setItem('etiket_doldur', v ? '1' : '0') } catch { /* kota */ }
+  }
+
   const etiketMmKaydet = (yeni) => {
     setEtiketMm(yeni)
     try { localStorage.setItem('etiket_mm', JSON.stringify(yeni)) } catch { /* kota */ }
@@ -159,7 +169,10 @@ export default function PackagingPage() {
     if (!dogrudan) return false          // hiçbir köprü hazır değil
     let zpl
     try {
-      const q = new URLSearchParams({ tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h) })
+      const q = new URLSearchParams({
+        tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h),
+        doldur: doldur ? 'true' : 'false',
+      })
       const res = await fetch(
         `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`,
         { headers: { Authorization: `Bearer ${getToken()}` } })
@@ -669,6 +682,13 @@ export default function PackagingPage() {
                   <span className="text-gray-600" title="Etiket stoğunun gerçek ölçüsü. Hem tarayıcı baskısında hem Zebra'ya giden ZPL'de kullanılır.">
                     · stok ölçün
                   </span>
+                  <label className="flex items-center gap-1 cursor-pointer ml-1"
+                    title="Açık: etiketi tamamen doldurur (kenarda boşluk kalmaz, içerik hafif esner). Kapalı: oranı korur.">
+                    <input type="checkbox" checked={doldur}
+                      onChange={e => doldurKaydet(e.target.checked)}
+                      className="w-3 h-3 accent-accent" />
+                    <span>tam doldur</span>
+                  </label>
                 </div>
               )}
               <p className="text-[10px] text-center mt-1">

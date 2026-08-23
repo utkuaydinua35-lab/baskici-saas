@@ -44,11 +44,16 @@ def _pixmap_to_zpl_gfa(pix: fitz.Pixmap, esik: int = 128) -> tuple[str, int, int
 
 
 def _belge_zpl(doc: fitz.Document, dpi: int, esik: int,
-               w_mm: float | None = None, h_mm: float | None = None) -> str:
-    """w_mm/h_mm verilirse etiket O ÖLÇÜYE sığdırılır (oran korunur).
+               w_mm: float | None = None, h_mm: float | None = None,
+               doldur: bool = True) -> str:
+    """Etiketi w_mm x h_mm ölçüsünde bas.
 
-    Etiket stoğu firmadan firmaya değişiyor (8x10, 10x15...). Kaynak etiketin
-    kendi ölçüsünde basmak, stok daha küçükse ikinci etikete taşırıyordu.
+    doldur=True (varsayılan): iki eksen AYRI ölçeklenir, etiket TAMAMEN dolar.
+      Kaynak etiketin oranı stoğunkiyle aynı olmadığı için oran korunduğunda
+      kenarda büyük boşluk kalıyordu (8x10 stokta içerik ~2/3'ünü kaplıyordu).
+      Barkod okunabilirliği bundan etkilenmez: tüm çubuklar aynı oranda
+      genişlediği için çubuk genişlik ORANLARI korunur.
+    doldur=False: oran korunur, kenarda boşluk kalabilir.
     """
     if doc.page_count == 0:
         raise ZplError("Etiket boş")
@@ -56,11 +61,15 @@ def _belge_zpl(doc: fitz.Document, dpi: int, esik: int,
     if w_mm and h_mm:
         hedef_w = w_mm / 25.4 * dpi
         hedef_h = h_mm / 25.4 * dpi
-        # Oranı koru: iki eksende de sığacak ölçek
-        olcek = min(hedef_w / sayfa.rect.width, hedef_h / sayfa.rect.height)
+        ox = hedef_w / sayfa.rect.width
+        oy = hedef_h / sayfa.rect.height
+        if not doldur:
+            ox = oy = min(ox, oy)
+        matris = fitz.Matrix(ox, oy)
     else:
         olcek = dpi / 72.0
-    pix = sayfa.get_pixmap(matrix=fitz.Matrix(olcek, olcek), alpha=False)
+        matris = fitz.Matrix(olcek, olcek)
+    pix = sayfa.get_pixmap(matrix=matris, alpha=False)
     veri, satir_bayt, toplam = _pixmap_to_zpl_gfa(pix, esik)
     # ^PW: baskı genişliği, ^LL: etiket uzunluğu — yazıcının kendi ayarını ezer,
     # böylece çıktı yazıcıda ne ayarlı olduğundan bağımsız doğru gelir.
@@ -76,24 +85,26 @@ def _belge_zpl(doc: fitz.Document, dpi: int, esik: int,
 
 
 def svg_to_zpl(svg: str, dpi: int = VARSAYILAN_DPI, esik: int = 128,
-               w_mm: float | None = None, h_mm: float | None = None) -> str:
+               w_mm: float | None = None, h_mm: float | None = None,
+               doldur: bool = True) -> str:
     try:
         doc = fitz.open(stream=svg.encode("utf-8"), filetype="svg")
     except Exception as e:  # noqa: BLE001
         raise ZplError(f"SVG okunamadı: {str(e)[:120]}") from e
     try:
-        return _belge_zpl(doc, dpi, esik, w_mm, h_mm)
+        return _belge_zpl(doc, dpi, esik, w_mm, h_mm, doldur)
     finally:
         doc.close()
 
 
 def pdf_to_zpl(pdf: bytes, dpi: int = VARSAYILAN_DPI, esik: int = 128,
-               w_mm: float | None = None, h_mm: float | None = None) -> str:
+               w_mm: float | None = None, h_mm: float | None = None,
+               doldur: bool = True) -> str:
     try:
         doc = fitz.open(stream=pdf, filetype="pdf")
     except Exception as e:  # noqa: BLE001
         raise ZplError(f"PDF okunamadı: {str(e)[:120]}") from e
     try:
-        return _belge_zpl(doc, dpi, esik, w_mm, h_mm)
+        return _belge_zpl(doc, dpi, esik, w_mm, h_mm, doldur)
     finally:
         doc.close()

@@ -7,6 +7,26 @@
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
 
+# Bagimliliklar guncel mi — node_modules VARSA bile package-lock daha yeniyse
+# kurulum gerekir. Eski hali "[ -d node_modules ] || npm install" idi: klasor
+# var oldugu icin YENI eklenen paketler hic kurulmuyordu ve build sunucuda
+# "failed to resolve import" ile patliyordu (qz-tray boyle patladi).
+bagimliliklari_kur() {
+  local dizin="$1"
+  if [ ! -d "$dizin/node_modules" ]; then
+    echo "[deploy_frontend] $dizin: node_modules yok, kuruluyor..."
+    (cd "$dizin" && npm install --no-audit --no-fund)
+    return
+  fi
+  # npm, kurulumu node_modules/.package-lock.json ile isaretler
+  local isaret="$dizin/node_modules/.package-lock.json"
+  local kilit="$dizin/package-lock.json"
+  if [ ! -f "$isaret" ] || { [ -f "$kilit" ] && [ "$kilit" -nt "$isaret" ]; }; then
+    echo "[deploy_frontend] $dizin: bagimliliklar degismis, kuruluyor..."
+    (cd "$dizin" && npm install --no-audit --no-fund)
+  fi
+}
+
 # KORUMA: root ile bir kez çalıştırılırsa dist/ klasörleri root'a ait kalır ve
 # sonraki baskici build'leri "EACCES: permission denied, unlink" ile patlar.
 if [ "$(id -u)" = "0" ]; then
@@ -24,8 +44,8 @@ for d in "$REPO/frontend/dist" "$REPO/panel/dist"; do
 done
 
 # Baskıcı paneli
+bagimliliklari_kur "$REPO/frontend"
 cd "$REPO/frontend"
-[ -d node_modules ] || { echo "[deploy_frontend] frontend npm install..."; npm install --no-audit --no-fund; }
 echo "[deploy_frontend] baskici frontend build..."
 npm run build
 echo "[deploy_frontend] kopyala -> /srv/baskici/frontend/dist"
@@ -34,8 +54,8 @@ rsync -a --delete "$REPO/frontend/dist/" /srv/baskici/frontend/dist/
 # Mağaza paneli (BERNZ Commerce) — Caddy'de panel domain'i yayınlanınca
 # buradan servis edilecek; şimdiden güncel tutulur.
 if [ -d "$REPO/panel" ]; then
+  bagimliliklari_kur "$REPO/panel"
   cd "$REPO/panel"
-  [ -d node_modules ] || { echo "[deploy_frontend] panel npm install..."; npm install --no-audit --no-fund; }
   echo "[deploy_frontend] magaza paneli build..."
   npm run build
   echo "[deploy_frontend] kopyala -> /srv/baskici/panel/dist"

@@ -67,16 +67,21 @@ export async function zebraYazici() {
   } catch { return null }
 }
 
-/** ZPL'i yazıcıya gönder. Döner: gönderildi mi. */
+/** ZPL'i yazıcıya gönder. Döner: gönderildi mi.
+ *  Hata sebebini konsola yazar — sessiz başarısızlık teşhis edilemiyordu. */
 export async function zebraYazdir(zpl) {
   const yazici = await zebraYazici()
-  if (!yazici) return false
+  if (!yazici) { console.warn('[zebra] varsayılan yazıcı yok'); return false }
   try {
     const r = await istek('/write', {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
       body: JSON.stringify({ device: yazici, data: zpl }),
-    }, 15000)
+    }, 20000)
+    if (!r.ok) console.warn('[zebra] /write HTTP', r.status, (await r.text()).slice(0, 200))
     return r.ok
-  } catch { return false }
+  } catch (e) {
+    console.warn('[zebra] /write patladı:', e?.name, e?.message)
+    return false
+  }
 }

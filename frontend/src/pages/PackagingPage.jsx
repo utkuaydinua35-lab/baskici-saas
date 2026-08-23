@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
-import { zebraDurum, zebraYazdir } from '../lib/zebra'
+import { zebraDurum, zebraTaban, zebraYazdir } from '../lib/zebra'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
 const CARGO_HOUR = 18   // kargo kesim saati
@@ -126,16 +126,44 @@ export default function PackagingPage() {
 
   // Etiketi ÖNCE Zebra'ya doğrudan ZPL olarak göndermeyi dene.
   // Başarılıysa hiç yazdırma penceresi çıkmaz. Döner: gönderildi mi.
+  // Hata YUTULMAZ: sessizce tarayıcıya düşünce "neden hâlâ onay çıkıyor?"
+  // sorusunu cevaplayacak hiçbir iz kalmıyordu. Artık nerede kırıldığı
+  // ekranda ve konsolda görünüyor.
   const zplDene = async (orderId, tip = 'kargo') => {
     if (!zebra?.yazici) return false     // servis var ama yazıcı yoksa deneme
+    let zpl
     try {
       const q = new URLSearchParams({ tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h) })
       const res = await fetch(
         `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`,
         { headers: { Authorization: `Bearer ${getToken()}` } })
-      if (!res.ok) return false
-      return await zebraYazdir(await res.text())
-    } catch { return false }
+      if (!res.ok) {
+        let d = ''
+        try { d = (await res.json())?.detail || '' } catch { /* json değil */ }
+        const t = `ZPL alınamadı (HTTP ${res.status}) ${d}`.trim()
+        console.warn('[zebra]', t)
+        setMsg({ ok: false, text: t + ' — tarayıcıdan yazdırılacak' })
+        return false
+      }
+      zpl = await res.text()
+    } catch (e) {
+      console.warn('[zebra] ZPL isteği patladı:', e)
+      setMsg({ ok: false, text: `ZPL isteği başarısız: ${e?.message || e}` })
+      return false
+    }
+    try {
+      const ok = await zebraYazdir(zpl)
+      if (!ok) {
+        console.warn('[zebra] yazıcıya yazılamadı', { taban: zebraTaban(), boyut: zpl.length })
+        setMsg({ ok: false,
+          text: `Zebra'ya gönderilemedi (${(zpl.length / 1024).toFixed(0)} KB) — tarayıcıdan yazdırılacak` })
+      }
+      return ok
+    } catch (e) {
+      console.warn('[zebra] yazma hatası:', e)
+      setMsg({ ok: false, text: `Zebra yazma hatası: ${e?.message || e}` })
+      return false
+    }
   }
 
   // ── Sayfa içinde yazdırma ───────────────────────────────────

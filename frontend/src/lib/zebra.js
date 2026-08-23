@@ -53,18 +53,50 @@ export async function zebraDurum() {
   } catch { return { servis: false, yazici: false, yaziciAdi: null } }
   if (!servis) return { servis: false, yazici: false, yaziciAdi: null }
   const y = await zebraYazici()
-  return { servis: true, yazici: !!y, yaziciAdi: y?.name || y?.uid || null }
+  return { servis: true, yazici: _gecerli(y), yaziciAdi: y?.name || y?.uid || null }
 }
 
-/** Varsayılan yazıcıyı getir ({name, uid, ...}) ya da null. */
-export async function zebraYazici() {
+/** Cihaz gerçekten kullanılabilir mi.
+ *  Browser Print /write çağrısında "name" bekliyor; boş nesne ({}) döndüğünde
+ *  JS'te truthy olduğu için "yazıcı var" sanılıyor ve /write 500 veriyordu
+ *  ("No value for name"). */
+function _gecerli(d) {
+  return !!(d && typeof d === 'object' && (d.name || d.uid))
+}
+
+/** Yanıtı cihaz nesnesine çevir (JSON ya da düz metin ad). */
+function _cihaz(metin) {
+  const t = (metin || '').trim()
+  if (!t) return null
   try {
-    const r = await istek('/default?type=printer')
-    if (!r.ok) return null
-    const t = (await r.text()).trim()
-    if (!t) return null
-    try { return JSON.parse(t) } catch { return { name: t, uid: t } }
-  } catch { return null }
+    const j = JSON.parse(t)
+    if (_gecerli(j)) return j
+    // {printer:[...]} / {device:{...}} gibi sarmalanmış biçimler
+    for (const k of ['printer', 'device', 'devices', 'printers']) {
+      const v = j?.[k]
+      if (Array.isArray(v)) {
+        const bulunan = v.find(_gecerli)
+        if (bulunan) return bulunan
+      } else if (_gecerli(v)) return v
+    }
+    return null
+  } catch {
+    return { name: t, uid: t }      // düz metin ad döndüyse
+  }
+}
+
+/** Varsayılan yazıcı ({name, uid, ...}) ya da null.
+ *  Önce /default, olmazsa /available listesinden ilk yazıcı. */
+export async function zebraYazici() {
+  for (const yol of ['/default?type=printer', '/available']) {
+    try {
+      const r = await istek(yol)
+      if (!r.ok) continue
+      const d = _cihaz(await r.text())
+      if (_gecerli(d)) return d
+    } catch { /* sonrakini dene */ }
+  }
+  return null
 }
 
 /** ZPL'i yazıcıya gönder. Döner: gönderildi mi.

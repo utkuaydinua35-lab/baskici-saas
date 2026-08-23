@@ -7,16 +7,37 @@
 //
 // Kurulu değilse her şey eskisi gibi çalışır (sayfa içi yazdırma).
 
-const TABAN = 'http://localhost:9100'      // Browser Print yerel servisi
+// Browser Print İKİ uçta dinliyor: http 9100, https 9101.
+// Panel HTTPS'ten servis edildiği için bazı tarayıcılar http://localhost'u
+// karışık içerik sayıp engelleyebiliyor (Chrome localhost'a izin verir,
+// Safari/Firefox vermeyebilir). İkisini de deneyip çalışanı hatırlıyoruz.
+const TABANLAR = ['http://localhost:9100', 'https://localhost:9101']
+let _calisanTaban = null
 const ZAMAN_ASIMI = 2500
 
-async function istek(yol, secenek = {}, ms = ZAMAN_ASIMI) {
+async function _dene(taban, yol, secenek, ms) {
   const iptal = new AbortController()
   const t = setTimeout(() => iptal.abort(), ms)
   try {
-    return await fetch(`${TABAN}${yol}`, { ...secenek, signal: iptal.signal })
+    return await fetch(`${taban}${yol}`, { ...secenek, signal: iptal.signal })
   } finally { clearTimeout(t) }
 }
+
+async function istek(yol, secenek = {}, ms = ZAMAN_ASIMI) {
+  if (_calisanTaban) return _dene(_calisanTaban, yol, secenek, ms)
+  let sonHata = null
+  for (const taban of TABANLAR) {
+    try {
+      const r = await _dene(taban, yol, secenek, ms)
+      _calisanTaban = taban          // çalışanı hatırla, her istekte deneme
+      return r
+    } catch (e) { sonHata = e }
+  }
+  throw sonHata || new Error('Browser Print bulunamadı')
+}
+
+/** Hangi uçtan bağlandık (tanı için). */
+export function zebraTaban() { return _calisanTaban }
 
 /** Browser Print kurulu ve çalışıyor mu. Hızlı, hata fırlatmaz. */
 export async function zebraVarMi() {

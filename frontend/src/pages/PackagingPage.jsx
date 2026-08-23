@@ -107,6 +107,23 @@ export default function PackagingPage() {
   const [zebra, setZebra] = useState(null)
   useEffect(() => { zebraVarMi().then(setZebra) }, [])
 
+  // Etiket ölçüsü (mm) — TARAYICIDAN yazdırırken kullanılır.
+  // Fiziksel etiket stoğu firmadan firmaya değişiyor; birkaç mm fark etiketin
+  // ikinci etikete taşmasına yol açıyor. Tahmin etmek yerine ayarlanabilir
+  // yaptık; değer tarayıcıda saklanır. (Zebra'ya doğrudan ZPL giderken bu
+  // ayarın etkisi yok — ölçü ZPL'in içinde.)
+  const [etiketMm, setEtiketMm] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('etiket_mm') || 'null')
+      if (v && v.w > 20 && v.h > 20) return v
+    } catch { /* bozuk kayıt */ }
+    return { w: 100, h: 150 }
+  })
+  const etiketMmKaydet = (yeni) => {
+    setEtiketMm(yeni)
+    try { localStorage.setItem('etiket_mm', JSON.stringify(yeni)) } catch { /* kota */ }
+  }
+
   // Etiketi ÖNCE Zebra'ya doğrudan ZPL olarak göndermeyi dene.
   // Başarılıysa hiç yazdırma penceresi çıkmaz. Döner: gönderildi mi.
   const zplDene = async (orderId, tip = 'kargo') => {
@@ -168,7 +185,10 @@ export default function PackagingPage() {
         `<style>@page{size:${o.w}mm ${o.h}mm;margin:0}` +
         `html,body{margin:0;padding:0;width:${o.w}mm;height:${o.h}mm}` +
         `body{display:flex;align-items:center;justify-content:center;overflow:hidden}` +
-        `svg,img{width:${o.w}mm;height:${o.h}mm;object-fit:contain}` +
+        // max-* + auto: oran korunur ve HİÇBİR yönde taşmaz. Sabit width/height
+        // vermek, oranı farklı bir etikette içeriği alt etikete taşırıyordu.
+        `svg,img{max-width:${o.w}mm;max-height:${o.h}mm;width:auto;height:auto}` +
+        `*{break-inside:avoid;page-break-inside:avoid}` +
         `</style></head><body>${html}</body></html>`)
       d.close()
       // Görseller/fontlar yerleşsin diye bir tur bekle
@@ -264,7 +284,7 @@ export default function PackagingPage() {
 
   // SVG kargo etiketi -> SAYFA İÇİNDE yazdır (yeni sekme yok).
   const openLabelSvg = async (svg, takipNo) => {
-    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`, svgOlcu(svg))
+    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`, etiketMm)
     if (ok) return true
     // Gömülü yazdırma engellenirse eski yol (sekme) yedek kalsın
     try {
@@ -550,6 +570,26 @@ export default function PackagingPage() {
                 <b className="text-gray-400">P</b> tuşu: onay sormadan kargoya verir ve
                 etiketi yazdırır
               </p>
+              {/* Etiket ölçüsü — yalnızca tarayıcıdan yazdırırken geçerli.
+                  Zebra'ya doğrudan ZPL giderken ölçü ZPL'in içinde. */}
+              {!zebra && (
+                <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-gray-500">
+                  <span>Etiket:</span>
+                  <input type="number" min="20" max="300" value={etiketMm.w}
+                    onChange={e => etiketMmKaydet({ ...etiketMm, w: +e.target.value || 100 })}
+                    className="w-12 bg-brand-input border border-brand-border rounded px-1 py-0.5
+                               text-center text-gray-300" />
+                  <span>×</span>
+                  <input type="number" min="20" max="300" value={etiketMm.h}
+                    onChange={e => etiketMmKaydet({ ...etiketMm, h: +e.target.value || 150 })}
+                    className="w-12 bg-brand-input border border-brand-border rounded px-1 py-0.5
+                               text-center text-gray-300" />
+                  <span>mm</span>
+                  <span className="text-gray-600" title="İkinci etikete taşıyorsa yüksekliği birkaç mm azalt">
+                    · taşıyorsa küçült
+                  </span>
+                </div>
+              )}
               <p className="text-[10px] text-center mt-1">
                 {zebra === null ? (
                   <span className="text-gray-600">yazıcı kontrol ediliyor…</span>

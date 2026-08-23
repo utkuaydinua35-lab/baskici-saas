@@ -17,6 +17,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import Customer, DiscountCode, Order, Store
 from app.services import email_service
 
@@ -30,8 +31,7 @@ REVIEW_INVITE_MAX_AGE = 45    # bu kadar eski siparişlere hiç gönderme
 
 def _site(store: Store) -> str:
     config = store.config or {}
-    return (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    return site_url(config)
 
 
 # ─── 1) Hoş geldin (bülten kaydı) ────────────────────────────

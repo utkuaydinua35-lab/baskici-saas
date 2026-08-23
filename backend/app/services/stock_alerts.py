@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import CatalogProduct, CatalogVariant, StockAlert, Store
 from app.services import email_service
 
@@ -47,8 +48,7 @@ def _notify(db: Session, variant: CatalogVariant) -> int:
     if not store:
         return 0
     config = store.config or {}
-    site = (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     url = f"{site}/urun/{product.slug}"
 
     brand = email_service.store_brand_kwargs(store)

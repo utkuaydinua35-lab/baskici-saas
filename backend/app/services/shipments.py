@@ -18,6 +18,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import Order, OrderShipment, OrderStatusHistory, Store
 from app.services import email_service
 
@@ -219,8 +220,7 @@ def _send_shipment_email(db: Session, order: Order, shipment: OrderShipment,
 
     session = db.scalar(select(CheckoutSession).where(
         CheckoutSession.order_id == order.id).limit(1))
-    site = (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     status_url = f"{site}/siparis/{session.lookup_token}" if session else None
     brand = email_service.store_brand_kwargs(store)
     firma = shipment.kargo_firma or "Kargo"

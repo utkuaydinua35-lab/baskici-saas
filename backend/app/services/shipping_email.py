@@ -13,6 +13,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.services.site import site_url
 from app.models import CheckoutSession, Order, OrderStatusHistory, Store
 from app.services import email_service
 
@@ -61,8 +62,7 @@ def _send(db: Session, order: Order) -> bool:
     # Sipariş takip sayfası linki (varsa) — müşteri durumu buradan izler
     session = db.scalar(select(CheckoutSession).where(
         CheckoutSession.order_id == order.id).limit(1))
-    site = (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
     status_url = f"{site}/siparis/{session.lookup_token}" if session else None
     takip_url = ki.get("takip_url")
 

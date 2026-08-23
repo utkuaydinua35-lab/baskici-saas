@@ -25,6 +25,7 @@ from pydantic import BaseModel, BeforeValidator, EmailStr, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.services.site import site_url
 from app.database import get_db
 from app.models import CatalogProduct, CatalogVariant, CheckoutSession, DiscountCode, Store
 from app.payments import get_payment_provider
@@ -1025,6 +1026,64 @@ def get_blog_post(
     }
 
 
+# ── Ürün feed'i ortak parçaları (Meta + Google aynı g: şemasını kullanır) ──
+
+TELEFON_KILIFI_KATEGORI = (
+    "Electronics &gt; Communications &gt; Telephony &gt; "
+    "Mobile Phone Accessories &gt; Mobile Phone Cases"
+)
+
+
+def _kargo_xml(config: dict) -> str:
+    """<g:shipping> — reklamda kargo ücreti görünsün.
+
+    Feed şemasında "şu tutarın üstünde bedava" diye bir alan YOK; eşik
+    Merchant Center / Commerce Manager tarafında tanımlanır. Buraya sabit
+    ücret yazılır — siparişlerin çoğu eşiğin altında olduğu için doğru olan
+    da budur. Ücret tanımsızsa etiket hiç basılmaz (0 yazmak "bedava" demek
+    olurdu ve yanıltırdı).
+    """
+    from xml.sax.saxutils import escape
+    ham = str(config.get("shipping_fee") or "").strip()
+    if not ham:
+        return ""
+    try:
+        ucret = Decimal(ham)
+    except ArithmeticError:
+        return ""
+    return ("<g:shipping><g:country>TR</g:country>"
+            f"<g:service>Standart</g:service>"
+            f"<g:price>{escape(f'{ucret} TRY')}</g:price></g:shipping>")
+
+
+def _urun_tipi(p) -> str:
+    """<g:product_type> — mağazanın KENDİ kategorisi (koleksiyon adı).
+
+    google_product_category standart taksonomidir ve hepsi aynı değeri alır;
+    reklam tarafında ürünleri birbirinden ayıran şey budur.
+    """
+    from xml.sax.saxutils import escape
+    adlar = [c.title for c in (p.collections or []) if c.title][:2]
+    if not adlar:
+        return ""
+    return f"<g:product_type>{escape(' &gt; '.join(adlar)[:250])}</g:product_type>"
+
+
+def _fiyat_bandi(fiyat) -> str:
+    """<g:custom_label_0> — fiyat bandı.
+
+    Advantage+ katalog kampanyasında ürünleri marja göre ayırıp farklı
+    teklif vermeyi sağlar. Meta bu etiketin ANLAMINI bilmez, yalnız
+    gruplamak için kullanır.
+    """
+    try:
+        f = Decimal(str(fiyat))
+    except ArithmeticError:
+        return ""
+    band = "0-300" if f < 300 else "300-600" if f < 600 else "600+"
+    return f"<g:custom_label_0>{band}</g:custom_label_0>"
+
+
 @router.get("/{store_slug}/feed/meta.xml")
 def meta_catalog_feed(
     store_slug: str,
@@ -1043,16 +1102,18 @@ def meta_catalog_feed(
 
     store = _resolve_store(db, store_slug)
     config = store.config or {}
-    site = (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
 
     products = db.scalars(
         select(CatalogProduct)
         .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active")
-        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+        .options(selectinload(CatalogProduct.variants),
+                 selectinload(CatalogProduct.images),
+                 selectinload(CatalogProduct.collections))
         .order_by(CatalogProduct.position)
     ).all()
 
+    kargo = _kargo_xml(config)
     items_xml = []
     for p in products:
         active = [v for v in p.variants if v.is_active]
@@ -1079,9 +1140,11 @@ def meta_catalog_feed(
             + f"<g:availability>{'in stock' if in_stock else 'out of stock'}</g:availability>"
             "<g:condition>new</g:condition>"
             f"<g:brand>{escape(store.name)}</g:brand>"
-            "<g:google_product_category>Electronics &gt; Communications &gt; "
-            "Telephony &gt; Mobile Phone Accessories &gt; Mobile Phone Cases</g:google_product_category>"
-            "</item>"
+            f"<g:google_product_category>{TELEFON_KILIFI_KATEGORI}</g:google_product_category>"
+            + _urun_tipi(p)
+            + _fiyat_bandi(p.base_price)
+            + kargo
+            + "</item>"
         )
 
     xml = (
@@ -1112,16 +1175,18 @@ def google_shopping_feed(
 
     store = _resolve_store(db, store_slug)
     config = store.config or {}
-    site = (config.get("storefront_url")
-            or f"https://{config.get('shop_domain', '')}").rstrip("/")
+    site = site_url(config)
 
     products = db.scalars(
         select(CatalogProduct)
         .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active")
-        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+        .options(selectinload(CatalogProduct.variants),
+                 selectinload(CatalogProduct.images),
+                 selectinload(CatalogProduct.collections))
         .order_by(CatalogProduct.position)
     ).all()
 
+    kargo = _kargo_xml(config)
     items_xml = []
     for p in products:
         link = f"{site}/urun/{p.slug}"
@@ -1148,6 +1213,11 @@ def google_shopping_feed(
                 f"<g:condition>new</g:condition>"
                 f"<g:brand>{escape(store.name)}</g:brand>"
                 + (f"<g:mpn>{escape(v.sku)}</g:mpn>" if v.sku else "")
+                # Merchant Center kategori olmadan ürünü "eksik veri" sayıyordu
+                + f"<g:google_product_category>{TELEFON_KILIFI_KATEGORI}</g:google_product_category>"
+                + _urun_tipi(p)
+                + _fiyat_bandi(price)
+                + kargo
                 + "</item>"
             )
 

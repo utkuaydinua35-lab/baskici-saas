@@ -98,8 +98,7 @@ def _notify_customer(db: Session, r: DesignRequest) -> bool:
         if not store:
             return False
         cfg = store.config or {}
-        site = (cfg.get("storefront_url")
-                or (f"https://{cfg['shop_domain']}" if cfg.get("shop_domain") else "")).rstrip("/")
+        site = site_url(cfg)
         tenant = getattr(store, "tenant", None)
         brand = email_service.brand_kwargs(tenant) if tenant else {}
         label = STATUS_TR.get(r.status, r.status)

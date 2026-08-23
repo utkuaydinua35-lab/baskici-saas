@@ -20,6 +20,7 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.services.site import site_url
 from app.database import get_db
 from app.models import IntegrationKey, Order, Store
 from app.routers.entegrasyon import anahtar_ozeti, entegrasyon_rate_limit
@@ -94,7 +95,7 @@ def orders(
         q = q.where(Order.created_at_platform <= bit)
 
     store = db.get(Store, k.store_id)
-    kanal = (store.config or {}).get("storefront_url") if store else None
+    kanal = site_url(store) if store else None
 
     cikti = []
     for o in db.scalars(q.limit(MAX_SIPARIS * 2)):

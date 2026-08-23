@@ -300,6 +300,39 @@ def kargo_iptal(
     }
 
 
+@router.get("/order/{order_ref}/zpl")
+def order_zpl(
+    order_ref: str,
+    tip: str = "kargo",     # kargo = Basit Kargo etiketi, adres = kendi etiketimiz
+    dpi: int = 203,         # GX420t 203, GX430t 300
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Etiketi ZPL olarak ver — Zebra yazıcıya DOĞRUDAN gönderilir.
+
+    Tarayıcının yazdırma hattı devreye girmediği için ne onay penceresi çıkar
+    ne de ölçekleme ayarları çıktıyı bozar; barkod her zaman tam ölçüde basar.
+    """
+    from app.services.zpl_label import ZplError, pdf_to_zpl, svg_to_zpl
+
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    try:
+        if tip == "adres":
+            pdf = label_pdf.render_label_pdf(order, _store_name(db, order))
+            zpl = pdf_to_zpl(pdf, dpi=dpi)
+        else:
+            ki = order.kargo_info or {}
+            if not ki.get("id"):
+                raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
+            svg = basit_kargo.get_label_svg(ki["id"])
+            if not svg:
+                raise HTTPException(404, "Kargo etiketi alınamadı")
+            zpl = svg_to_zpl(svg, dpi=dpi)
+    except ZplError as e:
+        raise HTTPException(400, f"ZPL üretilemedi: {e}") from e
+    return Response(content=zpl, media_type="text/plain; charset=utf-8")
+
+
 @router.get("/order/{order_ref}/kargo-label")
 def kargo_label(
     order_ref: str,

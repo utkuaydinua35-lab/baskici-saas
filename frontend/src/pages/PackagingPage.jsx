@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
+import { zebraVarMi, zebraYazdir } from '../lib/zebra'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
 const CARGO_HOUR = 18   // kargo kesim saati
@@ -100,6 +101,23 @@ export default function PackagingPage() {
         items: q.order.items.map(x => x.line_item_id === it.line_item_id ? { ...x, ayrildi: !yeni } : x) } }))
       setMsg({ ok: false, text: e?.detail || 'İşaretlenemedi' })
     }
+  }
+
+  // Zebra Browser Print kurulu mu (bir kez sorulur, rozet olarak gösterilir)
+  const [zebra, setZebra] = useState(null)
+  useEffect(() => { zebraVarMi().then(setZebra) }, [])
+
+  // Etiketi ÖNCE Zebra'ya doğrudan ZPL olarak göndermeyi dene.
+  // Başarılıysa hiç yazdırma penceresi çıkmaz. Döner: gönderildi mi.
+  const zplDene = async (orderId, tip = 'kargo') => {
+    if (!zebra) return false
+    try {
+      const res = await fetch(
+        `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?tip=${tip}`,
+        { headers: { Authorization: `Bearer ${getToken()}` } })
+      if (!res.ok) return false
+      return await zebraYazdir(await res.text())
+    } catch { return false }
   }
 
   // ── Sayfa içinde yazdırma ───────────────────────────────────
@@ -225,6 +243,7 @@ export default function PackagingPage() {
   // Kendi kargo anlaşmasında paketin üzerine yapıştırılan etiket budur.
   // Döner: pencere açıldı mı (false = popup engeli / hata -> İLERLEME).
   const printAdresEtiketi = async (orderId) => {
+    if (await zplDene(orderId, 'adres')) return true
     try {
       const res = await fetch(`/api/packaging/order/${encodeURIComponent(orderId)}/label`, {
         headers: { Authorization: `Bearer ${getToken()}` },
@@ -273,6 +292,8 @@ export default function PackagingPage() {
   // Barkodu yazdır: svg verilmişse onu; yoksa kargo-label'dan kısa retry ile çek
   // (Basit Kargo etiket üretimi yavaş olabiliyor). Döner: yazdırma penceresi açıldı mı.
   const printKargoLabel = async (orderId, svg, takipNo) => {
+    // Zebra varsa doğrudan ZPL — pencere yok, ölçek sorunu yok
+    if (await zplDene(orderId, 'kargo')) return true
     let s = svg
     for (let i = 0; !s && i < 3; i++) {
       await new Promise(r => setTimeout(r, 1200))
@@ -528,6 +549,17 @@ export default function PackagingPage() {
               <p className="text-[10px] text-gray-500 text-center mt-1.5">
                 <b className="text-gray-400">P</b> tuşu: onay sormadan kargoya verir ve
                 etiketi yazdırır
+              </p>
+              <p className="text-[10px] text-center mt-1">
+                {zebra === null ? (
+                  <span className="text-gray-600">yazıcı kontrol ediliyor…</span>
+                ) : zebra ? (
+                  <span className="text-emerald-400/90">🖨 Zebra bağlı — etiket doğrudan basılır</span>
+                ) : (
+                  <span className="text-gray-500" title="Zebra Browser Print kurulu değil; etiket tarayıcı üzerinden yazdırılır">
+                    🖨 Tarayıcıdan yazdırılıyor
+                  </span>
+                )}
               </p>
 
               {labelPending && (

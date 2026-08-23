@@ -524,6 +524,24 @@ function ExistingMolds({ molds, onOpen, onDelete }) {
   )
 }
 
+// Kalıp satırındaki PDF hazırlık rozeti: PDF yok / hazırlanıyor / hazır.
+function PdfRozet({ d }) {
+  const map = {
+    hazir:        { m: 'PDF hazır',    c: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
+    hazirlaniyor: { m: 'hazırlanıyor', c: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
+    hata:         { m: 'hata',         c: 'text-red-300 bg-red-500/10 border-red-500/30' },
+  }
+  const v = map[d?.durum]
+  if (!v) return <span className="text-[10px] text-gray-600 w-[76px] shrink-0 text-center">PDF yok</span>
+  return (
+    <span title={d?.mesaj || (d?.durum === 'hazirlaniyor' ? `${d?.gecen_sn || 0} sn` : '')}
+          className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 w-[76px] text-center ${v.c}`}>
+      {v.m}
+    </span>
+  )
+}
+
+
 function MoldRow({ mold, onClick, onDelete }) {
   const vc = VAR_COLORS[mold.variation] || 'bg-gray-700 text-gray-200 border-gray-600'
   const statusColors = {

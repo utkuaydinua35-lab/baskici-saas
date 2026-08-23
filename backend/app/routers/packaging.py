@@ -305,6 +305,8 @@ def order_zpl(
     order_ref: str,
     tip: str = "kargo",     # kargo = Basit Kargo etiketi, adres = kendi etiketimiz
     dpi: int = 203,         # GX420t 203, GX430t 300
+    w_mm: float = 0,        # etiket stoğunun ölçüsü — verilirse oraya sığdırılır
+    h_mm: float = 0,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -319,7 +321,7 @@ def order_zpl(
     try:
         if tip == "adres":
             pdf = label_pdf.render_label_pdf(order, _store_name(db, order))
-            zpl = pdf_to_zpl(pdf, dpi=dpi)
+            zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None)
         else:
             ki = order.kargo_info or {}
             if not ki.get("id"):
@@ -327,7 +329,7 @@ def order_zpl(
             svg = basit_kargo.get_label_svg(ki["id"])
             if not svg:
                 raise HTTPException(404, "Kargo etiketi alınamadı")
-            zpl = svg_to_zpl(svg, dpi=dpi)
+            zpl = svg_to_zpl(svg, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None)
     except ZplError as e:
         raise HTTPException(400, f"ZPL üretilemedi: {e}") from e
     return Response(content=zpl, media_type="text/plain; charset=utf-8")

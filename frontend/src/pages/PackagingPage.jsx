@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
-import { zebraVarMi, zebraYazdir } from '../lib/zebra'
+import { zebraDurum, zebraYazdir } from '../lib/zebra'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
 const CARGO_HOUR = 18   // kargo kesim saati
@@ -104,8 +104,8 @@ export default function PackagingPage() {
   }
 
   // Zebra Browser Print kurulu mu (bir kez sorulur, rozet olarak gösterilir)
-  const [zebra, setZebra] = useState(null)
-  useEffect(() => { zebraVarMi().then(setZebra) }, [])
+  const [zebra, setZebra] = useState(null)   // {servis, yazici, yaziciAdi}
+  useEffect(() => { zebraDurum().then(setZebra) }, [])
 
   // Etiket ölçüsü (mm) — TARAYICIDAN yazdırırken kullanılır.
   // Fiziksel etiket stoğu firmadan firmaya değişiyor; birkaç mm fark etiketin
@@ -127,10 +127,11 @@ export default function PackagingPage() {
   // Etiketi ÖNCE Zebra'ya doğrudan ZPL olarak göndermeyi dene.
   // Başarılıysa hiç yazdırma penceresi çıkmaz. Döner: gönderildi mi.
   const zplDene = async (orderId, tip = 'kargo') => {
-    if (!zebra) return false
+    if (!zebra?.yazici) return false     // servis var ama yazıcı yoksa deneme
     try {
+      const q = new URLSearchParams({ tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h) })
       const res = await fetch(
-        `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?tip=${tip}`,
+        `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`,
         { headers: { Authorization: `Bearer ${getToken()}` } })
       if (!res.ok) return false
       return await zebraYazdir(await res.text())
@@ -572,7 +573,7 @@ export default function PackagingPage() {
               </p>
               {/* Etiket ölçüsü — yalnızca tarayıcıdan yazdırırken geçerli.
                   Zebra'ya doğrudan ZPL giderken ölçü ZPL'in içinde. */}
-              {!zebra && (
+              {(
                 <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-gray-500">
                   <span>Etiket:</span>
                   <input type="number" min="20" max="300" value={etiketMm.w}
@@ -585,18 +586,25 @@ export default function PackagingPage() {
                     className="w-12 bg-brand-input border border-brand-border rounded px-1 py-0.5
                                text-center text-gray-300" />
                   <span>mm</span>
-                  <span className="text-gray-600" title="İkinci etikete taşıyorsa yüksekliği birkaç mm azalt">
-                    · taşıyorsa küçült
+                  <span className="text-gray-600" title="Etiket stoğunun gerçek ölçüsü. Hem tarayıcı baskısında hem Zebra'ya giden ZPL'de kullanılır.">
+                    · stok ölçün
                   </span>
                 </div>
               )}
               <p className="text-[10px] text-center mt-1">
                 {zebra === null ? (
                   <span className="text-gray-600">yazıcı kontrol ediliyor…</span>
-                ) : zebra ? (
-                  <span className="text-emerald-400/90">🖨 Zebra bağlı — etiket doğrudan basılır</span>
+                ) : zebra.yazici ? (
+                  <span className="text-emerald-400/90" title={zebra.yaziciAdi || ''}>
+                    🖨 {zebra.yaziciAdi || 'Zebra'} — doğrudan basılır
+                  </span>
+                ) : zebra.servis ? (
+                  <span className="text-amber-400/90"
+                        title="Browser Print çalışıyor ama yazıcıyı görmüyor. Yazıcı açık ve Windows'ta kurulu mu?">
+                    🖨 Browser Print açık, yazıcı görünmüyor — tarayıcıdan yazdırılıyor
+                  </span>
                 ) : (
-                  <span className="text-gray-500" title="Zebra Browser Print kurulu değil; etiket tarayıcı üzerinden yazdırılır">
+                  <span className="text-gray-500" title="Zebra Browser Print çalışmıyor; etiket tarayıcı üzerinden yazdırılır">
                     🖨 Tarayıcıdan yazdırılıyor
                   </span>
                 )}

@@ -43,11 +43,23 @@ def _pixmap_to_zpl_gfa(pix: fitz.Pixmap, esik: int = 128) -> tuple[str, int, int
     return "".join(parcalar), satir_bayt, satir_bayt * h
 
 
-def _belge_zpl(doc: fitz.Document, dpi: int, esik: int) -> str:
+def _belge_zpl(doc: fitz.Document, dpi: int, esik: int,
+               w_mm: float | None = None, h_mm: float | None = None) -> str:
+    """w_mm/h_mm verilirse etiket O ÖLÇÜYE sığdırılır (oran korunur).
+
+    Etiket stoğu firmadan firmaya değişiyor (8x10, 10x15...). Kaynak etiketin
+    kendi ölçüsünde basmak, stok daha küçükse ikinci etikete taşırıyordu.
+    """
     if doc.page_count == 0:
         raise ZplError("Etiket boş")
     sayfa = doc[0]
-    olcek = dpi / 72.0
+    if w_mm and h_mm:
+        hedef_w = w_mm / 25.4 * dpi
+        hedef_h = h_mm / 25.4 * dpi
+        # Oranı koru: iki eksende de sığacak ölçek
+        olcek = min(hedef_w / sayfa.rect.width, hedef_h / sayfa.rect.height)
+    else:
+        olcek = dpi / 72.0
     pix = sayfa.get_pixmap(matrix=fitz.Matrix(olcek, olcek), alpha=False)
     veri, satir_bayt, toplam = _pixmap_to_zpl_gfa(pix, esik)
     # ^PW: baskı genişliği, ^LL: etiket uzunluğu — yazıcının kendi ayarını ezer,
@@ -63,23 +75,25 @@ def _belge_zpl(doc: fitz.Document, dpi: int, esik: int) -> str:
     )
 
 
-def svg_to_zpl(svg: str, dpi: int = VARSAYILAN_DPI, esik: int = 128) -> str:
+def svg_to_zpl(svg: str, dpi: int = VARSAYILAN_DPI, esik: int = 128,
+               w_mm: float | None = None, h_mm: float | None = None) -> str:
     try:
         doc = fitz.open(stream=svg.encode("utf-8"), filetype="svg")
     except Exception as e:  # noqa: BLE001
         raise ZplError(f"SVG okunamadı: {str(e)[:120]}") from e
     try:
-        return _belge_zpl(doc, dpi, esik)
+        return _belge_zpl(doc, dpi, esik, w_mm, h_mm)
     finally:
         doc.close()
 
 
-def pdf_to_zpl(pdf: bytes, dpi: int = VARSAYILAN_DPI, esik: int = 128) -> str:
+def pdf_to_zpl(pdf: bytes, dpi: int = VARSAYILAN_DPI, esik: int = 128,
+               w_mm: float | None = None, h_mm: float | None = None) -> str:
     try:
         doc = fitz.open(stream=pdf, filetype="pdf")
     except Exception as e:  # noqa: BLE001
         raise ZplError(f"PDF okunamadı: {str(e)[:120]}") from e
     try:
-        return _belge_zpl(doc, dpi, esik)
+        return _belge_zpl(doc, dpi, esik, w_mm, h_mm)
     finally:
         doc.close()

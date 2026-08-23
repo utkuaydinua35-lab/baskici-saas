@@ -39,12 +39,21 @@ async function istek(yol, secenek = {}, ms = ZAMAN_ASIMI) {
 /** Hangi uçtan bağlandık (tanı için). */
 export function zebraTaban() { return _calisanTaban }
 
-/** Browser Print kurulu ve çalışıyor mu. Hızlı, hata fırlatmaz. */
-export async function zebraVarMi() {
+/** Durum: {servis, yazici, yaziciAdi}.
+ *
+ * servis=true ama yazici=false olabiliyor — Browser Print çalışıyor ama
+ * yazıcıyı görmüyor demektir. Yalnızca servise bakmak yanıltıcıydı: rozet
+ * yeşil görünüp baskı yine tarayıcıya düşüyordu.
+ */
+export async function zebraDurum() {
+  let servis = false
   try {
     const r = await istek('/available')
-    return r.ok
-  } catch { return false }
+    servis = r.ok
+  } catch { return { servis: false, yazici: false, yaziciAdi: null } }
+  if (!servis) return { servis: false, yazici: false, yaziciAdi: null }
+  const y = await zebraYazici()
+  return { servis: true, yazici: !!y, yaziciAdi: y?.name || y?.uid || null }
 }
 
 /** Varsayılan yazıcıyı getir ({name, uid, ...}) ya da null. */

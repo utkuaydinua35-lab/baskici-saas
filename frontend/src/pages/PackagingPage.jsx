@@ -102,6 +102,89 @@ export default function PackagingPage() {
     }
   }
 
+  // ── Sayfa içinde yazdırma ───────────────────────────────────
+  // Yeni sekme açmak yerine gizli bir iframe'e yazıp oradan yazdırıyoruz:
+  //  • ikinci sekme açılmıyor, sekmeyi kapatma derdi yok
+  //  • yeni sekmedeki "yazdır" adımı gitti — yazdırma penceresi doğrudan açılıyor
+  //  • popup engelleyici devreye girmiyor (sekme açılmadığı için)
+  // NOT: tarayıcının yazdırma penceresini atlamak (sessiz baskı) web'den mümkün
+  // değil; kaldırabildiğimiz adım fazladan sekme ve ikinci tık.
+  const yazdirGomulu = (html, baslik = '') => new Promise((resolve) => {
+    const cerceve = document.createElement('iframe')
+    cerceve.setAttribute('aria-hidden', 'true')
+    cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+    document.body.appendChild(cerceve)
+    let bitti = false
+    const temizle = () => {
+      if (bitti) return
+      bitti = true
+      setTimeout(() => cerceve.remove(), 800)
+      resolve(true)
+    }
+    try {
+      const d = cerceve.contentWindow.document
+      d.open()
+      d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${baslik}</title>` +
+        `<style>@page{margin:0}html,body{margin:0;padding:0}` +
+        `body{display:flex;justify-content:center;padding:6px}` +
+        `svg,img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`)
+      d.close()
+      // Görseller/fontlar yerleşsin diye bir tur bekle
+      const bas = () => {
+        try {
+          cerceve.contentWindow.focus()
+          cerceve.contentWindow.onafterprint = temizle
+          cerceve.contentWindow.print()
+        } catch { /* yazdırma engellendi */ }
+        setTimeout(temizle, 4000)   // onafterprint gelmezse de temizlensin
+      }
+      if (d.readyState === 'complete') setTimeout(bas, 120)
+      else cerceve.onload = () => setTimeout(bas, 120)
+    } catch {
+      cerceve.remove()
+      resolve(false)
+    }
+  })
+
+  // PDF etiketi (adres etiketi) — blob URL'i iframe'e verip yazdır.
+  const yazdirPdfGomulu = (blobUrl) => new Promise((resolve) => {
+    const cerceve = document.createElement('iframe')
+    cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+    cerceve.src = blobUrl
+    let bitti = false
+    const temizle = (ok) => { if (bitti) return; bitti = true; setTimeout(() => cerceve.remove(), 800); resolve(ok) }
+    cerceve.onload = () => {
+      try {
+        cerceve.contentWindow.focus()
+        cerceve.contentWindow.print()
+        setTimeout(() => temizle(true), 4000)
+      } catch { temizle(false) }
+    }
+    cerceve.onerror = () => temizle(false)
+    document.body.appendChild(cerceve)
+    setTimeout(() => temizle(false), 12000)   // PDF hiç yüklenmezse
+  })
+
+  // ── "p" kısayolu ────────────────────────────────────────────
+  // Kargoya ver + onay + yazdır tek tuşta. Kargoya verme GERİ ALINAMAZ bir
+  // işlem olduğu için korumalar: yazı alanında değilken, düzenleyici tuşsuz,
+  // sipariş varken ve devam eden işlem yokken.
+  const kargoGonderRef = useRef(null)
+  useEffect(() => {
+    const dinle = (e) => {
+      if (e.key !== 'p' && e.key !== 'P') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return     // Cmd/Ctrl+P tarayıcıya kalsın
+      const t = e.target
+      const yaziAlani = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'
+                              || t.tagName === 'SELECT' || t.isContentEditable)
+      if (yaziAlani) return
+      e.preventDefault()
+      kargoGonderRef.current?.()
+    }
+    window.addEventListener('keydown', dinle)
+    return () => window.removeEventListener('keydown', dinle)
+  }, [])
+
   const downloadLabel = async () => {
     if (!order) return
     const res = await fetch(`/api/packaging/order/${encodeURIComponent(order.id)}/label`, {
@@ -124,16 +207,23 @@ export default function PackagingPage() {
       })
       if (!res.ok) return false
       const url = URL.createObjectURL(await res.blob())
-      const wnd = window.open(url, '_blank')
-      if (!wnd) { URL.revokeObjectURL(url); return false }
-      try { wnd.addEventListener('load', () => { try { wnd.print() } catch { /* kullanıcı yazdırır */ } }) } catch { /* çapraz köken */ }
+      // Önce sayfa içinde (iframe) dene; olmazsa sekmeye düş.
+      const ok = await yazdirPdfGomulu(url)
+      if (!ok) {
+        const wnd = window.open(url, '_blank')
+        if (!wnd) { URL.revokeObjectURL(url); return false }
+        try { wnd.addEventListener('load', () => { try { wnd.print() } catch { /* kullanıcı yazdırır */ } }) } catch { /* çapraz köken */ }
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
       return true
     } catch { return false }
   }
 
-  // SVG kargo etiketi -> yeni sekmede ac + otomatik yazdir. Döner: pencere açıldı mı (false = popup engeli)
-  const openLabelSvg = (svg, takipNo) => {
+  // SVG kargo etiketi -> SAYFA İÇİNDE yazdır (yeni sekme yok).
+  const openLabelSvg = async (svg, takipNo) => {
+    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`)
+    if (ok) return true
+    // Gömülü yazdırma engellenirse eski yol (sekme) yedek kalsın
     try {
       const w = window.open('', '_blank')
       if (!w) return false
@@ -164,12 +254,16 @@ export default function PackagingPage() {
       await new Promise(r => setTimeout(r, 1200))
       s = await fetchKargoSvg(orderId)
     }
-    return s ? openLabelSvg(s, takipNo) : false
+    return s ? await openLabelSvg(s, takipNo) : false
   }
 
   const kargoGonder = async (opts = {}) => {
     if (!order || busy) return
-    if (!opts.il && !confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
+    // opts.onaysiz: "p" kısayolu — onay penceresi atlanır (paketleme sırasında
+    // her sipariş için tıklamak akışı bozuyor). Kısayol yalnızca bu ekranda ve
+    // yazı alanına yazarken DEĞİL çalışıyor; ayrıca çift basmaya karşı busy var.
+    if (!opts.il && !opts.onaysiz &&
+        !confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
     setBusy(true); setMsg(null)
     try {
       const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/kargo-gonder`,
@@ -202,6 +296,9 @@ export default function PackagingPage() {
       setBusy(false)
     }
   }
+
+  // Kısayol her zaman GÜNCEL kapanışı çağırsın (order/busy değişiyor)
+  kargoGonderRef.current = () => kargoGonder({ onaysiz: true })
 
   const fmtDate = (iso) => {
     if (!iso) return ''
@@ -396,8 +493,18 @@ export default function PackagingPage() {
               </button>
               <button onClick={() => kargoGonder()} disabled={busy}
                 className="w-full !text-sm flex items-center justify-center gap-2 rounded-lg py-2.5 font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50">
-                {busy ? '⏳ GÖNDERİLİYOR…' : '🚚 KARGOYA VER'}
+                {busy ? '⏳ GÖNDERİLİYOR…' : (
+                  <>
+                    🚚 KARGOYA VER
+                    <kbd className="ml-1 text-[10px] font-mono bg-black/25 border border-white/25
+                                    rounded px-1.5 py-0.5">P</kbd>
+                  </>
+                )}
               </button>
+              <p className="text-[10px] text-gray-500 text-center mt-1.5">
+                <b className="text-gray-400">P</b> tuşu: onay sormadan kargoya verir ve
+                etiketi yazdırır
+              </p>
 
               {labelPending && (
                 <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">

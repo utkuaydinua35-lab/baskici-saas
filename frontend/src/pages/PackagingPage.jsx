@@ -89,6 +89,23 @@ export default function PackagingPage() {
   const order = queue.order
   const go = (idx) => { if (total === 0) return; const c = Math.max(0, Math.min(idx, total - 1)); loadIndex(c) }
 
+  // QZ sertifikasını override.crt olarak indir. Uç kimlik doğrulaması
+  // istediği için tarayıcı sekmesinden açılamıyor; token ile burada çekiyoruz.
+  const qzSertifikaIndir = async () => {
+    try {
+      const r = await fetch('/api/packaging/qz-sertifika', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!r.ok) { setMsg({ ok: false, text: 'Sertifika alınamadı' }); return }
+      const url = URL.createObjectURL(new Blob([await r.text()], { type: 'application/x-x509-ca-cert' }))
+      const a = document.createElement('a')
+      a.href = url; a.download = 'override.crt'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+      setMsg({ ok: true, text: "override.crt indirildi — QZ Tray klasörüne kopyala ve QZ'yi yeniden başlat" })
+    } catch (e) { setMsg({ ok: false, text: `İndirilemedi: ${e?.message || e}` }) }
+  }
+
   // Kalemi "kenara ayrıldı" işaretle/kaldır. İyimser güncelleme: tık anında
   // görünsün, sunucu hata verirse geri alınsın.
   const ayrildiToggle = async (it) => {
@@ -617,6 +634,15 @@ export default function PackagingPage() {
               </p>
               {/* Etiket ölçüsü — yalnızca tarayıcıdan yazdırırken geçerli.
                   Zebra'ya doğrudan ZPL giderken ölçü ZPL'in içinde. */}
+              {qz?.servis && (
+                <div className="text-center mt-1.5">
+                  <button onClick={qzSertifikaIndir}
+                    title="QZ Tray her baskıda izin soruyorsa: bu dosyayı indirip QZ Tray klasörüne override.crt olarak koy, QZ'yi yeniden başlat"
+                    className="text-[10px] text-gray-500 hover:text-accent underline underline-offset-2">
+                    QZ sertifikasını indir (izin sormasın)
+                  </button>
+                </div>
+              )}
               {qz?.servis && yaziciListe.length > 0 && (
                 <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-gray-500">
                   <span>Yazıcı:</span>

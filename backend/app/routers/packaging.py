@@ -300,6 +300,30 @@ def kargo_iptal(
     }
 
 
+@router.get("/qz-sertifika", response_model=None)
+def qz_sertifika(user: User = Depends(get_current_user)):
+    """QZ Tray'e tanıtılacak sertifika (yazıcı bilgisayarına override.crt)."""
+    from app.services import qz_imza
+    return Response(content=qz_imza.sertifika_pem(), media_type="text/plain")
+
+
+class QzImzaIn(BaseModel):
+    veri: str
+
+
+@router.post("/qz-imza", response_model=dict)
+def qz_imza_uret(body: QzImzaIn, user: User = Depends(get_current_user)):
+    """QZ'nin gönderdiği isteği imzala.
+
+    Özel anahtar sunucuda kalır; tarayıcıya asla verilmez. İmza olmadan QZ her
+    baskıda izin soruyor ve "bu kararı hatırla" seçeneği çalışmıyor.
+    """
+    from app.services import qz_imza
+    if len(body.veri) > 100_000:
+        raise HTTPException(400, "İmzalanacak veri çok büyük")
+    return {"imza": qz_imza.imzala(body.veri)}
+
+
 @router.get("/order/{order_ref}/zpl")
 def order_zpl(
     order_ref: str,

@@ -11,10 +11,42 @@ import qz from 'qz-tray'
 let _baglaniyor = null
 const YAZICI_ANAHTAR = 'qz_yazici'
 
-// İmzasız kullanım: QZ ilk isteğinde tarayıcıda "İzin ver" sorar ve
-// "bu kararı hatırla" seçilince bir daha sormaz. İmza sertifikası ücretli
-// olduğu için bilerek imzasız gidiyoruz.
-qz.security.setCertificatePromise((resolve, reject) => reject(new Error('imzasiz')))
+// İMZALI kullanım: QZ, imzalanmamış sitelerde her baskıda izin sorar ve
+// "bu kararı hatırla" seçeneğini KASITLI olarak çalıştırmaz. Bu yüzden kendi
+// sertifikamızı kullanıyoruz: sertifika sunucudan gelir, imzayı da sunucu atar.
+// Özel anahtar tarayıcıya İNMEZ — inseydi o güveni herkes kullanabilirdi.
+//
+// Sertifika yazıcı bilgisayarındaki QZ Tray'e bir kez tanıtılır (override.crt);
+// tanıtılmamışsa QZ eskisi gibi sorar, yani kurulum yarım kalsa da çalışır.
+let _sertifika = null
+
+async function _sunucu(yol, secenek) {
+  const token = localStorage.getItem('baskici_token')
+  return fetch(yol, {
+    ...secenek,
+    headers: { ...(secenek?.headers || {}), Authorization: `Bearer ${token}` },
+  })
+}
+
+qz.security.setCertificatePromise((resolve, reject) => {
+  if (_sertifika) return resolve(_sertifika)
+  _sunucu('/api/packaging/qz-sertifika')
+    .then(r => (r.ok ? r.text() : Promise.reject(new Error('sertifika alınamadı'))))
+    .then(t => { _sertifika = t; resolve(t) })
+    .catch(e => reject(e))
+})
+
+qz.security.setSignatureAlgorithm('SHA512')
+qz.security.setSignaturePromise((veri) => (resolve, reject) => {
+  _sunucu('/api/packaging/qz-imza', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ veri }),
+  })
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error('imza alınamadı'))))
+    .then(j => resolve(j.imza))
+    .catch(e => reject(e))
+})
 
 async function baglan() {
   if (qz.websocket.isActive()) return true

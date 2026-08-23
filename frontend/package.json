@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "dompurify": "^3.4.11",
+    "qz-tray": "^2.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.1"

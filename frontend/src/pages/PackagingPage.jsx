@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
 import { zebraDurum, zebraTaban, zebraYazdir } from '../lib/zebra'
+import { qzDurum, qzYazdir, qzYazicilar, qzYaziciSec } from '../lib/qz'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
 const CARGO_HOUR = 18   // kargo kesim saati
@@ -105,7 +106,15 @@ export default function PackagingPage() {
 
   // Zebra Browser Print kurulu mu (bir kez sorulur, rozet olarak gösterilir)
   const [zebra, setZebra] = useState(null)   // {servis, yazici, yaziciAdi}
-  useEffect(() => { zebraDurum().then(setZebra) }, [])
+  const [qz, setQz] = useState(null)         // {servis, yazici, yaziciAdi}
+  const [yaziciListe, setYaziciListe] = useState([])
+  useEffect(() => {
+    zebraDurum().then(setZebra)
+    qzDurum().then(d => { setQz(d); if (d.servis) qzYazicilar().then(setYaziciListe) })
+  }, [])
+  // Doğrudan basabiliyor muyuz (hangi köprüyle olursa)
+  const dogrudan = !!(qz?.yazici || zebra?.yazici)
+  const koprAdi = qz?.yazici ? qz.yaziciAdi : zebra?.yaziciAdi
 
   // Etiket ölçüsü (mm) — TARAYICIDAN yazdırırken kullanılır.
   // Fiziksel etiket stoğu firmadan firmaya değişiyor; birkaç mm fark etiketin
@@ -130,7 +139,7 @@ export default function PackagingPage() {
   // sorusunu cevaplayacak hiçbir iz kalmıyordu. Artık nerede kırıldığı
   // ekranda ve konsolda görünüyor.
   const zplDene = async (orderId, tip = 'kargo') => {
-    if (!zebra?.yazici) return false     // servis var ama yazıcı yoksa deneme
+    if (!dogrudan) return false          // hiçbir köprü hazır değil
     let zpl
     try {
       const q = new URLSearchParams({ tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h) })
@@ -151,19 +160,26 @@ export default function PackagingPage() {
       setMsg({ ok: false, text: `ZPL isteği başarısız: ${e?.message || e}` })
       return false
     }
-    try {
-      const ok = await zebraYazdir(zpl)
-      if (!ok) {
+    // Önce QZ Tray (yazıcı kuyruğu), sonra Zebra Browser Print (USB keşfi)
+    if (qz?.yazici) {
+      const r = await qzYazdir(zpl)
+      if (r.ok) return true
+      console.warn('[qz] yazılamadı:', r.hata, { boyut: zpl.length })
+      setMsg({ ok: false, text: `QZ Tray'e gönderilemedi: ${r.hata} — tarayıcıdan yazdırılacak` })
+    }
+    if (zebra?.yazici) {
+      try {
+        const ok = await zebraYazdir(zpl)
+        if (ok) return true
         console.warn('[zebra] yazıcıya yazılamadı', { taban: zebraTaban(), boyut: zpl.length })
         setMsg({ ok: false,
           text: `Zebra'ya gönderilemedi (${(zpl.length / 1024).toFixed(0)} KB) — tarayıcıdan yazdırılacak` })
+      } catch (e) {
+        console.warn('[zebra] yazma hatası:', e)
+        setMsg({ ok: false, text: `Zebra yazma hatası: ${e?.message || e}` })
       }
-      return ok
-    } catch (e) {
-      console.warn('[zebra] yazma hatası:', e)
-      setMsg({ ok: false, text: `Zebra yazma hatası: ${e?.message || e}` })
-      return false
     }
+    return false
   }
 
   // ── Sayfa içinde yazdırma ───────────────────────────────────
@@ -601,6 +617,16 @@ export default function PackagingPage() {
               </p>
               {/* Etiket ölçüsü — yalnızca tarayıcıdan yazdırırken geçerli.
                   Zebra'ya doğrudan ZPL giderken ölçü ZPL'in içinde. */}
+              {qz?.servis && yaziciListe.length > 0 && (
+                <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-gray-500">
+                  <span>Yazıcı:</span>
+                  <select value={qz.yaziciAdi || ''}
+                    onChange={e => { qzYaziciSec(e.target.value); qzDurum().then(setQz) }}
+                    className="bg-brand-input border border-brand-border rounded px-1 py-0.5 text-gray-300 max-w-[190px]">
+                    {yaziciListe.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
               {(
                 <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-gray-500">
                   <span>Etiket:</span>
@@ -620,19 +646,19 @@ export default function PackagingPage() {
                 </div>
               )}
               <p className="text-[10px] text-center mt-1">
-                {zebra === null ? (
+                {(zebra === null || qz === null) ? (
                   <span className="text-gray-600">yazıcı kontrol ediliyor…</span>
-                ) : zebra.yazici ? (
-                  <span className="text-emerald-400/90" title={zebra.yaziciAdi || ''}>
-                    🖨 {zebra.yaziciAdi || 'Zebra'} — doğrudan basılır
+                ) : dogrudan ? (
+                  <span className="text-emerald-400/90" title={koprAdi || ''}>
+                    🖨 {koprAdi || 'Yazıcı'} — doğrudan basılır
                   </span>
-                ) : zebra.servis ? (
+                ) : (qz.servis || zebra.servis) ? (
                   <span className="text-amber-400/90"
-                        title="Browser Print çalışıyor ama yazıcıyı görmüyor. Yazıcı açık ve Windows'ta kurulu mu?">
-                    🖨 Browser Print açık, yazıcı görünmüyor — tarayıcıdan yazdırılıyor
+                        title="Yardımcı çalışıyor ama yazıcı seçili değil. Aşağıdan seç.">
+                    🖨 Yazıcı seçili değil — tarayıcıdan yazdırılıyor
                   </span>
                 ) : (
-                  <span className="text-gray-500" title="Zebra Browser Print çalışmıyor; etiket tarayıcı üzerinden yazdırılır">
+                  <span className="text-gray-500" title="QZ Tray / Browser Print çalışmıyor; etiket tarayıcı üzerinden yazdırılır">
                     🖨 Tarayıcıdan yazdırılıyor
                   </span>
                 )}

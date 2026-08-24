@@ -579,3 +579,28 @@ select.input option, select option { background: #17102b; color: #f3f4f6; }
   .bayi-marka-nokta { animation: none; }
   .bayi-kart:hover { transform: none; }
 }
+
+/* Tasarım kataloğu kartı — fare varsa üzerine gelince büyür.
+   Dokunmatikte hover yok; orada karta dokununca büyütülmüş önizleme +
+   "Onayla" açılıyor (UrunSecici/TasarimKatalogu), yanlış tasarımı tek
+   dokunuşla seçmeyi önlemek için. */
+.bayi-katalog-kart {
+  transition: transform .2s cubic-bezier(.22,.8,.28,1),
+              border-color .2s, box-shadow .2s;
+}
+@media (hover: hover) {
+  .bayi-katalog-kart:hover {
+    transform: scale(1.12);
+    z-index: 2;
+    border-color: rgb(var(--accent-rgb) / 0.6);
+    box-shadow: 0 14px 34px -12px rgb(0 0 0 / 0.85),
+                0 0 0 1px rgb(var(--accent-rgb) / 0.25);
+  }
+}
+.bayi-katalog-kart:focus-visible {
+  outline: none;
+  border-color: rgb(var(--accent-rgb) / 0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bayi-katalog-kart:hover { transform: none; }
+}

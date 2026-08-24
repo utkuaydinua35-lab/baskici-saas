@@ -21,7 +21,8 @@ import UrunSecici from '../../components/UrunSecici'
 const ADIMLAR = ['Ürünler', 'Alıcı']
 const MAX_URUN = 20      // sunucudaki MAX_KALEM ile aynı
 let _sonrakiId = 1
-const bosUrun = () => ({ yerelId: _sonrakiId++, dosya: null, tasarim: null, model: '', adet: 1 })
+const bosUrun = () => ({ yerelId: _sonrakiId++, dosya: null, tasarim: null,
+                         model: '', modelEtiket: '', adet: 1 })
 
 export default function BayiYeniSiparisPage() {
   const navigate = useNavigate()
@@ -275,7 +276,7 @@ export default function BayiYeniSiparisPage() {
               {urunler.map((u, i) => (
                 <div key={u.yerelId} className="flex items-center gap-2 text-[13px]">
                   <span className="text-gray-600 w-4 shrink-0">{i + 1}.</span>
-                  <span className="text-gray-200 flex-1 truncate">{u.model}</span>
+                  <span className="text-gray-200 flex-1 truncate">{u.modelEtiket || u.model}</span>
                   <span className="text-gray-500 shrink-0">× {u.adet}</span>
                 </div>
               ))}

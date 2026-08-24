@@ -462,6 +462,29 @@ db.execute(text("delete from push_subscriptions where endpoint like :p")
            .bindparams(p=f"https://ornek/{IZ}"))
 db.commit()
 
+print("\n── 13b. Model dogrulama ──")
+# "Model taninmadi": bayi listeden secse bile marka oneki dusen bir ad
+# (or. "A57") kalip planlayicisi tarafindan cozulemiyor ve siparis sessizce
+# kalip disinda kaliyordu. Artik hem liste hem de kapi suzuyor.
+_ml = ISTEMCI.get("/api/bayii/modeller", headers=H_A).json()["items"]
+es("modeller {deger, etiket} doner", True,
+   bool(_ml) and set(_ml[0]) == {"deger", "etiket"})
+from app.services import phone_models as _pm  # noqa: E402
+es("listedeki her model COZULEBILIR", True,
+   all(_pm.has_spec(db, tenant.id, m["deger"]) for m in _ml))
+es("taninmayan model reddedilir", 400,
+   siparis_ac(H_A, urunler=[("A57", 1)]).status_code)
+_taze = siparis_ac(H_A, urunler=[(_ml[0]["deger"], 1)]).json()["id"]
+_taze_k = ISTEMCI.get(f"/api/bayii/siparis/{_taze}", headers=H_A).json()["kalemler"][0]["id"]
+es("taninmayan modele guncelleme reddedilir", 400,
+   ISTEMCI.patch(f"/api/bayii/siparis/{_taze}/kalem/{_taze_k}", headers=H_A,
+                 json={"model": "ZZZ-YOK-99"}).status_code)
+es("taninan modele guncelleme gecer", 200,
+   ISTEMCI.patch(f"/api/bayii/siparis/{_taze}/kalem/{_taze_k}", headers=H_A,
+                 json={"model": _ml[1]["deger"]}).status_code)
+es("taninan model kabul edilir", 201,
+   siparis_ac(H_A, urunler=[(_ml[0]["deger"], 1)]).status_code)
+
 print("\n── 14. Iptal talebi: kalip asamasina gore ──")
 from app.models import Mold, MoldItem  # noqa: E402
 

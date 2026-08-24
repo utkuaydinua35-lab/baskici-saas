@@ -50,7 +50,8 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
 
   const liste = (() => {
     const q = arama.trim().toLocaleLowerCase('tr')
-    return (q ? modeller.filter((m) => m.toLocaleLowerCase('tr').includes(q)) : modeller).slice(0, 40)
+    return (q ? modeller.filter((m) => m.etiket.toLocaleLowerCase('tr').includes(q))
+              : modeller).slice(0, 40)
   })()
 
   const modelSec = async (m) => {
@@ -135,10 +136,11 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
               <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-brand-border
                               divide-y divide-white/5">
                 {liste.map((m) => (
-                  <button key={m} onClick={() => modelSec(m)} disabled={bekle === 'model'}
+                  <button key={m.deger} onClick={() => modelSec(m.deger)}
+                          disabled={bekle === 'model'}
                           className="w-full text-left px-3.5 py-2 text-[13px] text-gray-300
                                      hover:bg-accent/10 hover:text-white transition-colors">
-                    {m}
+                    {m.etiket}
                   </button>
                 ))}
                 {liste.length === 0 && (
@@ -328,7 +330,19 @@ export default function BayiSiparisDetayPage() {
           </div>
         </div>
 
-        {o.onay_bekliyor && (
+        {o.iptal && (
+          <div className="mt-4 rounded-xl border border-zinc-500/25 bg-zinc-500/8 px-4 py-3
+                          flex items-start gap-3 animate-fadein">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                 className="w-[18px] h-[18px] text-gray-400 shrink-0 mt-0.5" strokeLinecap="round">
+              <circle cx="12" cy="12" r="9" /><path d="M9 9l6 6M15 9l-6 6" />
+            </svg>
+            <div className="text-[12.5px] text-gray-300 leading-relaxed">
+              Bu sipariş iptal edildi. Üretime girmez ve kargolanmaz.
+            </div>
+          </div>
+        )}
+        {!o.iptal && o.onay_bekliyor && (
           <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3
                           flex items-start gap-3 animate-fadein">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
@@ -370,7 +384,9 @@ export default function BayiSiparisDetayPage() {
         </div>
 
         {!y.urun_degistir && (
-          <Kilit metin="Sipariş üretime alındı — model ve tasarım artık değiştirilemez." />
+          <Kilit metin={y.iptal_edildi
+            ? 'Sipariş iptal edildi.'
+            : 'Sipariş üretime alındı — model ve tasarım artık değiştirilemez.'} />
         )}
       </div>
 
@@ -426,9 +442,11 @@ export default function BayiSiparisDetayPage() {
               </div>
             )}
             {!y.adres_degistir && (
-              <Kilit metin={y.uretimde
-                ? 'Sipariş üretime alındı — adres değiştirilemez.'
-                : 'Kargo barkodu oluşturuldu — adres artık değiştirilemez.'} />
+              <Kilit metin={y.iptal_edildi
+                ? 'Sipariş iptal edildi.'
+                : y.uretimde
+                  ? 'Sipariş üretime alındı — adres değiştirilemez.'
+                  : 'Kargo barkodu oluşturuldu — adres artık değiştirilemez.'} />
             )}
           </div>
         )}

@@ -336,28 +336,58 @@ def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
     ]}
 
 
+def _cozulen_deger(db: Session, tenant_id, *adaylar: str) -> str | None:
+    """Kalıp planlayıcının TANIYACAĞI ilk aday.
+
+    Model adı kalıp ölçüsünü buradan çözülüyor. Bayiye tanınmayan bir ad
+    gösterirsek sipariş "Model tanınmadı" ile kalıp dışında kalıyor ve bu
+    ancak kalıp üretilirken fark ediliyor.
+    """
+    from app.services import phone_models as pm
+
+    for a in adaylar:
+        a = (a or "").strip()
+        if a and pm.has_spec(db, tenant_id, a):
+            return a
+    return None
+
+
 @router.get("/modeller", response_model=dict, dependencies=[_izin])
 def modeller(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
     """Sipariş girerken seçilecek telefon modelleri.
 
-    Kalıp üretimi model adına bakıyor; bayinin serbest metin girmesi yerine
-    tanınan modellerden seçmesi hatayı baştan keser.
+    Dönüş {deger, etiket}: `etiket` bayinin gördüğü ad, `deger` siparişe
+    yazılan ve kalıp planlayıcının çözdüğü ad. İkisi AYRIŞABİLİR — tenant'a
+    "A57" diye eklenmiş bir modelin gerçek anahtarı "SAMSUNG-A57" olabilir;
+    ekranda "A57" yazar ama siparişe çözülen ad gider.
+
+    Çözülemeyen modeller listeye HİÇ girmez: bayi seçemesin.
     """
     from app.models import PhoneModel
     from app.services import phone_models as pm
 
-    adlar: dict[str, str] = {}
+    secenekler: dict[str, str] = {}   # deger -> etiket
+
     for m in db.scalars(select(PhoneModel).where(
             PhoneModel.tenant_id == d.tenant_id,
             PhoneModel.is_active == True)).all():  # noqa: E712
-        adlar[pm.canonical_key(m.spec_key or "")] = m.display_name or m.spec_key
+        etiket = (m.display_name or m.spec_key or "").strip()
+        deger = _cozulen_deger(db, d.tenant_id, m.display_name, m.spec_key)
+        if deger and etiket:
+            secenekler.setdefault(deger, etiket)
+
     for k in pm.baseline_keys():
         if pm.is_apple_alias_key(k):
             continue
-        ck = pm.canonical_key(k)
-        if ck not in adlar:
-            adlar[ck] = pm.baseline_display_name(k)
-    return {"items": sorted(adlar.values(), key=str.lower)}
+        etiket = pm.baseline_display_name(k)
+        deger = _cozulen_deger(db, d.tenant_id, etiket, k)
+        if deger and deger not in secenekler:
+            secenekler[deger] = etiket
+
+    return {"items": [
+        {"deger": v, "etiket": e}
+        for v, e in sorted(secenekler.items(), key=lambda kv: kv[1].lower())
+    ]}
 
 
 # ─── Sipariş oluşturma ───────────────────────────────────────
@@ -535,6 +565,13 @@ def siparis_olustur(
     for i, m in enumerate(modeller, 1):
         if not m:
             raise HTTPException(400, f"{i}. üründe telefon modeli seçilmeli")
+        # Kalıp ölçüsü model adından çözülüyor. Tanınmayan ad kabul edilirse
+        # sipariş sessizce kalıp dışında kalıyor ("Model tanınmadı") ve bu
+        # ancak kalıp üretilirken fark ediliyor. Kapıda durduruyoruz.
+        if not _cozulen_deger(db, d.tenant_id, m):
+            raise HTTPException(
+                400, f"{i}. üründeki telefon modeli tanınmadı: {m}. "
+                     "Lütfen listeden seç.")
     for i, a in enumerate(adet, 1):
         if not 1 <= a <= 99:
             raise HTTPException(400, f"{i}. üründe adet 1 ile 99 arasında olmalı")
@@ -622,6 +659,8 @@ def urun_guncelle(order_id: uuid.UUID, kalem_id: uuid.UUID, req: UrunIn,
         yeni_m = req.model.strip()
         if not yeni_m:
             raise HTTPException(400, "Telefon modeli boş olamaz")
+        if not _cozulen_deger(db, d.tenant_id, yeni_m):
+            raise HTTPException(400, f"Telefon modeli tanınmadı: {yeni_m}. Listeden seç.")
         if yeni_m != (li.device_model_override or ""):
             degisiklikler.append(f"model: {li.device_model_override or '—'} → {yeni_m}")
             li.device_model_override = yeni_m

@@ -38,10 +38,11 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
     onDegis({ ...urun, dosya: f, tasarim: null })
   }, [urun, onDegis])
 
+  // modeller: [{deger, etiket}] — etiket gosterilir, deger siparise yazilir
   const liste = useMemo(() => {
     const q = modelArama.trim().toLocaleLowerCase('tr')
     if (!q) return modeller.slice(0, 50)
-    return modeller.filter((m) => m.toLocaleLowerCase('tr').includes(q)).slice(0, 50)
+    return modeller.filter((m) => m.etiket.toLocaleLowerCase('tr').includes(q)).slice(0, 50)
   }, [modeller, modelArama])
 
   const boyut = urun.dosya
@@ -86,8 +87,11 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
                                border border-accent/40 bg-white/[0.03] grid place-items-center
                                animate-popin">
               {urun.tasarim.gorsel
-                ? <img src={urun.tasarim.gorsel} alt="" className="w-full h-full object-cover" />
-                : <span className="text-[11px] text-gray-500 px-1">{urun.tasarim.kod}</span>}
+                ? <img src={urun.tasarim.gorsel} alt=""
+                       className="w-full h-full object-cover" />
+                : <span className="text-[11px] text-gray-500 px-1 text-center">
+                    {(urun.tasarim.format || 'PDF').toUpperCase()}
+                  </span>}
               <span className="absolute inset-0 grid place-items-center bg-black/65 text-[11px]
                                text-white opacity-0 group-hover:opacity-100 focus:opacity-100
                                transition-opacity">Değiştir</span>
@@ -152,7 +156,7 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
                             bg-accent/8 px-3.5 py-2.5 animate-popin">
               <svg viewBox="0 0 24 24" fill="none" stroke="rgb(var(--accent-rgb))" strokeWidth="1.6"
                    className="w-4 h-4 shrink-0"><rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>
-              <span className="text-[13.5px] text-white flex-1 truncate">{urun.model}</span>
+              <span className="text-[13.5px] text-white flex-1 truncate">{urun.modelEtiket || urun.model}</span>
               <button type="button" onClick={() => onDegis({ ...urun, model: '' })}
                       className="text-[12px] text-gray-400 hover:text-white transition shrink-0">
                 Değiştir
@@ -169,11 +173,14 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
                     Eşleşen model yok
                   </div>
                 ) : liste.map((m) => (
-                  <button key={m} type="button"
-                          onClick={() => { onDegis({ ...urun, model: m }); setModelArama('') }}
+                  <button key={m.deger} type="button"
+                          onClick={() => {
+                            onDegis({ ...urun, model: m.deger, modelEtiket: m.etiket })
+                            setModelArama('')
+                          }}
                           className="w-full text-left px-3.5 py-2 text-[13px] text-gray-300
                                      hover:bg-accent/10 hover:text-white transition-colors">
-                    {m}
+                    {m.etiket}
                   </button>
                 ))}
               </div>
@@ -214,14 +221,29 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
 }
 
 
-/** Bayinin kendi tasarimlari — gorselleriyle katalog. */
+/** Bayinin kendi tasarimlari — gorselleriyle katalog.
+ *
+ * Masaustunde gorselin uzerine gelince buyur (fare varsa onizleme yeterli).
+ * Dokunmatikte hover YOK: bir dokunusla secmek yanlis tasarim secmeye cok
+ * musait oldugu icin once buyutup "Onayla" istiyoruz.
+ */
 function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
   const [q, setQ] = useState('')
+  const [odak, setOdak] = useState(null)   // dokunmatikte buyutulen tasarim
+  const dokunmatik = useMemo(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(hover: none)').matches, [])
+
   const liste = (katalog || []).filter((t) => {
     const s = q.trim().toLocaleLowerCase('tr')
     return !s || (t.ad || '').toLocaleLowerCase('tr').includes(s)
       || (t.kod || '').toLocaleLowerCase('tr').includes(s)
   })
+
+  const tikla = (t) => {
+    if (dokunmatik) setOdak(t)   // once buyut, secim "Onayla" ile
+    else onSec(t)
+  }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/65 animate-fadein"
@@ -234,22 +256,24 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
             ×
           </button>
         </div>
-        <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+               autoFocus={!dokunmatik}
                placeholder="Tasarım ara…" className="input w-full mb-3.5" />
         {liste.length === 0 ? (
           <div className="py-10 text-center text-[13px] text-gray-500">
             {q ? 'Eşleşen tasarım yok' : 'Henüz kayıtlı tasarımın yok'}
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 overflow-y-auto">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 overflow-y-auto py-1">
             {liste.map((t, i) => (
-              <button key={t.id} type="button" onClick={() => onSec(t)}
-                      className={`rounded-xl overflow-hidden border transition-all bayi-sira
+              <button key={t.id} type="button" onClick={() => tikla(t)}
+                      className={`bayi-katalog-kart rounded-xl overflow-hidden border bayi-sira
                         ${t.id === seciliId
                           ? 'border-accent ring-2 ring-accent/30'
-                          : 'border-white/10 hover:border-accent/50'}`}
+                          : 'border-white/10'}`}
                       style={{ '--gecikme': `${Math.min(i, 12) * 25}ms` }}>
-                <div className="aspect-square bg-white/[0.04] grid place-items-center">
+                {/* aspect-square: gorseller her zaman KARE, kirpilarak sigar */}
+                <div className="aspect-square bg-white/[0.04] grid place-items-center overflow-hidden">
                   {t.gorsel
                     ? <img src={t.gorsel} alt="" className="w-full h-full object-cover" />
                     : <span className="text-[10px] text-gray-600 px-1 text-center">
@@ -264,6 +288,35 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
           </div>
         )}
       </div>
+
+      {/* Dokunmatik: buyutulmus onizleme + acik onay */}
+      {odak && (
+        <div className="fixed inset-0 z-[60] grid place-items-center p-5 animate-fadein"
+             style={{ background: 'rgb(6 4 12)' }}
+             onClick={() => setOdak(null)}>
+          <div className="rounded-2xl w-full max-w-xs p-4 animate-popin border border-white/10"
+               style={{ background: 'rgb(23 16 43)',
+                        boxShadow: '0 30px 70px -30px rgb(0 0 0 / 0.95)' }}
+               onClick={(e) => e.stopPropagation()}>
+            <div className="aspect-square rounded-xl overflow-hidden border border-white/12
+                            bg-black/40 grid place-items-center">
+              {odak.gorsel
+                ? <img src={odak.gorsel} alt="" className="w-full h-full object-contain" />
+                : <span className="text-sm text-gray-500">
+                    {(odak.format || '?').toUpperCase()}
+                  </span>}
+            </div>
+            <div className="text-[13px] text-gray-200 mt-3 text-center truncate"
+                 title={odak.ad}>{odak.ad}</div>
+            <div className="flex items-center gap-2.5 mt-4">
+              <button type="button" onClick={() => setOdak(null)}
+                      className="btn-secondary flex-1">Vazgeç</button>
+              <button type="button" onClick={() => { onSec(odak); setOdak(null) }}
+                      className="btn-primary flex-1">Onayla</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

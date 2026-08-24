@@ -120,12 +120,24 @@ def _barkod_var(o: Order) -> bool:
 
 
 def _yetkiler(db: Session, o: Order) -> dict:
+    from app.services import bayii_iptal
+
     uretimde = _kaliba_girdi(db, o)
     barkod = _barkod_var(o)
+    d, _ = bayii_iptal.durumu_oku(db, o)
+    kapali = bool(o.is_iptal)
     return {
-        "urun_degistir": not uretimde,          # telefon modeli + tasarım
-        "adres_degistir": not uretimde and not barkod,
-        "silinebilir": not uretimde and bool(o.bayii_onay_bekliyor),
+        "urun_degistir": not uretimde and not kapali,   # telefon modeli + tasarım
+        "adres_degistir": not uretimde and not barkod and not kapali,
+        # Kalıba girmemişse bayi doğrudan geri çeker
+        "silinebilir": not uretimde and not kapali,
+        # Kalıba girdiyse yalnız TALEP açabilir — ve basılmış kalıpta o da yok
+        "iptal_talebi_acilir": (uretimde and not kapali
+                                and d.talep_acilabilir
+                                and not o.bayii_iptal_talebi),
+        "iptal_talebi_bekliyor": bool(o.bayii_iptal_talebi),
+        "iptal_edildi": kapali,
+        "kalip_basildi": d.basilmis_kalip_var,
         "uretimde": uretimde,
         "barkod_var": barkod,
     }
@@ -157,6 +169,7 @@ def _ser(db: Session, o: Order, detay: bool = False) -> dict:
         "asama_adi": stage_defs.stage_label(o.current_stage or 1),
         "onay_bekliyor": bool(o.bayii_onay_bekliyor),
         "iptal": bool(o.is_iptal),
+        "iptal_talebi": bool(o.bayii_iptal_talebi),
         "adet": sum(int(li.quantity or 1) for li in (o.line_items or [])),
         "tutar": raw.get("total_price"),
         "kargo_ucreti": raw.get("shipping_fee"),
@@ -235,6 +248,10 @@ def ozet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
             "bakiye": float(d.balance or 0),
             "bakiye_usd": float(d.balance_usd or 0),
             "birim_fiyat": float(d.unit_price or 0),
+            # Birim fiyat bayinin para biriminde; kargo HER ZAMAN ₺.
+            # Bu alan olmadigi icin sihirbaz TRY'ye dusuyor ve USD bayide
+            # "₺5,00" gosteriyordu.
+            "para_birimi": (d.currency or "TRY").upper(),
             "kargo_ucreti": float(d.shipping_fee or 0),
         },
         "sayilar": {
@@ -290,6 +307,35 @@ def il_ilce():
     return {"items": IL_ILCE}
 
 
+@router.get("/tasarimlar", response_model=dict, dependencies=[_izin])
+def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
+               limit: int = 200):
+    """Bayinin daha önce yüklediği tasarımlar — katalog.
+
+    Aynı tasarımı tekrar tekrar yüklemek yerine listeden seçebilsin.
+    YALNIZCA bayinin kendi mağazasındaki tasarımlar; başka bayinin ya da
+    bizim tasarımlarımız burada GÖRÜNMEZ.
+    """
+    if not d.store_id:
+        return {"items": []}
+    rows = db.scalars(
+        select(Design).where(Design.store_id == d.store_id,
+                             Design.tenant_id == d.tenant_id)
+        .order_by(desc(Design.created_at)).limit(min(limit, 300))
+    ).all()
+    return {"items": [
+        {
+            "id": str(x.id),
+            "kod": x.code,
+            "ad": x.name or x.code,
+            "format": (x.file_format or "").lower(),
+            "gorsel": storage.get_thumbnail_url(x.file_path, x.file_format),
+            "tarih": x.created_at.isoformat() if x.created_at else None,
+        }
+        for x in rows
+    ]}
+
+
 @router.get("/modeller", response_model=dict, dependencies=[_izin])
 def modeller(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
     """Sipariş girerken seçilecek telefon modelleri.
@@ -315,6 +361,20 @@ def modeller(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
 
 
 # ─── Sipariş oluşturma ───────────────────────────────────────
+def _katalogdan_tasarim(db: Session, d: Dealer, tasarim_id: str) -> Design:
+    """Bayinin KENDI katalogundan tasarim. Baska magazanin tasarimi secilemez."""
+    try:
+        tid = uuid.UUID(tasarim_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(400, "Geçersiz tasarım seçimi") from None
+    ds = db.scalar(select(Design).where(
+        Design.id == tid, Design.tenant_id == d.tenant_id,
+        Design.store_id == d.store_id))
+    if not ds:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    return ds
+
+
 def _benzersiz_tasarim_kodu(db: Session, d: Dealer) -> str:
     """Bayi tasarımı için çakışmayan kod.
 
@@ -429,9 +489,12 @@ def siparis_olustur(
     arka: BackgroundTasks,
     # ÇOKLU ÜRÜN: üç liste konum konum eşleşir — tasarim[i] ↔ model[i] ↔ adet[i].
     # Tek ürünlü sipariş de bu yoldan geçer (tek elemanlı listeler).
-    tasarim: list[UploadFile] = File(...),
+    # Her urun ya YENI dosya yukler ya da KATALOGDAN secer. Ikisi de konum
+    # konum eslesir; secilen urun icin tasarim_id dolu, dosya bos gelir.
     model: list[str] = Form(...),
     adet: list[int] = Form(...),
+    tasarim: list[UploadFile] | None = File(None),
+    tasarim_id: list[str] | None = Form(None),
     kanal: str = Form(...),
     ad_soyad: str = Form(...),
     telefon: str = Form(""),
@@ -452,10 +515,21 @@ def siparis_olustur(
 
     # Listeler aynı boyda olmalı: eşleşme konuma dayanıyor, kayarsa tasarım
     # yanlış modele bağlanır ve bu ancak baskıda fark edilir.
-    if not (len(tasarim) == len(model) == len(adet)):
-        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (tasarım/model/adet eşleşmiyor)")
-    if not 1 <= len(tasarim) <= MAX_KALEM:
+    if len(model) != len(adet):
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (model/adet eşleşmiyor)")
+    if not 1 <= len(model) <= MAX_KALEM:
         raise HTTPException(400, f"Bir siparişte 1 ile {MAX_KALEM} arası ürün olabilir")
+
+    # Katalogdan seçim: boş dize "bu üründe dosya yüklenmedi" demek.
+    kimlikler = list(tasarim_id or [])
+    if kimlikler and len(kimlikler) != len(model):
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (tasarım/model eşleşmiyor)")
+    kimlikler += [""] * (len(model) - len(kimlikler))
+
+    dosyalar = [f for f in (tasarim or []) if (f.filename or "").strip()]
+    gereken_dosya = sum(1 for k in kimlikler if not k.strip())
+    if len(dosyalar) != gereken_dosya:
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (tasarım/model eşleşmiyor)")
 
     modeller = [(m or "").strip() for m in model]
     for i, m in enumerate(modeller, 1):
@@ -491,8 +565,13 @@ def siparis_olustur(
     db.flush()
 
     ozet = []
-    for i, (dosya, m, a) in enumerate(zip(tasarim, modeller, adet)):
-        ds = _tasarim_kaydet(db, d, dosya, f"{m} — {sa['name']}", arka)
+    sirali_dosya = iter(dosyalar)
+    for i, (m, a) in enumerate(zip(modeller, adet)):
+        kimlik = kimlikler[i].strip()
+        if kimlik:
+            ds = _katalogdan_tasarim(db, d, kimlik)
+        else:
+            ds = _tasarim_kaydet(db, d, next(sirali_dosya), f"{m} — {sa['name']}", arka)
         db.add(LineItem(
             tenant_id=d.tenant_id, order_id=o.id,
             title=f"{m} — {ds.code}", quantity=a, position=i,
@@ -624,17 +703,80 @@ def adres_guncelle(order_id: uuid.UUID, req: AdresIn, d: Dealer = Depends(_bayi)
     return {"ok": True, "degisiklik": True}
 
 
+class IptalIn(BaseModel):
+    sebep: str | None = Field(None, max_length=500)
+
+
 @router.delete("/siparis/{order_id}", response_model=dict, dependencies=[_izin])
 def siparis_iptal(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
                   db: Session = Depends(get_db)):
-    """Bayi kendi siparişini YALNIZCA onay beklerken geri çekebilir.
-    Onaylanan siparişte borç yazılmıştır; silme yönetimde kalır."""
+    """Bayi siparişini geri çeker — YALNIZCA kalıba girmemişse.
+
+    Sipariş SİLİNMEZ, "iptal edildi" olarak kalır: bayi kendi listesinde
+    görebilsin. is_iptal=True olduğu için kalıp planına ve paketleme
+    kuyruğuna girmez (order_scope.acik_siparis_filtresi).
+    """
+    from app.services import bayii_iptal
+
     o = _siparis(db, d, order_id)
-    if not _yetkiler(db, o)["silinebilir"]:
-        raise HTTPException(409, "Onaylanmış sipariş geri çekilemez — bizimle iletişime geçin")
-    o.deleted_at = datetime.now(UTC)
-    o.is_iptal = True
-    _gecmise_yaz(db, o, d, "silindi", "Bayi onay beklerken siparişi geri çekti")
-    _bildir(db, d, o, "Bayi siparişi geri çekti", f"{d.name} — #{o.order_number} iptal edildi")
+    y = _yetkiler(db, o)
+    if y["iptal_edildi"]:
+        raise HTTPException(409, "Bu sipariş zaten iptal edilmiş")
+    if not y["silinebilir"]:
+        raise HTTPException(409, "Sipariş üretime girdi — iptal talebi açmalısın")
+
+    ozet = bayii_iptal.uygula(db, o, kim=f"Bayi: {d.name}", sebep=None)
+    _bildir(db, d, o, "Bayi siparişi geri çekti",
+            f"{d.name} — #{o.order_number} iptal edildi")
+    db.commit()
+    return {"ok": True, **ozet}
+
+
+@router.post("/siparis/{order_id}/iptal-talebi", response_model=dict,
+             dependencies=[_izin])
+def iptal_talebi(order_id: uuid.UUID, req: IptalIn, d: Dealer = Depends(_bayi),
+                 db: Session = Depends(get_db)):
+    """Üretime girmiş sipariş için iptal TALEBİ aç.
+
+    Bayi tek başına iptal edemez: kalıp silinip yeniden planlanacak ve borç
+    iade edilecek. Basılmış kalıpta talep hiç açılamaz.
+    """
+    o = _siparis(db, d, order_id)
+    y = _yetkiler(db, o)
+    if y["iptal_edildi"]:
+        raise HTTPException(409, "Bu sipariş zaten iptal edilmiş")
+    if y["iptal_talebi_bekliyor"]:
+        raise HTTPException(409, "Bu sipariş için zaten bir iptal talebin var")
+    if not y["uretimde"]:
+        raise HTTPException(409, "Bu sipariş henüz üretime girmedi — doğrudan geri çekebilirsin")
+    if y["kalip_basildi"]:
+        raise HTTPException(
+            409, "Kılıf basıldı, iptal edilemez — bizimle iletişime geç")
+
+    sebep = (req.sebep or "").strip() or None
+    o.bayii_iptal_talebi = True
+    o.bayii_iptal_sebep = sebep
+    _gecmise_yaz(db, o, d, "bayii_iptal_talebi",
+                 "İptal talebi açıldı" + (f" · sebep: {sebep}" if sebep else ""))
+    _bildir(db, d, o, "Bayi iptal talebi",
+            f"{d.name} — #{o.order_number} için iptal talebi"
+            + (f": {sebep}" if sebep else ""))
+    db.commit()
+    return {"ok": True, "mesaj": "İptal talebin iletildi, onay bekliyor."}
+
+
+@router.delete("/siparis/{order_id}/iptal-talebi", response_model=dict,
+               dependencies=[_izin])
+def iptal_talebi_geri_al(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
+                         db: Session = Depends(get_db)):
+    """Açılmış iptal talebini geri çek (henüz işlenmediyse)."""
+    o = _siparis(db, d, order_id)
+    if not o.bayii_iptal_talebi:
+        raise HTTPException(409, "Açık bir iptal talebin yok")
+    o.bayii_iptal_talebi = False
+    o.bayii_iptal_sebep = None
+    _gecmise_yaz(db, o, d, "bayii_guncelleme", "İptal talebi geri alındı")
+    _bildir(db, d, o, "Bayi iptal talebini geri aldı",
+            f"{d.name} — #{o.order_number}")
     db.commit()
     return {"ok": True}

@@ -21,7 +21,7 @@ import UrunSecici from '../../components/UrunSecici'
 const ADIMLAR = ['Ürünler', 'Alıcı']
 const MAX_URUN = 20      // sunucudaki MAX_KALEM ile aynı
 let _sonrakiId = 1
-const bosUrun = () => ({ yerelId: _sonrakiId++, dosya: null, model: '', adet: 1 })
+const bosUrun = () => ({ yerelId: _sonrakiId++, dosya: null, tasarim: null, model: '', adet: 1 })
 
 export default function BayiYeniSiparisPage() {
   const navigate = useNavigate()
@@ -32,6 +32,7 @@ export default function BayiYeniSiparisPage() {
 
   const [urunler, setUrunler] = useState(() => [bosUrun()])
   const [modeller, setModeller] = useState([])
+  const [katalog, setKatalog] = useState([])
   const [fiyat, setFiyat] = useState(null)
 
   const [kanal, setKanal] = useState('trendyol')
@@ -45,6 +46,7 @@ export default function BayiYeniSiparisPage() {
   useEffect(() => {
     api.get('/api/bayii/modeller').then((d) => setModeller(d.items || [])).catch(() => {})
     api.get('/api/bayii/ozet').then((d) => setFiyat(d.cari)).catch(() => {})
+    api.get('/api/bayii/tasarimlar').then((d) => setKatalog(d.items || [])).catch(() => {})
   }, [])
 
   const urunDegis = (yerelId, yeni) =>
@@ -61,7 +63,7 @@ export default function BayiYeniSiparisPage() {
 
   const toplamAdet = useMemo(
     () => urunler.reduce((t, u) => t + (u.adet || 0), 0), [urunler])
-  const urunlerTamam = urunler.length > 0 && urunler.every((u) => u.dosya && u.model)
+  const urunlerTamam = urunler.length > 0 && urunler.every((u) => (u.dosya || u.tasarim) && u.model)
   const adresGerek = ADRES_ZORUNLU.includes(kanal)
   const aliciTamam = ad.trim() &&
     (!adresGerek || (telefon.trim() && adres.trim() && il.trim() && ilce.trim()))
@@ -73,7 +75,10 @@ export default function BayiYeniSiparisPage() {
       const fd = new FormData()
       // Konum eşleşmesi: her ürün için üç alan da AYNI sırada eklenir.
       for (const u of urunler) {
-        fd.append('tasarim', u.dosya)
+        // Katalogdan secildiyse dosya YOK, tasarim_id var. Sunucu konum konum
+        // esler: tasarim_id[i] bossa sıradaki yuklenen dosya kullanilir.
+        if (u.tasarim) fd.append('tasarim_id', u.tasarim.id)
+        else { fd.append('tasarim_id', ''); fd.append('tasarim', u.dosya) }
         fd.append('model', u.model)
         fd.append('adet', String(u.adet))
       }
@@ -162,6 +167,7 @@ export default function BayiYeniSiparisPage() {
         <div className="space-y-3 animate-fadeinup">
           {urunler.map((u, i) => (
             <UrunSecici key={u.yerelId} urun={u} sira={i} modeller={modeller}
+                        katalog={katalog}
                         silinebilir={urunler.length > 1}
                         onDegis={(yeni) => urunDegis(u.yerelId, yeni)}
                         onSil={() => urunSil(u.yerelId)} />

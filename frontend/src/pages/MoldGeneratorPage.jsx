@@ -10,6 +10,7 @@ import SlotAssignDialog from '../components/SlotAssignDialog'
 import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
 import { loadLabelSettings } from '../lib/kalipLabel'
+import BayiBekleyenUyari from '../components/BayiBekleyenUyari'
 
 const VAR_COLORS = {
   'SİYAH': 'bg-gray-700 text-gray-100 border-gray-600',
@@ -180,6 +181,8 @@ export default function MoldGeneratorPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <MoldTabs />
+      {/* Onay bekleyen bayi siparisi kaliba GIRMEZ — plan uretmeden once uyar */}
+      <BayiBekleyenUyari />
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">{tab === 'old' ? '🗄️ Eski Kalıplar' : tab === 'existing' ? '📦 Oluşturulan Kalıplar' : '🎯 Kalıp Oluşturucu'}</h1>

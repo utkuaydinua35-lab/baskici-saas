@@ -5,7 +5,7 @@
  * borc ISLENMEZ. Burada varyasyon secilip onaylandiginda borc yazilir ve
  * siparis uretime akar.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from './Toast'
@@ -20,17 +20,45 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   const [secim, setSecim] = useState({})     // {line_item_id: varyasyon}
   const [kargo, setKargo] = useState({})     // {order_id: bool}
   const [bekle, setBekle] = useState('')
+  const [yukleniyor, setYukleniyor] = useState('')
+  const pdfRef = useRef(null)
+  const hedefRef = useRef(null)
   const toast = useToast()
   const navigate = useNavigate()
 
   const yukle = useCallback(async () => {
     try {
       const d = await api.get('/api/dealers/portal/onay-bekleyen')
-      setListe(Array.isArray(d) ? d : [])
+      const items = Array.isArray(d) ? d : []
+      setListe(items)
+      // Tik bayinin ayarindan: kargo ucreti 0 ise yansitilmasin.
+      setKargo((c) => {
+        const y = { ...c }
+        for (const o of items) if (y[o.id] === undefined) y[o.id] = Number(o.kargo_ucreti) > 0
+        return y
+      })
     } catch { /* yetkisiz/hata: kuyruk gizli kalir */ }
     finally { setYuklendi(true) }
   }, [])
   useEffect(() => { yukle() }, [yukle])
+
+  // JPG olarak yuklenen tasarim baskiya uygun degil. Yonetici disarida PDF
+  // uretip buradan yukler; /print-file gorseli de kabul edip CMYK PDF'e cevirir.
+  const pdfSec = (kalem) => { hedefRef.current = kalem; pdfRef.current?.click() }
+
+  const pdfYukle = async (dosya) => {
+    const kalem = hedefRef.current
+    if (!dosya || !kalem?.tasarim_id) return
+    setYukleniyor(kalem.id)
+    try {
+      const fd = new FormData()
+      fd.append('file', dosya)
+      await api.postForm(`/api/designs/${kalem.tasarim_id}/print-file`, fd)
+      toast.success('Baskı dosyası güncellendi')
+      await yukle()
+    } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
+    finally { setYukleniyor(''); hedefRef.current = null; if (pdfRef.current) pdfRef.current.value = '' }
+  }
 
   const onayla = async (o) => {
     setBekle(o.id)
@@ -38,7 +66,7 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
       const varyasyonlar = {}
       for (const k of o.kalemler) varyasyonlar[k.id] = secim[k.id] || 'SİYAH'
       const r = await api.post(`/api/dealers/portal/onay-bekleyen/${o.id}`, {
-        varyasyonlar, apply_shipping: kargo[o.id] !== false,
+        varyasyonlar, apply_shipping: !!kargo[o.id],
       })
       toast.success(`#${o.order_number} onaylandı · borç ${r.urun} ${r.currency}` +
                     (r.kargo ? ` + ${r.kargo} ₺ kargo` : ''))
@@ -53,6 +81,8 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
 
   return (
     <div className="card mb-5 animate-fadeinup !border-amber-500/25">
+      <input ref={pdfRef} type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
+             onChange={(e) => pdfYukle(e.target.files?.[0])} />
       <div className="flex items-center gap-2.5 mb-4">
         <span className="w-2 h-2 rounded-full bg-amber-400"
               style={{ animation: 'glow-pulse 2s ease-in-out infinite' }} />
@@ -98,10 +128,34 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
                       : <span className="text-[10px] text-gray-600">—</span>}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] text-gray-200">{k.model || '—'}</div>
+                    <div className="text-[13px] text-gray-200 flex items-center gap-2 flex-wrap">
+                      {k.model || '—'}
+                      {k.format && k.format !== 'pdf' && (
+                        <span className="text-[10.5px] px-1.5 py-0.5 rounded-full uppercase
+                                         bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                          {k.format} · PDF gerekli
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[11.5px] text-gray-500">
                       {k.tasarim_kodu || '—'} · {k.adet} adet
                     </div>
+                    {k.format && k.format !== 'pdf' && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {k.dosya && (
+                          <a href={k.dosya} download
+                             className="text-[11.5px] text-accent hover:brightness-125 transition">
+                            ⬇ {k.format.toUpperCase()} indir
+                          </a>
+                        )}
+                        <span className="text-gray-700">·</span>
+                        <button type="button" onClick={() => pdfSec(k)}
+                                disabled={yukleniyor === k.id}
+                                className="text-[11.5px] text-accent hover:brightness-125 transition">
+                          {yukleniyor === k.id ? 'Yükleniyor…' : '⬆ PDF yükle'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {VARYASYONLAR.map((v) => {
@@ -123,10 +177,16 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
 
             <div className="mt-3.5 pt-3 border-t border-white/6 flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-2 text-[12.5px] text-gray-400 cursor-pointer">
-                <input type="checkbox" checked={kargo[o.id] !== false}
+                <input type="checkbox" checked={!!kargo[o.id]}
                        onChange={(e) => setKargo((c) => ({ ...c, [o.id]: e.target.checked }))}
                        className="accent-[rgb(var(--accent-rgb))]" />
                 Kargo ücretini yansıt
+                {Number(o.kargo_ucreti) > 0 && (
+                  <span className="text-gray-600">
+                    ({Number(o.kargo_ucreti).toLocaleString('tr-TR',
+                      { minimumFractionDigits: 2 })} ₺)
+                  </span>
+                )}
               </label>
               <button onClick={() => onayla(o)} disabled={bekle === o.id}
                       className="btn-primary !text-xs !py-1.5 !px-4 ml-auto">

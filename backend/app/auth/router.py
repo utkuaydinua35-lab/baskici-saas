@@ -664,6 +664,10 @@ def list_profiles(
         select(User).where(
             User.tenant_id == user.tenant_id,
             User.is_active.is_(True),
+            # Bayi portali hesaplari BURAYA GIRMEZ: "Kim kullaniyor?" ekrani
+            # yetkili personel profillerini gosterir, bayiler musteridir ve
+            # kendi giris ekranindan (/bayii/giris) girer.
+            User.dealer_id.is_(None),
         ).order_by(User.created_at)
     ).all()
     out = []
@@ -695,11 +699,20 @@ def select_profile(
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Gecersiz profil")
 
+    # GUVENLIK: profil degistirme YALNIZCA personel icindir.
+    # PIN'i olmayan personel profili, ayni tenant'taki herhangi bir gecerli
+    # token'la secilebiliyor. Bayi hesaplari da ayni tenant'ta oldugu ve
+    # /api/auth/* onlara acik oldugu icin, bir bayi buradan personel token'i
+    # alabilirdi. Iki yonu de kapatiyoruz.
+    if user.dealer_id:
+        raise HTTPException(status_code=403, detail="Bayi hesabi profil degistiremez")
+
     target = db.scalar(
         select(User).where(
             User.id == target_id,
             User.tenant_id == user.tenant_id,  # sadece ayni tenant
             User.is_active.is_(True),
+            User.dealer_id.is_(None),          # bayi profiline de gecilemez
         )
     )
     if not target:

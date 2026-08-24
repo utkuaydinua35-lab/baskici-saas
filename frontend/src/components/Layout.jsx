@@ -528,6 +528,7 @@ const NAV = [
   ] },
   { label: 'Bayi', icon: '🤝', items: [
     { to: '/bayiler', label: 'Bayiler', icon: '🤝', perm: 'bayii' },
+    { to: '/bayi-siparisleri', label: 'Bayi Siparişleri', icon: '🧾', perm: 'bayii' },
   ] },
   { label: 'Tasarım', icon: '🎨', items: [
     { to: '/designs', label: 'Tasarımlar', icon: '🎨', perm: 'tasarim' },

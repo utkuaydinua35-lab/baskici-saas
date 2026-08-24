@@ -13,7 +13,6 @@ const KALIP_TIPLERI = [
   { value: 'magsafe', label: 'MagSafe' },
 ]
 
-import BayiOnayKuyrugu from '../components/BayiOnayKuyrugu'
 import BayiHesapDialog from '../components/BayiHesapDialog'
 
 export default function DealersPage() {
@@ -45,8 +44,6 @@ export default function DealersPage() {
         </div>
         <a href="/ayarlar" className="text-xs text-gray-500 hover:text-gray-300">⚙ Bayi ekle/düzenle → Ayarlar</a>
       </div>
-
-      <BayiOnayKuyrugu onOnaylandi={load} />
 
       {loading ? (
         <div className="space-y-2">

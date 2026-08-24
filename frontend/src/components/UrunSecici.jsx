@@ -10,8 +10,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 const MAX_MB = 75
 const IZINLI = ['jpg', 'jpeg', 'png', 'pdf']
 
-export default function UrunSecici({ urun, modeller, onDegis, onSil, silinebilir, sira }) {
+export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
+                                    silinebilir, sira }) {
   const [uzerinde, setUzerinde] = useState(false)
+  const [katalogAcik, setKatalogAcik] = useState(false)
   const [modelArama, setModelArama] = useState('')
   const [onizleme, setOnizleme] = useState('')
   const [hata, setHata] = useState('')
@@ -31,7 +33,9 @@ export default function UrunSecici({ urun, modeller, onDegis, onSil, silinebilir
     const ext = (f.name.split('.').pop() || '').toLowerCase()
     if (!IZINLI.includes(ext)) { setHata('Sadece JPG, PNG veya PDF.'); return }
     if (f.size > MAX_MB * 1024 * 1024) { setHata(`Dosya çok büyük (max ${MAX_MB} MB).`); return }
-    onDegis({ ...urun, dosya: f })
+    // Yeni dosya secilince katalog secimi DUSER: ikisi birden gonderilirse
+    // sunucu hangisini kullanacagini bilemez.
+    onDegis({ ...urun, dosya: f, tasarim: null })
   }, [urun, onDegis])
 
   const liste = useMemo(() => {
@@ -76,7 +80,19 @@ export default function UrunSecici({ urun, modeller, onDegis, onSil, silinebilir
         <div className="shrink-0">
           <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
                  onChange={(e) => { dosyaSec(e.target.files?.[0]); e.target.value = '' }} />
-          {!urun.dosya ? (
+          {urun.tasarim ? (
+            <button type="button" onClick={() => setKatalogAcik(true)}
+                    className="relative group w-24 h-24 rounded-2xl overflow-hidden
+                               border border-accent/40 bg-white/[0.03] grid place-items-center
+                               animate-popin">
+              {urun.tasarim.gorsel
+                ? <img src={urun.tasarim.gorsel} alt="" className="w-full h-full object-cover" />
+                : <span className="text-[11px] text-gray-500 px-1">{urun.tasarim.kod}</span>}
+              <span className="absolute inset-0 grid place-items-center bg-black/65 text-[11px]
+                               text-white opacity-0 group-hover:opacity-100 focus:opacity-100
+                               transition-opacity">Değiştir</span>
+            </button>
+          ) : !urun.dosya ? (
             <button type="button" onClick={() => dosyaRef.current?.click()}
                     onDragOver={(e) => { e.preventDefault(); setUzerinde(true) }}
                     onDragLeave={() => setUzerinde(false)}
@@ -109,11 +125,24 @@ export default function UrunSecici({ urun, modeller, onDegis, onSil, silinebilir
                                transition-opacity">Değiştir</span>
             </button>
           )}
-          {urun.dosya && (
-            <div className="text-[10.5px] text-gray-600 mt-1.5 w-24 truncate" title={urun.dosya.name}>
-              {boyut}
-            </div>
-          )}
+          <div className="w-24 mt-1.5 space-y-1">
+            {urun.dosya && (
+              <div className="text-[10.5px] text-gray-600 truncate" title={urun.dosya.name}>
+                {boyut}
+              </div>
+            )}
+            {urun.tasarim && (
+              <div className="text-[10.5px] text-gray-500 truncate" title={urun.tasarim.ad}>
+                {urun.tasarim.kod}
+              </div>
+            )}
+            {katalog?.length > 0 && (
+              <button type="button" onClick={() => setKatalogAcik(true)}
+                      className="text-[10.5px] text-accent hover:brightness-125 transition">
+                Tasarımlarımdan seç
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Model + adet */}
@@ -167,6 +196,73 @@ export default function UrunSecici({ urun, modeller, onDegis, onSil, silinebilir
             </div>
           </div>
         </div>
+      </div>
+
+      {katalogAcik && (
+        <TasarimKatalogu
+          katalog={katalog}
+          seciliId={urun.tasarim?.id}
+          onKapat={() => setKatalogAcik(false)}
+          onSec={(t) => {
+            // Katalogdan secilince yuklenen dosya DUSER (bkz. dosyaSec)
+            onDegis({ ...urun, tasarim: t, dosya: null })
+            setKatalogAcik(false)
+          }} />
+      )}
+    </div>
+  )
+}
+
+
+/** Bayinin kendi tasarimlari — gorselleriyle katalog. */
+function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
+  const [q, setQ] = useState('')
+  const liste = (katalog || []).filter((t) => {
+    const s = q.trim().toLocaleLowerCase('tr')
+    return !s || (t.ad || '').toLocaleLowerCase('tr').includes(s)
+      || (t.kod || '').toLocaleLowerCase('tr').includes(s)
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/65 animate-fadein"
+         onClick={onKapat}>
+      <div className="glass rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col p-5 animate-popin"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3.5">
+          <h3 className="text-[15px] font-semibold text-white">Tasarımlarım</h3>
+          <button onClick={onKapat} className="text-gray-500 hover:text-gray-200 text-xl leading-none">
+            ×
+          </button>
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+               placeholder="Tasarım ara…" className="input w-full mb-3.5" />
+        {liste.length === 0 ? (
+          <div className="py-10 text-center text-[13px] text-gray-500">
+            {q ? 'Eşleşen tasarım yok' : 'Henüz kayıtlı tasarımın yok'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 overflow-y-auto">
+            {liste.map((t, i) => (
+              <button key={t.id} type="button" onClick={() => onSec(t)}
+                      className={`rounded-xl overflow-hidden border transition-all bayi-sira
+                        ${t.id === seciliId
+                          ? 'border-accent ring-2 ring-accent/30'
+                          : 'border-white/10 hover:border-accent/50'}`}
+                      style={{ '--gecikme': `${Math.min(i, 12) * 25}ms` }}>
+                <div className="aspect-square bg-white/[0.04] grid place-items-center">
+                  {t.gorsel
+                    ? <img src={t.gorsel} alt="" className="w-full h-full object-cover" />
+                    : <span className="text-[10px] text-gray-600 px-1 text-center">
+                        {(t.format || '?').toUpperCase()}
+                      </span>}
+                </div>
+                <div className="px-1.5 py-1 text-[10px] text-gray-400 truncate" title={t.ad}>
+                  {t.ad}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

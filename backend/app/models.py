@@ -422,6 +422,12 @@ class Order(Base):
     bayii_onay_bekliyor: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False, index=True
     )
+    # Bayi siparisin IPTALINI talep etti. Siparis kaliba girdikten sonra bayi
+    # tek basina iptal edemez; talep yoneticinin onayindan gecer.
+    bayii_iptal_talebi: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False, index=True
+    )
+    bayii_iptal_sebep: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Kullanici tarafindan kalip olusturucuya dahil edilmesin diye isaretlendi
     kalip_haric: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False, index=True

@@ -80,6 +80,9 @@ def _eski_test_verisini_temizle() -> None:
              (select id from stores where slug like 'bptest%'))"""))
     db.execute(text("delete from orders where store_id in "
                     "(select id from stores where slug like 'bptest%')"))
+    db.execute(text("delete from mold_items where mold_id in "
+                    "(select id from molds where kod like 'bptest%')"))
+    db.execute(text("delete from molds where kod like 'bptest%'"))
     db.execute(text("delete from dealer_transactions where dealer_id in "
                     "(select id from dealers where name like 'bptest%')"))
     db.execute(text("delete from designs where store_id in "
@@ -271,13 +274,27 @@ es("onay bayragi dustu", False, bool(o_sh.bayii_onay_bekliyor))
 # normalize_variation Turkce buyuk harf uretir: "siyah" -> "SIYAH" degil "SİYAH"
 es("varyasyon yazildi", "SİYAH",
    db.scalar(select(LineItem).where(LineItem.order_id == o_sh.id)).kilif_varyasyon)
-es("bayi onaylanani silemez", 409,
-   ISTEMCI.delete(f"/api/bayii/siparis/{shopier_id}", headers=H_A).status_code)
+# Onaylanmis ama KALIBA GIRMEMIS siparis: bayi geri cekebilir, borc iade edilir.
+_gc = siparis_ac(H_A, urunler=[("IPHONE-15", 1)], kanal="trendyol", ad_soyad="Geri Cekilecek")
+_gc_id = _gc.json()["id"]
+_gck = ISTEMCI.get(f"/api/bayii/siparis/{_gc_id}", headers=H_A).json()["kalemler"][0]["id"]
+ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{_gc_id}", headers=H_ADMIN,
+             json={"varyasyonlar": {_gck: "siyah"}, "apply_shipping": False})
+db.expire_all(); db.refresh(bayi_a)
+_gc_bakiye = float(bayi_a.balance or 0)
+es("onay sonrasi bakiye artti", 250.0, _gc_bakiye)
+es("kaliba girmemis onayli siparis geri cekilir", 200,
+   ISTEMCI.delete(f"/api/bayii/siparis/{_gc_id}", headers=H_A).status_code)
+db.expire_all(); db.refresh(bayi_a)
+es("geri cekmede borc IADE edildi", 150.0, float(bayi_a.balance or 0))
+_gcd = ISTEMCI.get(f"/api/bayii/siparis/{_gc_id}", headers=H_A).json()
+es("iptal edildi olarak isaretli", True, _gcd["iptal"])
+es("iptal sonrasi duzenleme kapali", False, _gcd["yetkiler"]["urun_degistir"])
 
 print("\n── 9. Cari ekrani ──")
 c = ISTEMCI.get("/api/bayii/cari", headers=H_A).json()
 es("cari bakiye 150", 150.0, c["bakiye"])
-es("2 hareket", 2, len(c["items"]))
+es("hareket sayisi", 4, len(c["items"]))  # 2 borc (siparis+kargo) + 1 borc + 1 ters
 es("B bayisinin carisi bos", 0, len(ISTEMCI.get("/api/bayii/cari", headers=H_B).json()["items"]))
 
 print("\n── 10. Kalip plani: onay bekleyen GIRMEZ, onaylanan GIRER ──")
@@ -305,8 +322,9 @@ r = siparis_ac(H_B, kanal="instagram", telefon="5559998877", adres="B sk 2",
 b_id = r.json()["id"]
 es("B siparis acti", 201, r.status_code)
 es("B geri cekebilir", 200, ISTEMCI.delete(f"/api/bayii/siparis/{b_id}", headers=H_B).status_code)
-es("geri cekilen listede yok", 0,
-   len(ISTEMCI.get("/api/bayii/siparisler", headers=H_B).json()["items"]))
+_bl = ISTEMCI.get("/api/bayii/siparisler", headers=H_B).json()["items"]
+es("geri cekilen listede KALIR", 1, len(_bl))
+es("iptal olarak isaretli", True, _bl[0]["iptal"])
 db.expire_all(); db.refresh(bayi_b)
 es("geri cekmede borc yok", 0.0, float(bayi_b.balance or 0))
 
@@ -413,6 +431,22 @@ es("yonetici /api/dealers 200", 200, ISTEMCI.get("/api/dealers", headers=H_ADMIN
 es("yonetici /api/notifications 200", 200,
    ISTEMCI.get("/api/notifications", headers=H_ADMIN).status_code)
 
+# PROFIL DEGISTIRME: bayi buradan personel token'i alamamali.
+# (PIN'siz personel profili ayni tenant'taki her token'la secilebiliyordu.)
+es("bayi profil listesini goremez", 403,
+   ISTEMCI.get("/api/auth/profiles", headers=H_A).status_code)
+es("bayi profil degistiremez", 403,
+   ISTEMCI.post("/api/auth/select-profile", headers=H_A,
+                json={"user_id": str(admin.id)}).status_code)
+es("yonetici profil listesini gorur", 200,
+   ISTEMCI.get("/api/auth/profiles", headers=H_ADMIN).status_code)
+es("profil listesinde bayi YOK", [],
+   [p for p in ISTEMCI.get("/api/auth/profiles", headers=H_ADMIN).json()
+    if p["full_name"].startswith("Bayi ")])
+es("yonetici bayi profiline gecemez", 404,
+   ISTEMCI.post("/api/auth/select-profile", headers=H_ADMIN,
+                json={"user_id": str(kul_a.id)}).status_code)
+
 # Bayiye giden push, yonetim bildirimlerini ALMAMALI
 from app.services import push as _push  # noqa: E402
 from app.models import PushSubscription as _PS  # noqa: E402
@@ -427,6 +461,157 @@ es("tenant push'unda bayi cihazi yok", False,
 db.execute(text("delete from push_subscriptions where endpoint like :p")
            .bindparams(p=f"https://ornek/{IZ}"))
 db.commit()
+
+print("\n── 14. Iptal talebi: kalip asamasina gore ──")
+from app.models import Mold, MoldItem  # noqa: E402
+
+
+def _kalipli_siparis(kalip_asamasi):
+    """Onaylanmis siparis + verilen asamada bir kalip. (order_id, mold_id)."""
+    r = siparis_ac(H_A, urunler=[("IPHONE-15", 1)], kanal="trendyol",
+                   ad_soyad=f"Kalip {kalip_asamasi}")
+    oid = r.json()["id"]
+    kid = ISTEMCI.get(f"/api/bayii/siparis/{oid}", headers=H_A).json()["kalemler"][0]["id"]
+    ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{oid}", headers=H_ADMIN,
+                 json={"varyasyonlar": {kid: "siyah"}, "apply_shipping": False})
+    o = db.scalar(select(Order).where(Order.id == uuid.UUID(oid)))
+    li = db.scalar(select(LineItem).where(LineItem.order_id == o.id))
+    li.is_kaliba_eklendi = True
+    m = Mold(tenant_id=tenant.id, store_id=bayi_a.store_id,
+             kod=f"{IZ}-K{kalip_asamasi}", variation="SİYAH",
+             kilif_sayisi=1, rows_used=1, current_stage=kalip_asamasi)
+    db.add(m); db.flush()
+    db.add(MoldItem(tenant_id=tenant.id, mold_id=m.id, store_id=bayi_a.store_id,
+                    line_item_id=li.id, design_id=li.assigned_design_id,
+                    slot_index=0, kalip_kodu="A1", model="IPHONE-15",
+                    order_number=str(o.order_number)))
+    db.commit()
+    return oid, m.id
+
+
+def _bakiye():
+    db.expire_all(); db.refresh(bayi_a)
+    return float(bayi_a.balance or 0)
+
+
+# --- B) Kalip "hazir" (asama 2): talep acilir, kalip silinir, IADE edilir ---
+oid, mid = _kalipli_siparis(2)
+d = ISTEMCI.get(f"/api/bayii/siparis/{oid}", headers=H_A).json()["yetkiler"]
+es("hazir kalip: dogrudan geri cekilemez", False, d["silinebilir"])
+es("hazir kalip: talep acilabilir", True, d["iptal_talebi_acilir"])
+es("dogrudan silme 409", 409,
+   ISTEMCI.delete(f"/api/bayii/siparis/{oid}", headers=H_A).status_code)
+es("talep acilir", 200, ISTEMCI.post(f"/api/bayii/siparis/{oid}/iptal-talebi",
+   headers=H_A, json={"sebep": "musteri vazgecti"}).status_code)
+es("ayni talep tekrar acilamaz", 409,
+   ISTEMCI.post(f"/api/bayii/siparis/{oid}/iptal-talebi", headers=H_A, json={}).status_code)
+_kuyruk = ISTEMCI.get("/api/dealers/portal/iptal-talepleri", headers=H_ADMIN).json()
+_bu = [x for x in _kuyruk if x["id"] == oid][0]
+es("kuyrukta sebep gorunur", "musteri vazgecti", _bu["sebep"])
+es("onizleme: iade edilir", True, _bu["sonuc"]["iade_edilir"])
+es("onizleme: kalip silinir", True, _bu["sonuc"]["kaliplar_silinir"])
+_once = _bakiye()
+_r = ISTEMCI.post(f"/api/dealers/portal/iptal-talepleri/{oid}", headers=H_ADMIN)
+es("onay 200", 200, _r.status_code)
+es("iade edildi", True, _r.json()["iade_edildi"])
+es("bakiye 100 dustu", _once - 100.0, _bakiye())
+es("kalip SILINDI", None, db.scalar(select(Mold).where(Mold.id == mid)))
+_od = ISTEMCI.get(f"/api/bayii/siparis/{oid}", headers=H_A).json()
+es("siparis iptal edildi", True, _od["iptal"])
+es("kalip bayragi sifirlandi", False,
+   db.scalar(select(LineItem.is_kaliba_eklendi).where(
+       LineItem.order_id == uuid.UUID(oid))))
+
+# --- Ayni akis "baskiya gonderildi" (3) ve "baskida" (4) icin de ---
+for _as in (3, 4):
+    oid2, mid2 = _kalipli_siparis(_as)
+    es(f"asama {_as}: talep acilabilir", True,
+       ISTEMCI.get(f"/api/bayii/siparis/{oid2}", headers=H_A)
+       .json()["yetkiler"]["iptal_talebi_acilir"])
+    ISTEMCI.post(f"/api/bayii/siparis/{oid2}/iptal-talebi", headers=H_A, json={})
+    _o = _bakiye()
+    _rr = ISTEMCI.post(f"/api/dealers/portal/iptal-talepleri/{oid2}", headers=H_ADMIN)
+    es(f"asama {_as}: iade edildi", True, _rr.json()["iade_edildi"])
+    es(f"asama {_as}: bakiye dustu", _o - 100.0, _bakiye())
+    es(f"asama {_as}: kalip silindi", None, db.scalar(select(Mold).where(Mold.id == mid2)))
+
+# --- C) Kalip TAMAMLANDI (5): talep ACILAMAZ ---
+oid3, mid3 = _kalipli_siparis(5)
+d3 = ISTEMCI.get(f"/api/bayii/siparis/{oid3}", headers=H_A).json()["yetkiler"]
+es("tamamlanmis kalip: talep ACILAMAZ", False, d3["iptal_talebi_acilir"])
+es("tamamlanmis kalip: kalip_basildi", True, d3["kalip_basildi"])
+es("talep denemesi 409", 409,
+   ISTEMCI.post(f"/api/bayii/siparis/{oid3}/iptal-talebi", headers=H_A, json={}).status_code)
+
+# --- Yaris: talep acikken kalip tamamlandi -> IADE YOK, kalip SILINMEZ ---
+oid4, mid4 = _kalipli_siparis(3)
+ISTEMCI.post(f"/api/bayii/siparis/{oid4}/iptal-talebi", headers=H_A, json={})
+db.scalar(select(Mold).where(Mold.id == mid4)).current_stage = 5   # arada tamamlandi
+db.commit()
+_o4 = _bakiye()
+_r4 = ISTEMCI.post(f"/api/dealers/portal/iptal-talepleri/{oid4}", headers=H_ADMIN)
+es("yaris: iade EDILMEDI", False, _r4.json()["iade_edildi"])
+es("yaris: bakiye degismedi", _o4, _bakiye())
+es("yaris: kalip SILINMEDI", True,
+   db.scalar(select(Mold).where(Mold.id == mid4)) is not None)
+es("yaris: siparis yine iptal", True,
+   ISTEMCI.get(f"/api/bayii/siparis/{oid4}", headers=H_A).json()["iptal"])
+
+# --- Talep reddi ---
+oid5, mid5 = _kalipli_siparis(2)
+ISTEMCI.post(f"/api/bayii/siparis/{oid5}/iptal-talebi", headers=H_A, json={})
+_o5 = _bakiye()
+es("talep reddedilir", 200,
+   ISTEMCI.delete(f"/api/dealers/portal/iptal-talepleri/{oid5}", headers=H_ADMIN).status_code)
+es("red: bakiye degismedi", _o5, _bakiye())
+es("red: kalip duruyor", True, db.scalar(select(Mold).where(Mold.id == mid5)) is not None)
+es("red: siparis iptal DEGIL", False,
+   ISTEMCI.get(f"/api/bayii/siparis/{oid5}", headers=H_A).json()["iptal"])
+es("red sonrasi yeniden talep acilir", 200,
+   ISTEMCI.post(f"/api/bayii/siparis/{oid5}/iptal-talebi", headers=H_A, json={}).status_code)
+es("bayi kendi talebini geri alir", 200,
+   ISTEMCI.delete(f"/api/bayii/siparis/{oid5}/iptal-talebi", headers=H_A).status_code)
+
+# --- Iptal edilen siparis kalip planina ve paketlemeye GIRMEZ ---
+from app.services.order_scope import acik_siparis_filtresi  # noqa: E402
+_acik = {str(x) for x in db.scalars(
+    select(Order.id).where(acik_siparis_filtresi(tenant.id))).all()}
+es("iptal edilen ACIK siparis degil", False, oid in _acik)
+es("iptal edilen plana girmez", False, _planda_var(
+    db.scalar(select(Order.order_number).where(Order.id == uuid.UUID(oid)))))
+
+print("\n── 15. Tasarim katalogu ──")
+_kat = ISTEMCI.get("/api/bayii/tasarimlar", headers=H_A).json()["items"]
+es("bayinin tasarimlari listelenir", True, len(_kat) > 0)
+es("hepsi bayinin magazasindan", True, all(
+    db.scalar(select(Design.store_id).where(Design.id == uuid.UUID(x["id"])))
+    == bayi_a.store_id for x in _kat[:5]))
+es("B bayisi A'nin tasarimlarini goremez", True,
+   all(x["id"] not in {y["id"] for y in _kat}
+       for x in ISTEMCI.get("/api/bayii/tasarimlar", headers=H_B).json()["items"]))
+# Katalogdan siparis: dosya YUKLEMEDEN
+_secilen = _kat[0]["id"]
+_rk = ISTEMCI.post("/api/bayii/siparis", headers=H_A,
+                   data={"kanal": "trendyol", "ad_soyad": "Katalogdan",
+                         "model": "IPHONE-15", "adet": "1", "tasarim_id": _secilen})
+es("katalogdan siparis 201", 201, _rk.status_code)
+_kd = ISTEMCI.get(f"/api/bayii/siparis/{_rk.json()['id']}", headers=H_A).json()
+es("secilen tasarim baglandi", _secilen, str(db.scalar(
+    select(LineItem.assigned_design_id).where(
+        LineItem.id == uuid.UUID(_kd["kalemler"][0]["id"])))))
+# Karisik: biri katalogdan, biri yeni dosya
+_rm = ISTEMCI.post("/api/bayii/siparis", headers=H_A,
+                   data={"kanal": "trendyol", "ad_soyad": "Karisik",
+                         "model": ["IPHONE-15", "IPHONE-14"], "adet": ["1", "1"],
+                         "tasarim_id": [_secilen, ""]},
+                   files=[("tasarim", ("yeni.jpg", jpg(), "image/jpeg"))])
+es("karisik siparis 201", 201, _rm.status_code)
+es("karisik: 2 kalem", 2, _rm.json().get("kalem_sayisi"))
+# B bayisi A'nin tasarimini SECEMEZ
+_rx = ISTEMCI.post("/api/bayii/siparis", headers=H_B,
+                   data={"kanal": "trendyol", "ad_soyad": "Hirsiz",
+                         "model": "IPHONE-15", "adet": "1", "tasarim_id": _secilen})
+es("baska bayinin tasarimi secilemez", 404, _rx.status_code)
 
 # ─── Temizlik ───────────────────────────────────────────────
 print("\n── Temizlik ──")
@@ -443,6 +628,9 @@ for t in ("order_status_history", "mold_items", "line_items"):
 if oids:
     db.execute(text("delete from line_items where order_id = any(:o)").bindparams(o=oids))
     db.execute(text("delete from orders where id = any(:o)").bindparams(o=oids))
+db.execute(text("delete from mold_items where mold_id in "
+                "(select id from molds where kod like :p)").bindparams(p=f"{IZ}%"))
+db.execute(text("delete from molds where kod like :p").bindparams(p=f"{IZ}%"))
 db.execute(text("delete from dealer_transactions where dealer_id = any(:d)").bindparams(d=ids))
 db.execute(text("delete from designs where store_id in "
                 "(select id from stores where slug like :p)").bindparams(p=f"{IZ}%"))

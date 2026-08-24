@@ -53,12 +53,23 @@ BAYI_IZINLI_TAM = (
     "/api/health",
     "/api/version",
 )
+# /api/auth/* genel olarak acik (kendi profili, cikis, sifre). Ama profil
+# DEGISTIRME personel ozelligi: bayi buradan personel token'i alabilirdi.
+BAYI_YASAK_TAM = (
+    "/api/auth/profiles",
+    "/api/auth/select-profile",
+)
 
 
 def _bayi_kapisi(user: User, yol: str) -> None:
     """Bayi hesabi yalnizca portal yollarina girebilir."""
     if not user.dealer_id:
         return
+    if yol in BAYI_YASAK_TAM:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bayi hesabi bu bolume erisemez",
+        )
     if yol in BAYI_IZINLI_TAM or yol.startswith(BAYI_IZINLI_ONEKLER):
         return
     raise HTTPException(

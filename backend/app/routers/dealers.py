@@ -811,6 +811,10 @@ def portal_onay_bekleyen(
             "order_number": o.order_number,
             "bayi": d.name if d else "—",
             "dealer_id": str(d.id) if d else None,
+            # Kargo tiki bayinin AYARINDAN gelsin: ucret 0 ise tiksiz acilir.
+            "kargo_ucreti": float(d.shipping_fee or 0) if d else 0.0,
+            "para_birimi": (d.currency or "TRY").upper() if d else "TRY",
+            "birim_fiyat": float(d.unit_price or 0) if d else 0.0,
             "kanal": raw.get("kanal"),
             "musteri": o.customer_name,
             "adres": raw.get("shipping_address") or {},
@@ -821,7 +825,14 @@ def portal_onay_bekleyen(
                 "model": li.device_model_override,
                 "adet": li.quantity or 1,
                 "varyasyon": li.kilif_varyasyon,
+                "tasarim_id": str(li.assigned_design_id) if li.assigned_design_id else None,
                 "tasarim_kodu": li.assigned_design.code if li.assigned_design else None,
+                # Bayi JPG yukluyor; baski PDF ister. Panel bunu uyari olarak
+                # gosterip indirme + PDF yukleme sunuyor.
+                "format": (li.assigned_design.file_format or "").lower()
+                if li.assigned_design else None,
+                "dosya": storage.get_design_url(li.assigned_design.file_path)
+                if li.assigned_design else None,
                 "gorsel": storage.get_thumbnail_url(
                     li.assigned_design.file_path, li.assigned_design.file_format)
                 if li.assigned_design else None,
@@ -894,6 +905,122 @@ def portal_onayla(
         pass
     db.commit()
     return {"ok": True, "order_id": str(o.id), **ozet}
+
+
+# ─── Bayi portali: iptal talepleri ──────────────────────────
+@router.get("/portal/iptal-talepleri", response_model=list[dict])
+def portal_iptal_talepleri(
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    from app.services import bayii_iptal
+
+    orders = db.scalars(
+        select(Order).where(
+            Order.tenant_id == user.tenant_id,
+            Order.bayii_iptal_talebi == True,   # noqa: E712
+            Order.is_iptal == False,            # noqa: E712
+        ).options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .order_by(Order.created_at_platform.desc())
+    ).all()
+    bayiler = {str(d.id): d for d in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == user.tenant_id)).all()}
+
+    out = []
+    for o in orders:
+        raw = o.raw or {}
+        d = bayiler.get(str(raw.get("dealer_id") or ""))
+        durum, kaliplar = bayii_iptal.durumu_oku(db, o)
+        out.append({
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "bayi": d.name if d else "—",
+            "musteri": o.customer_name,
+            "sebep": o.bayii_iptal_sebep,
+            "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            # Onaylanirsa NE OLACAGI onceden gosterilsin — yonetici korukorune
+            # onaylamasin (kalip silme ve para iadesi geri alinmasi zor).
+            "sonuc": {
+                "iade_edilir": durum.iade_edilir,
+                "kaliplar_silinir": durum.kaliplar_silinir,
+                "kalip_basildi": durum.basilmis_kalip_var,
+                "kaliplar": [{"kod": m.kod, "asama": m.current_stage} for m in kaliplar],
+            },
+            "kalemler": [{
+                "model": li.device_model_override,
+                "adet": li.quantity or 1,
+                "gorsel": storage.get_thumbnail_url(
+                    li.assigned_design.file_path, li.assigned_design.file_format)
+                if li.assigned_design else None,
+            } for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
+        })
+    return out
+
+
+@router.post("/portal/iptal-talepleri/{order_id}", response_model=dict)
+def portal_iptal_onayla(
+    order_id: uuid.UUID,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Iptal talebini ONAYLA: kural app.services.bayii_iptal'de."""
+    from app.services import bayii_iptal, push
+
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id,
+    ).options(selectinload(Order.line_items)))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    if not o.bayii_iptal_talebi:
+        raise HTTPException(409, "Bu siparis icin acik bir iptal talebi yok")
+
+    ozet = bayii_iptal.uygula(db, o, kim=user.full_name or user.email,
+                              sebep=o.bayii_iptal_sebep)
+    _bayiye_bildir(db, o, "Iptal talebin onaylandi",
+                   f"#{o.order_number} iptal edildi."
+                   + (" Ucret cari hesabina iade edildi."
+                      if ozet["iade_edildi"] else
+                      " Kilif basildigi icin ucret iade edilmedi."))
+    db.commit()
+    return {"ok": True, **ozet}
+
+
+@router.delete("/portal/iptal-talepleri/{order_id}", response_model=dict)
+def portal_iptal_reddet(
+    order_id: uuid.UUID,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Iptal talebini REDDET — siparis uretimde kalir."""
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not o or not o.bayii_iptal_talebi:
+        raise HTTPException(404, "Acik talep bulunamadi")
+    o.bayii_iptal_talebi = False
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id,
+        from_stage=o.current_stage, to_stage=o.current_stage,
+        action="bayii_iptal_reddedildi", note="Iptal talebi reddedildi",
+        created_by=user.full_name or user.email,
+    ))
+    _bayiye_bildir(db, o, "Iptal talebin reddedildi",
+                   f"#{o.order_number} uretimde devam ediyor.")
+    db.commit()
+    return {"ok": True}
+
+
+def _bayiye_bildir(db: Session, o: Order, baslik: str, govde: str) -> None:
+    """Siparisin bayisinin kullanicilarina push. Hata ana islemi dusurmemeli."""
+    try:
+        from app.services import push
+        dealer_id = (o.raw or {}).get("dealer_id")
+        if not dealer_id:
+            return
+        for u in db.scalars(select(User).where(
+                User.dealer_id == uuid.UUID(str(dealer_id)))).all():
+            push.send_to_user(db, u.id, baslik, govde, url=f"/bayii/siparis/{o.id}")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ─── Bayi portali: giris hesaplari ──────────────────────────

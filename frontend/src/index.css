@@ -561,7 +561,7 @@ select.input option, select option { background: #17102b; color: #f3f4f6; }
   background: linear-gradient(180deg, rgb(var(--accent-rgb) / 0.4), rgb(255 255 255 / 0.05));
 }
 .bayi-zaman-nokta {
-  position: absolute; left: 0; top: 5px; width: 11px; height: 11px; border-radius: 50%;
+  position: absolute; left: -22px; top: 5px; width: 11px; height: 11px; border-radius: 50%;
   background: rgb(10 6 19); border: 2px solid rgb(var(--accent-rgb) / 0.65);
 }
 

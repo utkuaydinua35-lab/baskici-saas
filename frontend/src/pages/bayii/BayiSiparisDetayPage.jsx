@@ -16,6 +16,9 @@ const EYLEM_ADI = {
   bayii_siparis: 'Sipariş oluşturuldu',
   bayii_guncelleme: 'Güncelleme',
   bayii_onay: 'Onaylandı',
+  bayii_iptal_talebi: 'İptal talebi',
+  bayii_iptal_reddedildi: 'İptal talebi reddedildi',
+  iptal_edildi: 'İptal edildi',
   silindi: 'İptal edildi',
 }
 
@@ -244,9 +247,36 @@ export default function BayiSiparisDetayPage() {
     if (!window.confirm('Bu siparişi geri çekmek istediğine emin misin?')) return
     setBekle('sil'); setHata('')
     try {
-      await api.del(`/api/bayii/siparis/${id}`)
-      navigate('/bayii/siparisler', { replace: true })
-    } catch (e) { setHata(e.detail || 'İptal edilemedi'); setBekle('') }
+      const r = await api.del(`/api/bayii/siparis/${id}`)
+      setBildirim(r.iade_edildi && r.iade?.length
+        ? 'Sipariş iptal edildi, ücret cari hesabına iade edildi'
+        : 'Sipariş iptal edildi')
+      await yukle()
+    } catch (e) { setHata(e.detail || 'İptal edilemedi') }
+    finally { setBekle('') }
+  }
+
+  const talepAc = async () => {
+    const sebep = window.prompt(
+      'İptal talebi açılacak. İstersen sebebini yaz (yöneticiye iletilir):', '')
+    if (sebep === null) return
+    setBekle('talep'); setHata('')
+    try {
+      await api.post(`/api/bayii/siparis/${id}/iptal-talebi`, { sebep: sebep.trim() || null })
+      setBildirim('İptal talebin iletildi')
+      await yukle()
+    } catch (e) { setHata(e.detail || 'Talep açılamadı') }
+    finally { setBekle('') }
+  }
+
+  const talepGeriAl = async () => {
+    setBekle('talep'); setHata('')
+    try {
+      await api.del(`/api/bayii/siparis/${id}/iptal-talebi`)
+      setBildirim('İptal talebin geri alındı')
+      await yukle()
+    } catch (e) { setHata(e.detail || 'Geri alınamadı') }
+    finally { setBekle('') }
   }
 
   if (!o) {
@@ -432,14 +462,46 @@ export default function BayiSiparisDetayPage() {
         )}
       </div>
 
-      {y.silinebilir && (
-        <div className="flex justify-end">
-          <button onClick={geriCek} disabled={bekle === 'sil'}
-                  className="text-[12.5px] text-red-400/80 hover:text-red-300 transition
-                             border border-red-500/20 hover:border-red-500/40 rounded-full px-4 py-2">
-            {bekle === 'sil' ? 'İptal ediliyor…' : 'Siparişi geri çek'}
+      {/* İptal eylemleri — hangisinin çıkacağına SUNUCU karar veriyor */}
+      {y.iptal_talebi_bekliyor && (
+        <div className="card !border-amber-500/25 flex items-start gap-3 animate-fadein">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+               className="w-[18px] h-[18px] text-amber-400 shrink-0 mt-0.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+          </svg>
+          <div className="flex-1 text-[12.5px] text-amber-100/85 leading-relaxed">
+            İptal talebin iletildi, onay bekliyor. Onaylanırsa sipariş üretimden çıkar
+            ve — kılıf henüz basılmadıysa — ücret cari hesabına iade edilir.
+          </div>
+          <button onClick={talepGeriAl} disabled={bekle === 'talep'}
+                  className="text-[12px] text-gray-400 hover:text-white transition shrink-0">
+            {bekle === 'talep' ? '…' : 'Talebi geri al'}
           </button>
         </div>
+      )}
+
+      {!y.iptal_edildi && (y.silinebilir || y.iptal_talebi_acilir) && (
+        <div className="flex justify-end">
+          {y.silinebilir ? (
+            <button onClick={geriCek} disabled={bekle === 'sil'}
+                    className="text-[12.5px] text-red-400/80 hover:text-red-300 transition
+                               border border-red-500/20 hover:border-red-500/40 rounded-full px-4 py-2">
+              {bekle === 'sil' ? 'İptal ediliyor…' : 'Siparişi geri çek'}
+            </button>
+          ) : (
+            <button onClick={talepAc} disabled={bekle === 'talep'}
+                    className="text-[12.5px] text-red-400/80 hover:text-red-300 transition
+                               border border-red-500/20 hover:border-red-500/40 rounded-full px-4 py-2">
+              {bekle === 'talep' ? 'Gönderiliyor…' : 'İptal talebi aç'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {!y.iptal_edildi && y.uretimde && !y.iptal_talebi_acilir && !y.iptal_talebi_bekliyor && (
+        <p className="text-[12px] text-gray-600 text-right">
+          Kılıf basıldı — bu sipariş artık iptal edilemez.
+        </p>
       )}
     </div>
   )

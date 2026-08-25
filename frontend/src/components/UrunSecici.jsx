@@ -6,6 +6,7 @@
  * hepsini aynı görsele bağlama hatasına açık kapı bırakırdı.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const MAX_MB = 75
 const IZINLI = ['jpg', 'jpeg', 'png', 'pdf']
@@ -221,6 +222,22 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
 }
 
 
+/** Her zaman KARE kutu.
+ *
+ * `aspect-square` (aspect-ratio) bir <button> icinde iOS Safari'de cokuyor:
+ * kutu yuksekligini alamayinca gorsel dogal en-boy oraniyla yassi ciziliyordu.
+ * padding-top: 100% her tarayicida calisir.
+ */
+function Kare({ children }) {
+  return (
+    <div className="relative w-full bg-white/[0.04] overflow-hidden"
+         style={{ paddingTop: '100%' }}>
+      {children}
+    </div>
+  )
+}
+
+
 /** Bayinin kendi tasarimlari — gorselleriyle katalog.
  *
  * Masaustunde gorselin uzerine gelince buyur (fare varsa onizleme yeterli).
@@ -245,10 +262,17 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
     else onSec(t)
   }
 
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/65 animate-fadein"
+  // GOVDEYE portal: ust bilesenin `animation`'i (bayi-sira) yiginlama baglami
+  // yaratiyor ve `fixed` modali icine hapsediyor — sayfadaki "Devam" dugmesi
+  // modalin ustune cikiyordu. Portal bu baglamdan tamamen cikariyor.
+  return createPortal((
+    <div className="fixed inset-0 z-50 grid place-items-center p-4 animate-fadein"
+         style={{ background: 'rgb(6 4 12 / 0.86)' }}
          onClick={onKapat}>
-      <div className="glass rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col p-5 animate-popin"
+      <div className="rounded-2xl w-full max-w-2xl max-h-[86vh] flex flex-col p-5 animate-popin
+                      border border-white/10"
+           style={{ background: 'rgb(23 16 43)',
+                    boxShadow: '0 30px 70px -30px rgb(0 0 0 / 0.95)' }}
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3.5">
           <h3 className="text-[15px] font-semibold text-white">Tasarımlarım</h3>
@@ -264,23 +288,25 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
             {q ? 'Eşleşen tasarım yok' : 'Henüz kayıtlı tasarımın yok'}
           </div>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 overflow-y-auto py-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto py-1">
             {liste.map((t, i) => (
               <button key={t.id} type="button" onClick={() => tikla(t)}
-                      className={`bayi-katalog-kart rounded-xl overflow-hidden border bayi-sira
+                      className={`bayi-katalog-kart block w-full text-left rounded-xl
+                        overflow-hidden border bayi-sira
                         ${t.id === seciliId
                           ? 'border-accent ring-2 ring-accent/30'
                           : 'border-white/10'}`}
                       style={{ '--gecikme': `${Math.min(i, 12) * 25}ms` }}>
-                {/* aspect-square: gorseller her zaman KARE, kirpilarak sigar */}
-                <div className="aspect-square bg-white/[0.04] grid place-items-center overflow-hidden">
+                <Kare>
                   {t.gorsel
-                    ? <img src={t.gorsel} alt="" className="w-full h-full object-cover" />
-                    : <span className="text-[10px] text-gray-600 px-1 text-center">
+                    ? <img src={t.gorsel} alt=""
+                           className="absolute inset-0 w-full h-full object-cover" />
+                    : <span className="absolute inset-0 grid place-items-center
+                                       text-[11px] text-gray-600">
                         {(t.format || '?').toUpperCase()}
                       </span>}
-                </div>
-                <div className="px-1.5 py-1 text-[10px] text-gray-400 truncate" title={t.ad}>
+                </Kare>
+                <div className="px-2 py-1.5 text-[11px] text-gray-400 truncate" title={t.ad}>
                   {t.ad}
                 </div>
               </button>
@@ -298,13 +324,15 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
                style={{ background: 'rgb(23 16 43)',
                         boxShadow: '0 30px 70px -30px rgb(0 0 0 / 0.95)' }}
                onClick={(e) => e.stopPropagation()}>
-            <div className="aspect-square rounded-xl overflow-hidden border border-white/12
-                            bg-black/40 grid place-items-center">
-              {odak.gorsel
-                ? <img src={odak.gorsel} alt="" className="w-full h-full object-contain" />
-                : <span className="text-sm text-gray-500">
-                    {(odak.format || '?').toUpperCase()}
-                  </span>}
+            <div className="rounded-xl overflow-hidden border border-white/12 bg-black/40">
+              <Kare>
+                {odak.gorsel
+                  ? <img src={odak.gorsel} alt=""
+                         className="absolute inset-0 w-full h-full object-contain" />
+                  : <span className="absolute inset-0 grid place-items-center text-sm text-gray-500">
+                      {(odak.format || '?').toUpperCase()}
+                    </span>}
+              </Kare>
             </div>
             <div className="text-[13px] text-gray-200 mt-3 text-center truncate"
                  title={odak.ad}>{odak.ad}</div>
@@ -318,5 +346,5 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
         </div>
       )}
     </div>
-  )
+  ), document.body)
 }

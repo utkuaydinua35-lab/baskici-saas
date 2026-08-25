@@ -11,21 +11,10 @@ import { useTexts } from "@/lib/texts";
 
 interface Faq { q: string; a: string }
 
-interface OrderRow {
-  name: string;
-  created_at: string | null;
-  durum: string;
-  kargo_firma: string | null;
-  takip_no: string | null;
-  takip_url: string | null;
-  lookup_token: string | null;
-}
-
 interface ModelRow { model: string; product_count: number; sample_title: string; sample_slug: string }
 
 type Msg =
   | { from: "bot" | "user"; text: string }
-  | { from: "bot"; orders: OrderRow[] }
   | { from: "bot"; models: ModelRow[] };
 
 type Mode = "menu" | "order_email" | "model";
@@ -116,14 +105,16 @@ export default function SupportChat({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, order_no: orderNo || null }),
       });
-      const data = res.ok ? await res.json() : { orders: [] };
-      if ((data.orders || []).length === 0) {
-        push({ from: "bot", text: "Bu e-postayla kayıtlı sipariş bulamadım. Yazımı kontrol edip tekrar deneyin — sorun sürerse WhatsApp'tan bize ulaşabilirsiniz." });
-      } else {
-        push({ from: "bot", orders: data.orders },
-          { from: "bot", text: "Başka bir konuda yardımcı olabilir miyim?" });
-        setMode("menu");
+      if (!res.ok) {
+        push({ from: "bot", text: "Şu an sisteme ulaşamadım — birkaç dakika sonra tekrar dener misiniz?" });
+        return;
       }
+      const data = await res.json();
+      push({
+        from: "bot",
+        text: data?.mesaj || "Sipariş takip bağlantısını e-posta adresine gönderdim. Gelen kutunu (ve spam klasörünü) kontrol et.",
+      }, { from: "bot", text: "Başka bir konuda yardımcı olabilir miyim?" });
+      setMode("menu");
     } catch {
       push({ from: "bot", text: "Şu an sisteme ulaşamadım — birkaç dakika sonra tekrar dener misiniz?" });
     } finally { setBusy(false); }
@@ -228,34 +219,6 @@ export default function SupportChat({
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-zinc-50">
             {msgs.map((m, i) => {
-              if ("orders" in m) {
-                return (
-                  <div key={i} className="space-y-2">
-                    {m.orders.map((o) => (
-                      <div key={o.name} className="bg-white border border-zinc-200 rounded-xl p-3 text-xs space-y-1">
-                        <div className="flex justify-between font-medium">
-                          <span>{o.name}</span>
-                          <span className="text-emerald-600">{o.durum}</span>
-                        </div>
-                        {o.created_at && (
-                          <div className="text-zinc-400">{new Date(o.created_at).toLocaleDateString("tr-TR")}</div>
-                        )}
-                        {o.takip_no && (
-                          <div>🚚 {o.kargo_firma || "Kargo"}: {o.takip_url
-                            ? <a href={o.takip_url} target="_blank" rel="noopener noreferrer" className="underline">{o.takip_no}</a>
-                            : o.takip_no}</div>
-                        )}
-                        {o.lookup_token && (
-                          <Link href={`/siparis/${o.lookup_token}`} prefetch
-                            className="inline-block mt-1 underline text-zinc-600">
-                            Sipariş detayını gör →
-                          </Link>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                );
-              }
               if ("models" in m) {
                 return (
                   <div key={i} className="space-y-1.5">

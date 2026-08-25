@@ -350,6 +350,33 @@ def _normalize_shop_domain(s: str) -> str:
     return s
 
 
+def _bekleyen_kurulum(db: Session, *, tenant_id, user_id, shop: str,
+                     client_id: str, client_secret: str, name: str, slug: str,
+                     scopes: str | None = None, store_id=None) -> str:
+    """Kurulumu sunucuda kaydet, `state` için imzalı TEK KULLANIMLIK bilet üret.
+
+    client_secret state'e KONMAZ (bkz. ShopifyOAuthPending). Bilet yalnız
+    satırın id'sini taşır; imza + exp JWT'den, tekrar oynatma koruması
+    kaydın callback'te silinmesinden gelir.
+    """
+    from app.config import get_settings as _gs
+    from app.models import ShopifyOAuthPending
+
+    settings = _gs()
+    son = datetime.now(timezone.utc) + timedelta(minutes=10)
+    kayit = ShopifyOAuthPending(
+        tenant_id=tenant_id, user_id=user_id, store_id=store_id, shop=shop,
+        client_id=client_id, client_secret=client_secret,
+        name=name, slug=slug, scopes=scopes, expires_at=son,
+    )
+    db.add(kayit)
+    db.commit()
+    return jwt.encode(
+        {"pending": str(kayit.id), "shop": shop, "exp": son},
+        settings.jwt_secret, algorithm=settings.jwt_algorithm,
+    )
+
+
 @router.post("/oauth/start", response_model=OAuthStartResponse)
 def oauth_start(
     body: OAuthStartRequest,
@@ -373,21 +400,12 @@ def oauth_start(
     if existing:
         raise HTTPException(400, f"Bu slug zaten kullanılıyor: {body.slug}")
 
-    # JWT state — geri dönüşte kim olduğunu ve hangi config'i kullanacağımızı bil
-    payload = {
-        "user_id": str(user.id),
-        "tenant_id": str(user.tenant_id),
-        "shop": shop,
-        "client_id": body.client_id,
-        "client_secret": body.client_secret,
-        "name": body.name,
-        "slug": body.slug,
-        "nonce": secrets.token_urlsafe(16),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
-    }
-    state_token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-
     scopes = body.scopes or SHOPIFY_OAUTH_SCOPES
+    state_token = _bekleyen_kurulum(
+        db, tenant_id=user.tenant_id, user_id=user.id, shop=shop,
+        client_id=body.client_id, client_secret=body.client_secret,
+        name=body.name, slug=body.slug, scopes=scopes,
+    )
     redirect_uri = f"{settings.backend_url}/api/stores/oauth/callback"
 
     qs = urlencode({
@@ -428,19 +446,11 @@ def oauth_reauth(
             "Custom app token'i icin magazayi duzenleyip access_token girin.",
         )
 
-    payload = {
-        "user_id": str(user.id),
-        "tenant_id": str(user.tenant_id),
-        "shop": shop,
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "name": store.name,
-        "slug": store.slug,
-        "store_id": str(store.id),
-        "nonce": secrets.token_urlsafe(16),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
-    }
-    state_token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    state_token = _bekleyen_kurulum(
+        db, tenant_id=user.tenant_id, user_id=user.id, shop=shop,
+        client_id=client_id, client_secret=client_secret,
+        name=store.name, slug=store.slug, store_id=store.id,
+    )
     redirect_uri = f"{settings.backend_url}/api/stores/oauth/callback"
     qs = urlencode({
         "client_id": client_id,
@@ -463,14 +473,45 @@ def oauth_callback(
     from app.config import get_settings as _gs
     settings = _gs()
 
-    # State'i doğrula
-    try:
-        payload = jwt.decode(state, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError as e:
+    from app.models import ShopifyOAuthPending
+
+    def _hata(sebep: str):
         return RedirectResponse(
-            f"{settings.frontend_url}/stores?oauth=error&reason=invalid_state",
-            status_code=302,
-        )
+            f"{settings.frontend_url}/stores?oauth=error&reason={sebep}", status_code=302)
+
+    # State'i doğrula — imza + süre
+    try:
+        bilet = jwt.decode(state, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return _hata("invalid_state")
+
+    # Bilet yalnız kayıt id'sini taşır; gerçek config (client_secret dahil)
+    # sunucudaki satırdan gelir. Satır TEK KULLANIMLIK: aşağıda silinir.
+    try:
+        pending_id = uuid.UUID(str(bilet.get("pending")))
+    except (ValueError, TypeError):
+        return _hata("invalid_state")
+    kayit = db.get(ShopifyOAuthPending, pending_id)
+    if not kayit:
+        return _hata("state_used_or_expired")
+    if kayit.expires_at and kayit.expires_at < datetime.now(timezone.utc):
+        db.delete(kayit)
+        db.commit()
+        return _hata("state_used_or_expired")
+
+    payload = {
+        "user_id": str(kayit.user_id) if kayit.user_id else None,
+        "tenant_id": str(kayit.tenant_id),
+        "shop": kayit.shop,
+        "client_id": kayit.client_id,
+        "client_secret": kayit.client_secret,
+        "name": kayit.name,
+        "slug": kayit.slug,
+        "store_id": str(kayit.store_id) if kayit.store_id else None,
+    }
+    # Tüket: aynı state ikinci kez kullanılamasın.
+    db.delete(kayit)
+    db.commit()
 
     if _normalize_shop_domain(shop) != payload["shop"]:
         return RedirectResponse(

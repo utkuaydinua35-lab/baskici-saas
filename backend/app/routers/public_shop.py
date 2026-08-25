@@ -19,7 +19,8 @@ import uuid
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
+                     Request, Response)
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, BeforeValidator, EmailStr, Field
 from sqlalchemy import func, or_, select
@@ -2294,20 +2295,78 @@ class SupportOrderStatusIn(BaseModel):
     order_no: str | None = Field(None, max_length=40)
 
 
+def _takip_postasi_gonder(store_id, tenant_id, email: str,
+                          siparisler: list[tuple[str, str]]) -> None:
+    """Takip bağlantılarını müşterinin KAYITLI adresine yolla (arka planda).
+
+    siparisler: [(görünen_ad, lookup_token), ...]
+    """
+    if not siparisler:
+        return
+    from app.database import SessionLocal
+    from app.models import Store, Tenant
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        store = db.get(Store, store_id)
+        marka = email_service.store_brand_kwargs(store)
+        if not marka:
+            marka = email_service.brand_kwargs(db.get(Tenant, tenant_id))
+        site = site_url((store.config or {}) if store else {})
+
+        satirlar = "".join(
+            f'<p style="margin:6px 0"><a href="{site}/siparis/{tok}">{ad}</a></p>'
+            for ad, tok in siparisler
+        )
+        ilk = siparisler[0][1]
+        html = email_service.render_email(
+            title="Sipariş takip bağlantın",
+            body_html=(
+                "<p>Sipariş durumunu görmek için aşağıdaki bağlantıyı kullanabilirsin. "
+                "Bu bağlantı siparişine özeldir, paylaşma.</p>" + satirlar
+            ),
+            button_text="Siparişimi gör",
+            button_url=f"{site}/siparis/{ilk}",
+            preheader="Sipariş takip bağlantın",
+            footer="Bu e-postayı sen istemediysen dikkate alma.",
+            **marka,
+        )
+        email_service.send_email(email, "Sipariş takip bağlantın", html)
+    except Exception:  # noqa: BLE001
+        logger.warning("[support] takip postası gönderilemedi", exc_info=True)
+    finally:
+        db.close()
+
+
 @router.post("/{store_slug}/support/order-status")
 def support_order_status(
     store_slug: str,
     body: SupportOrderStatusIn,
+    arka: BackgroundTasks,
     request: Request,
     _rl: None = Depends(status_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """E-postayla son siparişlerin durumu (en çok 3). Enumeration koruması:
-    e-posta kayıtlı olmasa da 200 + boş liste döner."""
+    """Sipariş takip bağlantısını KAYITLI e-posta adresine gönderir.
+
+    ⚠ GÜVENLİK — bu uç eskiden yalnızca e-posta ile son 3 siparişin durumunu
+    VE `lookup_token`'ını döndürüyordu. E-posta adresi gizli bir bilgi değil;
+    token ise sipariş detayını açıyor ve o sipariş üzerinde iade/değişim
+    talebi açmaya yetiyor (`POST /orders/{lookup_token}/request`). Yani bir
+    müşterinin adresini bilen herkes siparişlerini okuyup adına talep
+    açabiliyordu.
+
+    Ayrıca `order_no` verildiğinde eşleşme yoksa TÜM siparişlere düşülüyordu
+    (`matched or orders`) — yanlış numara vermek hiçbir kısıtlama getirmiyordu.
+
+    Şimdi: uç hiçbir sipariş verisi döndürmez, bağlantı e-posta kutusuna
+    gider. Adresi BİLMEK değil, ERİŞMEK gerekir. Yanıt kayıt olsun olmasın
+    aynıdır ve gönderim arka planda yapılır — yanıt süresi de ayırt etmez.
+    """
     from sqlalchemy import func as sql_func
 
     from app.models import Order
-    from app.stages import stage_label
 
     store = _resolve_store(db, store_slug)
     email = body.email.strip().lower()
@@ -2319,9 +2378,9 @@ def support_order_status(
     ).all()
     if body.order_no:
         num = body.order_no.strip().lstrip("#")
-        matched = [o for o in orders
-                   if str(o.order_number or "") == num or (o.name or "").lstrip("#") == num]
-        orders = matched or orders
+        # Numara VERİLDİYSE eşleşme şart — eşleşmiyorsa hiçbir şey gönderme.
+        orders = [o for o in orders
+                  if str(o.order_number or "") == num or (o.name or "").lstrip("#") == num]
 
     sessions = db.execute(
         select(CheckoutSession.order_id, CheckoutSession.lookup_token).where(
@@ -2329,19 +2388,17 @@ def support_order_status(
     ).all()
     token_map = {r[0]: r[1] for r in sessions}
 
-    out = []
-    for o in orders:
-        kargo = o.kargo_info or {}
-        out.append({
-            "name": o.name or (f"#{o.order_number}" if o.order_number else "Sipariş"),
-            "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
-            "durum": "İptal" if o.is_iptal else stage_label(o.current_stage or 1),
-            "kargo_firma": kargo.get("handler_name"),
-            "takip_no": kargo.get("takip_no"),
-            "takip_url": kargo.get("takip_url"),
-            "lookup_token": token_map.get(o.id),
-        })
-    return {"orders": out}
+    baglantilar = [
+        (o.name or (f"#{o.order_number}" if o.order_number else "Siparişin"),
+         token_map[o.id])
+        for o in orders if token_map.get(o.id)
+    ]
+    arka.add_task(_takip_postasi_gonder, store.id, store.tenant_id, email, baglantilar)
+
+    # Kayıt olsun olmasın AYNI yanıt — hesap sayımı (enumeration) yapılamaz.
+    return {"sent": True,
+            "mesaj": "Sipariş takip bağlantısını e-posta adresine gönderdim. "
+                     "Gelen kutunu (ve spam klasörünü) kontrol et."}
 
 
 # "s24 plus var mı" gibi cümlelerde modele ait olmayan dolgu kelimeleri

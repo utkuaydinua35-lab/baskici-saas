@@ -1350,6 +1350,40 @@ class LoginAttempt(Base):
     )
 
 
+class ShopifyOAuthPending(Base):
+    """Bekleyen Shopify kurulumu — OAuth `state`'i taşımak yerine sunucuda tut.
+
+    GÜVENLİK: eskiden client_secret, `state` olarak kullanılan JWT'nin
+    PAYLOAD'ındaydı. JWT imzalıdır ama ŞİFRELİ DEĞİLDİR — payload base64 ile
+    okunur ve bu değer kullanıcının tarayıcısı üzerinden Shopify'a query
+    parametresi olarak gider (tarayıcı geçmişi, Referer, araya giren proxy'ler,
+    Shopify tarafındaki günlükler). Artık state yalnızca bu satırın id'sini
+    taşır; sır sunucudan çıkmaz.
+
+    Kayıt TEK KULLANIMLIKtır: callback onu tüketip siler (tekrar oynatma yok).
+    """
+
+    __tablename__ = "shopify_oauth_pending"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Yeniden yetkilendirme (reauth) ise hangi mağaza
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
+    shop: Mapped[str] = mapped_column(String(255))
+    client_id: Mapped[str] = mapped_column(String(255))
+    client_secret: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(120))
+    scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now())
+
+
 class Note(Base):
     """Siparis notlari (Apple Notes tarzi). Her magaza/bayii + tip (acik/gonderilmis) bir not.
     auto_content: siparislerden otomatik uretilir. manual_content: kullanici elle ekler (korunur).

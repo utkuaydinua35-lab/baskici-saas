@@ -545,6 +545,48 @@ es("kalip bayragi sifirlandi", False,
    db.scalar(select(LineItem.is_kaliba_eklendi).where(
        LineItem.order_id == uuid.UUID(oid))))
 
+# --- AYNI KALIPTA BASKA SIPARIS: iptalde o da plana GERI DONMELI ---
+# Ham db.delete(mold) kullanilirsa digerlerinin is_kaliba_eklendi bayragi True
+# kalir, MoldItem'lari gider ve mold_planner onlari bir daha ALMAZ — sessizce
+# uretim disinda kalirlar.
+r_a = siparis_ac(H_A, urunler=[("IPHONE-15", 1)], kanal="trendyol", ad_soyad="Kurban A")
+r_b = siparis_ac(H_A, urunler=[("IPHONE-15", 1)], kanal="trendyol", ad_soyad="Kurban B")
+oid_a, oid_b = r_a.json()["id"], r_b.json()["id"]
+for _o in (oid_a, oid_b):
+    _k = ISTEMCI.get(f"/api/bayii/siparis/{_o}", headers=H_A).json()["kalemler"][0]["id"]
+    ISTEMCI.post(f"/api/dealers/portal/onay-bekleyen/{_o}", headers=H_ADMIN,
+                 json={"varyasyonlar": {_k: "siyah"}, "apply_shipping": False})
+_ort = Mold(tenant_id=tenant.id, store_id=bayi_a.store_id, kod=f"{IZ}-ORTAK",
+            variation="SİYAH", kilif_sayisi=2, rows_used=1, current_stage=2)
+db.add(_ort); db.flush()
+_ort_id = _ort.id   # silindikten sonra _ort.id okunamaz (ObjectDeletedError)
+_liler = {}
+for _i, _o in enumerate((oid_a, oid_b)):
+    _oo = db.scalar(select(Order).where(Order.id == uuid.UUID(_o)))
+    _li = db.scalar(select(LineItem).where(LineItem.order_id == _oo.id))
+    _li.is_kaliba_eklendi = True
+    _liler[_o] = _li.id
+    db.add(MoldItem(tenant_id=tenant.id, mold_id=_ort_id, store_id=bayi_a.store_id,
+                    line_item_id=_li.id, design_id=_li.assigned_design_id,
+                    slot_index=_i, kalip_kodu="A1", model="IPHONE-15",
+                    order_number=str(_oo.order_number)))
+db.commit()
+
+ISTEMCI.post(f"/api/bayii/siparis/{oid_a}/iptal-talebi", headers=H_A, json={})
+es("ortak kalip: iptal onaylandi", 200,
+   ISTEMCI.post(f"/api/dealers/portal/iptal-talepleri/{oid_a}", headers=H_ADMIN).status_code)
+db.expire_all()
+es("ortak kalip silindi", None, db.scalar(select(Mold).where(Mold.id == _ort_id)))
+es("iptal edilenin bayragi dustu", False,
+   db.scalar(select(LineItem.is_kaliba_eklendi).where(LineItem.id == _liler[oid_a])))
+# ASIL SINAMA: masum siparis plana geri donmeli
+es("DIGER siparisin bayragi da dustu", False,
+   db.scalar(select(LineItem.is_kaliba_eklendi).where(LineItem.id == _liler[oid_b])))
+es("diger siparis iptal EDILMEDI", False,
+   ISTEMCI.get(f"/api/bayii/siparis/{oid_b}", headers=H_A).json()["iptal"])
+es("diger siparis kalip planinda", True, _planda_var(
+    db.scalar(select(Order.order_number).where(Order.id == uuid.UUID(oid_b)))))
+
 # --- Ayni akis "baskiya gonderildi" (3) ve "baskida" (4) icin de ---
 for _as in (3, 4):
     oid2, mid2 = _kalipli_siparis(_as)

@@ -72,6 +72,21 @@ def durum_belirle(kalip_asamalari: list[int]) -> Durum:
     )
 
 
+class _KalipSilenKullanici:
+    """_delete_mold_inner bir `user` bekliyor (tenant_id + ad).
+
+    İptal onayı yönetici oturumundan geliyor ama bu servis User nesnesi almıyor;
+    ihtiyaç duyulan iki alanı taşıyan küçük bir temsilci yeterli.
+    """
+
+    __slots__ = ("tenant_id", "full_name", "email")
+
+    def __init__(self, tenant_id, ad: str):
+        self.tenant_id = tenant_id
+        self.full_name = ad
+        self.email = ad
+
+
 def _kaliplari_bul(db: Session, order) -> list:
     """Siparişin kalemlerini içeren kalıplar."""
     from app.models import LineItem, Mold, MoldItem
@@ -112,9 +127,21 @@ def uygula(db: Session, order, *, kim: str, sebep: str | None = None) -> dict:
 
     silinen_kaliplar: list[str] = []
     if d.kaliplar_silinir:
+        # ⚠ HAM db.delete(mold) KULLANMA. Kalıpta bu siparişten BAŞKA siparişler
+        # de var; onların kalemleri is_kaliba_eklendi=True kalır ama MoldItem'ları
+        # gittiği için plana bir daha GİRMEZLER (mold_planner bu bayrağa bakıyor)
+        # — sessizce üretim dışı kalırlar. _delete_mold_inner bayrakları geri alır,
+        # design.kilif_sayisi'nı düşer, çift baskı korumasını uygular ve denetim
+        # kaydını yazar. Yönetimin kalıp silme ucu da bunu kullanıyor.
+        from app.routers.molds import _delete_mold_inner, _pdf_gecersiz
+
         for m in kaliplar:
-            silinen_kaliplar.append(m.kod)
-            db.delete(m)      # MoldItem'lar cascade ile gider
+            kod, _ = _delete_mold_inner(db, m, _KalipSilenKullanici(order.tenant_id, kim))
+            silinen_kaliplar.append(kod)
+            try:
+                _pdf_gecersiz(m.id)   # hazır PDF artık geçersiz
+            except Exception:  # noqa: BLE001
+                pass
     elif d.kaliba_girdi:
         # Basılmış kalıp duruyor; yalnız bu siparişin kalemlerini kalıptan
         # düşürmeyiz (basıldı, fiziksel olarak orada). Paketlemeden düşmesi

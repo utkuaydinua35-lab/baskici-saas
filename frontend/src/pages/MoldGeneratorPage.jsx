@@ -11,6 +11,7 @@ import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
 import { loadLabelSettings } from '../lib/kalipLabel'
 import BayiBekleyenUyari from '../components/BayiBekleyenUyari'
+import TopluKalipSilDialog from '../components/TopluKalipSilDialog'
 
 const VAR_COLORS = {
   'SİYAH': 'bg-gray-700 text-gray-100 border-gray-600',
@@ -376,6 +377,7 @@ export default function MoldGeneratorPage() {
           molds={molds}
           onOpen={(id) => navigate(`/kalip/${id}`)}
           onDelete={(m) => setDeleteTarget({ id: m.id, kod: m.kod })}
+          onBulkDeleted={() => { loadExisting(); loadPlan() }}
         />
       )}
 
@@ -406,9 +408,82 @@ export default function MoldGeneratorPage() {
 // KORUNUYOR (rasterleştirme kalite kaybı yapardı). Bu yüzden baskıdan ÖNCE
 // hazırlanır; baskı sırasında beklenmez. Kalıp değişirse sunucu hazır PDF'i
 // siler ve durum "yok"a döner — o kalıp yeniden hazırlanmalıdır.
-function ExistingMolds({ molds, onOpen, onDelete }) {
+
+/** Kalıp listesi — ExistingMolds'un İÇİNDE tanımlıydı.
+ *
+ * İç içe tanımlanan bileşen her render'da YENİ bir tip oluyor; React eskisini
+ * söküp yenisini kuruyordu. Yani her onay kutusu tıklamasında listenin TÜM
+ * DOM'u yeniden yaratılıyor, kaydırma ve odak kayboluyordu (onlarca kalıpta
+ * gözle görülür takılma). Dışarı alınınca tip sabit kalır, React yalnız
+ * değişen satırı günceller.
+ *
+ * Seçim iki liste arasında PAYLAŞILIR; eylemler yalnız KENDİ satırlarına
+ * uygulanır — "Bekleyen"de seçip "Basılmış"ta silmek gibi sürpriz olmasın.
+ */
+function KalipListesi({ baslik, veri, pdfVar, secili, setSecili, sec, durumlar,
+                        busy, hazirla, basildiMi, onOpen, onDelete, onTopluSil }) {
+  const buListedeSecili = veri.filter(m => secili.has(m.id))
+  return (
+    <div className="mb-5">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="text-sm font-medium text-gray-200">
+          {baslik} <span className="text-gray-500">({veri.length})</span>
+        </div>
+        {veri.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => setSecili(s => new Set([...s, ...veri.map(m => m.id)]))}
+                      className="text-[11px] text-gray-400 hover:text-gray-200 underline">tümünü seç</button>
+              {buListedeSecili.length > 0 && (
+                <button onClick={() => setSecili(s => {
+                          const n = new Set(s); veri.forEach(m => n.delete(m.id)); return n })}
+                        className="text-[11px] text-gray-500 hover:text-gray-300 underline">temizle</button>
+              )}
+              {pdfVar && (
+                <button onClick={() => hazirla(buListedeSecili.length
+                          ? buListedeSecili.map(m => m.id) : veri.map(m => m.id))}
+                        disabled={busy} className="btn-primary !text-xs disabled:opacity-50">
+                  {busy ? '…' : buListedeSecili.length
+                    ? `📄 ${buListedeSecili.length} kalıbın PDF'ini hazırla`
+                    : "📄 Tümünün PDF'ini hazırla"}
+                </button>
+              )}
+              <button
+                onClick={() => onTopluSil(
+                  (buListedeSecili.length ? buListedeSecili : veri)
+                    .map(m => ({ id: m.id, kod: m.kod, variation: m.variation,
+                                 kilif_sayisi: m.kilif_sayisi, basildi: basildiMi(m) })))}
+                className="text-xs px-2.5 py-1 rounded border border-red-500/25 text-red-400/85
+                           hover:text-red-300 hover:border-red-500/50 hover:bg-red-500/10 transition-colors">
+                🗑 {buListedeSecili.length ? `${buListedeSecili.length} kalıbı sil` : 'Tümünü sil'}
+              </button>
+            </div>
+        )}
+      </div>
+      {veri.length === 0 ? (
+        <div className="card !p-0"><EmptyState dar ikon="—" baslik={`${baslik} yok`} /></div>
+      ) : (
+        <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
+          {veri.map(m => (
+            <div key={m.id} className="flex items-center gap-2 pl-3">
+              <input type="checkbox" checked={secili.has(m.id)} onChange={() => sec(m.id)}
+                     onClick={e => e.stopPropagation()} className="w-4 h-4 accent-accent shrink-0" />
+              <PdfRozet d={durumlar[m.id]} />
+              <div className="flex-1 min-w-0">
+                <MoldRow mold={m} onClick={() => onOpen(m.id)} onDelete={() => onDelete(m)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  
+  )
+}
+
+function ExistingMolds({ molds, onOpen, onDelete, onBulkDeleted }) {
   const toast = useToast()
   const [secili, setSecili] = useState(() => new Set())
+  const [silinecek, setSilinecek] = useState(null)   // toplu silme onayı
   const [durumlar, setDurumlar] = useState({})   // {mold_id: {durum}}
   const [busy, setBusy] = useState(false)
 
@@ -476,53 +551,28 @@ function ExistingMolds({ molds, onOpen, onDelete }) {
     )
   }
 
-  const Liste = ({ baslik, veri, secilebilir }) => (
-    <div className="mb-5">
-      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-        <div className="text-sm font-medium text-gray-200">
-          {baslik} <span className="text-gray-500">({veri.length})</span>
-        </div>
-        {secilebilir && veri.length > 0 && (
-          <div className="flex items-center gap-2">
-            <button onClick={() => setSecili(new Set(veri.map(m => m.id)))}
-                    className="text-[11px] text-gray-400 hover:text-gray-200 underline">tümünü seç</button>
-            {secili.size > 0 && (
-              <button onClick={() => setSecili(new Set())}
-                      className="text-[11px] text-gray-500 hover:text-gray-300 underline">temizle</button>
-            )}
-            <button onClick={() => hazirla(secili.size ? [...secili] : veri.map(m => m.id))}
-                    disabled={busy} className="btn-primary !text-xs disabled:opacity-50">
-              {busy ? '…' : secili.size ? `📄 ${secili.size} kalıbın PDF'ini hazırla` : "📄 Tümünün PDF'ini hazırla"}
-            </button>
-          </div>
-        )}
-      </div>
-      {veri.length === 0 ? (
-        <div className="card !p-0"><EmptyState dar ikon="—" baslik={`${baslik} yok`} /></div>
-      ) : (
-        <div className="card divide-y divide-brand-border/60 !p-0 overflow-hidden">
-          {veri.map(m => (
-            <div key={m.id} className="flex items-center gap-2 pl-3">
-              {secilebilir && (
-                <input type="checkbox" checked={secili.has(m.id)} onChange={() => sec(m.id)}
-                       onClick={e => e.stopPropagation()} className="w-4 h-4 accent-accent shrink-0" />
-              )}
-              <PdfRozet d={durumlar[m.id]} />
-              <div className="flex-1 min-w-0">
-                <MoldRow mold={m} onClick={() => onOpen(m.id)} onDelete={() => onDelete(m)} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-
   return (
     <div>
-      <Liste baslik="⏳ Bekleyen Kalıplar" veri={bekleyen} secilebilir />
-      <Liste baslik="✓ Basılmış Kalıplar" veri={basilmis} secilebilir={false} />
+      <KalipListesi baslik="⏳ Bekleyen Kalıplar" veri={bekleyen} pdfVar
+                    secili={secili} setSecili={setSecili} sec={sec} durumlar={durumlar}
+                    busy={busy} hazirla={hazirla} basildiMi={basildiMi}
+                    onOpen={onOpen} onDelete={onDelete} onTopluSil={setSilinecek} />
+      <KalipListesi baslik="✓ Basılmış Kalıplar" veri={basilmis}
+                    secili={secili} setSecili={setSecili} sec={sec} durumlar={durumlar}
+                    busy={busy} hazirla={hazirla} basildiMi={basildiMi}
+                    onOpen={onOpen} onDelete={onDelete} onTopluSil={setSilinecek} />
       <PdfHazirlikPaneli />
+
+      <TopluKalipSilDialog
+        open={!!silinecek}
+        kaliplar={silinecek}
+        onClose={() => setSilinecek(null)}
+        onDeleted={(d) => {
+          setSilinecek(null)
+          setSecili(new Set())
+          toast.success(`${d?.deleted_count ?? 0} kalıp silindi`)
+          onBulkDeleted?.()
+        }} />
     </div>
   )
 }

@@ -43,10 +43,13 @@ export default function ProfileSelectPage() {
 
   const onPick = (p) => {
     if (busy || entering) return
-    // Kendi profilin (zaten giriş yaptın) — yönetici olsa bile tekrar sorma
+    // PIN'li profilde HER ZAMAN sor — kendi profilin olsa bile. Panel PIN
+    // atamaya izin verip 🔒 gösteriyor; kendi e-postasıyla giren birinde
+    // kilidin hiç devreye girmemesi sessiz bir yanlış güven duygusuydu.
+    if (p.has_pin) { setPinFor(p); setPin(''); setErr(''); return }
+    // Yönetici kendi profilini seçiyorsa parolayı AZ ÖNCE girdi — tekrar sorma.
     if (user && p.id === user.id) { enter(p, {}); return }
     if (p.is_admin) { setAdminFor(p); setSecret(''); setErr('') }
-    else if (p.has_pin) { setPinFor(p); setPin(''); setErr('') }
     else enter(p, {})
   }
   const submitPin = () => {

@@ -34,13 +34,35 @@ def es(ad, beklenen, gercek):
         KALDI += 1; print(f"  ✗ {ad}\n      beklenen {beklenen!r}\n      gercek   {gercek!r}")
 
 
+
+def _yonetici_girisi(C, db, email: str, sifre: str) -> dict:
+    """Yönetici token'ı. Hız sınırına takılırsa temizleyip bir kez daha dener.
+
+    Giriş, IP başına 5 dakikada 10 başarısız denemeyle sınırlı. Test paketleri
+    arka arkaya koşunca bu sayaç doluyor ve giriş 401 dönüyordu; testler de
+    sessizce ATLANIYORDU (7 güvenlik sınaması hiç çalışmadan "geçti" görünüyordu).
+    Sessizce atlayan test, olmayan testten kötüdür — burada ya giriliyor ya da
+    yüksek sesle patlıyor.
+    """
+    from sqlalchemy import text as _t
+
+    r = C.post("/api/auth/login", json={"email": email, "password": sifre})
+    if r.status_code != 200:
+        # Testin kendi gürültüsünü temizle (yalnız testclient IP'si)
+        db.execute(_t("delete from login_attempts where ip in ('testclient','127.0.0.1')"))
+        db.commit()
+        r = C.post("/api/auth/login", json={"email": email, "password": sifre})
+    if r.status_code != 200:
+        raise SystemExit(
+            f"YONETICI GIRISI BASARISIZ ({r.status_code}): {str(r.text)[:200]}\n"
+            f"Bu testler yonetici olmadan CALISAMAZ — atlanmiyor, durduruluyor.")
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
 db = SessionLocal()
 tenant = db.scalar(select(Tenant).limit(1))
 admin = db.scalar(select(User).where(User.role.in_(("yonetici", "owner"))).limit(1))
-tok = C.post("/api/auth/login", json={"email": admin.email, "password": "DevAdmin12345!"})
-if tok.status_code != 200:
-    raise SystemExit(f"yonetici girisi basarisiz ({tok.status_code})")
-H = {"Authorization": f"Bearer {tok.json()['access_token']}"}
+H = _yonetici_girisi(C, db, admin.email, "DevAdmin12345!")
 
 store = Store(tenant_id=tenant.id, slug=f"{IZ}-s", name="Toplu Sil",
               platform="bayii", is_active=True)

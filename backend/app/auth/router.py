@@ -748,8 +748,14 @@ def select_profile(
         if target.pin_hash:
             target.pin_hash = None
     else:
-        # PIN'liyse dogrula (kendi profilin haric — zaten giriş yaptın)
-        if target.id != user.id and target.pin_hash:
+        # PIN varsa HER ZAMAN sorulur — kendi profilin olsa bile.
+        # Eskiden "zaten giriş yaptın" diye atlanıyordu; ama panel PIN atamaya
+        # izin verip 🔒 rozeti gösteriyor. Kendi e-postasıyla giren biri için
+        # kilit hiç devreye girmiyordu, yani yönetici koyduğunu sandığı korumanın
+        # çalışmadığını bilmiyordu. (Yönetici profillerinde PIN kullanılmaz;
+        # onlar üstteki dalda 2FA/parola ile korunur.)
+        # PIN unutulursa: yönetici Ayarlar > Kullanıcılar'dan "PIN'i kaldır".
+        if target.pin_hash:
             if not req.pin or not verify_password(req.pin, target.pin_hash):
                 raise HTTPException(status_code=401, detail="PIN yanlis")
 

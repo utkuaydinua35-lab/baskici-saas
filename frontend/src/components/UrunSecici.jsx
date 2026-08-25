@@ -46,11 +46,15 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
     return modeller.filter((m) => m.etiket.toLocaleLowerCase('tr').includes(q)).slice(0, 50)
   }, [modeller, modelArama])
 
-  const boyut = urun.dosya
-    ? (urun.dosya.size < 1024 * 1024
-        ? `${Math.max(1, Math.round(urun.dosya.size / 1024))} KB`
-        : `${(urun.dosya.size / 1024 / 1024).toFixed(2)} MB`)
-    : ''
+  // Urunun bir tasarimi var mi (yuklenen dosya VEYA katalogdan secilen)
+  const secili = !!(urun.dosya || urun.tasarim)
+  // Onizleme: yuklenen gorselde blob URL, katalogda sunucudaki kucuk gorsel.
+  // PDF'te ikisi de yok -> format rozeti gosterilir.
+  const onizlemeKaynagi = urun.tasarim
+    ? urun.tasarim.gorsel
+    : (urun.dosya?.type.startsWith('image/') ? onizleme : null)
+
+  const temizle = () => onDegis({ ...urun, dosya: null, tasarim: null })
 
   return (
     <div className="rounded-2xl border border-brand-border bg-brand-input/25 p-4 bayi-sira"
@@ -82,29 +86,49 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
         <div className="shrink-0">
           <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
                  onChange={(e) => { dosyaSec(e.target.files?.[0]); e.target.value = '' }} />
-          {urun.tasarim ? (
-            <button type="button" onClick={() => setKatalogAcik(true)}
-                    className="relative group w-24 h-24 rounded-2xl overflow-hidden
-                               border border-accent/40 bg-white/[0.03] grid place-items-center
-                               animate-popin">
-              {urun.tasarim.gorsel
-                ? <img src={urun.tasarim.gorsel} alt=""
-                       className="w-full h-full object-cover" />
-                : <span className="text-[11px] text-gray-500 px-1 text-center">
-                    {(urun.tasarim.format || 'PDF').toUpperCase()}
-                  </span>}
-              <span className="absolute inset-0 grid place-items-center bg-black/65 text-[11px]
-                               text-white opacity-0 group-hover:opacity-100 focus:opacity-100
-                               transition-opacity">Değiştir</span>
-            </button>
-          ) : !urun.dosya ? (
+
+          {secili ? (
+            <div className="relative w-28">
+              <button type="button"
+                      onClick={() => (urun.tasarim ? setKatalogAcik(true) : dosyaRef.current?.click())}
+                      className="relative group block w-28 h-28 rounded-2xl overflow-hidden
+                                 animate-popin border bg-white/[0.03]
+                                 border-accent/40 grid place-items-center">
+                {onizlemeKaynagi
+                  ? <img src={onizlemeKaynagi} alt=""
+                         className="absolute inset-0 w-full h-full object-cover" />
+                  : <span className="text-[12px] text-gray-400 font-medium">
+                      {(urun.tasarim?.format || 'PDF').toUpperCase()}
+                    </span>}
+                {/* Dokunmatikte hover yok; degistirme ipucu her zaman gorunsun */}
+                <span className="absolute inset-x-0 bottom-0 py-1 text-[10.5px] text-center
+                                 text-white/90 bg-black/55 transition-opacity
+                                 sm:opacity-0 sm:group-hover:opacity-100">
+                  Değiştir
+                </span>
+              </button>
+
+              {/* Yanlis dosya secildiginde geri donebilmek icin — her zaman gorunur */}
+              <button type="button" onClick={temizle} title="Tasarımı kaldır"
+                      aria-label="Tasarımı kaldır"
+                      className="absolute -top-2 -right-2 w-7 h-7 rounded-full grid place-items-center
+                                 bg-brand-input border border-white/15 text-gray-400
+                                 hover:text-white hover:border-red-400/50 hover:bg-red-500/20
+                                 transition-colors shadow-lg">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                     strokeLinecap="round" className="w-3.5 h-3.5">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          ) : (
             <button type="button" onClick={() => dosyaRef.current?.click()}
                     onDragOver={(e) => { e.preventDefault(); setUzerinde(true) }}
                     onDragLeave={() => setUzerinde(false)}
                     onDrop={(e) => { e.preventDefault(); setUzerinde(false)
                                      dosyaSec(e.dataTransfer.files?.[0]) }}
                     data-uzerinde={uzerinde ? '1' : '0'}
-                    className="bayi-birak w-24 h-24 grid place-items-center text-center px-2">
+                    className="bayi-birak w-28 h-28 grid place-items-center text-center px-2">
               <span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="rgb(var(--accent-rgb))"
                      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
@@ -114,26 +138,12 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
                 <span className="text-[11px] text-gray-400 leading-tight block">Tasarım<br />yükle</span>
               </span>
             </button>
-          ) : (
-            <button type="button" onClick={() => dosyaRef.current?.click()}
-                    className="relative group w-24 h-24 rounded-2xl overflow-hidden
-                               border border-white/10 bg-white/[0.03] grid place-items-center
-                               animate-popin">
-              {urun.dosya.type.startsWith('image/') && onizleme
-                ? <img src={onizleme} alt="" className="w-full h-full object-cover" />
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-                       className="w-8 h-8 text-gray-500">
-                    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-                    <path d="M14 3v5h5" /></svg>}
-              <span className="absolute inset-0 grid place-items-center bg-black/65 text-[11px]
-                               text-white opacity-0 group-hover:opacity-100 focus:opacity-100
-                               transition-opacity">Değiştir</span>
-            </button>
           )}
-          <div className="w-24 mt-1.5 space-y-1">
+
+          <div className="w-28 mt-1.5 space-y-1">
             {urun.dosya && (
               <div className="text-[10.5px] text-gray-600 truncate" title={urun.dosya.name}>
-                {boyut}
+                {urun.dosya.name}
               </div>
             )}
             {urun.tasarim && (

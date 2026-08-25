@@ -8,6 +8,8 @@ Order.kargo_info.barcode ile eşleştirir → kargo_info günceller, DELIVERED'd
 """
 from __future__ import annotations
 
+import hmac
+
 import logging
 from datetime import UTC, datetime
 
@@ -49,8 +51,13 @@ def basit_kargo_webhook(
 ):
     s = get_settings()
     expected = (s.basit_kargo_webhook_secret or "").strip()
-    # Secret tanımsız ya da yanlışsa — varlığını belli etmeden 404
-    if not expected or secret != expected:
+    # Secret tanımsız ya da yanlışsa — varlığını belli etmeden 404.
+    # compare_digest: düz `!=` ilk farklı bayta gelince döner ve karşılaştırma
+    # süresi doğru ön ek uzunluğuyla değişir. Ağ gürültüsü altında sömürmek
+    # zordur ama sır karşılaştırması sabit zamanlı olmalı — ölçüm ucuz.
+    if not expected or not hmac.compare_digest(
+            secret.encode("utf-8", "replace"),
+            expected.encode("utf-8", "replace")):
         raise HTTPException(status_code=404, detail="Not found")
 
     barcode = str(payload.get("barcode") or "").strip()

@@ -138,6 +138,28 @@ else:
     es("ayni state ikinci kez REDDEDILIR", True,
        "state_used_or_expired" in (r2.headers.get("location") or ""))
 
+print("\n── 6. Webhook sirlari: sabit zamanli + coken girdi yok ──")
+from app.config import get_settings  # noqa: E402
+
+_s = get_settings()
+_kargo_sir = (_s.basit_kargo_webhook_secret or "").strip()
+# ASCII disi yol: compare_digest str ile TypeError atardi -> 500. 404 bekleriz.
+r = C.post("/api/webhooks/basit-kargo/türkçe-sır-çğüöş", json={})
+es("ASCII disi sir 500 DEGIL", True, r.status_code != 500)
+es("ASCII disi sir 404", 404, r.status_code)
+es("yanlis sir 404", 404,
+   C.post("/api/webhooks/basit-kargo/kesinlikle-yanlis", json={}).status_code)
+if _kargo_sir:
+    es("dogru sir kabul edilir", True,
+       C.post(f"/api/webhooks/basit-kargo/{_kargo_sir}", json={}).status_code != 404)
+
+# Instagram dogrulama ucu
+r = C.get("/api/public/instagram/webhook",
+          params={"hub.mode": "subscribe", "hub.verify_token": "yanlış-çğü",
+                  "hub.challenge": "123"})
+es("instagram yanlis token 500 DEGIL", True, r.status_code != 500)
+es("instagram yanlis token reddedilir", True, r.status_code in (403, 404))
+
 # ─── Temizlik ────────────────────────────────────────────────
 db.execute(text("delete from shopify_oauth_pending where slug like :p"), {"p": f"{IZ}%"})
 db.execute(text("delete from checkout_sessions where token like :p"), {"p": f"{IZ}%"})

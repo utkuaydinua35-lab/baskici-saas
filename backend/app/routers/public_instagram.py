@@ -116,7 +116,11 @@ def verify_webhook(
     s = get_settings()
     if not _enabled():
         raise HTTPException(404, "Not found")
-    if hub_mode == "subscribe" and hub_verify_token == s.ig_verify_token:
+    beklenen = (s.ig_verify_token or "")
+    eslesti = bool(beklenen) and hmac.compare_digest(
+        (hub_verify_token or "").encode("utf-8", "replace"),
+        beklenen.encode("utf-8", "replace"))
+    if hub_mode == "subscribe" and eslesti:
         return Response(content=hub_challenge or "", media_type="text/plain")
     raise HTTPException(403, "Doğrulama başarısız")
 

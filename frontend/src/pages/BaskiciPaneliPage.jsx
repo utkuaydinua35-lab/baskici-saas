@@ -288,6 +288,12 @@ export default function BaskiciPaneliPage() {
                           {it.kaynak === 'siparis'
                             ? `🎁 ${it.grup} · ${it.siparis_sayisi} siparişte (kalıba girmez)`
                             : `${it.variation} · ${it.mold_count} kalıpta`}
+                          {it.kaynak === 'siparis' && it.stok_takibi === false && (
+                            <span className="ml-1.5 text-amber-400/90"
+                                  title="Bu ürün bir stok grubuna bağlı değil — ihtiyaç listesinde görünür ama stok/eksik hesabına girmez. Stok sayfasından bağlayabilirsin.">
+                              · stok takibi yok
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

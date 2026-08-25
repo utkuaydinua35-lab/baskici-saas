@@ -283,14 +283,19 @@ def deduct_for_shipment(db: Session, tenant_id, order, user=None) -> dict:
     return {"already": False, "deducted": deducted, "shortages": shortages, "lines": lines}
 
 
-def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
+def aksesuar_talebi(db: Session, tenant_id, *,
+                   stok_grubu_sart: bool = True) -> dict[tuple, dict]:
     """Acik siparislerdeki aksesuar ihtiyaci: {(grup_id, normalize_model): {...}}
 
     Talep = henuz kargoya VERILMEMIS (asama < 8) acik siparisler. Stok dusumu
     kargoda yapildigi icin bu siparislerin ihtiyaci hala stoktan karsilanacak.
 
-    Yalnizca AKSESUAR isaretli ve bir stok ana kalemine BAGLI urunler sayilir;
-    digerlerinin stogu bilinmiyor, onlar icin "eksik" denemez.
+    stok_grubu_sart=True  (EKSIK hesabi icin): yalnizca bir stok ana kalemine
+        BAGLI urunler sayilir — stogu bilinmeyen urun icin "eksik" denemez.
+    stok_grubu_sart=False (IHTIYAC listesi icin): baglantisi olmayanlar da
+        sayilir. "Gerekli Modeller" stoga BAKMADAN "ne hazirlayacagim" diye
+        sorar; orada stok grubu sarti aramak, henuz stok takibine baglanmamis
+        urunleri (ornegin magsafe kiliflar) listeden tamamen dusuruyordu.
     """
     from app.models import AccessoryProduct, Order, StockGroup
 
@@ -315,7 +320,7 @@ def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
             pid = str(lp.get("product_id")) if isinstance(lp, dict) else None
             if pid:
                 pid_to_group[pid] = g
-    if not pid_to_group:
+    if stok_grubu_sart and not pid_to_group:
         return {}
 
     # ACIK siparis olcutu PAKETLEME KUYRUGUYLA ayni yerden gelir. Burada
@@ -333,15 +338,19 @@ def aksesuar_talebi(db: Session, tenant_id) -> dict[tuple, dict]:
             if not pid or pid not in aksesuar_pids:
                 continue
             g = pid_to_group.get(pid)
-            if g is None:
+            if g is None and stok_grubu_sart:
                 continue        # stok takibi yok — "eksik" denemez
             model = _extract_model_for_shipment(li)
             if not model:
                 continue        # model belirlenemedi — alt kalem acilamaz
-            anahtar = (str(g.id), _norm_model(model))
+            # Gruba bagli degilse urunun kendisi kova olur; boylece ihtiyac
+            # listesinde gorunur ama stok hesabina karismaz (grup_id None).
+            anahtar = ((str(g.id) if g else f"urun:{pid}"), _norm_model(model))
             kayit = ihtiyac.setdefault(anahtar, {
-                "grup": g.name, "grup_id": g.id, "model": model,
-                "adet": 0, "siparisler": set(),
+                "grup": g.name if g else (li.title or "Aksesuar"),
+                "grup_id": g.id if g else None,
+                "stok_takibi": g is not None,
+                "model": model, "adet": 0, "siparisler": set(),
             })
             kayit["adet"] += li.quantity or 1
             kayit["siparisler"].add(str(o.order_number))
@@ -358,13 +367,16 @@ def aksesuar_ihtiyaci(db: Session, tenant_id) -> list[dict]:
     Stok kontrolu YOK: bu liste ihtiyaci soyler, eksigi degil (eksik icin
     siparis_stok_eksigi kullanilir).
     """
-    ihtiyac = aksesuar_talebi(db, tenant_id)
+    # stok_grubu_sart=False: bu liste stoga BAKMAZ, ihtiyaci soyler. Stok
+    # grubuna henuz baglanmamis urunler de (magsafe kiliflar gibi) gorunmeli.
+    ihtiyac = aksesuar_talebi(db, tenant_id, stok_grubu_sart=False)
     out = [
         {
             "kaynak": "siparis",
             "grup": v["grup"],
             "model": v["model"] or "(model belirtilmemiş)",
             "count": v["adet"],
+            "stok_takibi": v.get("stok_takibi", True),
             "siparis_sayisi": len(v["siparisler"]),
             "siparisler": sorted(v["siparisler"])[:20],
         }

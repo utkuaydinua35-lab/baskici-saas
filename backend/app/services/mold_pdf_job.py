@@ -105,8 +105,11 @@ def durum(mold_id, anahtar: str) -> dict:
     if i:
         if i["durum"] == "hata":
             return {"durum": "hata", "mesaj": i.get("mesaj") or "Üretim başarısız"}
-        if time.time() - i["baslangic"] < ZAMAN_ASIMI:
+        # Henuz sirada bekleyen is (basladi=False) zaman asimina ugramaz —
+        # onunde uzun isler olabilir.
+        if not i.get("basladi") or time.time() - i["baslangic"] < ZAMAN_ASIMI:
             return {"durum": "hazirlaniyor",
+                    "basladi": bool(i.get("basladi")),
                     "gecen_sn": int(time.time() - i["baslangic"])}
     return {"durum": "yok"}
 
@@ -115,6 +118,11 @@ def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None
     from app.services import mold_pdf
     pdf, meta = yollar(mold_id, anahtar)
     _t0 = time.time()
+    with _kilit:
+        i = _isler.get(anahtar)
+        if i is not None:
+            i["baslangic"] = _t0        # kuyrukta bekleme suresi sayilmasin
+            i["basladi"] = True
     logger.info("[kalip-pdf] uretim BASLADI: kalip=%s slot=%s", mold_id, len(slot_items))
     try:
         veri, rapor = mold_pdf.render_mold_pdf(slot_items, template=template)
@@ -140,9 +148,11 @@ def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
     """Üretimi arka planda başlat. Zaten çalışıyorsa False."""
     with _kilit:
         i = _isler.get(anahtar)
-        if i and i["durum"] == "hazirlaniyor" and time.time() - i["baslangic"] < ZAMAN_ASIMI:
+        if i and i["durum"] == "hazirlaniyor" and (
+                not i.get("basladi") or time.time() - i["baslangic"] < ZAMAN_ASIMI):
             return False
         _isler[anahtar] = {"durum": "hazirlaniyor", "baslangic": time.time(),
+                           "kuyruga_alindi": time.time(), "basladi": False,
                            "mold_id": str(mold_id)}
     arka_plan.add_task(_uret, mold_id, anahtar, slot_items, template)
     return True
@@ -157,7 +167,7 @@ def kuyruk() -> list[dict]:
         for anahtar, i in list(_isler.items()):
             if i.get("durum") != "hazirlaniyor":
                 continue
-            if simdi - i["baslangic"] >= ZAMAN_ASIMI:
+            if i.get("basladi") and simdi - i["baslangic"] >= ZAMAN_ASIMI:
                 continue
             out.append({"mold_id": i.get("mold_id"), "anahtar": anahtar,
                         "gecen_sn": int(simdi - i["baslangic"])})

@@ -7,7 +7,15 @@ import { api } from '../lib/api'
 // Kuyruğu SUNUCUDAN sorar: hangi kalıpları soracağını bilmesi gerekmez, bu
 // yüzden her sayfada aynı şekilde çalışır. (Önceki hali yalnızca listedeki
 // kalıplara soruyordu ve hatayı sessizce yutuyordu.)
-export default function PdfHazirlikPaneli({ araAt = 5000 }) {
+export const PDF_KUYRUK_OLAYI = 'pdf-kuyruk'        // {isler} — her yoklamada
+export const PDF_YENILE_OLAYI = 'pdf-kuyruk-yenile'  // hemen yokla
+
+/** "Hazırla"ya basınca panel BEKLEMEDEN açılsın diye. */
+export function pdfKuyrugunuYenile() {
+  window.dispatchEvent(new CustomEvent(PDF_YENILE_OLAYI))
+}
+
+export default function PdfHazirlikPaneli({ araAt = 3000 }) {
   const [isler, setIsler] = useState([])
   const [hata, setHata] = useState('')
 
@@ -17,8 +25,11 @@ export default function PdfHazirlikPaneli({ araAt = 5000 }) {
       try {
         const r = await api.get('/api/molds/pdf/kuyruk')
         if (durduruldu) return
-        setIsler(r.items || [])
+        const gelen = r.items || []
+        setIsler(gelen)
         setHata('')
+        // Liste rozetleri bunu dinliyor — kuyruk boşaldığı anı da görsün.
+        window.dispatchEvent(new CustomEvent(PDF_KUYRUK_OLAYI, { detail: { isler: gelen } }))
       } catch (e) {
         if (durduruldu) return
         // Yutma: kutu hiç görünmezse sebebini bilmek gerekir
@@ -27,7 +38,13 @@ export default function PdfHazirlikPaneli({ araAt = 5000 }) {
     }
     sor()
     const t = setInterval(sor, araAt)
-    return () => { durduruldu = true; clearInterval(t) }
+    // "Hazırla"dan gelen anlık tetik
+    const hemen = () => sor()
+    window.addEventListener(PDF_YENILE_OLAYI, hemen)
+    return () => {
+      durduruldu = true; clearInterval(t)
+      window.removeEventListener(PDF_YENILE_OLAYI, hemen)
+    }
   }, [araAt])
 
   if (hata) {

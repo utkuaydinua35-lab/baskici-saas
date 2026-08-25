@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import MoldTabs from '../components/MoldTabs'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import EmptyState from '../components/EmptyState'
-import PdfHazirlikPaneli from '../components/PdfHazirlikPaneli'
+import PdfHazirlikPaneli, { PDF_KUYRUK_OLAYI, pdfKuyrugunuYenile }
+  from '../components/PdfHazirlikPaneli'
 import SlotAssignDialog from '../components/SlotAssignDialog'
 import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
@@ -511,14 +512,22 @@ function ExistingMolds({ molds, onOpen, onDelete, onBulkDeleted }) {
   }
   useEffect(() => { durumSor(bekleyen.map(m => m.id)) }, [molds])
 
-  // Hazırlanan varsa periyodik sor — hazır olunca rozet kendiliğinden değişsin
+  // Rozetleri sunucu KUYRUGUNA göre tazele (PdfHazirlikPaneli yayınlıyor).
+  // Eskiden yalnız rozeti "hazırlanıyor" olanlar yoklanıyordu; bir kalıbın
+  // durumu araya girip "yok"a dönerse izlenmeyi bırakıyor ve iş bitince rozet
+  // güncellenmiyordu (F5 gerekiyordu).
+  const doluyduRef = useRef(false)
   useEffect(() => {
-    const suren = Object.entries(durumlar)
-      .filter(([, v]) => v?.durum === 'hazirlaniyor').map(([k]) => k)
-    if (!suren.length) return
-    const t = setInterval(() => durumSor(suren), 5000)
-    return () => clearInterval(t)
-  }, [durumlar])
+    const dinle = (e) => {
+      const dolu = (e.detail?.isler || []).length > 0
+      // Kuyruk doluyken sürekli, DOLUDAN BOŞA geçişte bir kez daha sor:
+      // "yeni bitti" anı tam orasıdır.
+      if (dolu || doluyduRef.current) durumSor(bekleyen.map(m => m.id))
+      doluyduRef.current = dolu
+    }
+    window.addEventListener(PDF_KUYRUK_OLAYI, dinle)
+    return () => window.removeEventListener(PDF_KUYRUK_OLAYI, dinle)
+  }, [bekleyen])
 
   const hazirla = async (ids) => {
     if (!ids.length) { toast.info('Önce kalıp seç'); return }
@@ -534,6 +543,7 @@ function ExistingMolds({ molds, onOpen, onDelete, onBulkDeleted }) {
       if (hata.length) toast.error(`${hata.length} kalıpta sorun: ${hata[0].mesaj || ''}`)
       setSecili(new Set())
       durumSor(ids)
+      pdfKuyrugunuYenile()   // panel 3 sn beklemeden açılsın
     } catch (e) { toast.error(e?.detail || 'Hazırlanamadı') }
     finally { setBusy(false) }
   }

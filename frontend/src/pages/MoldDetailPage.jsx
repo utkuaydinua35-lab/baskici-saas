@@ -46,6 +46,7 @@ export default function MoldDetailPage() {
         api.get(`/api/molds/${moldId}/history`),
       ])
       setMold(d); setStages(st.stages || []); setHistory(h.items || [])
+      setBeyazSecili(new Set(d.beyaz_slotlar || []))
     } catch (e) {
       setError(typeof e?.detail === 'string' ? e.detail : 'Kalıp yüklenemedi')
     } finally { setLoading(false) }
@@ -90,6 +91,12 @@ export default function MoldDetailPage() {
   }
 
   const [pdfBusy, setPdfBusy] = useState(false)
+  // Beyaz altlık: beyaz kılıf bitince krem/gri kılıf kullanılıyor ve baskı
+  // makinesi koyu yüzeye önce beyaz kafayla altlık atmalı. Seçilen slotlara
+  // modelin ölçüsünde/ovalliğinde CMYK(0,0,0,K) dolgu basan AYRI bir PDF üretilir.
+  const [beyazMod, setBeyazMod] = useState(false)
+  const [beyazSecili, setBeyazSecili] = useState(() => new Set())
+  const [beyazBusy, setBeyazBusy] = useState(false)
   const [pdfDurum, setPdfDurum] = useState(null)   // {durum: hazir|hazirlaniyor|yok|hata}
   const doRename = async () => {
     const v = renameVal.trim()
@@ -194,6 +201,56 @@ export default function MoldDetailPage() {
     } catch (e) {
       toast.error('PDF indirilemedi: ' + (e.message || ''))
     } finally { setPdfBusy(false) }
+  }
+
+  const beyazToggle = (slotIndex) => setBeyazSecili((s) => {
+    const n = new Set(s); n.has(slotIndex) ? n.delete(slotIndex) : n.add(slotIndex); return n
+  })
+
+  const beyazKaydet = async () => {
+    setBeyazBusy(true)
+    try {
+      const r = await api.patch(`/api/molds/${moldId}/beyaz-slotlar`,
+                                { slotlar: [...beyazSecili] })
+      setBeyazSecili(new Set(r.slotlar || []))
+      setBeyazMod(false)
+      toast.success(r.slotlar?.length
+        ? `${r.slotlar.length} slot beyaz altlık için işaretlendi`
+        : 'Beyaz altlık seçimi temizlendi')
+      load()
+    } catch (e) { toast.error(e?.detail || 'Kaydedilemedi') }
+    finally { setBeyazBusy(false) }
+  }
+
+  const beyazPdfIndir = async () => {
+    setBeyazBusy(true)
+    try {
+      const res = await fetch(`/api/molds/${moldId}/beyaz-pdf`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
+      })
+      if (!res.ok) {
+        let detay = ''
+        try { detay = (await res.json())?.detail || '' } catch { /* json degilse gec */ }
+        toast.error(detay || `Beyaz altlık üretilemedi (HTTP ${res.status})`)
+        return
+      }
+      // Sunucu atlanan slotlari basliga yaziyor — sessizce eksik basmayalim
+      try {
+        const rapor = JSON.parse(res.headers.get('X-Beyaz-Rapor') || '{}')
+        if (rapor.skipped_count) {
+          toast.error(`${rapor.skipped_count} slot atlandı: ` +
+            (rapor.skipped || []).map(x => `#${(x.slot ?? 0) + 1} (${x.reason})`).join(', '))
+        }
+      } catch { /* baslik yoksa gec */ }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${mold?.kod || moldId}-BEYAZ.pdf`
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) { toast.error('İndirilemedi: ' + (e.message || '')) }
+    finally { setBeyazBusy(false) }
   }
 
   const toggleSlot = async (itemId, val) => {
@@ -319,6 +376,7 @@ export default function MoldDetailPage() {
           <h2 className="text-sm font-medium text-gray-300 mb-1">Baskı Görünümü</h2>
           <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · boş slot ➜ + ile ata</p>
           <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget} labelSettings={labelSettings}
+                    beyazMod={beyazMod} beyazSecili={beyazSecili} onBeyazToggle={beyazToggle}
             onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} big />
         </div>
       ) : (
@@ -374,6 +432,17 @@ export default function MoldDetailPage() {
                     : pdfDurum?.durum === 'hazirlaniyor' ? `⏳ Hazırlanıyor… ${pdfDurum.gecen_sn || 0} sn`
                     : '📄 PDF Hazırla'}
                 </button>
+                <button onClick={beyazPdfIndir}
+                  disabled={beyazBusy || beyazSecili.size === 0}
+                  title={beyazSecili.size === 0
+                    ? 'Önce "Beyaz arkaplan slotu ata" ile slot seç'
+                    : `${beyazSecili.size} slot için beyaz altlık PDF'i`}
+                  className="w-full !text-sm px-3 py-2 rounded-lg border transition-colors
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             bg-white/10 text-gray-100 border-white/25 hover:bg-white/20">
+                  {beyazBusy ? '⏳ …' : `⬇ Beyaz Arkaplan Kalıp PDF İndir${
+                    beyazSecili.size ? ` (${beyazSecili.size})` : ''}`}
+                </button>
                 <button onClick={downloadPdf} disabled={pdfBusy}
                   className="btn-primary w-full !text-sm disabled:opacity-50">
                   {pdfBusy ? '⏳ Hazırlanıyor...' : '⬇ PDF İndir'}
@@ -410,7 +479,29 @@ export default function MoldDetailPage() {
             </div>
           </div>
           <div className="lg:col-span-2 card">
-            <h2 className="text-sm font-medium text-gray-200 mb-1">Slot Yerleşimi</h2>
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+              <h2 className="text-sm font-medium text-gray-200">Slot Yerleşimi</h2>
+              {beyazMod ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">{beyazSecili.size} slot seçili</span>
+                  <button onClick={() => { setBeyazMod(false); load() }}
+                          className="text-[11px] text-gray-500 hover:text-gray-300 underline">vazgeç</button>
+                  <button onClick={beyazKaydet} disabled={beyazBusy}
+                          className="btn-primary !text-xs !py-1 disabled:opacity-50">
+                    {beyazBusy ? '…' : 'Seçimi kaydet'}
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setBeyazMod(true)}
+                        title="Beyaz kılıf yerine krem/gri kılıf kullanılan slotları işaretle — yalnız onlara beyaz altlık basılır"
+                        className="text-xs px-2.5 py-1 rounded-lg border border-white/25 bg-white/5 text-gray-200 hover:bg-white/15 transition-colors">
+                  ◻ Beyaz arkaplan slotu ata
+                  {beyazSecili.size > 0 && (
+                    <span className="ml-1.5 text-[10px] text-gray-400">({beyazSecili.size})</span>
+                  )}
+                </button>
+              )}
+            </div>
             {(!mold.kalip_kodlari || mold.kalip_kodlari.length === 0) ? (
               <div className="text-center py-10">
                 <div className="text-4xl mb-3">📭</div>
@@ -422,6 +513,7 @@ export default function MoldDetailPage() {
               <>
                 <p className="text-xs text-gray-500 mb-3">9×3 grid · {mold.kilif_sayisi} slot dolu · slota tıkla → hazır işaretle · boş + → ata</p>
                 <SlotGrid items={mold.items} onToggle={toggleSlot} onRemove={setRemoveTarget} labelSettings={labelSettings}
+                    beyazMod={beyazMod} beyazSecili={beyazSecili} onBeyazToggle={beyazToggle}
                   onAssign={(kod) => setAssignTarget({ kalip_kodu: kod })} />
               </>
             )}
@@ -538,7 +630,8 @@ function StageDropdown({ stages, current, onSelect }) {
   )
 }
 
-function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings }) {
+function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings,
+                   beyazMod, beyazSecili, onBeyazToggle }) {
   // Backend'in atadigi slot_index'e gore yerlestir (1=alt-sag, 27=ust-sol).
   // slot_index 0-tabanli (0..26) -> slot_no = slot_index + 1.
   const bySlot = {}
@@ -576,6 +669,9 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings }) {
                 assignKod={canAssign ? rowKod : null}
                 big={big}
                 labelSettings={labelSettings}
+                beyazMod={beyazMod}
+                beyazSecili={beyazSecili?.has(slotNo - 1)}
+                onBeyazToggle={onBeyazToggle ? () => onBeyazToggle(slotNo - 1) : null}
               />
             })}
           </div>
@@ -587,7 +683,8 @@ function SlotGrid({ items, onToggle, onRemove, onAssign, big, labelSettings }) {
   )
 }
 
-function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big, labelSettings }) {
+function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big, labelSettings,
+               beyazMod, beyazSecili, onBeyazToggle }) {
   if (!item) {
     if (onAssign) {
       return (
@@ -607,10 +704,15 @@ function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big, labelSet
       </div>
     )
   }
+  const beyazTikla = (e) => { e.stopPropagation(); onBeyazToggle && onBeyazToggle() }
   return (
-    <button onClick={() => onToggle(item.id, !item.is_hazir)}
-      title={`${item.kalip_kodu} · ${item.design_code || ''} · ${item.model || ''} · #${item.order_number} — tıkla: hazır işaretle`}
-      className={`${big ? 'aspect-[9/15]' : 'aspect-[9/16]'} rounded-lg border overflow-hidden relative text-left ${item.is_hazir ? 'border-emerald-500/60' : 'border-accent/40'} bg-brand-input`}>
+    <button onClick={beyazMod ? beyazTikla : () => onToggle(item.id, !item.is_hazir)}
+      title={beyazMod
+        ? `#${no} · ${item.model || ''} — beyaz altlık için işaretle`
+        : `${item.kalip_kodu} · ${item.design_code || ''} · ${item.model || ''} · #${item.order_number} — tıkla: hazır işaretle`}
+      className={`${big ? 'aspect-[9/15]' : 'aspect-[9/16]'} rounded-lg border overflow-hidden relative text-left ${
+        beyazMod && beyazSecili ? 'border-white ring-2 ring-white/60'
+        : item.is_hazir ? 'border-emerald-500/60' : 'border-accent/40'} bg-brand-input`}>
       {item.thumbnail_url && (
         <img src={item.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-55" onError={e => { e.target.style.display = 'none' }} />
       )}
@@ -619,6 +721,16 @@ function Slot({ item, no, onToggle, onRemove, onAssign, assignKod, big, labelSet
       <div className="absolute top-1 left-1 text-[9px] font-mono text-accent bg-black/40 rounded px-1">{item.kalip_kodu}</div>
       <span onClick={(e) => { e.stopPropagation(); onRemove && onRemove(item) }} title="Kalıptan çıkar" className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-red-500/80 hover:bg-red-500 text-white text-[9px] flex items-center justify-center z-20">×</span>
       <KalipSlotLabels item={item} no={no} settings={labelSettings} />
+      {beyazMod && (
+        <span className="absolute inset-0 z-30 flex items-center justify-center
+                         bg-black/45 transition-colors">
+          <span className={`w-7 h-7 rounded-md border-2 grid place-items-center text-sm font-bold
+                            ${beyazSecili ? 'bg-white border-white text-gray-900'
+                                          : 'bg-black/40 border-white/70 text-transparent'}`}>
+            ✓
+          </span>
+        </span>
+      )}
     </button>
   )
 }

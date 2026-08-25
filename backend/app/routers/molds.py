@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -480,6 +482,8 @@ def _serialize_mold_detail(mo, db):
         "rows_used": mo.rows_used, "status": mo.status,
         "current_stage": mo.current_stage, "is_hatali": mo.is_hatali,
         "slot_kilitli": bool(getattr(mo, "slot_kilitli", False)),
+        # Beyaz altlık atılacak slotlar — seçim kalıcı, panel işaretli açar
+        "beyaz_slotlar": list(getattr(mo, "beyaz_slotlar", None) or []),
         "current_stage_info": _stage_info(mo.current_stage),
         "progress_percent": _mold_progress(mo.current_stage),
         "hazir_count": hazir_count,
@@ -972,6 +976,8 @@ def _pdf_girdi(db, mo, tenant_id):
     template_data = {
         "page_w_pt": tpl.page_w_pt, "page_h_pt": tpl.page_h_pt,
         "cols": tpl.cols, "rows": tpl.rows, "boxes": tpl.boxes,
+        # Beyaz altlığın CMYK K kanalı — baskı kurulumuna ait, şablonda durur.
+        "beyaz_k": getattr(tpl, "beyaz_k", None),
     }
     return slot_items, template_data
 
@@ -1010,6 +1016,78 @@ def pdf_hazirla(body: PdfHazirlaIn, arka_plan: BackgroundTasks,
         sonuc.append({"mold_id": str(mid), "kod": mo.kod, "durum": "hazirlaniyor"})
     return {"ok": True, "items": sonuc,
             "kuyruga_alinan": sum(1 for x in sonuc if x["durum"] == "hazirlaniyor")}
+
+
+class BeyazSlotIn(BaseModel):
+    slotlar: list[int] = Field(default_factory=list)
+
+
+@router.patch("/{mold_id}/beyaz-slotlar", response_model=dict)
+def beyaz_slotlari_kaydet(
+    mold_id: uuid.UUID,
+    body: BeyazSlotIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Beyaz altlık atılacak slotları kaydet (slot_index listesi).
+
+    Beyaz kılıf bitince krem/gri kılıf kullanılıyor ve baskı makinesi koyu
+    yüzeye önce beyaz kafayla altlık atmalı. Seçim kalıcı: kalıp tekrar
+    açıldığında işaretler duruyor, düzeltilip yeniden üretilebiliyor.
+    """
+    mo = db.scalar(select(Mold).where(Mold.id == mold_id,
+                                      Mold.tenant_id == user.tenant_id)
+                   .options(selectinload(Mold.items)))
+    if not mo:
+        raise HTTPException(404, "Kalıp bulunamadı")
+
+    # Yalnızca GERÇEKTEN dolu slotlar seçilebilir: boş slotun telefon modeli
+    # yoktur, altlık ölçüsü de çıkarılamaz.
+    dolu = {it.slot_index for it in mo.items if it.slot_index is not None}
+    secili = sorted({int(x) for x in body.slotlar} & dolu)
+    gecersiz = sorted({int(x) for x in body.slotlar} - dolu)
+
+    mo.beyaz_slotlar = secili
+    db.commit()
+    return {"ok": True, "slotlar": secili, "yoksayilan": gecersiz}
+
+
+@router.get("/{mold_id}/beyaz-pdf", response_model=None)
+def beyaz_altlik_pdf(
+    mold_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Beyaz altlık kalıbının PDF'i — yalnız seçili slotlar dolu.
+
+    Tasarım PDF'inden AYRI bir baskıdır: önce bu basılır (beyaz kafa), sonra
+    tasarım. Ölçü/konum/ovallik tasarım kalıbıyla birebir aynı.
+    """
+    from app.services import mold_pdf
+
+    mo = db.scalar(select(Mold).where(Mold.id == mold_id,
+                                      Mold.tenant_id == user.tenant_id))
+    if not mo:
+        raise HTTPException(404, "Kalıp bulunamadı")
+    secili = list(mo.beyaz_slotlar or [])
+    if not secili:
+        raise HTTPException(400, "Önce beyaz altlık atılacak slotları seç.")
+
+    slot_items, tpl = _pdf_girdi(db, mo, user.tenant_id)
+    k = float(tpl.get("beyaz_k") or mold_pdf.BEYAZ_K_VARSAYILAN)
+    try:
+        veri, rapor = mold_pdf.render_beyaz_altlik_pdf(slot_items, tpl, secili, k=k)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    ad = f"{mo.kod}-BEYAZ.pdf".replace("/", "-")
+    return Response(
+        content=veri, media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ad}"',
+            "X-Beyaz-Rapor": json.dumps(rapor, default=str)[:900],
+        },
+    )
 
 
 @router.get("/pdf/kuyruk", response_model=dict)

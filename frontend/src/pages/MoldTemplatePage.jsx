@@ -94,6 +94,7 @@ export default function MoldTemplatePage() {
             <Info label="Sayfa" value={`${tpl.page_w_cm} × ${tpl.page_h_cm} cm`} />
             <Info label="Izgara" value={`${tpl.cols} × ${tpl.rows}`} />
             <Info label="Kutu sayısı" value={tpl.box_count} accent />
+            <BeyazKAyari tpl={tpl} onKaydedildi={load} />
           </div>
           {/* Kutu önizleme — şablon oranında */}
           <TemplatePreview tpl={tpl} />
@@ -132,6 +133,44 @@ function TemplatePreview({ tpl }) {
       <p className="text-[11px] text-gray-600 mt-2">
         Numaralar şablondaki kutu sırasını gösterir (panel ile aynı: üst-sol → alt-sağ).
       </p>
+    </div>
+  )
+}
+
+/** Beyaz altlığın CMYK K kanalı — baskı kurulumu, şablonda saklanır.
+ *  Saf 0,0,0,0 baskıda HİÇ mürekkep demek; makinenin beyaz kafayı sürmesi
+ *  için küçük bir K gerekiyor. Makine/RIP değişirse buradan ayarlanır. */
+function BeyazKAyari({ tpl, onKaydedildi }) {
+  const [deger, setDeger] = useState(Math.round((tpl.beyaz_k ?? 0.05) * 100))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const kaydet = async () => {
+    setBusy(true); setMsg('')
+    try {
+      await api.patch('/api/templates/beyaz-k', { beyaz_k: deger / 100 })
+      setMsg('✓ kaydedildi')
+      onKaydedildi && onKaydedildi()
+    } catch (e) { setMsg(e?.detail || 'kaydedilemedi') }
+    finally { setBusy(false); setTimeout(() => setMsg(''), 2500) }
+  }
+  return (
+    <div className="rounded-lg border border-brand-border bg-brand-input/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+        Beyaz altlık K
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input type="number" min="0" max="100" value={deger}
+               onChange={(e) => setDeger(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+               className="input !py-1 !px-2 w-16 text-sm" />
+        <span className="text-sm text-gray-400">%</span>
+        <button onClick={kaydet} disabled={busy}
+                className="btn-secondary !text-xs !py-1 !px-2 disabled:opacity-50">
+          {busy ? '…' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="text-[10px] text-gray-500 mt-1">
+        CMYK 0,0,0,{deger} {msg && <span className="text-emerald-400 ml-1">{msg}</span>}
+      </div>
     </div>
   )
 }

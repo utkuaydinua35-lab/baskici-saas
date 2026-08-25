@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,8 @@ def _serialize(t: MoldTemplate) -> dict:
         "page_w_cm": round(t.page_w_pt / 28.3464567, 2) if t.page_w_pt else 0,
         "page_h_cm": round(t.page_h_pt / 28.3464567, 2) if t.page_h_pt else 0,
         "cols": t.cols, "rows": t.rows, "box_count": t.box_count,
+        # Beyaz altlığın CMYK K kanalı (baskı kurulumu)
+        "beyaz_k": getattr(t, "beyaz_k", None),
         "boxes": t.boxes, "is_active": t.is_active,
         "has_file": bool(t.file_path),
         "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -40,6 +43,33 @@ def get_template(user: User = Depends(get_current_user), db: Session = Depends(g
         .order_by(MoldTemplate.created_at.desc())
     )
     return _serialize(t) if t else None
+
+
+class BeyazKIn(BaseModel):
+    beyaz_k: float = Field(..., ge=0.0, le=1.0)
+
+
+@router.patch("/beyaz-k", response_model=dict)
+def beyaz_k_ayarla(
+    body: BeyazKIn,
+    user: User = Depends(require_permission("kalip")),
+    db: Session = Depends(get_db),
+):
+    """Beyaz altlığın CMYK K kanalını ayarla (0-1).
+
+    Baskı kurulumuna ait bir değer, o yüzden ŞABLONDA durur — tarayıcı ayarı
+    olsaydı her bilgisayarda farklı basardı. Saf 0,0,0,0 baskıda hiç mürekkep
+    demek; makinenin beyaz kafayı sürmesi için küçük bir K gerekiyor.
+    """
+    t = db.scalar(select(MoldTemplate).where(
+        MoldTemplate.tenant_id == user.tenant_id,
+        MoldTemplate.is_active == True,  # noqa: E712
+    ).order_by(MoldTemplate.created_at.desc()))
+    if not t:
+        raise HTTPException(404, "Önce kalıp şablonu yükleyin")
+    t.beyaz_k = float(body.beyaz_k)
+    db.commit()
+    return {"ok": True, "beyaz_k": t.beyaz_k}
 
 
 @router.post("/upload", response_model=None)

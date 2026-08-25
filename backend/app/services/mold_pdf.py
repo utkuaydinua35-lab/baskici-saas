@@ -227,6 +227,27 @@ def _raster_sayfa(src_path, w_pt, h_pt) -> bytes | None:
         return None      # rasterlestiremezsek vektor yola dusulur
 
 
+def _yuvarlak_yol(w_pt: float, h_pt: float, radius: float,
+                  *, x0: float = 0.0, y0: float = 0.0) -> str:
+    """Yuvarlak köşeli dikdörtgenin PDF yol operatörleri (kapatılmış, boyanmamış).
+
+    Hem tasarım KIRPMASI hem beyaz ALTLIK dolgusu bunu kullanır — iki yerde
+    kopyalanırsa altlık ile baskı alanı birbirini tutmaz ve kenarda beyaz taşar
+    ya da eksik kalır. Çağıran sonuna 'W n' (clip) veya 'f' (dolgu) ekler.
+    """
+    rr = min(radius, w_pt / 2, h_pt / 2)
+    k = 0.5523 * rr          # bezier kappa = matematiksel çeyrek daire
+    x1 = x0 + w_pt
+    pb, pt = y0, y0 + h_pt   # PDF: alt=y0, üst=y0+h
+    return (
+        f"{x0+rr:.3f} {pb:.3f} m {x1-rr:.3f} {pb:.3f} l "
+        f"{x1-rr+k:.3f} {pb:.3f} {x1:.3f} {pb+rr-k:.3f} {x1:.3f} {pb+rr:.3f} c "
+        f"{x1:.3f} {pt-rr:.3f} l {x1:.3f} {pt-rr+k:.3f} {x1-rr+k:.3f} {pt:.3f} {x1-rr:.3f} {pt:.3f} c "
+        f"{x0+rr:.3f} {pt:.3f} l {x0+rr-k:.3f} {pt:.3f} {x0:.3f} {pt-rr+k:.3f} {x0:.3f} {pt-rr:.3f} c "
+        f"{x0:.3f} {pb+rr:.3f} l {x0:.3f} {pb+rr-k:.3f} {x0+rr-k:.3f} {pb:.3f} {x0+rr:.3f} {pb:.3f} c h "
+    )
+
+
 def _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius):
     """Yuvarlak köşe VEKTÖR clip'i uygula + kalıcı hale getir. Dönüş: pdf bytes.
 
@@ -234,17 +255,7 @@ def _clip_ve_kapat(tmp, pg, w_pt, h_pt, radius):
     kopya durursa biri düzeltilip diğeri unutulur.
     """
     if radius > 0:
-        rr = min(radius, w_pt / 2, h_pt / 2)
-        k = 0.5523 * rr  # bezier kappa = matematiksel çeyrek daire
-        x0, x1 = 0.0, w_pt
-        pb, pt = 0.0, h_pt  # PDF: alt=0, üst=h_pt (bu sayfa için)
-        ops = (
-            f"{x0+rr:.3f} {pb:.3f} m {x1-rr:.3f} {pb:.3f} l "
-            f"{x1-rr+k:.3f} {pb:.3f} {x1:.3f} {pb+rr-k:.3f} {x1:.3f} {pb+rr:.3f} c "
-            f"{x1:.3f} {pt-rr:.3f} l {x1:.3f} {pt-rr+k:.3f} {x1-rr+k:.3f} {pt:.3f} {x1-rr:.3f} {pt:.3f} c "
-            f"{x0+rr:.3f} {pt:.3f} l {x0+rr-k:.3f} {pt:.3f} {x0:.3f} {pt-rr+k:.3f} {x0:.3f} {pt-rr:.3f} c "
-            f"{x0:.3f} {pb+rr:.3f} l {x0:.3f} {pb+rr-k:.3f} {x0+rr-k:.3f} {pb:.3f} {x0+rr:.3f} {pb:.3f} c h W n "
-        )
+        ops = _yuvarlak_yol(w_pt, h_pt, radius, x0=0.0, y0=0.0) + "W n "
         # Clip'i içerik akışının BAŞINA koy: baştaki "W n" sonraki tüm çizimi kapsar.
         # (Eskiden regex ile aranıp araya sokuluyordu; desen tutmazsa yuvarlatma
         # SESSİZCE atlanıp köşeler keskin kalıyordu.)
@@ -366,6 +377,92 @@ def _make_clipped_image(src_path, w_pt, h_pt, radius):
     out = tmp.tobytes(garbage=4, deflate=True)
     tmp.close()
     return out
+
+
+BEYAZ_K_VARSAYILAN = 0.05   # CMYK K = %5 (saf 0,0,0,0 baskıda HİÇ mürekkep demek)
+
+
+def render_beyaz_altlik_pdf(mold_items, template=None, secili_slotlar=None,
+                            k: float = BEYAZ_K_VARSAYILAN):
+    """Beyaz altlık kalıbı — YALNIZCA seçili slotlara düz dolgu.
+
+    Neden: baskı makinesi koyu yüzeye önce beyaz kafayla altlık atar. Beyaz kılıf
+    bittiğinde krem/gri kılıf kullanılıyor ve o slotlara altlık şart; beyaz
+    kılıftaki slotlara ise atılmamalı (üste beyaz basmanın anlamı yok).
+
+    Dolgu, tasarımın basıldığı dikdörtgenin BİREBİR aynısı: aynı ölçü, aynı
+    köşe ovalliği, aynı hizalama (_placement_rect + _yuvarlak_yol). Seçilmeyen
+    slotlar BOŞ kalır — tasarımları olsa bile hiçbir şey çizilmez.
+
+    k: CMYK'nın K kanalı (0-1). Renk DeviceCMYK (0, 0, 0, k).
+    """
+    if not template or not template.get("boxes"):
+        raise ValueError("Kalıp şablonu tanımlı değil — önce şablon yükleyin")
+    secili = {int(x) for x in (secili_slotlar or [])}
+    if not secili:
+        raise ValueError("Beyaz altlık için hiç slot seçilmedi")
+
+    page_w = template["page_w_pt"]
+    page_h = template["page_h_pt"]
+    cols = template.get("cols") or 9
+    rows = template.get("rows") or 3
+    boxes = template["boxes"]
+
+    doc = fitz.open()
+    page = doc.new_page(width=page_w, height=page_h)
+    slots = _ordered_slots(mold_items, cols, rows)
+
+    placed, skipped = 0, []
+    for idx, it in enumerate(slots):
+        # Seçim SLOT NUMARASI (slot_index) üzerinden — kutu sırası değil.
+        # _ordered_slots'ta ikisi TERS: slots[idx] -> slot_index == n-1-idx.
+        # Kutu sırasıyla karşılaştırmak altlığı ayna konumlara basardı.
+        if it is None or it.get("slot_index") not in secili:
+            continue
+        if idx >= len(boxes):
+            skipped.append({"slot": it.get("slot_index"), "reason": "sablon_kutu_yetersiz"})
+            continue
+        pr = _placement_rect(boxes[idx], it.get("model") or "", it.get("spec"))
+        if pr is None:
+            # Ölçüsü bilinmeyen model: altlık YANLIŞ boyda basılmasın diye atla.
+            skipped.append({"slot": it.get("slot_index"), "model": it.get("model"),
+                            "reason": "olcu_yok"})
+            continue
+        rect, radius = pr
+        try:
+            # Altlık, TASARIMLARLA AYNI yoldan geçer: w×h'lik geçici sayfayı
+            # doldur → _clip_ve_kapat ile yuvarlat → show_pdf_page ile yerleştir.
+            # Geometri böylece tanım gereği birebir aynı; ayrı bir çizim yolu
+            # yazsaydık zamanla ayrışır, altlık baskı alanını tutmazdı.
+            tmp = fitz.open()
+            pg = tmp.new_page(width=rect.width, height=rect.height)
+            pg.draw_rect(fitz.Rect(0, 0, rect.width, rect.height),
+                         color=None, fill=(0, 0, 0, k))   # 4'lü = DeviceCMYK
+            kirpik = _clip_ve_kapat(tmp, pg, rect.width, rect.height, radius)
+            src = fitz.open(stream=kirpik, filetype="pdf")
+            page.show_pdf_page(rect, src, 0)
+            src.close()
+            placed += 1
+        except Exception as e:  # noqa: BLE001
+            skipped.append({"slot": it.get("slot_index"), "model": it.get("model"),
+                            "reason": f"yerlestirme_hatasi: {e}"})
+
+    # Seçilmiş ama kalemi olmayan slot varsa sessiz kalma
+    _bulunan = {it.get("slot_index") for it in slots if it is not None}
+    for si in sorted(secili - _bulunan):
+        skipped.append({"slot": si, "reason": "slot_bos"})
+
+    buf = io.BytesIO()
+    doc.save(buf, deflate=True)
+    doc.close()
+    return buf.getvalue(), {
+        "placed": placed,
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+        "secili": sorted(secili),
+        "k": k,
+        "page_cm": [round(page_w / CM_TO_PT, 1), round(page_h / CM_TO_PT, 1)],
+    }
 
 
 def render_mold_pdf(mold_items, template=None):

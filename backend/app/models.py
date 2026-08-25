@@ -864,6 +864,11 @@ class Mold(Base):
     slot_kilitli: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    # Beyaz altlık atılacak slotlar (slot_index listesi). Beyaz kılıf bitince
+    # krem/gri kılıf kullanılıyor; baskı makinesi koyu yüzeye önce beyaz kafayla
+    # altlık atmalı. Yalnız BU slotlara altlık basılır, diğerleri boş kalır.
+    beyaz_slotlar: Mapped[list] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False)
     print_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     print_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     print_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -929,6 +934,11 @@ class MoldTemplate(Base):
     rows: Mapped[int] = mapped_column(Integer, default=3)
     box_count: Mapped[int] = mapped_column(Integer, default=0)
     boxes: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))  # [{x0,y0,x1,y1,w,h}]
+    # Beyaz altlığın CMYK K kanalı (0-1). Saf 0,0,0,0 baskıda HİÇ mürekkep
+    # demek; makinenin beyaz kafayı sürmesi için küçük bir K değeri gerekiyor.
+    # Baskı kurulumuna ait olduğu için şablonda — tarayıcı ayarı değil.
+    beyaz_k: Mapped[float] = mapped_column(
+        Float, default=0.05, server_default=text("0.05"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

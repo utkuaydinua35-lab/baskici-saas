@@ -15,9 +15,14 @@ export function pdfKuyrugunuYenile() {
   window.dispatchEvent(new CustomEvent(PDF_YENILE_OLAYI))
 }
 
-export default function PdfHazirlikPaneli({ araAt = 3000 }) {
+export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 30000 }) {
   const [isler, setIsler] = useState([])
   const [hata, setHata] = useState('')
+  // Kuyruk BOŞKEN de 3 sn'de bir sorulunuyordu: açık her sekme sunucuya günde
+  // ~28.000 istek atıyordu ve her biri JWT çözüp kullanıcıyı veritabanından
+  // okuyor. İş varken sık, boştayken seyrek sor. "Hazırla" anlık tetiklediği
+  // için gecikme hissedilmiyor.
+  const dolu = isler.length > 0
 
   useEffect(() => {
     let durduruldu = false
@@ -37,15 +42,21 @@ export default function PdfHazirlikPaneli({ araAt = 3000 }) {
       }
     }
     sor()
-    const t = setInterval(sor, araAt)
+    const t = setInterval(sor, dolu ? araAt : bosAraAt)
     // "Hazırla"dan gelen anlık tetik
     const hemen = () => sor()
+    // Sekme arka planda kısıtlanıyor; öne gelince bayat kutu kalmasın.
+    const gorunurluk = () => { if (!document.hidden) sor() }
     window.addEventListener(PDF_YENILE_OLAYI, hemen)
+    document.addEventListener('visibilitychange', gorunurluk)
+    window.addEventListener('focus', gorunurluk)
     return () => {
       durduruldu = true; clearInterval(t)
       window.removeEventListener(PDF_YENILE_OLAYI, hemen)
+      document.removeEventListener('visibilitychange', gorunurluk)
+      window.removeEventListener('focus', gorunurluk)
     }
-  }, [araAt])
+  }, [araAt, bosAraAt, dolu])
 
   if (hata) {
     return (

@@ -143,15 +143,47 @@ export default function MoldDetailPage() {
   const durumSor = async () => {
     try {
       const r = await api.get(`/api/molds/pdf/durum?ids=${moldId}`)
-      setPdfDurum((r.items || {})[moldId] || { durum: 'yok' })
+      const d = (r.items || {})[moldId] || { durum: 'yok' }
+      // Sayacı YEREL ilerletebilmek için cevabın alındığı anı da sakla.
+      setPdfDurum({ ...d, alindi: Date.now() })
     } catch { /* sessiz */ }
   }
   useEffect(() => { if (moldId) durumSor() }, [moldId])
+
+  // Yoklama aralığı. Bağımlılık pdfDurum NESNESİ değil, yalnız durum METNİ:
+  // her cevap yeni bir nesne olduğu için efekt her yoklamada sökülüp yeniden
+  // kuruluyor ve 5 sn'lik sayaç sürekli baştan başlıyordu.
   useEffect(() => {
     if (pdfDurum?.durum !== 'hazirlaniyor') return
     const t = setInterval(durumSor, 5000)
+    // Sekme arka plana alınınca tarayıcı setInterval'i dakikaya kadar kısıyor;
+    // geri dönüldüğünde ekranda DAKİKALAR ÖNCESİNİN sayacı kalıyor ve iş
+    // donmuş gibi görünüyordu. Görünür olur olmaz hemen sor.
+    const gorunurluk = () => { if (!document.hidden) durumSor() }
+    document.addEventListener('visibilitychange', gorunurluk)
+    window.addEventListener('focus', gorunurluk)
+    return () => {
+      clearInterval(t)
+      document.removeEventListener('visibilitychange', gorunurluk)
+      window.removeEventListener('focus', gorunurluk)
+    }
+  }, [pdfDurum?.durum, moldId])
+
+  // Saniye sayacı yoklamadan BAĞIMSIZ aksın: 5 sn'de bir gelen cevabı beklemek
+  // yerine son cevabın üstüne geçen süreyi ekle. (Sekme arka plandayken tarayıcı
+  // bu zamanlayıcıyı da kısar — orada zaten kimse bakmıyor; öne dönüldüğünde
+  // yukarıdaki visibilitychange kancası anında taze değeri getiriyor.)
+  const [simdi, setSimdi] = useState(() => Date.now())
+  useEffect(() => {
+    if (pdfDurum?.durum !== 'hazirlaniyor') return
+    setSimdi(Date.now())
+    const t = setInterval(() => setSimdi(Date.now()), 1000)
     return () => clearInterval(t)
-  }, [pdfDurum])
+  }, [pdfDurum?.durum])
+  const gecenSn = pdfDurum?.durum === 'hazirlaniyor'
+    ? (pdfDurum.gecen_sn || 0)
+      + Math.max(0, Math.floor((simdi - (pdfDurum.alindi || simdi)) / 1000))
+    : 0
 
   const hazirlaPdf = async () => {
     setPdfBusy(true)
@@ -429,9 +461,19 @@ export default function MoldDetailPage() {
                   title="Baskıdan önce PDF'i hazırla — baskı sırasında beklemezsin"
                   className="btn-secondary !text-sm disabled:opacity-50 whitespace-nowrap">
                   {pdfDurum?.durum === 'hazir' ? '✓ PDF hazır'
-                    : pdfDurum?.durum === 'hazirlaniyor' ? `⏳ Hazırlanıyor… ${pdfDurum.gecen_sn || 0} sn`
+                    : pdfDurum?.durum === 'hazirlaniyor'
+                      ? `⏳ Hazırlanıyor… ${gecenSn >= 60
+                          ? `${Math.floor(gecenSn / 60)} dk ${gecenSn % 60} sn` : `${gecenSn} sn`}`
                     : '📄 PDF Hazırla'}
                 </button>
+                {pdfDurum?.durum === 'hazirlaniyor' && (
+                  <p className="text-[10px] text-gray-500 leading-snug -mt-1">
+                    {pdfDurum.basladi === false
+                      ? 'Sırada bekliyor — önündeki kalıp bitince başlayacak.'
+                      : 'Vektör korunarak üretiliyor; kalıp başına genelde 3–4 dakika.'}
+                    {' '}Sayfadan ayrılabilirsin, üretim sunucuda sürer.
+                  </p>
+                )}
                 <button onClick={beyazPdfIndir}
                   disabled={beyazBusy || beyazSecili.size === 0}
                   title={beyazSecili.size === 0

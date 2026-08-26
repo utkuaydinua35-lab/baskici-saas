@@ -111,8 +111,21 @@ async def dogrulama_hatasi(request: Request, exc: RequestValidationError):
         yol = ".".join(str(x) for x in h.get("loc", ()) if x != "body")
         parcalar.append(f"{yol}: {h.get('msg', 'geçersiz')}")
     ozet = " · ".join(parcalar) or "Geçersiz istek"
+    # Gövdeli isteklerde gövdenin KÜNYESİNİ de yaz. Bir bayi, formu eksiksiz
+    # doldurduğu hâlde "model/adet/kanal/ad_soyad: Field required" aldı; sebep
+    # gövdenin sunucuya BOŞ ulaşmasıydı (araya giren service worker, iOS'ta
+    # dosyalı isteğin gövdesini düşürüyordu). Bu satır olmadan "alan eksik" ile
+    # "gövde hiç gelmemiş" ayırt edilemiyor.
+    kunye = ""
+    if request.method in ("POST", "PUT", "PATCH"):
+        kunye = " | ct=%s len=%s ua=%s" % (
+            request.headers.get("content-type", "-"),
+            request.headers.get("content-length", "-"),
+            (request.headers.get("user-agent", "-") or "-")[:120],
+        )
     logging.getLogger("dogrulama").warning(
-        "dogrulama hatasi %s %s → %s", request.method, request.url.path, ozet)
+        "dogrulama hatasi %s %s → %s%s",
+        request.method, request.url.path, ozet, kunye)
     return JSONResponse(status_code=422, content={"detail": ozet, "alanlar": exc.errors()})
 
 

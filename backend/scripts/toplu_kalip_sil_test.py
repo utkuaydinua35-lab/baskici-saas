@@ -18,9 +18,11 @@ from sqlalchemy import select, text  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.auth.security import verify_password  # noqa: E402
 from app.models import (Design, LineItem, Mold, MoldItem, Order, Store,  # noqa: E402
                         Tenant, User)
 
+DEV_SIFRE = "DevAdmin12345!"
 C = TestClient(app)
 GECTI = KALDI = 0
 IZ = f"tksil{uuid.uuid4().hex[:6]}"
@@ -61,8 +63,19 @@ def _yonetici_girisi(C, db, email: str, sifre: str) -> dict:
 
 db = SessionLocal()
 tenant = db.scalar(select(Tenant).limit(1))
-admin = db.scalar(select(User).where(User.role.in_(("yonetici", "owner"))).limit(1))
-H = _yonetici_girisi(C, db, admin.email, "DevAdmin12345!")
+# ORDER BY'sız limit(1) kullanma: Postgres satır sırası değişince ŞİFRESİ
+# TUTMAYAN yöneticiyi seçip tüm paketi 401'le durdurdu. Dev şifresiyle
+# gerçekten girilebilen hesabı seç.
+_adaylar = db.scalars(
+    select(User).where(User.role.in_(("yonetici", "owner"))).order_by(User.email)
+).all()
+admin = next((u for u in _adaylar
+              if u.password_hash and verify_password(DEV_SIFRE, u.password_hash)), None)
+if admin is None:
+    raise SystemExit(
+        f"Dev sifresiyle girilebilen yonetici YOK ({len(_adaylar)} aday bakildi).\n"
+        f"Bu testler yonetici olmadan CALISAMAZ — atlanmiyor, durduruluyor.")
+H = _yonetici_girisi(C, db, admin.email, DEV_SIFRE)
 
 store = Store(tenant_id=tenant.id, slug=f"{IZ}-s", name="Toplu Sil",
               platform="bayii", is_active=True)

@@ -5,7 +5,7 @@
  * yol açabilir. Bu SW yalnızca "yüklenebilirlik" (installability) için var:
  * standalone mod + ana ekrana ekle. İstekleri olduğu gibi ağa geçirir.
  */
-const VERSION = 'bernz-passthrough-v2-push'
+const VERSION = 'bernz-passthrough-v3-nointercept'
 
 self.addEventListener('install', (event) => {
   // Yeni SW'yi hemen aktive et (bekleme yok)
@@ -23,10 +23,20 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-self.addEventListener('fetch', (event) => {
-  // Pass-through: her zaman ağdan getir, cache'leme.
-  // (fetch handler'ın varlığı installability için yeterli.)
-  event.respondWith(fetch(event.request))
+self.addEventListener('fetch', () => {
+  // BİLEREK BOŞ — hiçbir isteği ele geçirmiyoruz.
+  //
+  // Eskiden `event.respondWith(fetch(event.request))` vardı. Bu, isteği
+  // YENİDEN gönderiyor; iOS Safari'de gövdesi dosya/FormData olan isteklerde
+  // gövde bu sırada KAYBOLUYOR. Bayi sipariş formu bu yüzden sunucuya boş
+  // gövdeyle ulaşıp "model: Field required · adet: Field required …" (422)
+  // dönüyordu — kullanıcı görseli ve modeli seçmiş olmasına rağmen.
+  // (JSON gövdeli girişler etkilenmiyordu: kısa metin gövdesi yeniden
+  // gönderimde korunuyor, dosya akışı korunmuyor.)
+  //
+  // Bu SW zaten HİÇBİR ŞEY cache'lemiyor; araya girmesinin bir faydası yoktu,
+  // yalnızca gecikme ve bu hata riski ekliyordu. Handler'ın VARLIĞI PWA
+  // "ana ekrana ekle" için yeterli, yanıtlaması gerekmiyor.
 })
 
 // ── Web Push: sunucudan gelen bildirimi göster ───────────────────────────

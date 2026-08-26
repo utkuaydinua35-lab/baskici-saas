@@ -19,9 +19,11 @@ from sqlalchemy import select, text  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
+from app.auth.security import verify_password  # noqa: E402
 from app.models import (CheckoutSession, Order, ShopifyOAuthPending,  # noqa: E402
                         Store, Tenant, User)
 
+DEV_SIFRE = "DevAdmin12345!"
 C = TestClient(app)
 GECTI = KALDI = 0
 IZ = f"guvtest{uuid.uuid4().hex[:6]}"
@@ -62,7 +64,18 @@ def _yonetici_girisi(C, db, email: str, sifre: str) -> dict:
 
 db = SessionLocal()
 tenant = db.scalar(select(Tenant).limit(1))
-admin = db.scalar(select(User).where(User.role.in_(("yonetici", "owner"))).limit(1))
+# ORDER BY'sız limit(1) kullanma: Postgres satır sırası değişince ŞİFRESİ
+# TUTMAYAN yöneticiyi seçip tüm paketi 401'le durdurdu. Dev şifresiyle
+# gerçekten girilebilen hesabı seç.
+_adaylar = db.scalars(
+    select(User).where(User.role.in_(("yonetici", "owner"))).order_by(User.email)
+).all()
+admin = next((u for u in _adaylar
+              if u.password_hash and verify_password(DEV_SIFRE, u.password_hash)), None)
+if admin is None:
+    raise SystemExit(
+        f"Dev sifresiyle girilebilen yonetici YOK ({len(_adaylar)} aday bakildi).\n"
+        f"Bu testler yonetici olmadan CALISAMAZ — atlanmiyor, durduruluyor.")
 
 # ─── Kurulum: vitrin mağazası + ödenmiş sipariş ──────────────
 store = Store(tenant_id=tenant.id, slug=f"{IZ}-shop", name="Guvenlik Test",
@@ -120,7 +133,7 @@ es("token ile siparis goruluyor", 200,
 es("gecersiz token 404", 404, C.get(f"/api/shop/orders/{IZ}-yok").status_code)
 
 print("\n── 4. OAuth state: client_secret TASIMAMALI ──")
-H = _yonetici_girisi(C, db, admin.email, "DevAdmin12345!")
+H = _yonetici_girisi(C, db, admin.email, DEV_SIFRE)
 if True:
     SIR = "shpss_COKGIZLI_ANAHTAR_123"
     r = C.post("/api/stores/oauth/start", headers=H, json={

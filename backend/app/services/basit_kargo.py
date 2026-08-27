@@ -30,6 +30,10 @@ HANDLER_NAMES: dict[str, str] = {
     "SELF_YURTICI": "Yurtiçi Kargo",
     "SELF_ARAS": "Aras Kargo",
     "SELF_SURAT": "Sürat Kargo",
+    # Basit Kargo'ya HİÇ gitmeyen, Sürat'ın kendi servisine giden yol.
+    # (Yönlendirme packaging.kargo_gonder'da; burada yalnız görünen adı var —
+    # handler_name() panelin tamamı için tek ad kaynağı.)
+    "DIRECT_SURAT": "Sürat Kargo (doğrudan)",
 }
 DEFAULT_HANDLER = "ECONOMIC"
 

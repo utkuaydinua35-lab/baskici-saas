@@ -282,6 +282,9 @@ const KARGO_GROUPS = [
     ['SELF_PTT', 'PTT — Kendi Anlaşmam'],
     ['SELF_SURAT', 'Sürat — Kendi Anlaşmam'],
   ]],
+  ['Aracısız (doğrudan kargo firması)', [
+    ['DIRECT_SURAT', 'Sürat Kargo — Doğrudan (e-kargo)'],
+  ]],
 ]
 
 function KargoEditor({ store, onSaved }) {

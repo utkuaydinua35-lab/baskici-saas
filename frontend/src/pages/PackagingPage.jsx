@@ -375,26 +375,52 @@ export default function PackagingPage() {
     } catch { return false }
   }
 
-  // Basit Kargo etiket SVG'sini yeniden çek (kargo-gonder boş dönerse / re-print)
-  const fetchKargoSvg = async (orderId) => {
+  // Kargo etiketini yeniden çek (kargo-gonder boş dönerse / re-print).
+  // Basit Kargo SVG, Sürat (doğrudan) PDF döndürür — Content-Type'a bakılır.
+  const fetchKargoEtiket = async (orderId) => {
     try {
       const res = await fetch(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`,
         { headers: { Authorization: `Bearer ${getToken()}` } })
-      return res.ok ? await res.text() : null
+      if (!res.ok) return null
+      const tip = res.headers.get('content-type') || ''
+      if (tip.includes('pdf')) {
+        return { tip: 'pdf', url: URL.createObjectURL(await res.blob()) }
+      }
+      return { tip: 'svg', svg: await res.text() }
     } catch { return null }
+  }
+
+  // PDF etiketi yazdır: gizli iframe'e yükleyip yazdırma penceresini aç.
+  // (SVG'deki gibi HTML'e gömemiyoruz.)
+  const openLabelPdf = async (url) => {
+    try {
+      const f = document.createElement('iframe')
+      f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+      f.src = url
+      document.body.appendChild(f)
+      await new Promise((r) => { f.onload = r; setTimeout(r, 2500) })
+      f.contentWindow.focus(); f.contentWindow.print()
+      // Yazdırma penceresi kapanana kadar iframe dursun
+      setTimeout(() => { f.remove(); URL.revokeObjectURL(url) }, 60000)
+      return true
+    } catch { return false }
   }
 
   // Barkodu yazdır: svg verilmişse onu; yoksa kargo-label'dan kısa retry ile çek
   // (Basit Kargo etiket üretimi yavaş olabiliyor). Döner: yazdırma penceresi açıldı mı.
   const printKargoLabel = async (orderId, svg, takipNo) => {
-    // Zebra varsa doğrudan ZPL — pencere yok, ölçek sorunu yok
+    // Zebra varsa doğrudan ZPL — pencere yok, ölçek sorunu yok.
+    // (Sürat'ın PDF barkodu da bu yoldan geçer; sunucu pdf_to_zpl uyguluyor.)
     if (await zplDene(orderId, 'kargo')) return true
-    let s = svg
-    for (let i = 0; !s && i < 3; i++) {
+    if (svg) return await openLabelSvg(svg, takipNo)
+    // Etiket üretimi gecikebiliyor — kısa aralıklarla tekrar dene
+    for (let i = 0; i < 3; i++) {
       await new Promise(r => setTimeout(r, 1200))
-      s = await fetchKargoSvg(orderId)
+      const et = await fetchKargoEtiket(orderId)
+      if (et?.tip === 'pdf') return await openLabelPdf(et.url)
+      if (et?.tip === 'svg' && et.svg) return await openLabelSvg(et.svg, takipNo)
     }
-    return s ? await openLabelSvg(s, takipNo) : false
+    return false
   }
 
   const kargoGonder = async (opts = {}) => {

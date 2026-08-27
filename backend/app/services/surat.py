@@ -120,6 +120,11 @@ def _addr_parts(raw: dict) -> dict:
     }
 
 
+def is_configured() -> bool:
+    _s = get_settings()
+    return bool(_s.surat_kullanici_adi and _s.surat_sifre)
+
+
 def create_shipment(
     order_raw: dict,
     *,
@@ -127,6 +132,8 @@ def create_shipment(
     canli: bool = True,
     kullanici_adi: str | None = None,
     sifre: str | None = None,
+    il_override: str | None = None,
+    ilce_override: str | None = None,
 ) -> dict:
     """
     Sürat'a gönderi oluşturur.
@@ -135,11 +142,17 @@ def create_shipment(
     _s = get_settings()
     ka = kullanici_adi or _s.surat_kullanici_adi
     sf = sifre or _s.surat_sifre
-    relay_url = (getattr(_s, "surat_relay_url", "") or "").strip()
     if not ka or not sf:
         return {"ok": False, "message": "Sürat kullanıcı adı/şifre tanımlı değil (.env)"}
 
     info = _addr_parts(order_raw)
+    # Adres çözülemeyen siparişlerde panelden elle seçilen il/ilçe
+    # (Basit Kargo akışıyla aynı davranış).
+    if il_override and ilce_override:
+        info["il"] = tr_iller.resolve_il(il_override) or il_override
+        info["ilce"] = ilce_override
+        info["surat_il"] = tr_iller.surat_il_adi(info["il"])
+        info["ilce_gecerli"] = True
     if not info["telefon"] or len(info["telefon"]) < 10:
         return {"ok": False, "message": f"Geçersiz telefon: '{info['telefon']}'"}
     if not info["il"] or not info["adres"]:
@@ -185,23 +198,8 @@ def create_shipment(
 
     def _post():
         """Tek POST; (data, http_status) doner. Hata durumunda Exception."""
-        if relay_url:
-            r = requests.post(
-                relay_url.rstrip("/") + "/surat",
-                json={"url": surat_url, "payload": payload},
-                timeout=40,
-            )
-            r.raise_for_status()
-            wrap = r.json()
-            if not wrap.get("ok"):
-                raise RuntimeError(f"Relay hatası: {wrap.get('error', '?')}")
-            d = wrap.get("data")
-            if d is None:
-                raise RuntimeError(f"Relay yanıtı boş: {wrap.get('data_text', '')[:200]}")
-            return d, wrap.get("status", 200)
-        else:
-            r = requests.post(surat_url, json=payload, timeout=30)
-            return r.json(), r.status_code
+        r = requests.post(surat_url, json=payload, timeout=30)
+        return r.json(), r.status_code
 
     def _parse(d):
         is_err = d.get("isError", d.get("IsError", True))

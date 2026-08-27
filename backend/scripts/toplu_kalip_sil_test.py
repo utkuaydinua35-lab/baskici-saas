@@ -62,7 +62,6 @@ def _yonetici_girisi(C, db, email: str, sifre: str) -> dict:
 
 
 db = SessionLocal()
-tenant = db.scalar(select(Tenant).limit(1))
 # ORDER BY'sız limit(1) kullanma: Postgres satır sırası değişince ŞİFRESİ
 # TUTMAYAN yöneticiyi seçip tüm paketi 401'le durdurdu. Dev şifresiyle
 # gerçekten girilebilen hesabı seç.
@@ -75,6 +74,7 @@ if admin is None:
     raise SystemExit(
         f"Dev sifresiyle girilebilen yonetici YOK ({len(_adaylar)} aday bakildi).\n"
         f"Bu testler yonetici olmadan CALISAMAZ — atlanmiyor, durduruluyor.")
+tenant = db.get(Tenant, admin.tenant_id)
 H = _yonetici_girisi(C, db, admin.email, DEV_SIFRE)
 
 store = Store(tenant_id=tenant.id, slug=f"{IZ}-s", name="Toplu Sil",

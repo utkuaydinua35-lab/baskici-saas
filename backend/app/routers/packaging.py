@@ -22,7 +22,7 @@ from app.models import (
     AccessoryProduct, CoupleProduct, Dealer, Design, LineItem, Mold, MoldItem, Order,
     OrderStatusHistory, Store, User,
 )
-from app.services import basit_kargo, label_pdf, packaging as pkg, storage
+from app.services import basit_kargo, label_pdf, packaging as pkg, storage, surat
 from app import stages as stage_defs
 
 router = APIRouter(prefix="/api/packaging", tags=["packaging"],
@@ -122,6 +122,55 @@ def il_ilce(user: User = Depends(get_current_user)):
     return tr_iller.IL_ILCE
 
 
+# Sürat ile DOĞRUDAN çalışma (Basit Kargo aracı olmadan). Sürat'ın kendi
+# OrtakBarkodOlustur servisine gider; dönen takip no ve barkod Sürat'ın KENDİsidir,
+# yani şubede geçerlidir. (57b9879'da başarısız olan şey panelin KENDİ ürettiği
+# barkoddu — bu o değil.)
+SURAT_DOGRUDAN = "DIRECT_SURAT"
+
+
+def _surat_etiket_yolu(order_id) -> "Path":
+    from pathlib import Path
+    d = storage.STORAGE_ROOT / "cache" / "kargo_etiket"
+    d.mkdir(parents=True, exist_ok=True)
+    return Path(d) / f"{order_id}.pdf"
+
+
+def _surat_gonderi(order, il_override: str | None, ilce_override: str | None) -> dict:
+    """surat.create_shipment'i basit_kargo.create_shipment'in SÖZLEŞMESİNE çevir.
+
+    Böylece kargo_gonder tek bir sonuç şekliyle çalışır. Sürat SVG değil base64
+    PDF döndürdüğü için etiket diske yazılır; yeniden yazdırma oradan okur.
+    """
+    if not surat.is_configured():
+        return {"ok": False, "message": "Sürat kullanıcı adı/şifre tanımlı değil (.env)"}
+    r = surat.create_shipment(
+        order.raw or {},
+        ozel_kargo_takip_no=order.order_number or str(order.id),
+        il_override=il_override, ilce_override=ilce_override,
+    )
+    if not r.get("ok"):
+        return {"ok": False, "message": r.get("message") or "Sürat gönderisi oluşturulamadı",
+                "ilce_eksik": r.get("ilce_eksik"), "il": r.get("il")}
+    b64 = r.get("barkod_base64")
+    if b64:
+        import base64 as _b64
+        try:
+            _surat_etiket_yolu(order.id).write_bytes(_b64.b64decode(b64))
+        except Exception:  # noqa: BLE001
+            pass   # etiket yazılamazsa gönderi yine geçerli; yeniden yazdırma uyarır
+    return {
+        "ok": True,
+        "takip_no": r.get("takip_no") or "",
+        "handler_code": SURAT_DOGRUDAN,
+        "handler_name": "Sürat Kargo",
+        "provider": "surat",
+        "etiket_var": bool(b64),
+        "label_svg": None,      # Sürat PDF verir; yazdırma ZPL/PDF yolundan
+        "id": None, "barcode": None, "status": r.get("message"),
+    }
+
+
 class KargoGonderRequest(BaseModel):
     il: str = ""    # manuel il (adres çözülemezse)
     ilce: str = ""  # manuel ilçe
@@ -147,14 +196,18 @@ def kargo_gonder(
 
     handler_code = (store.config or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER
 
-    # 1) Basit Kargo gönderi + barkod
-    res = basit_kargo.create_shipment(
-        order.raw or {},
-        handler_code=handler_code,
-        order_code=order.order_number or str(order.id),
-        il_override=(body.il.strip() or None),
-        ilce_override=(body.ilce.strip() or None),
-    )
+    # 1) Gönderi + barkod. Mağaza DIRECT_SURAT seçtiyse Sürat'a DOĞRUDAN gidilir,
+    #    aksi halde Basit Kargo agregatörü üzerinden.
+    if handler_code == SURAT_DOGRUDAN:
+        res = _surat_gonderi(order, body.il.strip() or None, body.ilce.strip() or None)
+    else:
+        res = basit_kargo.create_shipment(
+            order.raw or {},
+            handler_code=handler_code,
+            order_code=order.order_number or str(order.id),
+            il_override=(body.il.strip() or None),
+            ilce_override=(body.ilce.strip() or None),
+        )
     if not res.get("ok"):
         raise HTTPException(400, res.get("message", "Kargo gönderimi başarısız"))
 
@@ -179,7 +232,8 @@ def kargo_gonder(
     # 3) Kargo referansını sakla (re-print / iptal / webhook eşleşmesi için).
     # fulfillment_id + shopify_oid: gerçek takip no sonradan (webhook) gelince güncellemek için.
     order.kargo_info = {
-        "provider": "basit",
+        "provider": res.get("provider") or "basit",
+        "etiket_var": res.get("etiket_var"),
         "id": res.get("id"),
         "barcode": res.get("barcode"),
         "takip_no": takip_no,
@@ -249,6 +303,13 @@ def kargo_iptal(
     if not ki and not _gonderiler:
         raise HTTPException(400, "Bu siparişte iptal edilecek kargo gönderisi yok")
 
+    # Sürat DOĞRUDAN gönderisinin iptali bizde yok: Sürat'ın iptal servisini
+    # kullanmıyoruz. Yerel geri alma yine yapılır ama gönderi Sürat'ta DURUR —
+    # sessizce "iptal edildi" demek yanlış olur, uyarı yanıta konur.
+    surat_uyari = None
+    if (ki.get("provider") or "") == "surat":
+        surat_uyari = ("Gönderi Sürat'ta iptal EDİLMEDİ — Sürat şubesinden/panelinden "
+                       "iptal etmen gerekiyor. Panelde sipariş geri alındı.")
     basit_ok = basit_kargo.cancel(ki.get("barcode")) if ki.get("barcode") else False
 
     # Gönderi kayıtlarını geri al — kalemler tekrar "gönderilmeyi bekleyen"e döner
@@ -286,7 +347,8 @@ def kargo_iptal(
         to_stage=order.current_stage,
         action="kargo_iptal",
         note=f"Kargo iptal · {ki.get('handler_name') or ''} {ki.get('takip_no') or ''}".strip()
-             + ("" if shopify_ok else (f" · Shopify: {shopify_err}" if shopify_err else "")),
+             + ("" if shopify_ok else (f" · Shopify: {shopify_err}" if shopify_err else ""))
+             + (" · SÜRAT'TA İPTAL EDİLMEDİ" if surat_uyari else ""),
         created_by=user.full_name or user.email,
     ))
     db.commit()
@@ -297,6 +359,7 @@ def kargo_iptal(
         "shopify_err": shopify_err,
         "silinen_gonderi": _silinen,
         "current_stage": order.current_stage,
+        "surat_uyari": surat_uyari,
     }
 
 
@@ -349,12 +412,21 @@ def order_zpl(
             zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
         else:
             ki = order.kargo_info or {}
-            if not ki.get("id"):
-                raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
-            svg = basit_kargo.get_label_svg(ki["id"])
-            if not svg:
-                raise HTTPException(404, "Kargo etiketi alınamadı")
-            zpl = svg_to_zpl(svg, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
+            if ki.get("provider") == "surat":
+                # Sürat SVG değil PDF veriyor; adres etiketiyle aynı yoldan geçer.
+                yol = _surat_etiket_yolu(order.id)
+                if not yol.exists():
+                    raise HTTPException(404, "Sürat barkodu bulunamadı — gönderiyi yeniden oluştur")
+                zpl = pdf_to_zpl(yol.read_bytes(), dpi=dpi, w_mm=w_mm or None,
+                                 h_mm=h_mm or None, doldur=doldur)
+            else:
+                if not ki.get("id"):
+                    raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
+                svg = basit_kargo.get_label_svg(ki["id"])
+                if not svg:
+                    raise HTTPException(404, "Kargo etiketi alınamadı")
+                zpl = svg_to_zpl(svg, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None,
+                                 doldur=doldur)
     except ZplError as e:
         raise HTTPException(400, f"ZPL üretilemedi: {e}") from e
     return Response(content=zpl, media_type="text/plain; charset=utf-8")
@@ -366,9 +438,17 @@ def kargo_label(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Daha önce oluşturulmuş Basit Kargo etiketini (SVG) yeniden getir (re-print)."""
+    """Oluşturulmuş kargo etiketini yeniden getir (re-print).
+
+    Basit Kargo'da SVG, Sürat'ta PDF döner — istemci Content-Type'a bakmalı.
+    """
     order = _resolve_order(db, order_ref, user.tenant_id)
     ki = order.kargo_info or {}
+    if ki.get("provider") == "surat":
+        yol = _surat_etiket_yolu(order.id)
+        if not yol.exists():
+            raise HTTPException(404, "Sürat barkodu bulunamadı — gönderiyi yeniden oluştur")
+        return Response(content=yol.read_bytes(), media_type="application/pdf")
     if not ki.get("id"):
         raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
     svg = basit_kargo.get_label_svg(ki["id"])

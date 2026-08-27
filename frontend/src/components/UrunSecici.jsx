@@ -279,7 +279,7 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
     <div className="fixed inset-0 z-50 grid place-items-center p-4 animate-fadein"
          style={{ background: 'rgb(6 4 12 / 0.86)' }}
          onClick={onKapat}>
-      <div className="rounded-2xl w-full max-w-2xl max-h-[86vh] flex flex-col p-5 animate-popin
+      <div className="rounded-2xl w-full max-w-6xl max-h-[86vh] flex flex-col p-5 animate-popin
                       border border-white/10"
            style={{ background: 'rgb(23 16 43)',
                     boxShadow: '0 30px 70px -30px rgb(0 0 0 / 0.95)' }}
@@ -298,7 +298,9 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
             {q ? 'Eşleşen tasarım yok' : 'Henüz kayıtlı tasarımın yok'}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto py-1">
+          <div className="gap-3 overflow-y-auto py-1
+                          grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,140px),1fr))]
+                          sm:[grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr))]">
             {liste.map((t, i) => (
               <button key={t.id} type="button" onClick={() => tikla(t)}
                       className={`bayi-katalog-kart block w-full text-left rounded-xl
@@ -316,7 +318,8 @@ function TasarimKatalogu({ katalog, seciliId, onSec, onKapat }) {
                         {(t.format || '?').toUpperCase()}
                       </span>}
                 </Kare>
-                <div className="px-2 py-1.5 text-[11px] text-gray-400 truncate" title={t.ad}>
+                <div className="px-2 py-1.5 text-[11px] sm:text-[12.5px] text-gray-400 truncate"
+                     title={t.ad}>
                   {t.ad}
                 </div>
               </button>

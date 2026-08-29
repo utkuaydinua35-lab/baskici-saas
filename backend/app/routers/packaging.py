@@ -187,7 +187,8 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     if not kod:
         raise HTTPException(404, "Sürat takip numarası yok — gönderiyi yeniden oluştur")
     from app.services import label_pdf as _lp
-    return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod)
+    return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod,
+                                kargo_firma=ki.get("handler_name") or "Sürat Kargo")
 
 
 class KargoGonderRequest(BaseModel):

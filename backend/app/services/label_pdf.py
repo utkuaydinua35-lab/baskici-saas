@@ -88,7 +88,15 @@ def _barkod_ciz(pg, code: str, m: float, y: float, w: float) -> float:
     return y + 22
 
 
-def render_label_pdf(order, store_name: str | None = None) -> bytes:
+def render_label_pdf(order, store_name: str | None = None,
+                     barkod_kodu: str | None = None) -> bytes:
+    """barkod_kodu verilirse siparişin kendi kodu YERİNE o basılır.
+
+    Sürat DOĞRUDAN gönderilerinde Sürat barkod görselini döndürmüyor ama gerçek
+    takip numarasını veriyor; o numara Sürat'ın sisteminde KAYITLI olduğu için
+    Code128 olarak basıldığında şubede karşılığı vardır. (3 Ağustos'ta başarısız
+    olan deneme, karşılığı OLMAYAN kendi kodumuzu basıyordu — bu o değil.)
+    """
     w, h = 10 * CM, 15 * CM
     doc = fitz.open()
     pg = doc.new_page(width=w, height=h)
@@ -115,7 +123,7 @@ def render_label_pdf(order, store_name: str | None = None) -> bytes:
         y = box(_a(line), 11, y)
     y += 12
 
-    code = str(order.barkod_kodu or order.order_number or "").strip()
+    code = str(barkod_kodu or order.barkod_kodu or order.order_number or "").strip()
     if code:
         y = _barkod_ciz(pg, code, m, y, w)
     else:

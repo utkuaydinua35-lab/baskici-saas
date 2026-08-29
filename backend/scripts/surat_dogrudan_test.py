@@ -99,7 +99,54 @@ finally:
     surat.create_shipment = _orj
     surat.is_configured = _orj_cfg
 
-print("\n── 6. relay tamamen kaldirildi ──")
+print("\n── 6. ETIKET YEDEGI: Surat barkod vermezse kendi etiketimiz ──")
+# Surat bu hesapta Message=013 + gercek takip no veriyor ama Barcode BOS.
+# O durumda gercek takip nosu Code128 olarak kendi etiketimize basilmali.
+import fitz  # noqa: E402
+
+
+class _SahteStore:
+    name = "BERNZ"
+
+
+class _SahteDb:
+    def scalar(self, *a, **k):
+        return _SahteStore()
+
+
+class _SipEtiket(_Sip):
+    def __init__(self):
+        super().__init__()
+        self.store_id = uuid.uuid4()
+        self.name = "#T-1001"
+        self.customer_name = "Ali Veli"
+        self.barkod_kodu = "KENDI-KODUMUZ"
+
+
+o = _SipEtiket()
+ki = {"provider": "surat", "takip_no": "40105913453122", "barkod_no": None,
+      "etiket_var": False}
+pdf = pkg._surat_etiket_pdf(_SahteDb(), o, ki)
+es("PDF uretildi", True, pdf.startswith(b"%PDF"))
+_metin = "".join(pg.get_text() for pg in fitz.open(stream=pdf, filetype="pdf"))
+es("SURAT takip nosu etikette", True, "40105913453122" in _metin)
+es("kendi kodumuz BASILMADI", False, "KENDI-KODUMUZ" in _metin)
+
+# barkod_no varsa O tercih edilir
+ki2 = dict(ki, barkod_no="9998887776665")
+_m2 = "".join(pg.get_text() for pg in fitz.open(
+    stream=pkg._surat_etiket_pdf(_SahteDb(), o, ki2), filetype="pdf"))
+es("barkod_no takip_no'ya TERCIH edilir", True, "9998887776665" in _m2)
+es("barkod_no varken takip_no basilmaz", False, "40105913453122" in _m2)
+
+# Surat GERCEKTEN PDF verirse o kullanilir (kendi etiketimiz degil)
+yol = pkg._surat_etiket_yolu(o.id)
+yol.write_bytes(b"%PDF-1.4\n% surat etiketi\n")
+es("Surat PDF'i varsa O kullanilir", True,
+   pkg._surat_etiket_pdf(_SahteDb(), o, ki).endswith(b"% surat etiketi\n"))
+yol.unlink()
+
+print("\n── 7. relay tamamen kaldirildi ──")
 kaynak = (Path(__file__).resolve().parent.parent / "app/services/surat.py").read_text(encoding="utf-8")
 es("relay_url degiskeni yok", False, "relay_url" in kaynak)
 es("relay POST yolu yok", False, "/surat\"" in kaynak)

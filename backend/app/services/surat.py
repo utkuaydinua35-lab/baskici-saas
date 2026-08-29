@@ -7,11 +7,15 @@ Test : https://api02.suratkargo.com.tr/api/OrtakBarkodOlustur
 """
 from __future__ import annotations
 
+import logging
 import re
+
 import requests
 
 from app.config import get_settings
 from app.services import tr_iller
+
+logger = logging.getLogger("surat")
 
 CANLI_URL = "https://api01.suratkargo.com.tr/api/OrtakBarkodOlustur"
 TEST_URL = "https://api02.suratkargo.com.tr/api/OrtakBarkodOlustur"
@@ -201,14 +205,20 @@ def create_shipment(
         r = requests.post(surat_url, json=payload, timeout=30)
         return r.json(), r.status_code
 
+    def _tekil(v):
+        """Sürat bazı alanları LİSTE olarak veriyor (Barcode/BarcodeNo)."""
+        if isinstance(v, list):
+            return v[0] if v else None
+        return v if isinstance(v, str) and v.strip() else None
+
     def _parse(d):
         is_err = d.get("isError", d.get("IsError", True))
         msg = str(d.get("Message", ""))
         tn = d.get("KargoTakipNo") or ""
-        bc = d.get("Barcode")
-        b64 = bc[0] if isinstance(bc, list) and bc else (bc if isinstance(bc, str) else None)
+        b64 = _tekil(d.get("Barcode"))
+        bno = _tekil(d.get("BarcodeNo"))
         ok = (not is_err) and (msg in ("013", "014", "015", "016") or bool(tn))
-        return ok, tn, b64, msg
+        return ok, tn, b64, bno, msg
 
     # Surat'in bilinen bug'i: ilk cagri bazen InvalidCastException verir AMA
     # gonderi yine de olusur. Ayni OzelKargoTakipNo ile tekrar cagirinca
@@ -218,7 +228,7 @@ def create_shipment(
     except Exception as e:
         return {"ok": False, "message": f"Bağlantı hatası: {str(e)[:180]}"}
 
-    basarili, takip_no, barkod_b64, message = _parse(data)
+    basarili, takip_no, barkod_b64, barkod_no, message = _parse(data)
 
     # InvalidCast ya da barkodsuz/takipsiz ise: kisa bekle, ayni takip no ile tekrar dene
     needs_retry = (not basarili and "InvalidCast" in message) or (basarili and not barkod_b64)
@@ -230,15 +240,30 @@ def create_shipment(
                 data2, http_status = _post()
             except Exception:
                 break
-            ok2, tn2, b2, msg2 = _parse(data2)
+            ok2, tn2, b2, bn2, msg2 = _parse(data2)
             if ok2:
                 basarili, takip_no, barkod_b64, message = ok2, tn2, b2, msg2
+                barkod_no = bn2 or barkod_no
                 if barkod_b64:
                     break
+    # Yanitin KUNYESINI her zaman logla. Basarili cagrilarda yanit atiliyordu;
+    # Surat takip no verip barkod VERMEYINCE elimizde hicbir iz kalmiyordu.
+    # Kimlik bilgisi yanitta yer almaz, gizlenecek bir sey yok.
+    try:
+        logger.info(
+            "[surat] ok=%s msg=%s takip=%s barkod_pdf=%s barkod_no=%s alanlar=%s",
+            bool(basarili), message, takip_no or "-",
+            f"{len(barkod_b64)} krk" if barkod_b64 else "YOK",
+            barkod_no or "YOK",
+            ",".join(sorted(data.keys())) if isinstance(data, dict) else type(data).__name__,
+        )
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "ok": bool(basarili),
         "takip_no": takip_no,
         "barkod_base64": barkod_b64,
+        "barkod_no": barkod_no,
         "message": message,
         "http_status": http_status,
         "raw_response": data if not basarili else None,  # hata ayiklama icin

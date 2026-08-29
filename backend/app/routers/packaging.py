@@ -166,9 +166,28 @@ def _surat_gonderi(order, il_override: str | None, ilce_override: str | None) ->
         "handler_name": "Sürat Kargo",
         "provider": "surat",
         "etiket_var": bool(b64),
+        "barkod_no": r.get("barkod_no"),
         "label_svg": None,      # Sürat PDF verir; yazdırma ZPL/PDF yolundan
         "id": None, "barcode": None, "status": r.get("message"),
     }
+
+
+def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
+    """Sürat gönderisinin YAZDIRILACAK etiketi.
+
+    Sürat bu hesapta barkod GÖRSELİ döndürmüyor (takip no veriyor, Message=013,
+    Barcode boş). Görsel varsa o kullanılır; yoksa kendi etiketimiz basılır ama
+    üstünde SÜRAT'IN GERÇEK takip numarası Code128 olarak yer alır — o numara
+    Sürat'ın sisteminde kayıtlı olduğu için şubede karşılığı vardır.
+    """
+    yol = _surat_etiket_yolu(order.id)
+    if yol.exists():
+        return yol.read_bytes()
+    kod = (ki.get("barkod_no") or ki.get("takip_no") or "").strip()
+    if not kod:
+        raise HTTPException(404, "Sürat takip numarası yok — gönderiyi yeniden oluştur")
+    from app.services import label_pdf as _lp
+    return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod)
 
 
 class KargoGonderRequest(BaseModel):
@@ -234,6 +253,7 @@ def kargo_gonder(
     order.kargo_info = {
         "provider": res.get("provider") or "basit",
         "etiket_var": res.get("etiket_var"),
+        "barkod_no": res.get("barkod_no"),
         "id": res.get("id"),
         "barcode": res.get("barcode"),
         "takip_no": takip_no,
@@ -414,10 +434,8 @@ def order_zpl(
             ki = order.kargo_info or {}
             if ki.get("provider") == "surat":
                 # Sürat SVG değil PDF veriyor; adres etiketiyle aynı yoldan geçer.
-                yol = _surat_etiket_yolu(order.id)
-                if not yol.exists():
-                    raise HTTPException(404, "Sürat barkodu bulunamadı — gönderiyi yeniden oluştur")
-                zpl = pdf_to_zpl(yol.read_bytes(), dpi=dpi, w_mm=w_mm or None,
+                pdf = _surat_etiket_pdf(db, order, ki)
+                zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None,
                                  h_mm=h_mm or None, doldur=doldur)
             else:
                 if not ki.get("id"):
@@ -445,10 +463,8 @@ def kargo_label(
     order = _resolve_order(db, order_ref, user.tenant_id)
     ki = order.kargo_info or {}
     if ki.get("provider") == "surat":
-        yol = _surat_etiket_yolu(order.id)
-        if not yol.exists():
-            raise HTTPException(404, "Sürat barkodu bulunamadı — gönderiyi yeniden oluştur")
-        return Response(content=yol.read_bytes(), media_type="application/pdf")
+        return Response(content=_surat_etiket_pdf(db, order, ki),
+                        media_type="application/pdf")
     if not ki.get("id"):
         raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
     svg = basit_kargo.get_label_svg(ki["id"])

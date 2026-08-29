@@ -230,8 +230,14 @@ def create_shipment(
 
     basarili, takip_no, barkod_b64, barkod_no, message = _parse(data)
 
-    # InvalidCast ya da barkodsuz/takipsiz ise: kisa bekle, ayni takip no ile tekrar dene
-    needs_retry = (not basarili and "InvalidCast" in message) or (basarili and not barkod_b64)
+    # Yalnizca InvalidCastException icin yeniden dene (Surat'in bilinen hatasi).
+    #
+    # Eskiden "basarili ama barkod yok" da yeniden deneniyordu. 2026-08-29 canli
+    # logu gosterdi ki bu hesapta Barcode/BarcodeNo HER ZAMAN bos donuyor; kosul
+    # her gonderide 3 cagri yapiyor, ~3 sn gecikme ekliyor ve Surat
+    # OzelKargoTakipNo'da idempotent degilse MUKERRER GONDERI acabiliyordu.
+    # Barkod gelmemesi normal kabul edilir; etiket yedegi devreye girer.
+    needs_retry = (not basarili) and "InvalidCast" in message
     if needs_retry:
         import time as _t
         for _ in range(2):
@@ -251,10 +257,11 @@ def create_shipment(
     # Kimlik bilgisi yanitta yer almaz, gizlenecek bir sey yok.
     try:
         logger.info(
-            "[surat] ok=%s msg=%s takip=%s barkod_pdf=%s barkod_no=%s alanlar=%s",
+            "[surat] ok=%s msg=%s takip=%s barkod_pdf=%s barkod_no=%s Value=%s alanlar=%s",
             bool(basarili), message, takip_no or "-",
             f"{len(barkod_b64)} krk" if barkod_b64 else "YOK",
             barkod_no or "YOK",
+            str(data.get("Value"))[:120] if isinstance(data, dict) else "-",
             ",".join(sorted(data.keys())) if isinstance(data, dict) else type(data).__name__,
         )
     except Exception:  # noqa: BLE001

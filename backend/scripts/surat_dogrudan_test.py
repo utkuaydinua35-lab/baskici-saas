@@ -146,7 +146,46 @@ es("Surat PDF'i varsa O kullanilir", True,
    pkg._surat_etiket_pdf(_SahteDb(), o, ki).endswith(b"% surat etiketi\n"))
 yol.unlink()
 
-print("\n── 7. relay tamamen kaldirildi ──")
+print("\n── 7. YENIDEN DENEME: barkodsuz basarida TEKRAR CAGIRMA ──")
+# Bu hesapta barkod hic gelmiyor. Eski kosul her gonderide 3 cagri yapiyordu
+# -> Surat idempotent degilse mukerrer gonderi. Sayaci gercekten olcelim.
+import app.services.surat as _sr  # noqa: E402
+
+_cagri = {"n": 0}
+
+
+class _SahteYanit:
+    status_code = 200
+
+    def __init__(self, govde): self._g = govde
+    def json(self): return self._g
+
+
+def _sahte_post(url, json=None, timeout=None):
+    _cagri["n"] += 1
+    return _SahteYanit({"isError": False, "Message": "013",
+                        "KargoTakipNo": "40105913453122",
+                        "Barcode": [], "BarcodeNo": [], "Value": None})
+
+
+_orj_req = _sr.requests.post
+_orj_cfg2 = _sr.is_configured
+_sr.requests.post = _sahte_post
+try:
+    r = _sr.create_shipment(
+        {"shipping_address": {"first_name": "Ali", "last_name": "Veli",
+                              "address1": "Test Cad. No:1", "province": "İstanbul",
+                              "city": "Kadıköy", "phone": "05001112233"}},
+        ozel_kargo_takip_no="T-1001", kullanici_adi="x", sifre="y")
+    es("gonderi basarili", True, r["ok"])
+    es("gercek takip no dondu", "40105913453122", r["takip_no"])
+    es("barkod yok (beklenen)", None, r["barkod_base64"])
+    es("SURAT'A TEK CAGRI yapildi", 1, _cagri["n"])
+finally:
+    _sr.requests.post = _orj_req
+    _sr.is_configured = _orj_cfg2
+
+print("\n── 8. relay tamamen kaldirildi ──")
 kaynak = (Path(__file__).resolve().parent.parent / "app/services/surat.py").read_text(encoding="utf-8")
 es("relay_url degiskeni yok", False, "relay_url" in kaynak)
 es("relay POST yolu yok", False, "/surat\"" in kaynak)

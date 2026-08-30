@@ -100,6 +100,29 @@ es("^XA ile başlar", True, z.startswith("^XA"))
 es("^XZ ile biter", True, z.rstrip().endswith("^XZ"))
 es("boş değil", True, len(z) > 10000)
 
+print("\n── 7. ŞABLON AYARLARI ──")
+A = label_pdf.ayarlari_birlestir
+es("bilinmeyen anahtar atılır", False, "sacma" in A({"sacma": 1}))
+es("punto SINIRLANIR (999 -> 24)", 24.0, A({"magaza_punto": 999})["magaza_punto"])
+es("punto alt sınır (1 -> 7)", 7.0, A({"magaza_punto": 1})["magaza_punto"])
+es("metin olmayan punto yok sayılır", label_pdf.VARSAYILAN_AYARLAR["alici_punto"],
+   A({"alici_punto": "abc"})["alici_punto"])
+es("max<min düzeltilir", True,
+   A({"barkod_min_cm": 4, "barkod_max_cm": 2})["barkod_max_cm"] >= 4)
+es("serbest metin kırpılır (120)", 120, len(A({"not_metni": "x" * 500})["not_metni"]))
+es("boş ayar = varsayılan", dict(label_pdf.VARSAYILAN_AYARLAR), A({}))
+
+t = _metin(label_pdf.render_label_pdf(
+    _sip(), "BERNZ", barkod_kodu="401059", kargo_firma="Sürat Kargo",
+    ayarlar={"telefon_goster": False, "not_metni": "KIRILACAK EŞYA",
+             "siparis_no_goster": False}))
+es("telefon gizlenebiliyor", True, "Tel:" not in t)
+es("sipariş no gizlenebiliyor", True, "11658" not in t)
+es("etiket notu basılıyor", True, "KIRILACAK EŞYA" in t)
+es("gönderici satırı basılıyor", True, "Iade: BERNZ, Ankara" in _metin(
+   label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
+                              ayarlar={"gonderici_metni": "Iade: BERNZ, Ankara"})))
+
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")
 sys.exit(1 if KALDI else 0)

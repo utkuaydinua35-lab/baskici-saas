@@ -172,6 +172,51 @@ def _surat_gonderi(order, il_override: str | None, ilce_override: str | None) ->
     }
 
 
+def _etiket_ayarlari(db: Session, tenant_id) -> dict:
+    from app.models import Tenant as _T
+    t = db.scalar(select(_T).where(_T.id == tenant_id))
+    return dict(getattr(t, "etiket_ayarlari", None) or {}) if t else {}
+
+
+class _OrnekSiparis:
+    """Önizleme için temsili sipariş — UZUN adresli, çünkü tasarımın sınandığı
+    yer orası (kısa adres her şablonda iyi görünür)."""
+    order_number = "11658"
+    name = "#11658"
+    barkod_kodu = None
+    customer_name = "Ayşe Yılmaz"
+    raw = {"shipping_address": {
+        "first_name": "Ayşe", "last_name": "Yılmaz",
+        "address1": "Kentkoop Mah. 1865. Sk. S. Siyasal 92 Yapı Koop No:19/B G1 Blok",
+        "address2": "Daire:7 — Things Chocolate & Coffee yanı",
+        "zip": "06370", "city": "Yenimahalle", "province": "Ankara",
+        "phone": "0552 205 09 06"}}
+
+
+@router.post("/etiket-onizleme", response_model=None)
+def etiket_onizleme(
+    ayarlar: dict,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verilen ayarlarla ÖRNEK etiketi PNG olarak çiz (kaydetmeden).
+
+    PNG döner çünkü panelde <img> ile anında gösterilecek; PDF gömmek
+    tarayıcıdan tarayıcıya değişiyor ve önizlemeyi güvenilmez yapıyor.
+    """
+    import fitz as _fitz
+    from app.models import Tenant as _T
+    t = db.scalar(select(_T).where(_T.id == user.tenant_id))
+    pdf = label_pdf.render_label_pdf(
+        _OrnekSiparis(), (t.app_name or t.name) if t else "BASKICI",
+        barkod_kodu="40105913453122", kargo_firma="Sürat Kargo",
+        ayarlar=ayarlar or {})
+    d = _fitz.open(stream=pdf, filetype="pdf")
+    png = d[0].get_pixmap(dpi=150).tobytes("png")
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
 def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     """Sürat gönderisinin YAZDIRILACAK etiketi.
 
@@ -188,7 +233,8 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
         raise HTTPException(404, "Sürat takip numarası yok — gönderiyi yeniden oluştur")
     from app.services import label_pdf as _lp
     return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod,
-                                kargo_firma=ki.get("handler_name") or "Sürat Kargo")
+                                kargo_firma=ki.get("handler_name") or "Sürat Kargo",
+                                ayarlar=_etiket_ayarlari(db, order.tenant_id))
 
 
 class KargoGonderRequest(BaseModel):
@@ -429,7 +475,9 @@ def order_zpl(
     order = _resolve_order(db, order_ref, user.tenant_id)
     try:
         if tip == "adres":
-            pdf = label_pdf.render_label_pdf(order, _store_name(db, order))
+            pdf = label_pdf.render_label_pdf(
+                order, _store_name(db, order),
+                ayarlar=_etiket_ayarlari(db, order.tenant_id))
             zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
         else:
             ki = order.kargo_info or {}
@@ -481,7 +529,9 @@ def label(
     db: Session = Depends(get_db),
 ):
     order = _resolve_order(db, order_ref, user.tenant_id)
-    pdf = label_pdf.render_label_pdf(order, _store_name(db, order))
+    pdf = label_pdf.render_label_pdf(
+        order, _store_name(db, order),
+        ayarlar=_etiket_ayarlari(db, order.tenant_id))
     filename = f"etiket_{order.order_number or order.id}.pdf"
     return Response(
         content=pdf,

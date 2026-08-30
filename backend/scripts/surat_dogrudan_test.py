@@ -118,6 +118,7 @@ class _SipEtiket(_Sip):
     def __init__(self):
         super().__init__()
         self.store_id = uuid.uuid4()
+        self.tenant_id = uuid.uuid4()   # etiket ayarları tenant'tan okunuyor
         self.name = "#T-1001"
         self.customer_name = "Ali Veli"
         self.barkod_kodu = "KENDI-KODUMUZ"

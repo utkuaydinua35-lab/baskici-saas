@@ -94,6 +94,41 @@ def update_settings(
         "brand_color": t.brand_color,
         "app_name": t.app_name,
     }
+# ─── Kargo etiketi şablonu ───────────────────────────────────────────────
+
+
+@router.get("/etiket-ayarlari", response_model=dict)
+def get_etiket_ayarlari(
+    user: User = Depends(require_permission("ayarlar")),
+    db: Session = Depends(get_db),
+):
+    """Kayıtlı şablon + varsayılanlar + panelin alan listesi."""
+    from app.services import label_pdf
+    t = _get_tenant(db, user.tenant_id)
+    return {
+        "ayarlar": label_pdf.ayarlari_birlestir(t.etiket_ayarlari or {}),
+        "varsayilan": dict(label_pdf.VARSAYILAN_AYARLAR),
+        "sinirlar": {k: list(v) for k, v in label_pdf._SAYISAL_SINIR.items()},
+    }
+
+
+@router.put("/etiket-ayarlari", response_model=dict)
+def put_etiket_ayarlari(
+    payload: dict,
+    user: User = Depends(require_permission("ayarlar")),
+    db: Session = Depends(get_db),
+):
+    """Şablonu kaydet. Bilinmeyen anahtar atılır, sayısallar SINIRLANIR —
+    punto 200 yapılırsa etiket kullanılamaz hale gelir ve bunu ancak baskıda
+    fark ederiz."""
+    from app.services import label_pdf
+    t = _get_tenant(db, user.tenant_id)
+    temiz = label_pdf.ayarlari_birlestir(payload or {})
+    t.etiket_ayarlari = temiz
+    db.commit()
+    return {"ok": True, "ayarlar": temiz}
+
+
 # ─── AI Destek Yanıtı ayarları (yalnızca yönetici; model değişikliği master password ister) ───
 
 class UpdateAISettings(BaseModel):

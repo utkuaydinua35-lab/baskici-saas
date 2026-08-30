@@ -47,6 +47,7 @@ const RegisterPage = lazyWithReload(() => import('./pages/RegisterPage'))
 const ShortcutsPage = lazyWithReload(() => import('./pages/ShortcutsPage'))
 const StoresPage = lazyWithReload(() => import('./pages/StoresPage'))
 const SettingsPage = lazyWithReload(() => import('./pages/SettingsPage'))
+const EtiketSablonPage = lazyWithReload(() => import('./pages/EtiketSablonPage'))
 const ProfileSelectPage = lazyWithReload(() => import('./pages/ProfileSelectPage'))
 const DestekPage = lazyWithReload(() => import('./pages/DestekPage'))
 const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
@@ -106,6 +107,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/stores" element={<StoresPage />} />
             <Route path="/ayarlar" element={<SettingsPage />} />
+            <Route path="/ayarlar/etiket" element={<EtiketSablonPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/:orderId" element={<OrderDetailPage />} />
             <Route path="/notlar" element={<NotesPage />} />

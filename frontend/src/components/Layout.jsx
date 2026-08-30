@@ -606,6 +606,7 @@ function CommandPalette({ onClose }) {
     }
     if (can('ayarlar')) items.push(
       { to: '/ayarlar', label: 'Ayarlar', icon: '⚙', group: 'Sistem' },
+      { to: '/ayarlar/etiket', label: 'Etiket Şablonu', icon: '🏷', group: 'Sistem' },
       { to: '/denetim', label: 'Denetim Kaydı', icon: '📜', group: 'Sistem' },
     )
     return items

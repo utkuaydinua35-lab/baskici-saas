@@ -63,6 +63,12 @@ class Tenant(Base):
         String(20), default="opus", server_default=text("'opus'"), nullable=False
     )
 
+    # Kargo etiketi şablonu (panelden düzenlenir). Şema ve sınırlar
+    # services/label_pdf.VARSAYILAN_AYARLAR'da; burada yalnız saklanır.
+    etiket_ayarlari: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False
+    )
+
     # Toplu takip: bu tarihten ONCE kargoya verilmis gonderiler "takip bekleyen"
     # listesinde gosterilmez. Sisteme gecmeden onceki birikmis gonderilerin
     # listeyi doldurmasini engeller. NULL = tumu gosterilir.

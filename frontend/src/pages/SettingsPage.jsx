@@ -4,6 +4,7 @@ import { accentFg } from '../lib/auth'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
 import StoresPage from './StoresPage'
+import EtiketSablonPage from './EtiketSablonPage'
 import BayiYonetim from './BayiYonetim'
 import PlatformPage from './PlatformPage'
 
@@ -26,6 +27,7 @@ export default function SettingsPage() {
         {_isAdmin && <TabBtn active={tab === 'bayiler'} onClick={() => setTab('bayiler')}>🤝 Bayiler</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'users'} onClick={() => setTab('users')}>👥 Kullanıcılar</TabBtn>}
         {_isAdmin && <TabBtn active={tab === 'ai'} onClick={() => setTab('ai')}>🤖 AI Destek</TabBtn>}
+        {_isAdmin && <TabBtn active={tab === 'etiket'} onClick={() => setTab('etiket')}>🏷 Etiket Şablonu</TabBtn>}
         {_isPlatform && <TabBtn active={tab === 'platform'} onClick={() => setTab('platform')}>🏢 Atölyeler</TabBtn>}
       </div>
 
@@ -35,6 +37,7 @@ export default function SettingsPage() {
       {tab === 'bayiler' && _isAdmin && <BayiYonetim />}
       {tab === 'users' && _isAdmin && <UsersTab />}
       {tab === 'ai' && _isAdmin && <AISettingsTab />}
+      {tab === 'etiket' && _isAdmin && <EtiketSablonPage embedded />}
       {tab === 'platform' && _isPlatform && <div className="-mt-2"><PlatformPage /></div>}
     </div>
   )

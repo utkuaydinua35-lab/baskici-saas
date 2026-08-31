@@ -28,7 +28,7 @@ const ANAHTARLAR = [
   ['kargo_firma_goster', 'Kargo firması adı'],
 ]
 
-export default function EtiketSablonPage() {
+export default function EtiketSablonPage({ embedded = false }) {
   const toast = useToast()
   const [ayar, setAyar] = useState(null)
   const [varsayilan, setVarsayilan] = useState(null)
@@ -108,9 +108,10 @@ export default function EtiketSablonPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className={embedded ? 'animate-fadein' : 'p-4 sm:p-6 max-w-6xl mx-auto'}>
       <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
-        <h1 className="text-lg font-semibold text-white">Etiket Şablonu</h1>
+        {!embedded && <h1 className="text-lg font-semibold text-white">Etiket Şablonu</h1>}
+        {embedded && <span />}
         <div className="flex items-center gap-2">
           <button onClick={() => setAyar(varsayilan)} disabled={!degisti}
                   className="text-[12px] px-3 py-1.5 rounded-lg border border-white/15

@@ -54,11 +54,15 @@ UZUN = ("Cumhuriyet Mahallesi Şehit Piyade Onbaşı Mehmet Akif Ersoy Caddesi "
         "Gülbahçe Sitesi B Blok Kat:12 Daire:47 Karşıyaka mevkii")
 
 print("\n── 1. UZUN ADRES KAYBOLMUYOR (asıl hata) ──")
+# Adres varsayılan olarak KAPALI (gönderi Sürat'a kayıtlı, adres oradan gelir).
+# Ama açıldığında sarma mantığı çalışmalı — asıl hata buydu, koruması dursun.
 for ad, a1 in (("kısa", "Ataturk Cad. No:5"),
                ("orta 33 krk", "Kentkoop Mah. 1865. Sokak No:19/B"),
                ("uzun 71 krk", "Kentkoop Mah. 1865. Sk. S. Siyasal 92 Yapı Koop No:19/B G1 Blok"),
                ("çok uzun 140 krk", UZUN)):
-    t = _metin(_uret(_sip(address1=a1)))
+    t = _metin(label_pdf.render_label_pdf(
+        _sip(address1=a1), "BERNZ COMPANY", barkod_kodu="40105913453122",
+        kargo_firma="Sürat Kargo", ayarlar={"adres_goster": True}))
     ilk = " ".join(a1.split()[:4])
     es(f"adres etikette ({ad})", True, ilk in t)
 
@@ -122,6 +126,33 @@ es("etiket notu basılıyor", True, "KIRILACAK EŞYA" in t)
 es("gönderici satırı basılıyor", True, "Iade: BERNZ, Ankara" in _metin(
    label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
                               ayarlar={"gonderici_metni": "Iade: BERNZ, Ankara"})))
+
+print("\n── 8. SADE ETİKET: adres kapalı + site satırı ──")
+# İstenen içerik: ad soyad, il/ilçe, kargo firması, not, takip kodu, site.
+sade = _metin(label_pdf.render_label_pdf(
+    _sip(address1="Kentkoop Mah. 1865. Sk. S. Siyasal 92 Yapı Koop No:19/B"),
+    "BERNZ COMPANY", barkod_kodu="40105913453122", kargo_firma="Sürat Kargo",
+    site="www.bernzcompany.com", ayarlar={}))
+es("adres VARSAYILAN olarak basılmaz", False, "Kentkoop" in sade)
+es("ad soyad var", True, "AYŞE YILMAZ" in sade)
+es("il/ilçe var", True, "YENİMAHALLE / ANKARA" in sade)
+es("kargo firması var", True, "SÜRAT KARGO" in sade)
+es("takip kodu var", True, "40105913453122" in sade)
+es("site adresi var", True, "www.bernzcompany.com" in sade)
+es("mağaza adı var", True, "BERNZ COMPANY" in sade)
+
+acik = _metin(label_pdf.render_label_pdf(
+    _sip(address1="Kentkoop Mah. 1865. Sk. S. Siyasal 92 Yapı Koop No:19/B"),
+    "BERNZ", barkod_kodu="401059", ayarlar={"adres_goster": True}))
+es("adres AÇILINCA basılır", True, "Kentkoop Mah." in acik)
+
+es("site kapatılabilir", False, "www.bernzcompany.com" in _metin(
+    label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
+                               site="www.bernzcompany.com",
+                               ayarlar={"site_goster": False})))
+es("site boşsa satır yok", True, "SÜRAT KARGO" in _metin(
+    label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
+                               kargo_firma="Sürat Kargo", site="")))
 
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")

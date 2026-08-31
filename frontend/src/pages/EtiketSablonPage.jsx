@@ -24,8 +24,10 @@ const BARKOD = [
 const ANAHTARLAR = [
   ['siparis_no_goster', 'Sipariş numarası'],
   ['ilce_il_goster', 'İlçe / il satırı'],
+  ['adres_goster', 'Açık adres (sokak)'],
   ['telefon_goster', 'Telefon'],
   ['kargo_firma_goster', 'Kargo firması adı'],
+  ['site_goster', 'Site adresi (en altta)'],
 ]
 
 export default function EtiketSablonPage({ embedded = false }) {
@@ -36,7 +38,27 @@ export default function EtiketSablonPage({ embedded = false }) {
   const [png, setPng] = useState(null)
   const [ciziliyor, setCiziliyor] = useState(false)
   const [kaydediyor, setKaydediyor] = useState(false)
+  const [magazalar, setMagazalar] = useState([])
+  const [magazaId, setMagazaId] = useState('')
+  const [site, setSite] = useState('')
+  const [siteBusy, setSiteBusy] = useState(false)
   const sonUrl = useRef(null)
+
+  // Etiketteki ad ve site adresi MAĞAZAYA ait (tenant'a değil) — hangi atölye
+  // basıyorsa onun bilgisi çıkmalı. Bu yüzden önizleme mağaza seçimine bağlı.
+  useEffect(() => {
+    api.get('/api/stores').then((r) => {
+      const l = (r.items || r || []).filter((x) => x.is_active !== false)
+      setMagazalar(l)
+      if (l.length && !magazaId) setMagazaId(l[0].id)
+    }).catch(() => {})
+  }, [])   // eslint-disable-line
+
+  const secili = useMemo(() => magazalar.find((m) => m.id === magazaId), [magazalar, magazaId])
+  useEffect(() => {
+    const c = secili?.config || {}
+    setSite(c.etiket_site || c.custom_domain || c.shop_domain || '')
+  }, [secili])
 
   useEffect(() => {
     api.get('/api/tenant/etiket-ayarlari').then((r) => {
@@ -50,7 +72,7 @@ export default function EtiketSablonPage({ embedded = false }) {
       const res = await fetch('/api/packaging/etiket-onizleme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(a),
+        body: JSON.stringify({ ayarlar: a, store_id: magazaId || null }),
       })
       if (!res.ok) throw new Error('önizleme alınamadı')
       const url = URL.createObjectURL(await res.blob())
@@ -61,7 +83,7 @@ export default function EtiketSablonPage({ embedded = false }) {
     } catch {
       /* önizleme başarısızsa eski görsel kalsın; yazı ile bağırmaya gerek yok */
     } finally { setCiziliyor(false) }
-  }, [])
+  }, [magazaId])
 
   // Yazarken her tuşta sunucuya gitmesin
   useEffect(() => {
@@ -82,6 +104,19 @@ export default function EtiketSablonPage({ embedded = false }) {
       toast.success('Şablon kaydedildi — bundan sonraki etiketler böyle basılacak')
     } catch (e) { toast.error(e?.detail || 'Kaydedilemedi') }
     finally { setKaydediyor(false) }
+  }
+
+  const siteKaydet = async () => {
+    if (!magazaId) return
+    setSiteBusy(true)
+    try {
+      await api.patch(`/api/stores/${magazaId}`, { config: { etiket_site: site.trim() } })
+      setMagazalar((l) => l.map((m) => m.id === magazaId
+        ? { ...m, config: { ...(m.config || {}), etiket_site: site.trim() } } : m))
+      toast.success('Site adresi kaydedildi')
+      ciz(ayar)
+    } catch (e) { toast.error(e?.detail || 'Kaydedilemedi') }
+    finally { setSiteBusy(false) }
   }
 
   const degisti = useMemo(
@@ -161,6 +196,37 @@ export default function EtiketSablonPage({ embedded = false }) {
                 </label>
               ))}
             </div>
+          </section>
+
+          <section className="card !p-4 space-y-3">
+            <h2 className="text-[13px] font-medium text-gray-200">Mağaza</h2>
+            <p className="text-[10px] text-gray-500 -mt-1">
+              Etiketin üstündeki ad ve altındaki site adresi mağazadan gelir —
+              hangi atölye basıyorsa onun bilgisi çıkar.
+            </p>
+            <label className="block">
+              <span className="text-[12px] text-gray-400">Önizlenen mağaza</span>
+              <select value={magazaId} onChange={(e) => setMagazaId(e.target.value)}
+                      className="input w-full mt-1 !text-[13px]">
+                {magazalar.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] text-gray-400">Bu mağazanın site adresi</span>
+              <div className="flex gap-2 mt-1">
+                <input value={site} maxLength={80} onChange={(e) => setSite(e.target.value)}
+                       placeholder="www.bernzcompany.com"
+                       className="input flex-1 !text-[13px]" />
+                <button onClick={siteKaydet} disabled={siteBusy || !magazaId}
+                        className="px-3 rounded-lg border border-white/15 text-[12px]
+                                   text-gray-300 hover:bg-white/10 disabled:opacity-40">
+                  {siteBusy ? '…' : 'Kaydet'}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Mağaza bazında saklanır; şablonun diğer ayarları tüm mağazalar için ortaktır.
+              </p>
+            </label>
           </section>
 
           <section className="card !p-4 space-y-3">

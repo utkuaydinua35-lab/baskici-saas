@@ -42,6 +42,11 @@ VARSAYILAN_AYARLAR: dict = {
     "barkod_min_cm": 2.0,
     "barkod_max_cm": 4.2,
     "siparis_no_goster": True,
+    # Sokak adresi VARSAYILAN OLARAK KAPALI: gönderi Sürat'ın sistemine
+    # kaydediliyor ve adres oradan geliyor; etiketin işi paketi tanıtmak.
+    # Açılabilir — kapalıyken bile uzun adres sarma mantığı yerinde durur.
+    "adres_goster": False,
+    "site_goster": True,
     "ilce_il_goster": True,
     "telefon_goster": True,
     "kargo_firma_goster": True,
@@ -163,7 +168,8 @@ def _sar(metin: str, font, boyut: float, genislik: float) -> list[str]:
 def render_label_pdf(order, store_name: str | None = None,
                      barkod_kodu: str | None = None,
                      kargo_firma: str | None = None,
-                     ayarlar: dict | None = None) -> bytes:
+                     ayarlar: dict | None = None,
+                     site: str | None = None) -> bytes:
     """10x15 cm kargo etiketi.
 
     barkod_kodu verilirse siparişin kendi kodu YERİNE o basılır. Sürat DOĞRUDAN
@@ -214,6 +220,9 @@ def render_label_pdf(order, store_name: str | None = None,
     alt_metin_h = A["takip_punto"] * 1.32 + 4 + (10 * 1.32 if firma_var else 0)
     if A["not_metni"]:
         alt_metin_h += 10 * 1.32
+    site_var = bool((site or "").strip()) and A["site_goster"]
+    if site_var:
+        alt_metin_h += 10 * 1.32
 
     # ── ÜST: gönderici + sipariş no ──────────────────────────────────────
     y = m
@@ -235,6 +244,8 @@ def render_label_pdf(order, store_name: str | None = None,
     y += 3
 
     # Sokak satırları — SARILARAK, asla düşmeden. Yer darsa punto küçülür.
+    satirlar = []
+    boyut = A["adres_punto"]
     bosluk = (H - m - alt_metin_h - A["barkod_min_cm"] * CM - 14) - y - 46
     _tab = A["adres_punto"]
     for boyut in (_tab, _tab - .5, _tab - 1, _tab - 1.5, _tab - 2, _tab - 2.5, _tab - 3):
@@ -244,8 +255,9 @@ def render_label_pdf(order, store_name: str | None = None,
             satirlar += _sar(d(parca), f_n, boyut, ic)
         if len(satirlar) * boyut * 1.3 <= bosluk or boyut == 8:
             break
-    for ln in satirlar:
-        y = yaz(ln, boyut, y)
+    if A["adres_goster"]:
+        for ln in satirlar:
+            y = yaz(ln, boyut, y)
 
     y += 6
     # İlçe / il — kargo ayrımını yapan bilgi, en görünür olan bu olmalı
@@ -292,7 +304,9 @@ def render_label_pdf(order, store_name: str | None = None,
     if firma_var:
         by = yaz(_buyut(kargo_firma), 10, by, ortala=True, renk=(.35, .35, .35))
     if A["not_metni"]:
-        yaz(A["not_metni"], 10, by, ortala=True, kalin=True)
+        by = yaz(A["not_metni"], 10, by, ortala=True, kalin=True)
+    if site_var:
+        yaz(site.strip(), 10, by, ortala=True, renk=(.35, .35, .35))
 
     buf = io.BytesIO()
     doc.save(buf)

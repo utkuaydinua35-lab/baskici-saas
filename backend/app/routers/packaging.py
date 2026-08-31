@@ -172,6 +172,24 @@ def _surat_gonderi(order, il_override: str | None, ilce_override: str | None) ->
     }
 
 
+def _magaza_site(db: Session, order) -> str | None:
+    """Etiketin altına yazılacak site adresi — MAĞAZA başına.
+
+    Shopify mağazalarında config'te yalnız `2eb3e1-48.myshopify.com` gibi iç
+    adres var; onu basmak işe yaramaz. Bu yüzden elle girilen
+    `config.etiket_site` esas alınır, yoksa vitrin mağazalarının gerçek
+    alan adına düşülür.
+    """
+    if not order.store_id:
+        return None
+    st = db.scalar(select(Store).where(Store.id == order.store_id))
+    if not st:
+        return None
+    cfg = st.config or {}
+    return (cfg.get("etiket_site") or cfg.get("custom_domain")
+            or cfg.get("shop_domain") or "").strip() or None
+
+
 def _etiket_ayarlari(db: Session, tenant_id) -> dict:
     from app.models import Tenant as _T
     t = db.scalar(select(_T).where(_T.id == tenant_id))
@@ -193,24 +211,42 @@ class _OrnekSiparis:
         "phone": "0552 205 09 06"}}
 
 
+class EtiketOnizlemeIn(BaseModel):
+    ayarlar: dict = {}
+    store_id: uuid.UUID | None = None
+
+
 @router.post("/etiket-onizleme", response_model=None)
 def etiket_onizleme(
-    ayarlar: dict,
+    body: EtiketOnizlemeIn,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Verilen ayarlarla ÖRNEK etiketi PNG olarak çiz (kaydetmeden).
 
+    Mağaza seçilebilir: etiketteki ad ve site adresi MAĞAZAYA göre değişir,
+    tenant'a göre değil. (Önizleme eskiden tenant adını gösteriyordu — panelde
+    "BERNZ OPS" görünüp baskıda "BERNZ COMPANY" çıkıyordu.)
+
     PNG döner çünkü panelde <img> ile anında gösterilecek; PDF gömmek
     tarayıcıdan tarayıcıya değişiyor ve önizlemeyi güvenilmez yapıyor.
     """
     import fitz as _fitz
-    from app.models import Tenant as _T
-    t = db.scalar(select(_T).where(_T.id == user.tenant_id))
+    st = None
+    if body.store_id:
+        st = db.scalar(select(Store).where(Store.id == body.store_id,
+                                           Store.tenant_id == user.tenant_id))
+    if st is None:
+        st = db.scalar(select(Store).where(Store.tenant_id == user.tenant_id,
+                                           Store.is_active.is_(True))
+                       .order_by(Store.name).limit(1))
+    cfg = (st.config or {}) if st else {}
+    site = (cfg.get("etiket_site") or cfg.get("custom_domain")
+            or cfg.get("shop_domain") or "").strip() or None
     pdf = label_pdf.render_label_pdf(
-        _OrnekSiparis(), (t.app_name or t.name) if t else "BASKICI",
+        _OrnekSiparis(), st.name if st else "BASKICI",
         barkod_kodu="40105913453122", kargo_firma="Sürat Kargo",
-        ayarlar=ayarlar or {})
+        ayarlar=body.ayarlar or {}, site=site)
     d = _fitz.open(stream=pdf, filetype="pdf")
     png = d[0].get_pixmap(dpi=150).tobytes("png")
     return Response(content=png, media_type="image/png",
@@ -234,7 +270,8 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     from app.services import label_pdf as _lp
     return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod,
                                 kargo_firma=ki.get("handler_name") or "Sürat Kargo",
-                                ayarlar=_etiket_ayarlari(db, order.tenant_id))
+                                ayarlar=_etiket_ayarlari(db, order.tenant_id),
+                                site=_magaza_site(db, order))
 
 
 class KargoGonderRequest(BaseModel):
@@ -477,7 +514,8 @@ def order_zpl(
         if tip == "adres":
             pdf = label_pdf.render_label_pdf(
                 order, _store_name(db, order),
-                ayarlar=_etiket_ayarlari(db, order.tenant_id))
+                ayarlar=_etiket_ayarlari(db, order.tenant_id),
+                site=_magaza_site(db, order))
             zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
         else:
             ki = order.kargo_info or {}
@@ -531,7 +569,8 @@ def label(
     order = _resolve_order(db, order_ref, user.tenant_id)
     pdf = label_pdf.render_label_pdf(
         order, _store_name(db, order),
-        ayarlar=_etiket_ayarlari(db, order.tenant_id))
+        ayarlar=_etiket_ayarlari(db, order.tenant_id),
+        site=_magaza_site(db, order))
     filename = f"etiket_{order.order_number or order.id}.pdf"
     return Response(
         content=pdf,

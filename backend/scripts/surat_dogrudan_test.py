@@ -107,6 +107,7 @@ import fitz  # noqa: E402
 
 class _SahteStore:
     name = "BERNZ"
+    config = {"etiket_site": "www.bernzcompany.com"}   # site satırı mağazadan gelir
 
 
 class _SahteDb:

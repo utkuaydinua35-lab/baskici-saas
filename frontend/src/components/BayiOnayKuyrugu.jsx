@@ -6,6 +6,7 @@
  * siparis uretime akar.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from './Toast'
@@ -23,6 +24,10 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   const [yukleniyor, setYukleniyor] = useState('')
   const pdfRef = useRef(null)
   const hedefRef = useRef(null)
+  // Tasarim secici: bayi ayni gorseli her sipariste yeniden yukluyor ve
+  // sunucuda ayni dosyanin kopyalari birikiyor. Onaylarken katalogdaki
+  // tasarim secilirse yeni dosya hic olusmaz.
+  const [secici, setSecici] = useState(null)   // {order, kalem}
   const toast = useToast()
   const navigate = useNavigate()
 
@@ -45,6 +50,22 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   // JPG olarak yuklenen tasarim baskiya uygun degil. Yonetici disarida PDF
   // uretip buradan yukler; /print-file gorseli de kabul edip CMYK PDF'e cevirir.
   const pdfSec = (kalem) => { hedefRef.current = kalem; pdfRef.current?.click() }
+
+  const tasarimSec = async (tasarim) => {
+    const { order, kalem } = secici || {}
+    if (!order || !kalem) return
+    try {
+      const r = await api.patch(
+        `/api/dealers/portal/onay-bekleyen/${order.id}/kalem/${kalem.id}/tasarim`,
+        { design_id: tasarim.id })
+      setSecici(null)
+      if (r.degismedi) { toast.info('Zaten bu tasarım seçili'); return }
+      toast.success(
+        `Tasarım değiştirildi: ${r.tasarim_kodu}`
+        + (r.eski_bosta ? ` · ${r.eski_tasarim_kodu} artık kullanılmıyor` : ''))
+      await yukle()
+    } catch (e) { toast.error(e.detail || 'Değiştirilemedi') }
+  }
 
   const pdfYukle = async (dosya) => {
     const kalem = hedefRef.current
@@ -83,6 +104,11 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
     <div className="card mb-5 animate-fadeinup !border-amber-500/25">
       <input ref={pdfRef} type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
              onChange={(e) => pdfYukle(e.target.files?.[0])} />
+      {secici && (
+        <TasarimSecici storeId={secici.order.store_id}
+                       mevcutId={secici.kalem.tasarim_id}
+                       onSec={tasarimSec} onKapat={() => setSecici(null)} />
+      )}
       <div className="flex items-center gap-2.5 mb-4">
         <span className="w-2 h-2 rounded-full bg-amber-400"
               style={{ animation: 'glow-pulse 2s ease-in-out infinite' }} />
@@ -137,8 +163,12 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
                         </span>
                       )}
                     </div>
-                    <div className="text-[11.5px] text-gray-500">
-                      {k.tasarim_kodu || '—'} · {k.adet} adet
+                    <div className="text-[11.5px] text-gray-500 flex items-center gap-2 flex-wrap">
+                      <span>{k.tasarim_kodu || '—'} · {k.adet} adet</span>
+                      <button type="button" onClick={() => setSecici({ order: o, kalem: k })}
+                              className="text-accent hover:brightness-125 transition">
+                        ⇄ Tasarım değiştir
+                      </button>
                     </div>
                     {k.format && k.format !== 'pdf' && (
                       <div className="flex items-center gap-2 mt-1.5">
@@ -198,4 +228,89 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
       </div>
     </div>
   )
+}
+
+
+/** Katalogdan tasarim sec — kayitli tasarimi kullan, yeni dosya olusturma. */
+function TasarimSecici({ storeId, mevcutId, onSec, onKapat }) {
+  const [q, setQ] = useState('')
+  const [liste, setListe] = useState([])
+  const [yukleniyor, setYukleniyor] = useState(!!storeId)
+
+  useEffect(() => {
+    if (!storeId) return
+    let iptal = false
+    const t = setTimeout(async () => {
+      if (!iptal) setYukleniyor(true)
+      try {
+        const r = await api.get(`/api/designs?store_id=${storeId}`
+          + `&per_page=60${q.trim() ? `&search=${encodeURIComponent(q.trim())}` : ''}`)
+        if (!iptal) setListe(r.items || [])
+      } catch { if (!iptal) setListe([]) }
+      finally { if (!iptal) setYukleniyor(false) }
+    }, 250)
+    return () => { iptal = true; clearTimeout(t) }
+  }, [storeId, q])
+
+  // Ust bilesenin animasyonu yiginlama baglami yaratiyor; modal ICINDE kalmasin
+  return createPortal((
+    <div className="fixed inset-0 z-[70] grid place-items-center p-4 animate-fadein"
+         style={{ background: 'rgb(6 4 12 / 0.86)' }} onClick={onKapat}>
+      <div className="rounded-2xl w-full max-w-3xl max-h-[86vh] flex flex-col p-5
+                      border border-white/10 animate-popin"
+           style={{ background: 'rgb(23 16 43)' }}
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-[15px] font-semibold text-white">Kayıtlı tasarımlar</h3>
+            <p className="text-[11px] text-gray-500">
+              Var olanı seçmek yeni dosya oluşturmaz — sunucuda yer kaplamaz.
+            </p>
+          </div>
+          <button onClick={onKapat}
+                  className="text-gray-500 hover:text-gray-200 text-xl leading-none">×</button>
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+               placeholder="Kod veya ad ara…" className="input w-full mb-3" />
+        {yukleniyor ? (
+          <div className="py-10 text-center text-[13px] text-gray-500">Yükleniyor…</div>
+        ) : liste.length === 0 ? (
+          <div className="py-10 text-center text-[13px] text-gray-500">
+            {q ? 'Eşleşen tasarım yok' : 'Bu mağazada kayıtlı tasarım yok'}
+          </div>
+        ) : (
+          <div className="overflow-y-auto -mx-1 px-1">
+            <div className="grid gap-3 py-1 content-start
+                            [grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr))]">
+              {liste.map((t) => (
+                <button key={t.id} type="button" onClick={() => onSec(t)}
+                        className={`block w-full text-left rounded-xl overflow-hidden border
+                                    transition-colors ${t.id === mevcutId
+                                      ? 'border-accent ring-2 ring-accent/30'
+                                      : 'border-white/10 hover:border-white/25'}`}>
+                  <div className="relative w-full bg-white/[0.04]" style={{ paddingTop: '100%' }}>
+                    {t.thumbnail_url
+                      ? <img src={t.thumbnail_url} alt=""
+                             className="absolute inset-0 w-full h-full object-cover" />
+                      : <span className="absolute inset-0 grid place-items-center
+                                         text-[11px] text-gray-600">
+                          {(t.file_format || '?').toUpperCase()}
+                        </span>}
+                  </div>
+                  <div className="px-2 py-1.5">
+                    <div className="text-[11.5px] text-gray-300 truncate" title={t.code}>
+                      {t.code}
+                    </div>
+                    <div className="text-[10px] text-gray-500 truncate">
+                      {(t.file_format || '').toUpperCase()}{t.name ? ` · ${t.name}` : ''}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  ), document.body)
 }

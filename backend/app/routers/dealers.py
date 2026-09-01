@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import (Dealer, DealerTransaction, LineItem, Order,
+from app.models import (Dealer, DealerTransaction, Design, LineItem, Order,
                         OrderStatusHistory, Store, User)
 from app.services import storage
 
@@ -811,6 +811,8 @@ def portal_onay_bekleyen(
             "order_number": o.order_number,
             "bayi": d.name if d else "—",
             "dealer_id": str(d.id) if d else None,
+            # Tasarim secici bu magazanin katalogunu listeler
+            "store_id": str(o.store_id) if o.store_id else None,
             # Kargo tiki bayinin AYARINDAN gelsin: ucret 0 ise tiksiz acilir.
             "kargo_ucreti": float(d.shipping_fee or 0) if d else 0.0,
             "para_birimi": (d.currency or "TRY").upper() if d else "TRY",
@@ -839,6 +841,83 @@ def portal_onay_bekleyen(
             } for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
         })
     return out
+
+
+class KalemTasarimIn(BaseModel):
+    design_id: uuid.UUID
+
+
+@router.patch("/portal/onay-bekleyen/{order_id}/kalem/{line_item_id}/tasarim",
+              response_model=dict)
+def portal_kalem_tasarim(
+    order_id: uuid.UUID,
+    line_item_id: uuid.UUID,
+    req: KalemTasarimIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Onay ONCESI kalemin tasarimini KAYITLI bir tasarimla degistir.
+
+    Bayi her sipariste ayni gorseli yeniden yukleyince sunucuda ayni dosyanin
+    kopyalari birikiyor. Yonetici onaylarken katalogdaki tasarimi secebilirse
+    yeni dosya hic olusmaz.
+
+    Yalniz ONAY BEKLEYEN siparislerde calisir: kalip asamasi baslamis bir
+    siparisin tasarimini degistirmek basilmis urunle tutarsizlik yaratir.
+    """
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id,
+    ).options(selectinload(Order.line_items)))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    if not o.bayii_onay_bekliyor:
+        raise HTTPException(409, "Siparis onaylanmis — tasarim degistirilemez")
+
+    li = next((x for x in (o.line_items or []) if x.id == line_item_id), None)
+    if li is None:
+        raise HTTPException(404, "Kalem bulunamadi")
+
+    yeni = db.scalar(select(Design).where(
+        Design.id == req.design_id, Design.tenant_id == user.tenant_id))
+    if not yeni:
+        raise HTTPException(404, "Tasarim bulunamadi")
+
+    eski_id = li.assigned_design_id
+    if eski_id == yeni.id:
+        return {"ok": True, "degismedi": True}
+    li.assigned_design_id = yeni.id
+    db.flush()
+
+    # Bayinin yukledigi tasarim artik HICBIR yerde kullanilmiyorsa panele
+    # bildir — silme karari kullanicinin; sessizce silmek veri kaybi riski.
+    eski_bosta = False
+    eski_kod = None
+    if eski_id:
+        _eski = db.get(Design, eski_id)
+        eski_kod = _eski.code if _eski else None
+        kalan = db.scalar(select(sql_func.count()).select_from(LineItem).where(
+            LineItem.assigned_design_id == eski_id))
+        eski_bosta = not kalan
+
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id,
+        from_stage=o.current_stage, to_stage=o.current_stage,
+        action="bayii_tasarim_degisti",
+        note=f"Kalem tasarimi degistirildi: {eski_kod or '—'} -> {yeni.code}",
+        created_by=user.full_name or user.email,
+    ))
+    db.commit()
+    return {
+        "ok": True,
+        "tasarim_id": str(yeni.id),
+        "tasarim_kodu": yeni.code,
+        "format": (yeni.file_format or "").lower() or None,
+        "gorsel": storage.get_thumbnail_url(yeni.file_path, yeni.file_format),
+        "dosya": storage.get_design_url(yeni.file_path),
+        "eski_bosta": eski_bosta,
+        "eski_tasarim_id": str(eski_id) if eski_id else None,
+        "eski_tasarim_kodu": eski_kod,
+    }
 
 
 class PortalOnayIn(BaseModel):

@@ -77,10 +77,12 @@ export default function MoldDetailPage() {
 
   const [removeTarget, setRemoveTarget] = useState(null)
   const [stokMaili, setStokMaili] = useState(false)
+  const [stokYok, setStokYok] = useState(false)
   const removeItem = async (itemId, action) => {
     try {
       const d = await api.post(`/api/molds/${moldId}/items/${itemId}/remove`,
-        { action, musteriye_mail: action === 'replan' && stokMaili })
+        { action, musteriye_mail: action === 'replan' && stokMaili,
+          stok_yok: action === 'replan' && stokYok })
       setMold(d)
       const h = await api.get(`/api/molds/${moldId}/history`)
       setHistory(h.items || [])
@@ -576,6 +578,20 @@ export default function MoldDetailPage() {
                 className="w-full text-left px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20">
                 ↩ Geri planla <span className="block text-[11px] text-gray-400 mt-0.5">Kalemi tekrar kalıba eklenmemiş yap, sonraki planda çıksın</span>
               </button>
+              {/* SEBEP: stok yok. Bayi kendi ekraninda "Stokta mevcut degil" gorur.
+                  Varsayilan KAPALI — "geri planla" hatali baski gibi baska
+                  sebeplerle de kullaniliyor, yanlis sebep bayiyi yaniltir. */}
+              <label className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-input/30 border border-brand-border/60 cursor-pointer">
+                <input type="checkbox" checked={stokYok}
+                       onChange={e => setStokYok(e.target.checked)}
+                       className="mt-0.5 w-4 h-4 accent-accent shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-[12px] text-gray-200">Sebep: ürün stokta yok</span>
+                  <span className="block text-[11px] text-gray-500">
+                    Bayi siparişiyse bayi "Stokta mevcut değil" ibaresini görür
+                  </span>
+                </span>
+              </label>
               {/* Stok yoklugu nedeniyle cikariliyorsa musteriyi bilgilendir */}
               <label className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-input/30 border border-brand-border/60 cursor-pointer">
                 <input type="checkbox" checked={stokMaili}

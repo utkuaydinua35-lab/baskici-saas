@@ -226,6 +226,42 @@ def list_shopify_products(
     return {"items": products, "count": len(products)}
 
 
+@router.get("/{design_id}/onizleme", response_model=None)
+def design_onizleme(
+    design_id: uuid.UUID,
+    dpi: int = Query(200, ge=72, le=400),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tasarımın BÜYÜTÜLEBİLİR önizlemesi.
+
+    JPG/PNG zaten /storage'dan tam çözünürlükte servis ediliyor; bu uç PDF için.
+    Kayıtlı küçük resim 100 dpi ve büyütülünce bozuluyor — burada istenen
+    çözünürlükte yeniden çizilir.
+    """
+    d = db.scalar(select(Design).where(
+        Design.id == design_id, Design.tenant_id == user.tenant_id))
+    if not d:
+        raise HTTPException(404, "Tasarım bulunamadı")
+    veri = storage.read_design_file(d.file_path)
+    if veri is None:
+        raise HTTPException(404, "Tasarım dosyası bulunamadı")
+    fmt = (d.file_format or "").lower()
+    if fmt != "pdf":
+        # Raster/vektör: dosyanın kendisi zaten en iyi kalite
+        tipler = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+                  "png": "image/png", "svg": "image/svg+xml"}
+        return Response(content=veri, media_type=tipler.get(fmt, "application/octet-stream"))
+    try:
+        import fitz
+        doc = fitz.open(stream=veri, filetype="pdf")
+        png = doc[0].get_pixmap(dpi=dpi).tobytes("png")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Önizleme üretilemedi: {str(e)[:150]}") from e
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=300"})
+
+
 @router.get("/{design_id}", response_model=None)
 def get_design(
     design_id: uuid.UUID,

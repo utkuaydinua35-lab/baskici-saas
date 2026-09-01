@@ -147,8 +147,25 @@ def _yetkiler(db: Session, o: Order) -> dict:
     }
 
 
-def _ser_kalem(li: LineItem) -> dict:
+def _kaliptaki_kalemler(db: Session, o: Order) -> set:
+    """Bu siparişin ŞU AN bir kalıpta duran kalem id'leri."""
+    from app.models import MoldItem as _MI
+    ids = [li.id for li in (o.line_items or [])]
+    if not ids:
+        return set()
+    return set(db.scalars(select(_MI.line_item_id).where(
+        _MI.line_item_id.in_(ids))).all())
+
+
+def _ser_kalem(li: LineItem, kaliptakiler: set | None = None) -> dict:
     d = li.assigned_design
+    # "Stokta mevcut değil": kalem stok yokluğuyla kalıptan çıkarılmış VE şu an
+    # hiçbir kalıpta değil. Bayrağa tek başına bakmıyoruz — ürün tekrar kalıba
+    # girdiğinde ibare kendiliğinden kalkmalı, yoksa bayi üretimdeki siparişi
+    # "stokta yok" sanır.
+    _stok = (li.raw or {}).get("stok_bekliyor") if isinstance(li.raw, dict) else None
+    stok_bekliyor = bool(_stok) and (
+        kaliptakiler is None or li.id not in kaliptakiler)
     return {
         "id": str(li.id),
         "baslik": li.title,
@@ -157,11 +174,27 @@ def _ser_kalem(li: LineItem) -> dict:
         "varyasyon": li.kilif_varyasyon,
         "gorsel": storage.get_thumbnail_url(d.file_path, d.file_format) if d else None,
         "tasarim": storage.get_design_url(d.file_path) if d else None,
+        "tasarim_id": str(d.id) if d else None,
+        "format": (d.file_format or "").lower() if d else None,
+        "stok_bekliyor": stok_bekliyor,
+        "stok_bekliyor_tarih": (_stok or {}).get("at") if stok_bekliyor else None,
     }
 
 
 def _ser(db: Session, o: Order, detay: bool = False) -> dict:
     raw = o.raw or {}
+    # Kalipta olan kalemleri YALNIZCA gerekince sor: liste ekraninda 500 siparis
+    # icin sipariş basina sorgu atmak N+1 olurdu. Siparislerin buyuk cogunlugunda
+    # stok bayragi hic yok.
+    _onbellek: list = []
+
+    def _kaliptaki():
+        if not _onbellek:
+            var = any(isinstance(li.raw, dict) and li.raw.get("stok_bekliyor")
+                      for li in (o.line_items or []))
+            _onbellek.append(_kaliptaki_kalemler(db, o) if var else set())
+        return _onbellek[0]
+
     sa = raw.get("shipping_address") or {}
     out = {
         "id": str(o.id),
@@ -179,7 +212,7 @@ def _ser(db: Session, o: Order, detay: bool = False) -> dict:
         "kargo_ucreti": raw.get("shipping_fee"),
         "para_birimi": raw.get("currency", "TRY"),
         "kargo_takip": (o.kargo_info or {}).get("tracking_number"),
-        "kalemler": [_ser_kalem(li) for li in sorted(
+        "kalemler": [_ser_kalem(li, _kaliptaki()) for li in sorted(
             o.line_items or [], key=lambda x: x.position or 0)],
     }
     if detay:

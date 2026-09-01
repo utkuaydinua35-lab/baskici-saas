@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../lib/api'
+import GorselBuyutec from '../../components/GorselBuyutec'
 import { ADRES_ZORUNLU, kanalAdi, paraYaz, tarihYaz } from '../../lib/bayii'
 import { Bildirim, DurumRozet, Hata, Iskelet } from '../../components/BayiParcalar'
 import IlIlceSecici from '../../components/IlIlceSecici'
@@ -47,6 +48,7 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
   const [arama, setArama] = useState('')
   const [bekle, setBekle] = useState('')
   const dosyaRef = useRef(null)
+  const [buyut, setBuyut] = useState(false)   // görseli AYNI SAYFADA büyüt
 
   const liste = (() => {
     const q = arama.trim().toLocaleLowerCase('tr')
@@ -94,6 +96,10 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
     <div className={`bayi-sira ${cokluMu
       ? 'rounded-xl border border-brand-border bg-brand-input/25 p-3.5' : ''}`}
          style={{ '--gecikme': `${sira * 55}ms` }}>
+      <GorselBuyutec key={kalem.id} acik={buyut} kapat={() => setBuyut(false)}
+                     kaynak={kalem.tasarim || kalem.gorsel}
+                     tasarimId={kalem.tasarim_id} format={kalem.format}
+                     baslik={kalem.model || ''} />
       {cokluMu && (
         <div className="text-[11px] uppercase tracking-[0.14em] text-gray-600 mb-3">
           {sira + 1}. ürün
@@ -101,8 +107,10 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
       )}
       <div className="flex items-start gap-4 flex-wrap">
         <div className="relative group shrink-0">
-          <div className={`${cokluMu ? 'w-20 h-20' : 'w-28 h-28'} rounded-2xl overflow-hidden
-                           border border-white/8 bg-white/[0.03] grid place-items-center`}>
+          <div onClick={() => kalem.gorsel && setBuyut(true)}
+               className={`${cokluMu ? 'w-20 h-20' : 'w-28 h-28'} rounded-2xl overflow-hidden
+                           border border-white/8 bg-white/[0.03] grid place-items-center
+                           ${kalem.gorsel ? 'cursor-zoom-in hover:border-accent/50 transition-colors' : ''}`}>
             {kalem.gorsel
               ? <img src={kalem.gorsel} alt="" className="w-full h-full object-cover" />
               : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
@@ -160,6 +168,13 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
                 <span className={`${cokluMu ? 'text-[14.5px]' : 'text-[16px]'} text-white`}>
                   {kalem.model || '—'}
                 </span>
+                {kalem.stok_bekliyor && (
+                  <span title="Bu ürün stokta olmadığı için üretime alınamadı, tedarik ediliyor"
+                        className="text-[11.5px] px-2 py-0.5 rounded-full
+                                   bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    Stokta mevcut değil
+                  </span>
+                )}
                 {duzenlenebilir && (
                   <button onClick={() => setModelDuzenle(true)}
                           className="text-[12.5px] text-accent hover:brightness-125 transition">

@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from './Toast'
 import { kanalAdi } from '../lib/bayii'
+import GorselBuyutec from './GorselBuyutec'
 
 // placement_rules.normalize_variation'in urettigi degerler
 const VARYASYONLAR = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
@@ -28,6 +29,7 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   // sunucuda ayni dosyanin kopyalari birikiyor. Onaylarken katalogdaki
   // tasarim secilirse yeni dosya hic olusmaz.
   const [secici, setSecici] = useState(null)   // {order, kalem}
+  const [buyutec, setBuyutec] = useState(null) // tiklanan kalem — ayni sayfada buyur
   const toast = useToast()
   const navigate = useNavigate()
 
@@ -104,6 +106,11 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
     <div className="card mb-5 animate-fadeinup !border-amber-500/25">
       <input ref={pdfRef} type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
              onChange={(e) => pdfYukle(e.target.files?.[0])} />
+      <GorselBuyutec key={buyutec?.id || 'yok'}
+                     acik={!!buyutec} kapat={() => setBuyutec(null)}
+                     kaynak={buyutec?.dosya || buyutec?.gorsel}
+                     tasarimId={buyutec?.tasarim_id} format={buyutec?.format}
+                     baslik={buyutec ? `${buyutec.tasarim_kodu || ''} · ${buyutec.model || ''}` : ''} />
       {secici && (
         <TasarimSecici storeId={secici.order.store_id}
                        mevcutId={secici.kalem.tasarim_id}
@@ -147,12 +154,16 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
             <div className="mt-3 space-y-2.5">
               {o.kalemler.map((k) => (
                 <div key={k.id} className="flex items-center gap-3 flex-wrap">
-                  <div className="w-11 h-11 rounded-lg overflow-hidden border border-white/8
-                                  bg-white/[0.03] grid place-items-center shrink-0">
+                  <button type="button" onClick={() => k.gorsel && setBuyutec(k)}
+                          disabled={!k.gorsel} title={k.gorsel ? 'Büyüt' : ''}
+                          className="w-11 h-11 rounded-lg overflow-hidden border border-white/8
+                                     bg-white/[0.03] grid place-items-center shrink-0
+                                     enabled:hover:border-accent/60 enabled:cursor-zoom-in
+                                     transition-colors">
                     {k.gorsel
                       ? <img src={k.gorsel} alt="" className="w-full h-full object-cover" />
                       : <span className="text-[10px] text-gray-600">—</span>}
-                  </div>
+                  </button>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] text-gray-200 flex items-center gap-2 flex-wrap">
                       {k.model || '—'}

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
@@ -815,6 +816,11 @@ class RemoveItemRequest(BaseModel):
     # Yalnızca "replan" ile anlamlı: müşteriye "bu ürün stokta yok, tedarik
     # ediliyor" bildirimi gönderilsin mi.
     musteriye_mail: bool = False
+    # Çıkarma SEBEBİ stok yokluğu mu? "Geri planla" hatalı baskı gibi başka
+    # sebeplerle de kullanılıyor; varsayılan KAPALI. Açıkken bayi kendi
+    # sipariş ekranında "Stokta mevcut değil" görür — yanlış sebep göstermek
+    # bayiyi yanıltır, o yüzden tahmin edilmez, açıkça işaretlenir.
+    stok_yok: bool = False
 
 
 # ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
@@ -860,6 +866,17 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
         # line item tekrar kalıba eklenmemiş -> sonraki planda çıkar
         # (line_item_id yoksa order_number+design_code fallback'i ile esle)
         _replan_mold_item(db, user.tenant_id, it)
+        if payload.stok_yok and li is not None:
+            # Bayi portalinde "Stokta mevcut değil" olarak gösterilir.
+            # NOT: bu bayrak temizlenmez; bayi tarafı "bayrak VAR ve kalem şu an
+            # hiçbir kalıpta DEĞİL" diye türetir. Böylece ürün tekrar kalıba
+            # girince ibare kendiliğinden kalkar — bayat bayrak yanıltmaz.
+            _r = dict(li.raw or {})
+            _r["stok_bekliyor"] = {
+                "at": datetime.now(UTC).isoformat(),
+                "model": it.model or li.device_model_override,
+            }
+            li.raw = _r
         # Eksik stok bildirimi — istege bagli. Mail hatasi cikarma islemini BOZMAZ.
         if payload.musteriye_mail:
             try:

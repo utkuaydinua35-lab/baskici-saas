@@ -160,6 +160,24 @@ def save_design_file(
     }
 
 
+def read_design_file(relative_path: str | None) -> bytes | None:
+    """Kayitli tasarim dosyasinin BAYTLARI; yoksa/okunamazsa None.
+
+    Mukerrer yukleme tespitinde hash eslesmesi TEK BASINA yeterli sayilmaz;
+    aday dosya bununla bayt bayt karsilastirilir. Yanlis eslesme, musteriye
+    YANLIS TASARIM basilmasi demektir.
+    """
+    if not relative_path:
+        return None
+    try:
+        yol = STORAGE_ROOT / relative_path
+        if not yol.is_file():
+            return None
+        return yol.read_bytes()
+    except OSError:
+        return None
+
+
 def delete_design_file(relative_path: str) -> bool:
     """Tasarım dosyasını ve varsa thumbnail'ini sil."""
     if not relative_path:

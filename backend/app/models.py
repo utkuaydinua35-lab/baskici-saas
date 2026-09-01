@@ -237,6 +237,10 @@ class Design(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     file_format: Mapped[str] = mapped_column(String(10))
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    # Yuklenen dosyanin SHA-256'si. Ayni bayi ayni gorseli tekrar yukleyince
+    # yeni dosya yazmak yerine mevcut tasarima baglanir. Hash tek basina
+    # YETERLI SAYILMAZ — eslesme bulununca dosya bayt bayt karsilastirilir.
+    icerik_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     product_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     product_title: Mapped[str | None] = mapped_column(String(500), nullable=True)

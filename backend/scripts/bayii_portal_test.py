@@ -41,11 +41,15 @@ def es(ad, beklenen, gercek):
         print(f"  ✗ {ad}\n      beklenen: {beklenen!r}\n      gercek  : {gercek!r}")
 
 
-def jpg() -> bytes:
-    """Gecerli, kucuk bir JPEG."""
+def jpg(renk=(120, 40, 200)) -> bytes:
+    """Gecerli, kucuk bir JPEG. Renk degisince ICERIK de degisir.
+
+    Onemli: ayni baytlar yuklenirse sunucu mukerrer dosya yazmaz ve MEVCUT
+    tasarimi dondurur (bkz. tasarim_dedup_test). Farkli tasarim bekleyen
+    testler farkli renk vermeli."""
     from PIL import Image
     b = io.BytesIO()
-    Image.new("RGB", (64, 64), (120, 40, 200)).save(b, "JPEG")
+    Image.new("RGB", (64, 64), renk).save(b, "JPEG")
     return b.getvalue()
 
 
@@ -140,7 +144,9 @@ def siparis_ac(h, urunler=None, **alan):
     veri |= {k: str(v) for k, v in alan.items()}
     veri["model"] = [m for m, _ in urunler]
     veri["adet"] = [str(a) for _, a in urunler]
-    dosyalar = [("tasarim", (f"{i}.jpg", jpg(), "image/jpeg"))
+    # Her kalem FARKLI icerik: ayni baytlar yuklenirse sunucu mukerrer dosya
+    # yazmaz ve tek tasarim doner (dedup) — burada ayrisma sinaniyor.
+    dosyalar = [("tasarim", (f"{i}.jpg", jpg((10 + i * 60, 40, 200)), "image/jpeg"))
                 for i in range(len(urunler))]
     return ISTEMCI.post("/api/bayii/siparis", headers=h, data=veri, files=dosyalar)
 
@@ -372,13 +378,23 @@ _onceki = [db.scalar(select(LineItem.assigned_design_id).where(
     LineItem.id == uuid.UUID(k["id"]))) for k in dc2["kalemler"]]
 es("2. kalemin tasarimi degisir", 200, ISTEMCI.post(
     f"/api/bayii/siparis/{cok_id}/kalem/{k2}/tasarim", headers=H_A,
-    files={"tasarim": ("yeni.jpg", jpg(), "image/jpeg")}).status_code)
+    files={"tasarim": ("yeni.jpg", jpg((5, 200, 90)), "image/jpeg")}).status_code)
 db.expire_all()
 _sonraki = [db.scalar(select(LineItem.assigned_design_id).where(
     LineItem.id == uuid.UUID(k["id"]))) for k in dc2["kalemler"]]
 es("1. kalemin tasarimi ayni", _onceki[0], _sonraki[0])
 es("2. kalemin tasarimi degisti", True, _onceki[1] != _sonraki[1])
 es("3. kalemin tasarimi ayni", _onceki[2], _sonraki[2])
+
+# AYNI dosya tekrar yuklenirse YENI kayit acilmamali (mukerrer dosya onlemi).
+# Ayrintili sinama: scripts/tasarim_dedup_test.py
+_ayni = jpg((5, 200, 90))
+es("ayni gorsel tekrar yuklenir", 200, ISTEMCI.post(
+    f"/api/bayii/siparis/{cok_id}/kalem/{k2}/tasarim", headers=H_A,
+    files={"tasarim": ("tekrar.jpg", _ayni, "image/jpeg")}).status_code)
+db.expire_all()
+es("YENI tasarim kaydi ACILMADI", _sonraki[1], db.scalar(
+    select(LineItem.assigned_design_id).where(LineItem.id == uuid.UUID(dc2["kalemler"][1]["id"]))))
 
 # Sinirlar
 es("kalem sayisi ustu 400", 400,

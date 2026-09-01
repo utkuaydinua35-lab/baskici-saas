@@ -20,6 +20,8 @@ Her değişiklik durum geçmişine yazılır + yöneticiye bildirim gider.
 """
 from __future__ import annotations
 
+import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -38,6 +40,8 @@ from app.models import (
     Order, OrderStatusHistory, User,
 )
 from app.services import storage
+
+logger = logging.getLogger("bayii-portal")
 
 router = APIRouter(prefix="/api/bayii", tags=["bayii_portal"])
 _izin = Depends(require_permission("bayii_portal"))
@@ -423,9 +427,47 @@ def _benzersiz_tasarim_kodu(db: Session, d: Dealer) -> str:
     raise HTTPException(503, "Tasarım kodu üretilemedi, birkaç saniye sonra tekrar dene")
 
 
+def _ayni_tasarimi_bul(db: Session, d: Dealer, veri: bytes, icerik_hash: str) -> Design | None:
+    """Bu bayide AYNI dosya zaten var mı? Yoksa/emin değilsek None.
+
+    Kural: şüphe varsa YENİ kayıt. Yanlış eşleşme, müşteriye YANLIŞ TASARIM
+    basılması demektir — yer kazancı bunun yanında önemsiz.
+
+    Üç kapı:
+      1) Aynı MAĞAZA (bayiler arası paylaşım YOK — biri silerse/değiştirirse
+         diğerinin siparişi bozulur).
+      2) Aynı SHA-256 ve aynı BOYUT.
+      3) Dosya diskte hâlâ duruyor ve BAYT BAYT aynı. Hash eşleşip baytlar
+         tutmuyorsa dosya sonradan değişmiş demektir (ör. baskı PDF'i
+         yüklenmiş) — eşleşme sayılmaz, log'a yazılır.
+    """
+    if not d.store_id or not icerik_hash:
+        return None
+    adaylar = db.scalars(select(Design).where(
+        Design.store_id == d.store_id,
+        Design.icerik_hash == icerik_hash,
+        Design.file_size_bytes == len(veri),
+    ).order_by(Design.created_at.asc()).limit(5)).all()
+    for aday in adaylar:
+        mevcut = storage.read_design_file(aday.file_path)
+        if mevcut is None:
+            logger.warning("[tasarim] hash esti ama dosya YOK: %s (%s)",
+                           aday.code, aday.file_path)
+            continue
+        if mevcut == veri:
+            return aday
+        logger.warning("[tasarim] hash esti ama BAYTLAR FARKLI: %s — yeni kayit "
+                       "olusturuluyor", aday.code)
+    return None
+
+
 def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
                     arka: BackgroundTasks | None = None) -> Design:
-    """Yüklenen dosyadan Design üret. Kod çakışmasın diye bayiye özel önek."""
+    """Yüklenen dosyadan Design üret. Kod çakışmasın diye bayiye özel önek.
+
+    Aynı dosya bu bayide zaten varsa YENİ DOSYA YAZILMAZ, mevcut tasarım
+    döndürülür (bkz. _ayni_tasarimi_bul).
+    """
     ext = storage.get_extension(dosya.filename or "")
     if ext not in IZINLI_UZANTI:
         raise HTTPException(400, f"İzin verilen formatlar: {', '.join(IZINLI_UZANTI).upper()}")
@@ -435,12 +477,23 @@ def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
     if len(veri) > storage.MAX_FILE_SIZE:
         raise HTTPException(413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
 
+    icerik_hash = hashlib.sha256(veri).hexdigest()
+    mevcut = _ayni_tasarimi_bul(db, d, veri, icerik_hash)
+    if mevcut is not None:
+        # Panelin/bayinin "yeniden kullanildi" diyebilmesi icin isaretle —
+        # sessizce ayni kaydi vermek kullaniciyi yanıltır.
+        mevcut._yeniden_kullanildi = True   # noqa: SLF001 (yalnizca bu istek icin)
+        logger.info("[tasarim] ayni dosya zaten var, yeniden kullanildi: %s (%s)",
+                    mevcut.code, d.name)
+        return mevcut
+
     kod = _benzersiz_tasarim_kodu(db, d)
     tasarim = Design(
         tenant_id=d.tenant_id, store_id=d.store_id, code=kod,
         name=etiket[:200] or kod, is_kisiye_ozel=True,
         notes=f"Bayi portalinden yüklendi — {d.name}",
         file_path="", file_format="", file_size_bytes=0,
+        icerik_hash=icerik_hash,
     )
     db.add(tasarim)
     db.flush()
@@ -603,12 +656,15 @@ def siparis_olustur(
 
     ozet = []
     sirali_dosya = iter(dosyalar)
+    yeniden_kullanilan: list[str] = []   # aynısı zaten yüklüydü — kullanıcıya söylenir
     for i, (m, a) in enumerate(zip(modeller, adet)):
         kimlik = kimlikler[i].strip()
         if kimlik:
             ds = _katalogdan_tasarim(db, d, kimlik)
         else:
             ds = _tasarim_kaydet(db, d, next(sirali_dosya), f"{m} — {sa['name']}", arka)
+            if getattr(ds, "_yeniden_kullanildi", False):
+                yeniden_kullanilan.append(ds.code)
         db.add(LineItem(
             tenant_id=d.tenant_id, order_id=o.id,
             title=f"{m} — {ds.code}", quantity=a, position=i,
@@ -619,14 +675,20 @@ def siparis_olustur(
 
     metin = " · ".join(ozet)
     _gecmise_yaz(db, o, d, "bayii_siparis",
-                 f"Bayi portalinden açıldı · {metin} · kanal: {kanal}")
+                 f"Bayi portalinden açıldı · {metin} · kanal: {kanal}"
+                 + (f" · aynı tasarım yeniden kullanıldı: {', '.join(yeniden_kullanilan)}"
+                    if yeniden_kullanilan else ""))
     _bildir(db, d, o, "Yeni bayi siparişi",
             f"{d.name} — #{order_number} · {metin} ({kanal}) · onay bekliyor")
     db.commit()
     db.refresh(o)
     return {"ok": True, "id": str(o.id), "order_number": order_number,
             "kalem_sayisi": len(ozet), "toplam_adet": toplam_adet,
-            "mesaj": "Siparişin alındı, onay bekliyor."}
+            # Sessizce yeniden kullanmak kullanıcıyı yanıltır — açıkça bildirilir.
+            "yeniden_kullanilan_tasarimlar": yeniden_kullanilan,
+            "mesaj": "Siparişin alındı, onay bekliyor."
+                     + (f" (Aynı görsel zaten kayıtlıydı, tekrar yüklenmedi: "
+                        f"{', '.join(yeniden_kullanilan)})" if yeniden_kullanilan else "")}
 
 
 # ─── Düzenleme ───────────────────────────────────────────────

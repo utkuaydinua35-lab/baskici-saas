@@ -196,6 +196,24 @@ def _etiket_ayarlari(db: Session, tenant_id) -> dict:
     return dict(getattr(t, "etiket_ayarlari", None) or {}) if t else {}
 
 
+def _siparis_kargo_adi(db: Session, order) -> str | None:
+    """Siparisin MAGAZASINA ayarli kargo firmasinin adi (adres etiketi icin)."""
+    if not order.store_id:
+        return None
+    st = db.scalar(select(Store).where(Store.id == order.store_id))
+    return magaza_kargo_adi(st.config if st else None)
+
+
+def magaza_kargo_adi(cfg: dict | None) -> str:
+    """Magazanin AYARINDAKI kargo firmasinin gorunen adi.
+
+    Onizlemede bu SABIT "Surat Kargo" yaziliydi: magaza Yurtici'ye ayarli olsa
+    bile etiket onizlemesi SURAT KARGO gosteriyordu.
+    """
+    return basit_kargo.handler_name(
+        (cfg or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER)
+
+
 class _OrnekSiparis:
     """Önizleme için temsili sipariş — UZUN adresli, çünkü tasarımın sınandığı
     yer orası (kısa adres her şablonda iyi görünür)."""
@@ -245,7 +263,8 @@ def etiket_onizleme(
             or cfg.get("shop_domain") or "").strip() or None
     pdf = label_pdf.render_label_pdf(
         _OrnekSiparis(), st.name if st else "BASKICI",
-        barkod_kodu="40105913453122", kargo_firma="Sürat Kargo",
+        barkod_kodu="40105913453122",
+        kargo_firma=magaza_kargo_adi(cfg),
         ayarlar=body.ayarlar or {}, site=site)
     d = _fitz.open(stream=pdf, filetype="pdf")
     png = d[0].get_pixmap(dpi=150).tobytes("png")
@@ -515,7 +534,8 @@ def order_zpl(
             pdf = label_pdf.render_label_pdf(
                 order, _store_name(db, order),
                 ayarlar=_etiket_ayarlari(db, order.tenant_id),
-                site=_magaza_site(db, order))
+                site=_magaza_site(db, order),
+                kargo_firma=_siparis_kargo_adi(db, order))
             zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
         else:
             ki = order.kargo_info or {}
@@ -570,7 +590,8 @@ def label(
     pdf = label_pdf.render_label_pdf(
         order, _store_name(db, order),
         ayarlar=_etiket_ayarlari(db, order.tenant_id),
-        site=_magaza_site(db, order))
+        site=_magaza_site(db, order),
+        kargo_firma=_siparis_kargo_adi(db, order))
     filename = f"etiket_{order.order_number or order.id}.pdf"
     return Response(
         content=pdf,

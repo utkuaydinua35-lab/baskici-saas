@@ -154,6 +154,25 @@ es("site boşsa satır yok", True, "SÜRAT KARGO" in _metin(
     label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
                                kargo_firma="Sürat Kargo", site="")))
 
+print("\n── 9. ÖNİZLEME kargo firması MAĞAZADAN gelir ──")
+# Sabit "Sürat Kargo" yazılıydı: mağaza Yurtiçi'ye ayarlıyken bile önizleme
+# SÜRAT KARGO gösteriyordu.
+from app.routers.packaging import magaza_kargo_adi  # noqa: E402
+
+es("Yurtiçi", "Yurtiçi Kargo", magaza_kargo_adi({"kargo_handler": "YURTICI"}))
+es("MNG", "MNG Kargo", magaza_kargo_adi({"kargo_handler": "MNG"}))
+es("Aras (kendi anlaşması)", "Aras Kargo", magaza_kargo_adi({"kargo_handler": "SELF_ARAS"}))
+es("doğrudan Sürat", "Sürat Kargo (doğrudan)",
+   magaza_kargo_adi({"kargo_handler": "DIRECT_SURAT"}))
+es("ayar yoksa varsayılan", "Basit Kargo (Ekonomik)", magaza_kargo_adi({}))
+es("config None", "Basit Kargo (Ekonomik)", magaza_kargo_adi(None))
+es("etikette Yurtiçi yazıyor", True, "YURTİÇİ KARGO" in _metin(
+    label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
+                               kargo_firma=magaza_kargo_adi({"kargo_handler": "YURTICI"}))))
+es("Sürat SIZMIYOR", False, "SÜRAT" in _metin(
+    label_pdf.render_label_pdf(_sip(), "BERNZ", barkod_kodu="401059",
+                               kargo_firma=magaza_kargo_adi({"kargo_handler": "YURTICI"}))))
+
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")
 sys.exit(1 if KALDI else 0)

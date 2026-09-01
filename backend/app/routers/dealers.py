@@ -14,7 +14,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func as sql_func, select
+from sqlalchemy import desc, func as sql_func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -843,80 +843,120 @@ def portal_onay_bekleyen(
     return out
 
 
-class KalemTasarimIn(BaseModel):
-    design_id: uuid.UUID
+class KalemDuzeltIn(BaseModel):
+    """İkisi de opsiyonel — yalnız gönderilen alan değişir."""
+    design_id: uuid.UUID | None = None
+    varyasyon: str | None = None
 
 
+def _kalem_kalipta_mi(db: Session, li) -> bool:
+    """Kalem ŞU AN fiziksel bir kalıp slotunda mı?"""
+    from app.models import MoldItem as _MI
+    return bool(db.scalar(select(_MI.id).where(_MI.line_item_id == li.id).limit(1)))
+
+
+@router.patch("/portal/siparis/{order_id}/kalem/{line_item_id}", response_model=dict)
+# Eski yol: panelde açık kalmış sekmeler 404 almasın diye bir sürüm daha duruyor.
 @router.patch("/portal/onay-bekleyen/{order_id}/kalem/{line_item_id}/tasarim",
               response_model=dict)
-def portal_kalem_tasarim(
+def portal_kalem_duzelt(
     order_id: uuid.UUID,
     line_item_id: uuid.UUID,
-    req: KalemTasarimIn,
+    req: KalemDuzeltIn,
     user: User = Depends(require_permission("bayii")),
     db: Session = Depends(get_db),
 ):
-    """Onay ONCESI kalemin tasarimini KAYITLI bir tasarimla degistir.
+    """Kalemin TASARIMINI ve/veya VARYASYONUNU düzelt.
 
-    Bayi her sipariste ayni gorseli yeniden yukleyince sunucuda ayni dosyanin
-    kopyalari birikiyor. Yonetici onaylarken katalogdaki tasarimi secebilirse
-    yeni dosya hic olusmaz.
+    Sınır ONAY DEĞİL, KALIP: kalem fiziksel bir kalıp slotundaysa değiştirilemez
+    (basılmış olabilir). Onaydan sonra da düzeltilebilir — onayı geri almak
+    bayinin carisinde borç-iade-borç üçlemesi yaratırdı; hatanın kendisi
+    içerikte, onayda değil.
 
-    Yalniz ONAY BEKLEYEN siparislerde calisir: kalip asamasi baslamis bir
-    siparisin tasarimini degistirmek basilmis urunle tutarsizlik yaratir.
+    Tasarım için: bayi aynı görseli her siparişte yeniden yüklüyor; katalogdan
+    seçmek yeni dosya oluşturmaz.
     """
     o = db.scalar(select(Order).where(
         Order.id == order_id, Order.tenant_id == user.tenant_id,
     ).options(selectinload(Order.line_items)))
     if not o:
         raise HTTPException(404, "Siparis bulunamadi")
-    if not o.bayii_onay_bekliyor:
-        raise HTTPException(409, "Siparis onaylanmis — tasarim degistirilemez")
+    if o.is_iptal:
+        raise HTTPException(409, "Siparis iptal edilmis")
 
     li = next((x for x in (o.line_items or []) if x.id == line_item_id), None)
     if li is None:
         raise HTTPException(404, "Kalem bulunamadi")
+    if _kalem_kalipta_mi(db, li):
+        raise HTTPException(
+            409, "Kalem kalipta — once kaliptan cikar, sonra duzelt")
 
-    yeni = db.scalar(select(Design).where(
-        Design.id == req.design_id, Design.tenant_id == user.tenant_id))
-    if not yeni:
-        raise HTTPException(404, "Tasarim bulunamadi")
-
+    degisiklikler: list[str] = []
     eski_id = li.assigned_design_id
-    if eski_id == yeni.id:
+    yeni = None
+
+    if req.varyasyon is not None:
+        from app.services import placement_rules
+        _v = placement_rules.normalize_variation(req.varyasyon) or req.varyasyon
+        if _v != li.kilif_varyasyon:
+            degisiklikler.append(f"varyasyon: {li.kilif_varyasyon or '—'} -> {_v}")
+            li.kilif_varyasyon = _v
+
+    if req.design_id is not None:
+        yeni = db.scalar(select(Design).where(
+            Design.id == req.design_id, Design.tenant_id == user.tenant_id))
+        if not yeni:
+            raise HTTPException(404, "Tasarim bulunamadi")
+        if eski_id != yeni.id:
+            li.assigned_design_id = yeni.id
+        else:
+            yeni = None   # degismedi
+
+    if yeni is None and not degisiklikler:
         return {"ok": True, "degismedi": True}
-    li.assigned_design_id = yeni.id
     db.flush()
 
     # Bayinin yukledigi tasarim artik HICBIR yerde kullanilmiyorsa panele
     # bildir — silme karari kullanicinin; sessizce silmek veri kaybi riski.
     eski_bosta = False
     eski_kod = None
-    if eski_id:
+    if yeni is not None and eski_id:
         _eski = db.get(Design, eski_id)
         eski_kod = _eski.code if _eski else None
         kalan = db.scalar(select(sql_func.count()).select_from(LineItem).where(
             LineItem.assigned_design_id == eski_id))
         eski_bosta = not kalan
+    if yeni is not None:
+        degisiklikler.append(f"tasarim: {eski_kod or '—'} -> {yeni.code}")
 
+    _not = " · ".join(degisiklikler)
     db.add(OrderStatusHistory(
         tenant_id=o.tenant_id, order_id=o.id,
         from_stage=o.current_stage, to_stage=o.current_stage,
-        action="bayii_tasarim_degisti",
-        note=f"Kalem tasarimi degistirildi: {eski_kod or '—'} -> {yeni.code}",
+        action="bayii_kalem_duzeltildi",
+        note=(f"Kalem duzeltildi ({li.device_model_override or '—'}) · {_not}"
+              + ("" if o.bayii_onay_bekliyor else " · ONAY SONRASI")),
         created_by=user.full_name or user.email,
     ))
+    # Onaydan SONRA yapilan duzeltmeyi bayi gormeli — sessiz degisiklik,
+    # bayinin ekranindaki bilgiyle basilan urunu ayirir.
+    if not o.bayii_onay_bekliyor:
+        _bayiye_bildir(db, o, "Siparisinde duzeltme yapildi",
+                       f"#{o.order_number} · {_not}")
     db.commit()
     return {
         "ok": True,
-        "tasarim_id": str(yeni.id),
-        "tasarim_kodu": yeni.code,
-        "format": (yeni.file_format or "").lower() or None,
-        "gorsel": storage.get_thumbnail_url(yeni.file_path, yeni.file_format),
-        "dosya": storage.get_design_url(yeni.file_path),
+        "degisiklikler": degisiklikler,
+        "varyasyon": li.kilif_varyasyon,
+        "onay_sonrasi": not o.bayii_onay_bekliyor,
+        "tasarim_id": str(yeni.id) if yeni else (str(eski_id) if eski_id else None),
+        "tasarim_kodu": yeni.code if yeni else eski_kod,
+        "format": (yeni.file_format or "").lower() or None if yeni else None,
+        "gorsel": storage.get_thumbnail_url(yeni.file_path, yeni.file_format) if yeni else None,
+        "dosya": storage.get_design_url(yeni.file_path) if yeni else None,
         "eski_bosta": eski_bosta,
-        "eski_tasarim_id": str(eski_id) if eski_id else None,
-        "eski_tasarim_kodu": eski_kod,
+        "eski_tasarim_id": str(eski_id) if (yeni and eski_id) else None,
+        "eski_tasarim_kodu": eski_kod if yeni else None,
     }
 
 
@@ -987,6 +1027,141 @@ def portal_onayla(
 
 
 # ─── Bayi portali: iptal talepleri ──────────────────────────
+@router.get("/portal/duzeltilebilir", response_model=list[dict])
+def portal_duzeltilebilir(
+    limit: int = 20,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """ONAYLANMIS ama henuz kalibA GIRMEMIS bayi siparisleri.
+
+    Hatali onaydan sonra duzeltme penceresi budur. Kalip asamasi baslamis
+    siparis burada GORUNMEZ — degistirilemeyecegi icin listelemek yanıltır.
+    """
+    from app.models import MoldItem as _MI
+
+    orders = db.scalars(
+        select(Order).where(
+            Order.tenant_id == user.tenant_id,
+            Order.bayii_onay_bekliyor == False,   # noqa: E712
+            Order.is_iptal == False,              # noqa: E712
+            Order.deleted_at.is_(None),
+            Order.raw["dealer_id"].astext.isnot(None),
+        ).options(selectinload(Order.line_items).selectinload(LineItem.assigned_design))
+        .order_by(desc(Order.created_at)).limit(min(max(limit, 1), 50) * 3)
+    ).all()
+
+    bayiler = {str(d.id): d for d in db.scalars(
+        select(Dealer).where(Dealer.tenant_id == user.tenant_id)).all()}
+    out = []
+    for o in orders:
+        if len(out) >= limit:
+            break
+        li_ids = [li.id for li in (o.line_items or [])]
+        if not li_ids:
+            continue
+        kaliptaki = set(db.scalars(select(_MI.line_item_id).where(
+            _MI.line_item_id.in_(li_ids))).all())
+        serbest = [li for li in (o.line_items or []) if li.id not in kaliptaki]
+        if not serbest:
+            continue   # tamami kalipta — duzeltilemez
+        d = bayiler.get(str((o.raw or {}).get("dealer_id") or ""))
+        out.append({
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "store_id": str(o.store_id) if o.store_id else None,
+            "bayi": d.name if d else "—",
+            "musteri": o.customer_name,
+            "kanal": (o.raw or {}).get("kanal"),
+            "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
+            "asama": o.current_stage or 1,
+            "kismen_kalipta": bool(kaliptaki),
+            "kalemler": [{
+                "id": str(li.id),
+                "model": li.device_model_override,
+                "adet": li.quantity or 1,
+                "varyasyon": li.kilif_varyasyon,
+                "tasarim_id": str(li.assigned_design_id) if li.assigned_design_id else None,
+                "tasarim_kodu": li.assigned_design.code if li.assigned_design else None,
+                "format": (li.assigned_design.file_format or "").lower()
+                if li.assigned_design else None,
+                "dosya": storage.get_design_url(li.assigned_design.file_path)
+                if li.assigned_design else None,
+                "gorsel": storage.get_thumbnail_url(
+                    li.assigned_design.file_path, li.assigned_design.file_format)
+                if li.assigned_design else None,
+            } for li in sorted(serbest, key=lambda x: x.position or 0)],
+        })
+    return out
+
+
+class YoneticiIptalIn(BaseModel):
+    sebep: str = ""
+    # Iade kurallari kaliba gore otomatik; basilmis kalipta iade YOK.
+    # Yonetici yine de iptal etmek isterse bunu ACIKCA onaylar.
+    onayla: bool = False
+
+
+@router.post("/portal/siparis/{order_id}/iptal", response_model=dict)
+def portal_yonetici_iptal(
+    order_id: uuid.UUID,
+    req: YoneticiIptalIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Yonetici bir bayi siparisini DOGRUDAN iptal eder.
+
+    Bugune kadar iptal yalnizca bayinin TALEBI uzerine isliyordu; "hic
+    onaylanmamaliydi" durumunda yoneticinin elinde yol yoktu.
+
+    Iade kurali bayii_iptal'de (basilmis kalip varsa malzeme harcandi, iade
+    yok). Sonuclari geri alinmasi zor oldugu icin onayla=true sart — ve
+    onaydan once ne olacagini ONIZLEME olarak doner.
+    """
+    from app.services import bayii_iptal
+
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id,
+    ).options(selectinload(Order.line_items)))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    if not (o.raw or {}).get("dealer_id"):
+        raise HTTPException(400, "Bu bir bayi siparisi degil")
+    if o.is_iptal:
+        raise HTTPException(409, "Siparis zaten iptal edilmis")
+
+    durum, kaliplar = bayii_iptal.durumu_oku(db, o)
+    if not req.onayla:
+        # ONIZLEME: ne olacagini SOYLE, sonra onaylat. Sessizce yapmak,
+        # geri alinamayan bir islemde kabul edilemez.
+        return {
+            "ok": False, "onay_gerekli": True,
+            "iade_edilecek": durum.iade_edilir,
+            "kaliba_girdi": durum.kaliba_girdi,
+            "kalip_basildi": durum.basilmis_kalip_var,
+            "etkilenecek_kalip": len(kaliplar),
+            "mesaj": ("Iptal edilecek."
+                      + (" Ucret cari hesaba IADE EDILECEK."
+                         if durum.iade_edilir
+                         else " Kilif basildigi icin ucret IADE EDILMEYECEK.")),
+        }
+
+    ozet = bayii_iptal.uygula(db, o, kim=user.full_name or user.email,
+                              sebep=(req.sebep or "").strip() or "Yonetici iptali")
+    _iade_var = bool(ozet.get("iade"))
+    if _iade_var:
+        _iade_metni = " Ucret cari hesabina iade edildi."
+    elif ozet["iade_edildi"]:
+        _iade_metni = " Iade edilecek borc yoktu."
+    else:
+        _iade_metni = " Kilif basildigi icin ucret iade edilmedi."
+    _bayiye_bildir(db, o, "Siparisin iptal edildi",
+                   f"#{o.order_number} iptal edildi." + _iade_metni
+                   + (f" Sebep: {req.sebep.strip()}" if (req.sebep or "").strip() else ""))
+    db.commit()
+    return {"ok": True, "iade_tutari_var": _iade_var, **ozet}
+
+
 @router.get("/portal/iptal-talepleri", response_model=list[dict])
 def portal_iptal_talepleri(
     user: User = Depends(require_permission("bayii")),

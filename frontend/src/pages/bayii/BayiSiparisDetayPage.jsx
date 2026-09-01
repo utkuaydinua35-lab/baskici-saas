@@ -21,6 +21,8 @@ const EYLEM_ADI = {
   bayii_iptal_reddedildi: 'İptal talebi reddedildi',
   iptal_edildi: 'İptal edildi',
   silindi: 'İptal edildi',
+  bayii_kalem_duzeltildi: 'Ürün bilgisi düzeltildi',
+  bayii_tasarim_degisti: 'Tasarım değiştirildi',   // eski ad — geçmişte var
 }
 
 /** Kilitli alanin nedenini anlatan satir. */

@@ -14,7 +14,7 @@ import { kanalAdi } from '../lib/bayii'
 import GorselBuyutec from './GorselBuyutec'
 
 // placement_rules.normalize_variation'in urettigi degerler
-const VARYASYONLAR = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
+export const VARYASYONLAR = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
 
 export default function BayiOnayKuyrugu({ onOnaylandi }) {
   const [liste, setListe] = useState([])
@@ -58,7 +58,7 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
     if (!order || !kalem) return
     try {
       const r = await api.patch(
-        `/api/dealers/portal/onay-bekleyen/${order.id}/kalem/${kalem.id}/tasarim`,
+        `/api/dealers/portal/siparis/${order.id}/kalem/${kalem.id}`,
         { design_id: tasarim.id })
       setSecici(null)
       if (r.degismedi) { toast.info('Zaten bu tasarım seçili'); return }
@@ -243,7 +243,7 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
 
 
 /** Katalogdan tasarim sec — kayitli tasarimi kullan, yeni dosya olusturma. */
-function TasarimSecici({ storeId, mevcutId, onSec, onKapat }) {
+export function TasarimSecici({ storeId, mevcutId, onSec, onKapat }) {
   const [q, setQ] = useState('')
   const [liste, setListe] = useState([])
   const [yukleniyor, setYukleniyor] = useState(!!storeId)

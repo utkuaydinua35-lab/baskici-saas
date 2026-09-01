@@ -9,6 +9,7 @@ import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import BayiOnayKuyrugu from '../components/BayiOnayKuyrugu'
 import BayiIptalKuyrugu from '../components/BayiIptalKuyrugu'
+import BayiDuzeltmeKuyrugu from '../components/BayiDuzeltmeKuyrugu'
 
 export default function BayiSiparisleriPage() {
   // Kuyruklardan biri islem yapinca digeri de tazelensin (ayni siparis
@@ -22,7 +23,7 @@ export default function BayiSiparisleriPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-100">🧾 Bayi Siparişleri</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Portaldan gelen siparişlerin onayı ve iptal talepleri
+            Portaldan gelen siparişlerin onayı, iptal talepleri ve onay sonrası düzeltme
           </p>
         </div>
         <Link to="/bayiler" className="text-xs text-gray-500 hover:text-gray-300">
@@ -33,6 +34,7 @@ export default function BayiSiparisleriPage() {
       <div key={tazele}>
         <BayiOnayKuyrugu onOnaylandi={degisti} />
         <BayiIptalKuyrugu onDegisti={degisti} />
+        <BayiDuzeltmeKuyrugu onDegisti={degisti} />
       </div>
 
       <BosDurum />

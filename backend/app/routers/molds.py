@@ -1216,13 +1216,23 @@ def mold_pdf_download(mold_id: uuid.UUID, arka_plan: BackgroundTasks,
         for s in _skipped[:12]:
             _r = str(s.get("reason") or "")
             _sat.append(f"• {s.get('model') or '?'} — {_NEDEN.get(_r, _r)}")
-        raise HTTPException(
+        _eksik = [{"model": s.get("model"), "sebep": str(s.get("reason") or ""),
+                   "slot": s.get("slot")} for s in _skipped]
+        return JSONResponse(
             status_code=400,
-            detail=(
-                f"{len(_skipped)} slot basılamadı, bu yüzden PDF oluşturulmadı "
-                f"(eksik kalıp basmayı önlemek için):\n" + "\n".join(_sat) +
-                "\n\nEksikleri giderip tekrar dene."
-            ),
+            content={
+                "detail": (
+                    f"{len(_skipped)} slot basılamadı, bu yüzden PDF oluşturulmadı "
+                    f"(eksik kalıp basmayı önlemek için):\n" + "\n".join(_sat) +
+                    "\n\nEksikleri giderip tekrar dene."
+                ),
+                "eksik_slotlar": _eksik,
+                # Panelin "ölçü ekle" sunabilmesi için: yalnız ölçüsü olmayanlar
+                "olcusu_olmayan_modeller": sorted({
+                    e["model"] for e in _eksik
+                    if e["sebep"] == "olcu_yok" and e.get("model")}),
+                "kalip_kod": mo.kod,
+            },
         )
 
     # === Asama otomasyonu: PDF indirilince ===

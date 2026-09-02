@@ -185,8 +185,14 @@ from app.models import (Design as _D, Mold as _M, MoldItem as _MI,  # noqa: E402
 _C = TestClient(_app)
 _db = SessionLocal()
 _IZ = f"beyaz{_uuid.uuid4().hex[:6]}"
-_t = _db.scalar(_sel(_T).limit(1))
-_admin = _db.scalar(_sel(_U).where(_U.role.in_(("yonetici", "owner"))).limit(1))
+from app.auth.security import verify_password as _vp   # noqa: E402
+_adaylar = _db.scalars(_sel(_U).where(
+    _U.role.in_(("yonetici", "owner"))).order_by(_U.email)).all()
+_admin = next((u for u in _adaylar
+               if u.password_hash and _vp("DevAdmin12345!", u.password_hash)), None)
+if _admin is None:
+    raise SystemExit("Dev sifresiyle girilebilen yonetici YOK — test calisamaz.")
+_t = _db.get(_T, _admin.tenant_id)
 _r = _C.post("/api/auth/login", json={"email": _admin.email, "password": "DevAdmin12345!"})
 if _r.status_code != 200:
     _db.execute(_txt("delete from login_attempts where ip in ('testclient','127.0.0.1')"))

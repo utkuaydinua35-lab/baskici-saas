@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 import PdfHazirlikPaneli from '../components/PdfHazirlikPaneli'
+import OlcuTanimlaDialog from '../components/OlcuTanimlaDialog'
 import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
 import SlotAssignDialog from '../components/SlotAssignDialog'
@@ -100,6 +101,7 @@ export default function MoldDetailPage() {
   const [beyazSecili, setBeyazSecili] = useState(() => new Set())
   const [beyazBusy, setBeyazBusy] = useState(false)
   const [pdfDurum, setPdfDurum] = useState(null)   // {durum: hazir|hazirlaniyor|yok|hata}
+  const [olcuHedef, setOlcuHedef] = useState(null)  // ölçüsü eksik modeller
   const doRename = async () => {
     const v = renameVal.trim()
     if (!v) return
@@ -215,9 +217,14 @@ export default function MoldDetailPage() {
       if (!res.ok) {
         // Sunucu NEDEN üretmediğini yazıyor (eksik ölçü / tasarım yok vb.).
         // Eskiden gövde hiç okunmuyordu ve ekranda sadece "PDF üretilemedi" çıkıyordu.
-        let detay = ''
-        try { detay = (await res.json())?.detail || '' } catch { /* json değilse geç */ }
-        if (detay) { alert(detay); return }
+        let govde = null
+        try { govde = await res.json() } catch { /* json değilse geç */ }
+        // Ölçüsü tanımlı olmayan model varsa: uyarıp bırakmak yerine BURADAN
+        // ölçü girdirip PDF'i tekrar dene. Kullanıcıyı Telefon Modelleri
+        // ekranına yollamak, hatayı okuyup geri gelmesini gerektiriyordu.
+        const eksikOlcu = govde?.olcusu_olmayan_modeller || []
+        if (eksikOlcu.length) { setOlcuHedef({ modeller: eksikOlcu, detay: govde.detail }); return }
+        if (govde?.detail) { alert(govde.detail); return }
         throw new Error(`PDF üretilemedi (HTTP ${res.status})`)
       }
       const tip = res.headers.get('content-type') || ''
@@ -563,6 +570,11 @@ export default function MoldDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {olcuHedef && (
+        <OlcuTanimlaDialog hedef={olcuHedef} kapat={() => setOlcuHedef(null)}
+                           onTamam={() => { setOlcuHedef(null); downloadPdf() }} />
       )}
 
       {removeTarget && (

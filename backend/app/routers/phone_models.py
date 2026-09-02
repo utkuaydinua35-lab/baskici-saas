@@ -174,6 +174,68 @@ def list_models(
     }
 
 
+class OlcuTanimlaIn(BaseModel):
+    """Kalıp PDF hatasından doğrudan ölçü tanımlama."""
+    model: str = Field(..., min_length=1, max_length=160)
+    width_cm: float = Field(..., gt=0, lt=40)
+    height_cm: float = Field(..., gt=0, lt=40)
+    radius_cm: float = Field(0, ge=0, lt=10)
+
+
+@router.post("/olcu-tanimla", response_model=dict)
+def olcu_tanimla(
+    body: OlcuTanimlaIn,
+    user: User = Depends(require_permission("telefon_modelleri")),
+    db: Session = Depends(get_db),
+):
+    """Model adindan olcu tanimla — VARSA gunceller, YOKSA olusturur.
+
+    Kalip PDF'i "olcusu tanimli degil" diyerek durdugunda panel dogrudan bunu
+    cagirir; kullanicinin Telefon Modelleri ekranina gidip kaydi aramasi
+    gerekmez.
+
+    Anahtar, PDF motorunun ARADIGI anahtarla ayni fonksiyondan uretilir
+    (pm.normalize_key). Baska turlu uretirsek kullanici olcuyu girer ama hata
+    devam eder — en can sikici hata turu.
+    """
+    key = pm.normalize_key(body.model)
+    if not key:
+        raise HTTPException(400, "Model adindan anahtar uretilemedi")
+
+    mevcut = db.scalar(select(PhoneModel).where(
+        PhoneModel.tenant_id == user.tenant_id, PhoneModel.spec_key == key))
+    if mevcut is None:
+        mevcut = PhoneModel(
+            tenant_id=user.tenant_id, spec_key=key,
+            display_name=body.model.strip()[:120], is_active=True,
+            width_cm=body.width_cm, height_cm=body.height_cm,
+            radius_cm=body.radius_cm)
+        db.add(mevcut)
+        olusturuldu = True
+    else:
+        mevcut.width_cm = body.width_cm
+        mevcut.height_cm = body.height_cm
+        mevcut.radius_cm = body.radius_cm
+        if not mevcut.is_active:
+            mevcut.is_active = True
+        olusturuldu = False
+    db.commit()
+    db.refresh(mevcut)
+
+    # Kaydettik ama PDF motoru gercekten bulabiliyor mu? Soylemeden once SOR.
+    bulunan = pm.get_spec(db, user.tenant_id, body.model)
+    return {
+        "ok": True,
+        "olusturuldu": olusturuldu,
+        "id": str(mevcut.id),
+        "spec_key": mevcut.spec_key,
+        "display_name": mevcut.display_name,
+        "olcu": {"width_cm": mevcut.width_cm, "height_cm": mevcut.height_cm,
+                 "radius_cm": mevcut.radius_cm},
+        "dogrulandi": bool(bulunan and bulunan[0] and bulunan[1]),
+    }
+
+
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 def create_model(
     body: PhoneModelCreate,

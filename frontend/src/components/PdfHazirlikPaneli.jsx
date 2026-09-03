@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 
 // Sağ altta sabit ilerleme kutusu — PDF üretimi dakikalar sürdüğü için
@@ -18,6 +18,8 @@ export function pdfKuyrugunuYenile() {
 export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 30000 }) {
   const [isler, setIsler] = useState([])
   const [hata, setHata] = useState('')
+  const ustUsteRef = useRef(0)   // arka arkaya kaç yoklama düştü (çizimi etkilemez)
+  const [geciciMi, setGeciciMi] = useState(false)
   // Kuyruk BOŞKEN de 3 sn'de bir sorulunuyordu: açık her sekme sunucuya günde
   // ~28.000 istek atıyordu ve her biri JWT çözüp kullanıcıyı veritabanından
   // okuyor. İş varken sık, boştayken seyrek sor. "Hazırla" anlık tetiklediği
@@ -32,13 +34,19 @@ export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 30000 }) {
         if (durduruldu) return
         const gelen = r.items || []
         setIsler(gelen)
-        setHata('')
+        setHata(''); ustUsteRef.current = 0
         // Liste rozetleri bunu dinliyor — kuyruk boşaldığı anı da görsün.
         window.dispatchEvent(new CustomEvent(PDF_KUYRUK_OLAYI, { detail: { isler: gelen } }))
       } catch (e) {
         if (durduruldu) return
-        // Yutma: kutu hiç görünmezse sebebini bilmek gerekir
-        setHata(e?.detail || e?.message || 'Durum alınamadı')
+        // Yutma: kutu hiç görünmezse sebebini bilmek gerekir.
+        // Ama geçici kesintide (deploy) İLK hatada bağırma — üst üste 2 kez
+        // başarısız olursa göster. api katmanı zaten bir kez tekrar deniyor.
+        ustUsteRef.current += 1
+        if (!e?.gecici || ustUsteRef.current >= 2) {
+          setHata(e?.detail || e?.message || 'Durum alınamadı')
+          setGeciciMi(!!e?.gecici)
+        }
       }
     }
     sor()
@@ -60,9 +68,17 @@ export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 30000 }) {
 
   if (hata) {
     return (
-      <div className="fixed bottom-4 right-4 z-[120] w-72 card !p-3 border-red-500/40">
-        <div className="text-xs text-red-300">PDF durumu alınamadı</div>
+      <div className={`fixed bottom-4 right-4 z-[120] w-72 card !p-3 ${
+        geciciMi ? 'border-amber-500/40' : 'border-red-500/40'}`}>
+        <div className={`text-xs ${geciciMi ? 'text-amber-300' : 'text-red-300'}`}>
+          {geciciMi ? 'Sunucuya ulaşılamıyor' : 'PDF durumu alınamadı'}
+        </div>
         <div className="text-[10px] text-gray-500 mt-1 break-words">{hata}</div>
+        {geciciMi && (
+          <div className="text-[10px] text-gray-600 mt-1">
+            Kendiliğinden yeniden denenecek — PDF üretimi sunucuda devam ediyor.
+          </div>
+        )}
       </div>
     )
   }

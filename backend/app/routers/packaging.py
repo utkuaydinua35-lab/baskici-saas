@@ -196,6 +196,26 @@ def _etiket_ayarlari(db: Session, tenant_id) -> dict:
     return dict(getattr(t, "etiket_ayarlari", None) or {}) if t else {}
 
 
+def _etiket_magaza_adi(db: Session, order) -> str | None:
+    """Etiketin ustune yazilacak ad.
+
+    BAYI siparislerinde bayinin KENDI adi yazilir: paketi alan musteri bayinin
+    musterisi, BERNZ'i degil onu tanimali. Magaza adi bunun icin uygun degil —
+    bayi magazalari "Bayii: KE-MARKET" diye kayitli ve etikete "Bayii:" oneki
+    basmak anlamsiz.
+    """
+    d_id = (order.raw or {}).get("dealer_id")
+    if d_id:
+        d = db.scalar(select(Dealer).where(Dealer.id == uuid.UUID(str(d_id))))
+        if d and (d.name or "").strip():
+            return d.name.strip()
+    ad = _store_name(db, order)
+    # Bayi kaydi bulunamadiysa en azindan oneki temizle
+    if ad and ad.lower().startswith("bayii:"):
+        ad = ad.split(":", 1)[1].strip() or ad
+    return ad
+
+
 def _siparis_kargo_adi(db: Session, order) -> str | None:
     """Siparisin MAGAZASINA ayarli kargo firmasinin adi (adres etiketi icin)."""
     if not order.store_id:
@@ -287,7 +307,7 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     if not kod:
         raise HTTPException(404, "Sürat takip numarası yok — gönderiyi yeniden oluştur")
     from app.services import label_pdf as _lp
-    return _lp.render_label_pdf(order, _store_name(db, order), barkod_kodu=kod,
+    return _lp.render_label_pdf(order, _etiket_magaza_adi(db, order), barkod_kodu=kod,
                                 kargo_firma=ki.get("handler_name") or "Sürat Kargo",
                                 ayarlar=_etiket_ayarlari(db, order.tenant_id),
                                 site=_magaza_site(db, order))
@@ -532,7 +552,7 @@ def order_zpl(
     try:
         if tip == "adres":
             pdf = label_pdf.render_label_pdf(
-                order, _store_name(db, order),
+                order, _etiket_magaza_adi(db, order),
                 ayarlar=_etiket_ayarlari(db, order.tenant_id),
                 site=_magaza_site(db, order),
                 kargo_firma=_siparis_kargo_adi(db, order))
@@ -588,7 +608,7 @@ def label(
 ):
     order = _resolve_order(db, order_ref, user.tenant_id)
     pdf = label_pdf.render_label_pdf(
-        order, _store_name(db, order),
+        order, _etiket_magaza_adi(db, order),
         ayarlar=_etiket_ayarlari(db, order.tenant_id),
         site=_magaza_site(db, order),
         kargo_firma=_siparis_kargo_adi(db, order))

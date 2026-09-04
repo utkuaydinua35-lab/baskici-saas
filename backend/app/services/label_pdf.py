@@ -292,7 +292,7 @@ def render_label_pdf(order, store_name: str | None = None,
                 gen = g * modul
                 if bar:
                     pg.draw_rect(fitz.Rect(x, by, x + gen, by + bar_h),
-                                 color=(0, 0, 0), fill=(0, 0, 0))
+                                 color=None, fill=(0, 0, 0), width=0)
                 x += gen
                 bar = not bar
             by += bar_h + 4

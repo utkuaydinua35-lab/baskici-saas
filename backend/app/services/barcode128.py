@@ -31,6 +31,7 @@ _PATTERNS = [
 ]
 
 START_B = 104
+START_C = 105
 STOP = 106
 
 
@@ -58,21 +59,37 @@ def temizle(text: str) -> str:
     return "".join(ch for ch in (text or "") if 32 <= ord(ch) <= 126)
 
 
-def pattern_widths(text: str) -> list[int]:
-    """Metni Code128-B olarak kodla; modül genişlikleri listesi döner.
+def kodlari_uret(text: str) -> list[int]:
+    """Metni Code128 sembol degerlerine cevir (start + veri + kontrol + stop).
 
-    Sıra: bar, boşluk, bar, ... (ilk eleman bar). Sessiz alan (quiet zone)
-    ÇAĞIRANIN sorumluluğu — en az 10 modül boşluk bırakılmalı.
+    RAKAM-ONLY ve CIFT uzunluktaysa Code128-C kullanilir: rakamlar IKISER
+    kodlanir, sembol sayisi neredeyse yariya iner ve ayni etiket genisliginde
+    MODUL neredeyse IKI KAT genisler. 203 dpi termal yazicida bu kritik —
+    14 haneli takip numarasi B ile 189 modul (modul 3.4 nokta), C ile 112
+    modul (modul 5.7 nokta) tutar. Ince modul yuvarlanmada bozulup okunmuyor.
+
+    Diger her durumda Code128-B.
     """
     veri = temizle(text)
     if not veri:
         raise BarcodeError("Barkod metni boş")
-    kodlar = [START_B] + [ord(ch) - 32 for ch in veri]
+    if veri.isdigit() and len(veri) % 2 == 0:
+        start = START_C
+        degerler = [int(veri[i:i + 2]) for i in range(0, len(veri), 2)]
+    else:
+        start = START_B
+        degerler = [ord(ch) - 32 for ch in veri]
     # Kontrol basamağı: start + sum(pozisyon * deger), mod 103
-    toplam = START_B + sum(i * (ord(ch) - 32) for i, ch in enumerate(veri, start=1))
-    kodlar.append(toplam % 103)
-    kodlar.append(STOP)
-    return [int(c) for k in kodlar for c in _PATTERNS[k]]
+    toplam = start + sum(i * d for i, d in enumerate(degerler, start=1))
+    return [start] + degerler + [toplam % 103, STOP]
+
+
+def pattern_widths(text: str) -> list[int]:
+    """Metnin modül genişlikleri: bar, boşluk, bar, ... (ilk eleman BAR).
+
+    Sessiz alan (quiet zone) ÇAĞIRANIN sorumluluğu — en az 10 modül.
+    """
+    return [int(c) for k in kodlari_uret(text) for c in _PATTERNS[k]]
 
 
 def toplam_modul(text: str) -> int:

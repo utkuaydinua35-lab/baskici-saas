@@ -15,7 +15,7 @@ export function pdfKuyrugunuYenile() {
   window.dispatchEvent(new CustomEvent(PDF_YENILE_OLAYI))
 }
 
-export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 30000 }) {
+export default function PdfHazirlikPaneli({ araAt = 3000, bosAraAt = 15000 }) {
   const [isler, setIsler] = useState([])
   const [hata, setHata] = useState('')
   const ustUsteRef = useRef(0)   // arka arkaya kaç yoklama düştü (çizimi etkilemez)

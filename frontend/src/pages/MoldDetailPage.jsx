@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
-import PdfHazirlikPaneli from '../components/PdfHazirlikPaneli'
+import PdfHazirlikPaneli, { pdfKuyrugunuYenile } from '../components/PdfHazirlikPaneli'
 import OlcuTanimlaDialog from '../components/OlcuTanimlaDialog'
 import { useToast } from '../components/Toast'
 import DeleteMoldDialog from '../components/DeleteMoldDialog'
@@ -198,6 +198,9 @@ export default function MoldDetailPage() {
       else if (it.durum === 'hata') toast.error(it.mesaj || 'Hazırlanamadı')
       else toast.info('PDF hazırlanıyor — birkaç dakika sürebilir')
       durumSor()
+      // Sağ alttaki ilerleme kutusunu BEKLETMEDEN aç. Panel boştayken seyrek
+      // yokluyor; bu tetik olmadan kutu 30 sn'ye kadar gecikiyordu.
+      pdfKuyrugunuYenile()
     } catch (e) { toast.error(e?.detail || 'Hazırlanamadı') }
     finally { setPdfBusy(false) }
   }
@@ -212,6 +215,7 @@ export default function MoldDetailPage() {
         // Henüz hazır değil — üretim başladı, kullanıcı beklemesin
         toast.info('PDF henüz hazır değil, hazırlanıyor. Hazır olunca tekrar indir.')
         durumSor()
+        pdfKuyrugunuYenile()   // ilerleme kutusu hemen görünsün
         return
       }
       if (!res.ok) {

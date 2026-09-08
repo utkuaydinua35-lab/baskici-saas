@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStoreSlug } from "@/lib/api";
+import { jsonLdScript } from "@/lib/jsonld";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
@@ -71,7 +72,7 @@ export default async function BlogPostPage({
   return (
     <article className="mx-auto max-w-2xl px-4 py-10">
       <script type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Link href="/blog" className="text-xs text-zinc-500 hover:underline">← Tüm yazılar</Link>
       <h1 className="mt-3 text-3xl font-bold leading-tight">{post.title}</h1>
       {post.published_at && (

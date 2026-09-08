@@ -1,3 +1,4 @@
+import { jsonLdScript } from "@/lib/jsonld";
 // SSS akordeonu (Shopify "Collapsible content") — native <details>, JS gerekmez.
 export default function Faq({
   title,
@@ -22,7 +23,7 @@ export default function Faq({
   return (
     <section className="mx-auto max-w-3xl px-4 py-8">
       <script type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <h2 className="text-lg font-semibold mb-4">{title || "Sıkça Sorulan Sorular"}</h2>
       <div className="space-y-2">
         {valid.map((item, i) => (

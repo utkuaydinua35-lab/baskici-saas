@@ -15,6 +15,7 @@ import FavButton from "@/components/FavButton";
 import ShareButtons from "@/components/ShareButtons";
 import Link from "next/link";
 import { getThemePayload } from "@/lib/theme";
+import { jsonLdScript } from "@/lib/jsonld";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "");
 
@@ -94,9 +95,9 @@ export default async function ProductPage({ params }: Props) {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <script type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <script type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbLd) }} />
       <nav className="text-xs text-zinc-500 mb-4">
         <Link href="/urunler" className="hover:underline">Ürünler</Link>
         {" / "}

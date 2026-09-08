@@ -128,6 +128,16 @@ class User(Base):
     )
     totp_backup_codes: Mapped[list] = mapped_column(JSONB, default=list, nullable=True)
 
+    # OTURUM İPTALİ. JWT durumsuz: üretildikten sonra 7 gün boyunca geçerli ve
+    # sunucunun onu geri alma yolu yoktu. Sonucu: parola değiştirmek mevcut
+    # oturumları DÜŞÜRMÜYORDU — "hesabıma girilmiş, şifremi değiştireyim"
+    # saldırganı atmıyordu. Bu alan dolduğunda, token'ın `iat`'i bundan
+    # ESKİYSE token reddedilir (bkz. auth.dependencies.get_current_user).
+    # Parola değişimi/sıfırlama ve 2FA kapatma bunu ileri alır; o akışlar
+    # kullanıcıyı düşürmemek için TAZE token döner.
+    sessions_valid_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
     # Kayıt anı meta — self-servis kayıtta sahte/kötü niyetli hesabı ayıklamak için.
     # (Tarayıcı "bilgisayar adı"nı vermez; en fazla IP + User-Agent alınabilir.)
     signup_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)

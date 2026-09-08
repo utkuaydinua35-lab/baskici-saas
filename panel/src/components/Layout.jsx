@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, setToken } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useStore } from '../lib/store'
 import { useToast } from './Toast'
@@ -472,7 +472,10 @@ function PasswordModal({ user, onClose }) {
     if (next.length < 8) { setError('Yeni şifre en az 8 karakter olmalı'); return }
     setBusy(true); setError('')
     try {
-      await api.post('/api/auth/change-password', { current_password: current, new_password: next })
+      // Parola degisince sunucu ESKI oturumlari dusuruyor; taze token'i
+      // saklamazsak kullanici kendi kendini cikartir.
+      const _r = await api.post('/api/auth/change-password', { current_password: current, new_password: next })
+      if (_r?.access_token) setToken(_r.access_token)
       toast.success('Şifreniz güncellendi 🔒')
       onClose()
     } catch (e2) {

@@ -41,6 +41,20 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 settings = get_settings()
 
 
+def _oturumlari_iptal_et(user: User) -> None:
+    """Bu kullanicinin MEVCUT tum token'larini gecersiz kil.
+
+    Cagiran, kullaniciyi kendi cihazinda dusurmemek icin TAZE token donmeli.
+
+    DAMGA SANIYEYE YUVARLANIR. JWT `iat` tam saniye; damga mikrosaniyeli
+    kalirsa AYNI saniyede uretilen token da (yani az once dondugumuz taze
+    token ve o saniyedeki her yeni giris) `iat < damga` olur ve olur. Bedeli:
+    ayni saniye icinde uretilmis eski bir token hayatta kalir — saldirganin
+    tam o saniyede giris yapmis olmasi gerekir, ihmal edilebilir.
+    """
+    user.sessions_valid_from = datetime.now(UTC).replace(microsecond=0)
+
+
 def _issue_token(user: User) -> TokenResponse:
     """User için JWT üret + response paketi."""
     token = create_access_token(
@@ -434,8 +448,13 @@ def change_password_endpoint(
     if len(req.new_password) < 8:
         raise HTTPException(status_code=400, detail="Yeni şifre en az 8 karakter olmalı")
     user.password_hash = hash_password(req.new_password)
+    # Parola degisti -> ESKI oturumlar olsun. Kullaniciyi kendi cihazinda
+    # dusurmemek icin taze token doneriz (istemci varsa onu saklar).
+    _oturumlari_iptal_et(user)
     db.commit()
-    return {"ok": True}
+    yeni = _issue_token(user)
+    return {"ok": True, "access_token": yeni.access_token,
+            "expires_in": yeni.expires_in}
 
 
 # ─── Şifre sıfırlama (e-posta ile) ───────────────────────────
@@ -512,6 +531,8 @@ def reset_password(req: _ResetPasswordRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=400, detail="Kullanıcı bulunamadı.")
     user.password_hash = hash_password(req.new_password)
+    # Sifreyi unutup sifirlayan kisi, hesabina girmis birini de ATMIS olmali.
+    _oturumlari_iptal_et(user)
     db.commit()
     return {"ok": True, "message": "Şifreniz güncellendi. Giriş yapabilirsiniz."}
 
@@ -613,8 +634,12 @@ def twofa_disable(
     user.totp_enabled = False
     user.totp_secret = None
     user.totp_backup_codes = []
+    # Ikinci faktor kaldirildi: eski oturumlar da yenilensin.
+    _oturumlari_iptal_et(user)
     db.commit()
-    return {"ok": True}
+    yeni = _issue_token(user)
+    return {"ok": True, "access_token": yeni.access_token,
+            "expires_in": yeni.expires_in}
 
 
 @router.post("/2fa/verify-login", response_model=TokenResponse)

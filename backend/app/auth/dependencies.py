@@ -104,6 +104,18 @@ def get_current_user(
     if not user or not user.is_active:
         raise _unauthorized("Kullanıcı bulunamadı veya pasif")
 
+    # OTURUM İPTALİ: parola değişimi/sıfırlama ve 2FA kapatma bu damgayı ileri
+    # alır; ondan ÖNCE üretilmiş token'lar ölür. Olmadan, parola değiştirmek
+    # çalınmış bir oturumu düşürmüyordu (JWT 7 gün geçerli, geri alma yok).
+    gecerli_from = getattr(user, "sessions_valid_from", None)
+    if gecerli_from is not None:
+        iat = payload.get("iat")
+        # Damga saniyeye indirilir: `iat` tam saniye oldugu icin mikrosaniyeli
+        # bir damga, ayni saniyedeki gecerli token'lari da olduruyordu.
+        _sinir = int(gecerli_from.timestamp())
+        if not isinstance(iat, (int, float)) or iat < _sinir:
+            raise _unauthorized("Oturum sonlandırıldı — tekrar giriş yapın")
+
     _bayi_kapisi(user, request.url.path)
 
     # Tenant izolasyonu için request.state'e yaz — log/audit için faydalı

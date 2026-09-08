@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../lib/api'
+import { api, setToken } from '../lib/api'
 import { accentFg } from '../lib/auth'
 import { useToast } from '../components/Toast'
 import { useAuth } from '../lib/auth'
@@ -320,7 +320,10 @@ function ChangePasswordModal({ onClose }) {
     if (nw.length < 6) { setErr('Yeni şifre en az 6 karakter olmalı'); return }
     setBusy(true); setErr('')
     try {
-      await api.post('/api/auth/change-password', { current_password: cur, new_password: nw })
+      // Parola degisince sunucu ESKI oturumlari dusuruyor; taze token'i
+      // saklamazsak kullanici kendi kendini cikartir.
+      const _r = await api.post('/api/auth/change-password', { current_password: cur, new_password: nw })
+      if (_r?.access_token) setToken(_r.access_token)
       setOk(true); setTimeout(onClose, 1200)
     } catch (e) { setErr(typeof e?.detail === 'string' ? e.detail : 'Şifre değiştirilemedi'); setBusy(false) }
   }

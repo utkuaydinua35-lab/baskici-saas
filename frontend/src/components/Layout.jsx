@@ -3,7 +3,7 @@ import SplashScreen from './SplashScreen'
 import { createPortal } from 'react-dom'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { api } from '../lib/api'
+import { api, setToken } from '../lib/api'
 
 export default function Layout() {
   const { user, tenant, logout } = useAuth()
@@ -460,7 +460,10 @@ function ChangePasswordModal({ onClose }) {
     if (newPw.length < 8) { setError('Yeni şifre en az 8 karakter olmalı'); return }
     setBusy(true); setError('')
     try {
-      await api.post('/api/auth/change-password', { current_password: currentPw, new_password: newPw })
+      // Parola degisince sunucu ESKI oturumlari dusuruyor; taze token'i
+      // saklamazsak kullanici kendi kendini cikartir.
+      const _r = await api.post('/api/auth/change-password', { current_password: currentPw, new_password: newPw })
+      if (_r?.access_token) setToken(_r.access_token)
       setDone(true)
     } catch (err) {
       setError(typeof err?.detail === 'string' ? err.detail : 'Değiştirilemedi')

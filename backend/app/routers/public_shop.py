@@ -313,16 +313,25 @@ def list_products(
         items = db.scalars(query.limit(per_page).offset(start)).all()
 
     # Filtre yüzeyleri: mağazadaki aktif markalar (mevcut filtrelerden bağımsız)
-    brands = sorted(b for (b,) in db.execute(
-        select(CatalogVariant.brand).distinct()
-        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
-        .where(
-            CatalogProduct.store_id == store.id,
-            CatalogProduct.status == "active",
-            CatalogVariant.is_active.is_(True),
-            CatalogVariant.brand.isnot(None),
-        )
-    ).all() if b)
+    # ÖNBELLEKLİ: bu sorgu her istekte mağazanın TÜM varyantlarını tarıyordu
+    # (canlıda 191 bin satır, 103 ms, iki paralel işçi) ve veritabanının en
+    # çok satır okuyan sorgusuydu. Marka listesi katalog değişmedikçe
+    # değişmez; vitrin_cache katalog sinyaliyle + TTL ile tazeliyor.
+    from app.services import vitrin_cache
+
+    def _markalari_oku():
+        return sorted(b for (b,) in db.execute(
+            select(CatalogVariant.brand).distinct()
+            .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
+            .where(
+                CatalogProduct.store_id == store.id,
+                CatalogProduct.status == "active",
+                CatalogVariant.is_active.is_(True),
+                CatalogVariant.brand.isnot(None),
+            )
+        ).all() if b)
+
+    brands = vitrin_cache.markalar(db, store.id, _markalari_oku)
 
     response.headers["Cache-Control"] = "public, max-age=60"
     config = store.config or {}

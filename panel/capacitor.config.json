@@ -2,6 +2,13 @@
   "appId": "com.bernzcompany.magazapanel",
   "appName": "BERNZ Commerce",
   "webDir": "dist",
-  "ios": { "contentInset": "always" },
-  "android": { "allowMixedContent": false }
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0b1437"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0b1437"
+  },
+  "backgroundColor": "#0b1437"
 }

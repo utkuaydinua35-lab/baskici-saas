@@ -6,12 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "app:build": "VITE_API_TABAN=https://magazapanel.bernzcompany.com vite build && cap sync",
+    "app:ios": "npm run app:build && cap open ios"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.9",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/camera": "^7.0.5",
     "@capacitor/core": "^7.6.9",
     "@capacitor/ios": "^7.6.9",
+    "@capacitor/status-bar": "^7.0.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.18.2"

@@ -1,0 +1,17 @@
+/* Native kabuk (Capacitor) görünüm kuralları.
+ *
+ * AYRI DOSYA: index.css paylaşılan bir dosya ve o sırada başka bir çalışmanın
+ * değişiklikleri de içindeydi; iki işi tek commit'e karıştırmamak için buraya
+ * alındı. Kurallar YALNIZ html.native altında geçerli — web'de kök öğede o
+ * sınıf hiç oluşmadığı için tarayıcı görünümü değişmez.
+ *
+ * Uygulama tam ekran açılır: üstte çentik/Dynamic Island, altta home
+ * göstergesi vardır; içerik onların altına girmesin diye dolgu verilir.
+ */
+html.native body { min-height: 100dvh; }
+
+html.native header,
+html.native .sticky.top-0 { padding-top: env(safe-area-inset-top); }
+
+html.native main,
+html.native .fixed.inset-0 > * { padding-bottom: env(safe-area-inset-bottom); }

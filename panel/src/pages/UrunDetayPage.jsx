@@ -5,6 +5,7 @@ import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { StatusBadge } from './UrunlerPage'
 import RichTextEditor from '../components/RichTextEditor'
+import { gorselSec, nativeMi } from '../lib/kamera'
 
 // Tam sayfa ürün editörü — görsel sıralama (drag), inline varyant editi, SEO.
 export default function UrunDetayPage() {
@@ -534,6 +535,26 @@ function ImagesSection({ product, onChanged, setMsg }) {
           <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden"
             onChange={e => upload([...e.target.files])} />
         </label>
+        {/* UYGULAMADA: ürünü doğrudan telefonun kamerasıyla çek. Web'de bu
+            düğme HİÇ görünmez (nativeMi() false). Yükleme kodu aynı — kamera
+            da <input type="file"> gibi File döndürüyor. */}
+        {nativeMi() && (
+          <button type="button" disabled={busy}
+            onClick={async () => {
+              try {
+                const f = await gorselSec('kamera')
+                if (f.length) await upload(f)
+              } catch (e) {
+                setMsg({ ok: false, text: e?.message || 'Kamera açılamadı' })
+              }
+            }}
+            className="w-24 h-24 rounded-xl border-2 border-dashed border-panel-border
+                       flex flex-col items-center justify-center text-panel-muted
+                       disabled:opacity-40">
+            <span className="text-xl">📷</span>
+            <span className="text-[10px]">Fotoğraf çek</span>
+          </button>
+        )}
       </div>
     </section>
   )

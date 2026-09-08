@@ -7,6 +7,12 @@ import { StoreProvider } from './lib/store'
 import { ToastProvider } from './components/Toast'
 import './index.css'
 
+// Native kabuk davranışları (durum çubuğu, güvenli alan, geri tuşu).
+// Web'de hemen çıkar; render'ı BEKLETMEZ.
+import './native.css'
+import { nativeKur } from './lib/native'
+nativeKur()
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>

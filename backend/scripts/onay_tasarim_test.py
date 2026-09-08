@@ -79,6 +79,16 @@ kuyruk = C.get("/api/dealers/portal/onay-bekleyen", headers=H).json()
 kayit = next((x for x in kuyruk if x["id"] == str(o.id)), None)
 es("siparis kuyrukta", True, kayit is not None)
 es("store_id var", str(store.id), kayit and kayit.get("store_id"))
+# ÖNİZLEME onay ekranında görünmeli: bayi "kılıf üzerinde böyle duracak" diye
+# yüklüyor, onaylayanın görmesi gerek. Ayrı alanda — baskı hep "dosya"dan.
+eski_d.onizleme_path = "x/onz.jpg"
+db.commit()
+_k = next(x for x in C.get("/api/dealers/portal/onay-bekleyen", headers=H).json()
+          if x["id"] == str(o.id))["kalemler"][0]
+es("önizleme alanı var", "/storage/x/onz.jpg", _k.get("onizleme"))
+es("tasarım alanı AYRI durur", True, _k.get("dosya") != _k.get("onizleme"))
+eski_d.onizleme_path = None
+db.commit()
 
 print("\n── 2. tasarim degistirme ──")
 r = C.patch(U, json={"design_id": str(yeni_d.id)}, headers=H)

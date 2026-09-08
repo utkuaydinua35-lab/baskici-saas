@@ -39,7 +39,16 @@ def _yuk(veri, ad="x.jpg"):
 
 
 db = SessionLocal()
-tenant = db.scalar(select(Tenant).order_by(Tenant.created_at).limit(1))
+from app.auth.security import verify_password as _vp  # noqa: E402
+from app.models import User as _U  # noqa: E402
+
+_adaylar = db.scalars(select(_U).where(
+    _U.role.in_(("yonetici", "owner"))).order_by(_U.email)).all()
+_admin = next((u for u in _adaylar
+               if u.password_hash and _vp("DevAdmin12345!", u.password_hash)), None)
+if _admin is None:
+    raise SystemExit("Dev sifresiyle girilebilen yonetici YOK — test calisamaz.")
+tenant = db.get(Tenant, _admin.tenant_id)
 store = Store(tenant_id=tenant.id, slug=f"{IZ}-o", name="Onizleme Test",
               platform="bayii", is_active=True)
 db.add(store); db.flush()
@@ -94,7 +103,47 @@ es("eski önizleme dosyası silindi", False,
    eski_yol != ds.onizleme_path and (storage.STORAGE_ROOT / eski_yol).exists())
 es("TASARIM yine değişmedi", TASARIM, storage.read_design_file(ds.file_path))
 
-print("\n── 7. dosyası silinmiş tasarım katalogda GÖRÜNMEZ ──")
+print("\n── 7. /onizleme UCU GERÇEKTEN ÇAĞRILIYOR ──")
+# Bu uç canlıda 500 verdi: Response import edilmemişti ve testler ucu hiç
+# çağırmadığı için (tarayıcıda sahte fetch kullanılmıştı) kaçtı.
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.main import app as _app  # noqa: E402
+
+_C = TestClient(_app)
+db.execute(text("delete from login_attempts where ip in ('testclient','127.0.0.1')"))
+db.commit()
+_r = _C.post("/api/auth/login", json={"email": _admin.email, "password": "DevAdmin12345!"})
+if _r.status_code != 200:
+    raise SystemExit(f"Giris basarisiz ({_r.status_code})")
+_H = {"Authorization": f"Bearer {_r.json()['access_token']}"}
+
+# Bu tasarim ADMIN'in tenant'inda olmali; test magazasi zaten oradan olusturuldu
+_u = f"/api/designs/{ds.id}/onizleme?dpi=200"
+_res = _C.get(_u, headers=_H)
+es("JPG tasarımda 200", 200, _res.status_code)
+es("görsel döndü", True, _res.headers.get("content-type", "").startswith("image/"))
+es("gövde boş değil", True, len(_res.content) > 100)
+es("kimliksiz istek reddedilir", 401, _C.get(_u).status_code)
+es("olmayan tasarım 404", 404,
+   _C.get(f"/api/designs/{uuid.uuid4()}/onizleme", headers=_H).status_code)
+
+# PDF tasarımda gerçekten PNG'ye çeviriyor mu?
+_pdf_ds = Design(tenant_id=tenant.id, store_id=store.id, code=f"{IZ}-PDFT",
+                 name="pdf", file_path="", file_format="pdf", file_size_bytes=0)
+db.add(_pdf_ds); db.flush()
+import fitz  # noqa: E402
+_d = fitz.open(); _d.new_page(width=200, height=200)
+_pdf_ds.file_path = storage.save_design_file(
+    tenant_id=tenant.id, design_id=_pdf_ds.id, file_data=_d.tobytes(),
+    original_filename="x.pdf", skip_thumbnail=True)["relative_path"]
+db.commit()
+_r2 = _C.get(f"/api/designs/{_pdf_ds.id}/onizleme?dpi=200", headers=_H)
+es("PDF tasarımda 200", 200, _r2.status_code)
+es("PNG'ye çevrildi", "image/png", _r2.headers.get("content-type"))
+storage.delete_design_file(_pdf_ds.file_path)
+
+print("\n── 8. dosyası silinmiş tasarım katalogda GÖRÜNMEZ ──")
 from datetime import UTC, datetime  # noqa: E402
 ds.dosya_silindi_at = datetime.now(UTC); db.commit()
 es("listeden düştü", False,

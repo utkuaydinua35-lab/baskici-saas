@@ -838,6 +838,10 @@ def portal_onay_bekleyen(
                 "gorsel": storage.get_thumbnail_url(
                     li.assigned_design.file_path, li.assigned_design.file_format)
                 if li.assigned_design else None,
+                # ÖNİZLEME: bayinin yüklediği "kılıf üzerinde nasıl duracak"
+                # görseli. AYRI alanda — baskı her zaman "dosya"dan gider.
+                "onizleme": storage.onizleme_url(li.assigned_design.onizleme_path)
+                if li.assigned_design else None,
             } for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
         })
     return out
@@ -1089,6 +1093,10 @@ def portal_duzeltilebilir(
                 if li.assigned_design else None,
                 "gorsel": storage.get_thumbnail_url(
                     li.assigned_design.file_path, li.assigned_design.file_format)
+                if li.assigned_design else None,
+                # ÖNİZLEME: bayinin yüklediği "kılıf üzerinde nasıl duracak"
+                # görseli. AYRI alanda — baskı her zaman "dosya"dan gider.
+                "onizleme": storage.onizleme_url(li.assigned_design.onizleme_path)
                 if li.assigned_design else None,
             } for li in sorted(serbest, key=lambda x: x.position or 0)],
         })

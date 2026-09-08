@@ -154,16 +154,34 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
             <div className="mt-3 space-y-2.5">
               {o.kalemler.map((k) => (
                 <div key={k.id} className="flex items-center gap-3 flex-wrap">
-                  <button type="button" onClick={() => k.gorsel && setBuyutec(k)}
-                          disabled={!k.gorsel} title={k.gorsel ? 'Büyüt' : ''}
-                          className="w-11 h-11 rounded-lg overflow-hidden border border-white/8
-                                     bg-white/[0.03] grid place-items-center shrink-0
-                                     enabled:hover:border-accent/60 enabled:cursor-zoom-in
-                                     transition-colors">
-                    {k.gorsel
-                      ? <img src={k.gorsel} alt="" className="w-full h-full object-cover" />
-                      : <span className="text-[10px] text-gray-600">—</span>}
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onClick={() => k.gorsel && setBuyutec(k)}
+                            disabled={!k.gorsel} title={k.gorsel ? 'Tasarımı büyüt' : ''}
+                            className="w-11 h-11 rounded-lg overflow-hidden border border-white/8
+                                       bg-white/[0.03] grid place-items-center
+                                       enabled:hover:border-accent/60 enabled:cursor-zoom-in
+                                       transition-colors">
+                      {k.gorsel
+                        ? <img src={k.gorsel} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-[10px] text-gray-600">—</span>}
+                    </button>
+                    {k.onizleme && (
+                      <button type="button" title="Bayinin yüklediği önizleme — BASKIYA GİRMEZ"
+                              onClick={() => setBuyutec({
+                                ...k, gorsel: k.onizleme, dosya: k.onizleme,
+                                format: 'jpg', tasarim_id: null,
+                                tasarim_kodu: `${k.tasarim_kodu || ''} · önizleme` })}
+                              className="w-11 h-11 rounded-lg overflow-hidden border border-dashed
+                                         border-emerald-500/40 bg-emerald-500/5 relative
+                                         hover:border-emerald-400/70 cursor-zoom-in transition-colors">
+                        <img src={k.onizleme} alt="" className="w-full h-full object-cover" />
+                        <span className="absolute inset-x-0 bottom-0 text-[7px] leading-[10px]
+                                         text-center bg-black/70 text-emerald-300">
+                          ÖNİZLEME
+                        </span>
+                      </button>
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] text-gray-200 flex items-center gap-2 flex-wrap">
                       {k.model || '—'}

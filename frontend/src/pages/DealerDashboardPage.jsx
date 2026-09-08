@@ -46,16 +46,20 @@ export default function DealerDashboardPage() {
       kargo > 0 ? `${fmt(kargo, 'TRY')} kargo` : null,
     ].filter(Boolean)
     const mesaj = `#${o.order_number} silinecek.\n\n` +
-      (satirlar.length
-        ? `Bayinin cari borcundan düşülecek:\n• ${satirlar.join('\n• ')}\n\n`
-        : 'Bu siparişin cari borç kaydı yok.\n\n') +
+      (!satirlar.length
+        ? 'Bu siparişin cari borç kaydı yok.\n\n'
+        : o.borc_acik === false
+          ? 'Borcu ZATEN iade edilmiş (bayi geri çekmiş olabilir) — '
+            + 'silmek bakiyeyi DEĞİŞTİRMEZ.\n\n'
+          : `Bayinin cari borcundan düşülecek:\n• ${satirlar.join('\n• ')}\n\n`) +
       'Sipariş çöp kutusuna gider, geri alırsan borç tekrar yazılır. Devam?'
     if (!force && !confirm(mesaj)) return
     setSilinen(o.id)
     try {
       const q = force ? '?force=true' : ''
       await api.del(`/api/dealers/${id}/orders/${o.id}${q}`)
-      toast.success(`#${o.order_number} silindi, borç geri alındı`)
+      toast.success(`#${o.order_number} silindi`
+        + (o.borc_acik === false ? ' (borç zaten iade edilmişti)' : ', borç geri alındı'))
       load()
     } catch (e) {
       const d = e?.detail || ''

@@ -483,6 +483,19 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
         select(Order).where(Order.tenant_id == user.tenant_id, Order.store_id == d.store_id)
         .order_by(_desc(Order.created_at_platform)).limit(500)
     ).all()
+
+    # Her siparişin cari borcu HÂLÂ AÇIK MI? Silme onayı bunu bilmeli: bayi
+    # siparişi geri çektiyse borç zaten iade edilmiştir ve silmek bakiyeyi
+    # DEĞİŞTİRMEZ. "Cari borcundan düşülecek" demek kullanıcıyı yanıltıyordu
+    # (ikinci kez düşecek sanılıyor — düşmüyor, servis idempotent).
+    # Tek sorguda net: sipariş başına hareketlerin toplamı.
+    _net = {
+        r[0]: r[1] for r in db.execute(
+            select(DealerTransaction.ref_order_id,
+                   sql_func.coalesce(sql_func.sum(DealerTransaction.amount), 0))
+            .where(DealerTransaction.ref_order_id.in_([o.id for o in orders] or [None]))
+            .group_by(DealerTransaction.ref_order_id))
+    }
     out = []
     for o in orders:
         _raw = o.raw or {}
@@ -499,6 +512,10 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             "total_price": _raw.get("total_price"),        # ürün bedeli (bayi para birimi)
             "shipping_fee": _raw.get("shipping_fee"),      # kargo (₺, ayrı) — 0/None olabilir
             "currency": _raw.get("currency", "TRY"),
+            # Silme onayının doğru cümleyi kurabilmesi için: borç hâlâ açık mı?
+            # 0 ise (ya da hiç hareket yoksa) silmek bakiyeyi değiştirmez.
+            "cari_net": float(_net.get(o.id) or 0),
+            "borc_acik": abs(float(_net.get(o.id) or 0)) > 0.005,
             "note": o.note,
         })
     return out

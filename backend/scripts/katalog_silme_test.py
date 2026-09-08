@@ -155,15 +155,24 @@ es("çıplak liste paylaşık tasarımı GÖRÜR", True, f"{IZ}-PAY" in _hepsi)
 print("\n── 6. dosya temizliği: silinen sipariş artık engel değil ──")
 from app.services import tasarim_temizlik  # noqa: E402
 
-# Yeni silinmiş sipariş (48 saat dolmadı) → dosya DURMALI: çöpten geri
-# alınabilir, tasarımı yok etmek geri almayı bozardı.
+# Yeni silinmiş sipariş → dosya DURMALI: çöp kutusu hiç otomatik boşalmıyor,
+# sipariş her an geri alınabilir. Pencere SILME_BEKLEME_GUN (30 gün);
+# dar bir pencere geri alınan siparişin tasarımını yok ederdi
+# (bkz. scripts/dusman_katalog_test.py, B bölümü).
 _aday = {d.code for d in tasarim_temizlik.adaylari_bul(db)}
-es("48 saat dolmadan aday DEĞİL", False, f"{IZ}-SIL" in _aday)
+es("yeni silinmiş aday DEĞİL", False, f"{IZ}-SIL" in _aday)
 db.execute(text("update orders set deleted_at = now() - interval '72 hours' "
                 "where id in (:a, :b)"), {"a": str(o_sil.id), "b": str(o_canli.id)})
 db.commit()
 _aday = {d.code for d in tasarim_temizlik.adaylari_bul(db)}
-es("72 saat sonra aday", True, f"{IZ}-SIL" in _aday)
+es("3 gün sonra HÂLÂ aday değil (geri alma penceresi)", False, f"{IZ}-SIL" in _aday)
+db.execute(text("update orders set deleted_at = now() - make_interval(days => :g) "
+                "where id in (:a, :b)"),
+           {"g": tasarim_temizlik.SILME_BEKLEME_GUN + 5,
+            "a": str(o_sil.id), "b": str(o_canli.id)})
+db.commit()
+_aday = {d.code for d in tasarim_temizlik.adaylari_bul(db)}
+es(f"{tasarim_temizlik.SILME_BEKLEME_GUN}+ gün sonra aday", True, f"{IZ}-SIL" in _aday)
 es("iptal (silinmemiş) siparişin tasarımı aday DEĞİL", False, f"{IZ}-IPT" in _aday)
 es("siparişsiz tasarım aday DEĞİL (kural 4)", False, f"{IZ}-BOS" in _aday)
 

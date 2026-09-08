@@ -13,10 +13,17 @@ demektir:
   4) Hiç siparişe bağlı olmayan tasarıma dokunulmaz (bayinin katalogda
      bekleyen tasarımı olabilir).
   5) SİLİNMİŞ sipariş (çöp kutusu) engel SAYILMAZ — ama yalnız silinmesinin
-     üzerinden de 48 saat geçtiyse. Çöpten geri alma penceresi içinde dosya
-     durur; yoksa geri alınan siparişin tasarımı yok olurdu. Bu kural olmadan
-     silinmiş sipariş dosyayı SONSUZA DEK tutuyordu (aşaması < 8 kaldığı için
-     "hepsi kargolanmış" koşulu asla sağlanmıyordu).
+     üzerinden SILME_BEKLEME_GUN geçtiyse. Bu kural olmadan silinmiş sipariş
+     dosyayı SONSUZA DEK tutuyordu (aşaması < 8 kaldığı için "hepsi
+     kargolanmış" koşulu asla sağlanmıyordu). Pencere neden 48 saat DEĞİL:
+     çöp kutusu hiç otomatik boşalmıyor, silinen sipariş aylar sonra bile
+     geri alınabiliyor. İki gün sonra dosyayı silmek, geri alınan siparişin
+     tasarımını yok etmek olurdu; silinen siparişler diskte küçük bir yer
+     tuttuğu için pencereyi geniş tutmak bedava.
+  6) Kalemin İKİ tasarımı olabilir (couple / kişiye özel: 2. kılıf ayrı
+     sütunda). Kullanım her iki sütundan da sayılır — yalnız birincisine
+     bakmak, üretimdeki siparişin 2. tasarımını "kimse kullanmıyor" sayıp
+     dosyasını siliyordu.
 Kayıt SİLİNMEZ, yalnız dosya silinir ve `dosya_silindi_at` işaretlenir; sipariş
 geçmişi bozulmaz. İşaretli tasarım katalogda GÖRÜNMEZ (seçilemez).
 """
@@ -35,19 +42,23 @@ logger = logging.getLogger("tasarim-temizlik")
 
 SILINEBILIR_FORMAT = ("jpg", "jpeg", "png")
 BEKLEME_SAAT = 48
+# Çöpteki sipariş için ayrı (ve çok daha geniş) pencere — bkz. kural 5.
+SILME_BEKLEME_GUN = 30
 KARGO_ASAMASI = 8
 
 
 def adaylari_bul(db: Session, saat: int = BEKLEME_SAAT) -> list[Design]:
     """Silinebilir tasarımlar. Kurallar modül başlığında."""
     sinir = datetime.now(UTC) - timedelta(hours=saat)
+    cop_siniri = datetime.now(UTC) - timedelta(days=SILME_BEKLEME_GUN)
     sql = text("""
         select d.id
           from designs d
          where d.dosya_silindi_at is null
            and lower(d.file_format) = any(:formatlar)
-           -- en az bir siparişe bağlı olmalı
-           and exists (select 1 from line_items l where l.assigned_design_id = d.id)
+           -- en az bir siparişe bağlı olmalı (iki tasarım sütunu da sayılır)
+           and exists (select 1 from line_items l
+                        where d.id in (l.assigned_design_id, l.assigned_design_id_2))
            -- HİÇBİR kalıp slotunda olmamalı
            and not exists (select 1 from mold_items m where m.design_id = d.id)
            -- bağlı olduğu HER sipariş kargolanmış ve üstünden 48 saat geçmiş
@@ -55,9 +66,10 @@ def adaylari_bul(db: Session, saat: int = BEKLEME_SAAT) -> list[Design]:
            -- bir alan yok); "kargoya_verildi" kaydı tam o an yazılıyor.
            and not exists (
                  select 1 from line_items l join orders o on o.id = l.order_id
-                  where l.assigned_design_id = d.id
-                    -- 48 saatten once silinmis siparis engel degil (kural 5)
-                    and (o.deleted_at is null or o.deleted_at > :sinir)
+                  where d.id in (l.assigned_design_id, l.assigned_design_id_2)
+                    -- cop kutusunda uzun suredir bekleyen siparis engel degil
+                    -- (kural 5); geri alma penceresi icinde ENGELDIR
+                    and (o.deleted_at is null or o.deleted_at > :cop_siniri)
                     and (coalesce(o.current_stage, 1) < :asama
                          or not exists (
                               select 1 from order_status_history h
@@ -66,7 +78,8 @@ def adaylari_bul(db: Session, saat: int = BEKLEME_SAAT) -> list[Design]:
                                  and h.created_at <= :sinir)))
     """)
     idler = [r[0] for r in db.execute(sql, {
-        "formatlar": list(SILINEBILIR_FORMAT), "asama": KARGO_ASAMASI, "sinir": sinir})]
+        "formatlar": list(SILINEBILIR_FORMAT), "asama": KARGO_ASAMASI,
+        "sinir": sinir, "cop_siniri": cop_siniri})]
     if not idler:
         return []
     return list(db.scalars(select(Design).where(Design.id.in_(idler))).all())

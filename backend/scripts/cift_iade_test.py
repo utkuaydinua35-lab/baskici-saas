@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -140,6 +141,26 @@ es("iade sonrası borc_acik=False", False, _k and _k["borc_acik"])
 es("açık tutar kalmadı", {}, _k and _k["cari_acik"])
 es("cari kaydı HÂLÂ var (iade edilmiş ≠ hiç yazılmamış)", True,
    _k and _k["cari_kayit_var"])
+
+print("\n── 7b. siparişe bağlı ÖDEME neti sıfırlamamalı ──")
+# Düşman senaryosu: borç açıkken siparişe bağlı bir ödeme yazılırsa, ham net
+# sıfır görünür ve panel "bakiye değişmez" derdi — oysa dealer_debt ödemeyi
+# saymadığı için silme borcu yine de iade eder. Uç artık dealer_debt'in
+# saydığı türleri sayıyor.
+dealer_debt.uygula(db, o, reverse=False); db.commit()      # borcu geri yaz
+es("borç yeniden açık", 225.0, bakiye())
+db.add(DealerTransaction(tenant_id=tenant.id, dealer_id=dealer.id,
+                         amount=Decimal("-225.00"), kind="odeme", currency="TRY",
+                         description="test odemesi", ref_order_id=o.id,
+                         balance_after=Decimal("0.00")))
+db.commit()
+_k = _kayit()
+es("ödeme neti sıfırlamadı, borç AÇIK görünüyor", True, _k and _k["borc_acik"])
+es("açık tutar hâlâ 225", {"TRY": 225.0}, _k and _k["cari_acik"])
+db.execute(text("delete from dealer_transactions where kind='odeme' and ref_order_id=:o"),
+           {"o": _OID})
+dealer_debt.uygula(db, o, reverse=True); db.commit()
+db.commit()
 
 print("\n── 8. ONAYLANMAMIŞ sipariş: borç hiç yazılmamış ──")
 # 2026-09-08'de yandı: onay metni siparişin TUTARINA bakıyordu, tutar ise

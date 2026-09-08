@@ -20,9 +20,17 @@ tasarımla tekrar sipariş verebilmeli.
 """
 from __future__ import annotations
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 
 from app.models import Design, LineItem, Order
+
+# Bir kalem İKİ tasarım taşıyabilir (couple / kişiye özel: 2. kılıfın
+# tasarımı ayrı sütunda). Yalnız birinciye bakmak, ikinci sütunda hâlâ
+# kullanılan bir tasarımı "kimse kullanmıyor" saymak demekti.
+def _kullanan(*ekstra):
+    return select(LineItem.id).where(
+        or_(LineItem.assigned_design_id == Design.id,
+            LineItem.assigned_design_id_2 == Design.id), *ekstra)
 
 
 def gorunur_kosulu():
@@ -33,16 +41,10 @@ def gorunur_kosulu():
     # NOT: Order'a global soft-delete süzgeci var ama burada koşul AÇIKÇA
     # yazılıyor — bu ifade ham SQL'e de, include_deleted=True ile çalışan bir
     # sorguya da girebilir; doğruluğu çağıranın ayarına bırakmıyoruz.
-    kalemi_var = (
-        select(LineItem.id)
-        .where(LineItem.assigned_design_id == Design.id)
-        .exists()
-    )
+    kalemi_var = _kullanan().exists()
     canli_kalemi_var = (
-        select(LineItem.id)
+        _kullanan(Order.deleted_at.is_(None))
         .join(Order, Order.id == LineItem.order_id)
-        .where(and_(LineItem.assigned_design_id == Design.id,
-                    Order.deleted_at.is_(None)))
         .exists()
     )
     return or_(~kalemi_var, canli_kalemi_var)

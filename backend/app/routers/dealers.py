@@ -500,7 +500,17 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             select(DealerTransaction.ref_order_id, DealerTransaction.currency,
                    DealerTransaction.kind,
                    sql_func.coalesce(sql_func.sum(DealerTransaction.amount), 0))
-            .where(DealerTransaction.ref_order_id.in_([o.id for o in orders]))
+            .where(DealerTransaction.ref_order_id.in_([o.id for o in orders]),
+                   # Mağaza iki bayi tarafından paylaşılabiliyor (bkz.
+                   # delete_dealer_order sahiplik kontrolü) — o zaman aynı
+                   # siparişte başka bayinin hareketi de olabilirdi.
+                   DealerTransaction.dealer_id == d.id,
+                   # dealer_debt YALNIZ bu türleri hesaba katıyor. Buradaki
+                   # cümle onun ne yapacağını anlatıyor; başka bir tür
+                   # (örn. siparişe bağlı bir ödeme) neti sıfırlayıp
+                   # "bakiye değişmez" dedirtir ama iade yine de yazılırdı.
+                   DealerTransaction.kind.in_(
+                       (*dealer_debt.BORC_TURLERI, dealer_debt.DUZELTME)))
             .group_by(DealerTransaction.ref_order_id, DealerTransaction.currency,
                       DealerTransaction.kind)
         ):

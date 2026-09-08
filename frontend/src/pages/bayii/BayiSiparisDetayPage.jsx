@@ -50,7 +50,12 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
   const [arama, setArama] = useState('')
   const [bekle, setBekle] = useState('')
   const dosyaRef = useRef(null)
-  const [buyut, setBuyut] = useState(false)   // görseli AYNI SAYFADA büyüt
+  // null | 'tasarim' | 'onizleme' — hangi görselin büyütüleceği
+  const [buyut, setBuyut] = useState(null)
+  // Tailwind sınıfları KAYNAKTA tam geçmeli; `sm:${...}` derlemeye girmez.
+  const kutuBoyut = cokluMu
+    ? 'w-32 h-32 sm:w-44 sm:h-44 lg:w-52 lg:h-52'
+    : 'w-40 h-40 sm:w-56 sm:h-56 lg:w-72 lg:h-72'
 
   const liste = (() => {
     const q = arama.trim().toLocaleLowerCase('tr')
@@ -98,40 +103,62 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
     <div className={`bayi-sira ${cokluMu
       ? 'rounded-xl border border-brand-border bg-brand-input/25 p-3.5' : ''}`}
          style={{ '--gecikme': `${sira * 55}ms` }}>
-      <GorselBuyutec key={kalem.id} acik={buyut} kapat={() => setBuyut(false)}
-                     kaynak={kalem.tasarim || kalem.gorsel}
-                     tasarimId={kalem.tasarim_id} format={kalem.format}
-                     baslik={kalem.model || ''} />
+      <GorselBuyutec key={`${kalem.id}-${buyut || ''}`} acik={!!buyut}
+                     kapat={() => setBuyut(null)}
+                     kaynak={buyut === 'onizleme'
+                       ? kalem.onizleme
+                       : (kalem.tasarim || kalem.gorsel)}
+                     tasarimId={buyut === 'onizleme' ? null : kalem.tasarim_id}
+                     format={buyut === 'onizleme' ? 'jpg' : kalem.format}
+                     baslik={`${kalem.model || ''}${buyut === 'onizleme' ? ' · önizleme' : ''}`} />
       {cokluMu && (
         <div className="text-[11px] uppercase tracking-[0.14em] text-gray-600 mb-3">
           {sira + 1}. ürün
         </div>
       )}
       <div className="flex items-start gap-4 flex-wrap">
-        <div className="relative group shrink-0">
-          <div onClick={() => kalem.gorsel && setBuyut(true)}
-               className={`${cokluMu ? 'w-20 h-20' : 'w-28 h-28'} rounded-2xl overflow-hidden
-                           border border-white/8 bg-white/[0.03] grid place-items-center
-                           ${kalem.gorsel ? 'cursor-zoom-in hover:border-accent/50 transition-colors' : ''}`}>
-            {kalem.gorsel
-              ? <img src={kalem.gorsel} alt="" className="w-full h-full object-cover" />
-              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
-                     className="w-8 h-8 text-gray-600">
-                  <rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
+        <div className="shrink-0 flex items-start gap-3 flex-wrap">
+          <div>
+            <div className="relative group">
+              <div onClick={() => kalem.gorsel && setBuyut('tasarim')}
+                   className={`${kutuBoyut} rounded-2xl overflow-hidden border border-white/8
+                               bg-white/[0.03] grid place-items-center
+                               ${kalem.gorsel ? 'cursor-zoom-in hover:border-accent/50 transition-colors' : ''}`}>
+                {kalem.gorsel
+                  ? <img src={kalem.gorsel} alt="" className="w-full h-full object-cover" />
+                  : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"
+                         className="w-8 h-8 text-gray-600">
+                      <rect x="6" y="2.5" width="12" height="19" rx="3" /></svg>}
+              </div>
+              {duzenlenebilir && (
+                <>
+                  <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
+                         onChange={(e) => tasarimYukle(e.target.files?.[0])} />
+                  <button onClick={() => dosyaRef.current?.click()} disabled={bekle === 'tasarim'}
+                          className="absolute inset-0 rounded-2xl grid place-items-center bg-black/65
+                                     opacity-0 group-hover:opacity-100 focus:opacity-100
+                                     transition-opacity text-[12px] text-white px-1 text-center">
+                    {bekle === 'tasarim'
+                      ? <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      : 'Tasarımı değiştir'}
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="text-[10.5px] text-gray-500 text-center mt-1">Tasarım (basılan)</div>
           </div>
-          {duzenlenebilir && (
-            <>
-              <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
-                     onChange={(e) => tasarimYukle(e.target.files?.[0])} />
-              <button onClick={() => dosyaRef.current?.click()} disabled={bekle === 'tasarim'}
-                      className="absolute inset-0 rounded-2xl grid place-items-center bg-black/65
-                                 opacity-0 group-hover:opacity-100 focus:opacity-100
-                                 transition-opacity text-[11.5px] text-white px-1 text-center">
-                {bekle === 'tasarim'
-                  ? <span className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  : 'Tasarımı değiştir'}
-              </button>
-            </>
+          {kalem.onizleme && (
+            <div>
+              <div onClick={() => setBuyut('onizleme')}
+                   className={`${kutuBoyut} rounded-2xl overflow-hidden border border-dashed
+                               border-emerald-500/40 bg-emerald-500/5 grid place-items-center
+                               cursor-zoom-in hover:border-emerald-400/70 transition-colors`}>
+                <img src={kalem.onizleme} alt="" className="w-full h-full object-cover" />
+              </div>
+              <div className="text-[10.5px] text-emerald-400/80 text-center mt-1">
+                Önizleme (basılmaz)
+              </div>
+            </div>
           )}
         </div>
 

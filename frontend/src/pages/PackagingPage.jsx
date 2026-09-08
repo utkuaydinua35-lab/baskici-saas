@@ -240,6 +240,13 @@ export default function PackagingPage() {
   const yazdirGomulu = (html, baslik = '', olcu = null) => new Promise((resolve) => {
     const cerceve = document.createElement('iframe')
     cerceve.setAttribute('aria-hidden', 'true')
+    // GUVENLIK: etiket SVG'si KARGO FIRMASINDAN geliyor ve icinde musterinin
+    // adi/adresi var. Firma kacirmayi atlarsa "</svg><script>" panelin
+    // ORIGIN'inde calisir (src'siz iframe ayni origin) ve localStorage'daki
+    // JWT'yi okur. sandbox'ta allow-scripts YOK: icerideki script hic
+    // calismaz. allow-same-origin duruyor cunku yazdirmayi EBEVEYN tetikliyor
+    // (contentWindow.print). Cizim etkilenmez — sanitizer riski de yok.
+    cerceve.setAttribute('sandbox', 'allow-same-origin allow-modals')
     cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
     document.body.appendChild(cerceve)
     let bitti = false
@@ -365,10 +372,17 @@ export default function PackagingPage() {
     try {
       const w = window.open('', '_blank')
       if (!w) return false
+      // SVG'yi HAM gommek yerine <img> ile gosteriyoruz: <img> ile yuklenen
+      // SVG'de tarayici script'i ASLA calistirmaz (SVG-as-image kurali).
+      // Bu sayfanin KENDI script'i (yazdirma tetigi) calismaya devam eder.
+      const svgData = 'data:image/svg+xml;base64,'
+        + btoa(unescape(encodeURIComponent(svg)))
+      const baslikGuvenli = String(takipNo || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       w.document.write(
-        `<!doctype html><html><head><title>Kargo Etiketi ${takipNo || ''}</title>` +
-        `<style>@page{margin:0}body{margin:0;display:flex;justify-content:center;padding:8px}svg{max-width:100%;height:auto}</style>` +
-        `</head><body>${svg}<scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr` + `ipt></body></html>`
+        `<!doctype html><html><head><title>Kargo Etiketi ${baslikGuvenli}</title>` +
+        `<style>@page{margin:0}body{margin:0;display:flex;justify-content:center;padding:8px}img{max-width:100%;height:auto}</style>` +
+        `</head><body><img alt="" src="${svgData}"><scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr` + `ipt></body></html>`
       )
       w.document.close()
       return true

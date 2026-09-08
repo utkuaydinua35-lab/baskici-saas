@@ -8,10 +8,12 @@ extract_phone_model önceliği).
 """
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import text as sa_text, update
+from sqlalchemy import or_, select, text as sa_text, update
 from sqlalchemy.orm import Session
 
 from app.services.site import site_url
@@ -321,11 +323,44 @@ def create_order_from_session(db: Session, session: CheckoutSession) -> Order:
     if session.discount_code_id:
         used_ids.add(str(session.discount_code_id))
     if used_ids:
-        db.execute(
-            update(DiscountCode)
-            .where(DiscountCode.id.in_(list(used_ids)))
-            .values(usage_count=DiscountCode.usage_count + 1)
-        )
+        # SAYAÇ LİMİTİ AŞMASIN. Limit checkout AÇILIRKEN kontrol ediliyor,
+        # sayaç ise ödeme DOĞRULANINCA artıyor; arada 2 saatlik oturum ömrü
+        # var (SESSION_TTL). Aynı kuponla N oturum açıp hepsini ödeyen biri
+        # tek kullanımlık kuponu N kez kullanabilir. Sömürü saldırgana N
+        # gerçek ödeme yaptırdığı için kazancı (N-1)×indirimle sınırlı; yine
+        # de sessiz kalmamalı.
+        #
+        # Burada ödemeyi REDDEDEMEYİZ (para alındı). Yapılabilecek iki şey:
+        #   1) sayaç limiti aşmasın — koşullu artırım (veri tutarlılığı),
+        #   2) aşım olduysa işletmeyi HABERDAR et.
+        # Kalıcı çözüm kuponu oturum açılırken REZERVE etmek; o, ödeme
+        # akışında dört yeri (oluşturma, süre dolumu, başarısız ödeme, iade)
+        # birden değiştiriyor ve ayrı bir iş olarak ele alınmalı.
+        _asilan: list[str] = []
+        for _kid in used_ids:
+            _sonuc = db.execute(
+                update(DiscountCode)
+                .where(DiscountCode.id == _kid,
+                       or_(DiscountCode.usage_limit.is_(None),
+                           DiscountCode.usage_count < DiscountCode.usage_limit))
+                .values(usage_count=DiscountCode.usage_count + 1)
+            )
+            if _sonuc.rowcount == 0:
+                _kod = db.scalar(select(DiscountCode.code).where(DiscountCode.id == _kid))
+                _asilan.append(str(_kod or _kid))
+        if _asilan:
+            try:
+                from app.services import telegram
+                telegram.send_message(
+                    "⚠️ Kupon kullanım limiti AŞILDI\n"
+                    f"Sipariş: #{order.order_number}\n"
+                    f"Kupon: {', '.join(_asilan)}\n"
+                    "Ödeme alındı ve sipariş oluşturuldu; kupon limiti zaten "
+                    "dolmuştu (eşzamanlı checkout). İncelemek isteyebilirsin."
+                )
+            except Exception:  # noqa: BLE001 — uyarı siparişi geri almaz
+                logging.getLogger("storefront_order").warning(
+                    "kupon limit aşımı uyarısı gönderilemedi", exc_info=True)
 
     try:
         _tasarimlari_isle(db, session, order, store)

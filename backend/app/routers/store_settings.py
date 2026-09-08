@@ -888,6 +888,10 @@ def verify_domain(
               or (store.config or {}).get("custom_domain") or "").strip().lower()
     if not domain:
         raise HTTPException(422, "Önce yukarıya alan adınızı yazın")
+    if not _alan_adi_gecerli(domain):
+        raise HTTPException(
+            422, "Geçerli bir alan adı yazın (örn. magaza.siteniz.com) — "
+                 "başında http://, sonunda / veya port olmasın.")
 
     expected_ip = (get_settings().server_ip or "").strip()
     try:
@@ -909,6 +913,17 @@ def verify_domain(
     # tutmaz ve kullanıcı doğru kurduğu hâlde "doğrulanamadı" görür. Bu yüzden
     # karar GERÇEK BİR İSTEĞE dayanır: alan adına gidip vitrinin kimlik ucunu
     # okuruz; dönen mağaza bu mağazaysa alan adı bağlanmış demektir.
+    # Ic/ozel adrese cozumlenen ada ISTEK ATMA (SSRF).
+    if _ic_adres_mi(resolved):
+        return {
+            "verified": False,
+            "domain": domain,
+            "resolved_ips": resolved,
+            "expected_ip": expected_ip or None,
+            "message": "Bu alan adı iç adrese çözümleniyor — doğrulama yapılmadı. "
+                       "Alan adını sunucunun genel IP'sine yönlendirin.",
+        }
+
     ulasti, neden = _vitrine_ulasiyor_mu(domain, store.slug)
     ip_tutuyor = bool(expected_ip) and expected_ip in resolved
     verified = ulasti or ip_tutuyor
@@ -1175,6 +1190,39 @@ def entegrasyon_anahtari_iptal(
                     entity_type="entegrasyon", entity_label=kayit.label)
     db.commit()
     return {"ok": True}
+
+
+# Alan adi dogrulamasi SUNUCUYA ISTEK ATTIRIYOR — yani kiracinin yazdigi
+# metin sunucunun cikis yaptigi adresi belirliyor. Iki koruma sart:
+#   1) ad GERCEKTEN bir alan adi olacak. Dogrudan f-string'e girdigi icin
+#      "example.com/#", "user@127.0.0.1", "example.com:8000" gibi girdiler
+#      URL'i yeniden yaziyordu.
+#   2) cozumlenen adreslerin HICBIRI ic/ozel olmayacak. Govde donmese de
+#      ulasilabilirlik + HTTP durumu + Location basligi sizdigi icin bu bir
+#      ic ag port tarayicisiydi (169.254.169.254 dahil).
+# Kanit: scripts/ssrf_test.py
+_ALAN_ADI = re.compile(
+    r"^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$")
+
+
+def _alan_adi_gecerli(domain: str) -> bool:
+    """Sadece nokta ayrimli harf/rakam/tire; sema, yol, port, kimlik YOK."""
+    return bool(_ALAN_ADI.match(domain))
+
+
+def _ic_adres_mi(ipler: list[str]) -> bool:
+    """Cozumlenen adreslerden HERHANGI BIRI ic/ozel mi (fail-closed)."""
+    import ipaddress
+
+    for ham in ipler:
+        try:
+            ip = ipaddress.ip_address(ham.split("%")[0])
+        except ValueError:
+            return True          # cozemedigimiz seye istek atmayiz
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return True
+    return False
 
 
 def _kimlik_sor(url: str, beklenen_slug: str) -> tuple[bool | None, str]:

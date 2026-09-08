@@ -114,7 +114,58 @@ export default function DealerDashboardPage() {
         {orders.length === 0 ? (
           <div className="p-8 text-center text-gray-500 text-sm">Henüz sipariş yok. "Sipariş Ekle" ile başla.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* TELEFON: 7 sütunlu tablo yan kaydırma istiyordu — kart listesi.
+              Sipariş ekleme/silme eylemleri kartta da duruyor. */}
+          <div className="sm:hidden p-3 space-y-2.5">
+            {orders.map(o => (
+              <div key={o.id} className="rounded-xl border border-brand-border bg-brand-input/25 p-3">
+                <div onClick={() => navigate(`/orders/${o.id}`, { state: { from: `/bayiler/${id}` } })}
+                     className="cursor-pointer">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium text-accent text-[13.5px]">{o.order_number}</span>
+                    <span className="tabular-nums text-[13.5px] text-gray-200 text-right shrink-0">
+                      {o.total_price ? fmt(Number(o.total_price), o.currency) : '—'}
+                      {Number(o.shipping_fee) > 0 && (
+                        <span className="block text-[10px] text-gray-500">
+                          + {fmt(Number(o.shipping_fee), 'TRY')} kargo
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-[12.5px] text-gray-300 mt-0.5 truncate">
+                    {o.customer_name || '—'} · {o.total_qty} adet
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${o.is_iptal
+                      ? 'bg-red-500/15 text-red-300'
+                      : (o.fulfillment_status === 'fulfilled' || (o.current_stage || 0) >= 8)
+                        ? 'bg-emerald-500/15 text-emerald-300' : 'bg-brand-input text-gray-400'}`}>
+                      {o.is_iptal ? 'İptal' : STAGE_LABEL[o.current_stage] || 'Yeni'}
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      {o.created_at ? new Date(o.created_at).toLocaleDateString('tr-TR') : ''}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2.5">
+                  {!o.is_iptal && (
+                    <button onClick={() => setAddTo(o)}
+                      className="flex-1 py-2 rounded-lg border border-accent/40 text-accent text-[12px]">
+                      + Ürün
+                    </button>
+                  )}
+                  <button onClick={() => siparisSil(o)} disabled={silinen === o.id}
+                    className="flex-1 py-2 rounded-lg border border-red-500/35 text-red-300
+                               text-[12px] disabled:opacity-40">
+                    {silinen === o.id ? '…' : '🗑 Sil'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-x-auto hidden sm:block">
             <table className="tbl text-sm">
               <thead><tr><th>Sipariş</th><th></th><th>Alıcı</th><th>Adet</th><th>Tutar</th><th>Durum</th><th>Tarih</th></tr></thead>
               <tbody>
@@ -152,6 +203,7 @@ export default function DealerDashboardPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

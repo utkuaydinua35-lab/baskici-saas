@@ -150,7 +150,10 @@ export default function UrunDetayPage() {
         <Link to="/urunler" className="text-panel-muted hover:text-panel-ink">←</Link>
         <h1 className="text-xl font-semibold truncate max-w-md">{p.title}</h1>
         <StatusBadge status={p.status} />
-        <div className="ml-auto flex gap-2 items-center">
+        {/* TELEFON: dört eylem başlıkla aynı satıra sığmayıp taşıyordu —
+            kendi satırına iniyor ve sarıyor. */}
+        <div className="ml-auto flex gap-2 items-center flex-wrap
+                        w-full sm:w-auto justify-end">
           {p.status === 'active' && (
             <a href={`${(store?.config?.storefront_url
                 || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : '')
@@ -360,9 +363,9 @@ export default function UrunDetayPage() {
           <h2 className="text-sm font-semibold">Varyantlar ({p.variants.length})</h2>
           <span className="text-[11px] text-panel-muted">— fiyat/stok hücresine tıklayıp düzenleyin</span>
         </div>
-        <div className="flex items-center gap-2 text-sm bg-panel-input rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 text-sm bg-panel-input rounded-xl px-3 py-2 flex-wrap">
           <span className="text-xs text-panel-muted">🧩 Hazır set:</span>
-          <select className="input !py-1.5 !w-56 text-xs" value={p.variant_set_id || ''}
+          <select className="input !py-1.5 w-full sm:!w-56 text-xs" value={p.variant_set_id || ''}
             onChange={async e => {
               const v = e.target.value
               if (v && !window.confirm('Set uygulanınca mevcut varyantlar set listesine göre '
@@ -676,7 +679,8 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
                         onKeyDown={e => { if (e.key === 'Enter') commitBrand(); if (e.key === 'Escape') setBrandEdit(null) }} />
                     ) : (
                       <button onClick={() => setBrandEdit({ old: g.brand, value: g.brand })}
-                        className="text-panel-muted hover:text-panel-accent" title="Marka adını düzenle">✎</button>
+                        className="text-panel-muted hover:text-panel-accent p-2 -m-1
+                                   sm:p-0 sm:m-0" title="Marka adını düzenle">✎</button>
                     )}
                   </div>
                 </td>

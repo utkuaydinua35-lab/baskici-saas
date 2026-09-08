@@ -25,6 +25,10 @@ export default function TemaEditorPage() {
   const [products, setProducts] = useState([])
   const [busy, setBusy] = useState(false)
   const [saveCount, setSaveCount] = useState(0)   // iframe reload anahtarı
+  // TELEFON: editör masaüstü için tasarlandı — 400px sol panel + canlı
+  // önizleme YAN YANA. 375px'te ikisi birlikte sığmıyor ve sayfa yatay
+  // kayıyordu (ölçüldü: 608px). Dar ekranda ikisinden BİRİ gösterilir.
+  const [mobilGorunum, setMobilGorunum] = useState('ayarlar')
   const [device, setDevice] = useState('desktop')
   const [openSection, setOpenSection] = useState(null) // dolu ise tek-bölüm modu
   const [customCode, setCustomCode] = useState(null)
@@ -272,7 +276,11 @@ export default function TemaEditorPage() {
   return (
     <div className="h-screen flex flex-col bg-panel-input/40">
       {/* Üst çubuk */}
-      <header className="h-14 shrink-0 bg-panel-card border-b border-panel-border flex items-center gap-3 px-4">
+      {/* Telefonda sekiz kontrol tek satıra sığmıyordu — sarıyor, yükseklik
+          serbest; sm'den itibaren eski sabit 56px tek satır. */}
+      <header className="shrink-0 bg-panel-card border-b border-panel-border
+                         flex items-center gap-2 sm:gap-3 px-3 sm:px-4
+                         flex-wrap py-2 sm:py-0 sm:h-14 sm:flex-nowrap">
         <button onClick={goBack} className="btn-ghost !py-1.5 text-xs">← Temalar</button>
         <div className="min-w-0">
           {/* Tema adı — yayındayken de düzenlenebilir (Kaydet ile kalıcılaşır) */}
@@ -331,11 +339,21 @@ export default function TemaEditorPage() {
           )}
         </select>
 
-        <div className="flex gap-1 bg-panel-input rounded-lg p-0.5 ml-auto">
+        <div className="hidden sm:flex gap-1 bg-panel-input rounded-lg p-0.5 ml-auto">
           {[['desktop', '🖥 Masaüstü'], ['mobile', '📱 Mobil']].map(([k, l]) => (
             <button key={k} onClick={() => setDevice(k)}
               className={`px-2.5 py-1 rounded-md text-xs transition ${device === k
                 ? 'bg-panel-card shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {/* Telefonda hangi bölümün görüneceğini seçer (masaüstünde ikisi yan yana). */}
+        <div className="sm:hidden flex gap-1 bg-panel-input rounded-lg p-0.5 order-last w-full">
+          {[['ayarlar', '⚙️ Ayarlar'], ['onizleme', '👁 Önizleme']].map(([k, l]) => (
+            <button key={k} onClick={() => setMobilGorunum(k)}
+              className={`flex-1 px-2.5 py-2 rounded-md text-xs transition ${mobilGorunum === k
+                ? 'bg-panel-card shadow-sm font-medium' : 'text-panel-muted'}`}>
               {l}
             </button>
           ))}
@@ -360,7 +378,9 @@ export default function TemaEditorPage() {
 
       <div className="flex-1 flex min-h-0">
         {/* Sol panel */}
-        <div className="w-[400px] shrink-0 bg-panel-card border-r border-panel-border overflow-y-auto p-4 space-y-4">
+        <div className={`w-full sm:w-[400px] sm:shrink-0 bg-panel-card border-r
+                         border-panel-border overflow-y-auto p-4 space-y-4
+                         ${mobilGorunum === 'ayarlar' ? '' : 'hidden sm:block'}`}>
           {activeSec ? (
             /* ── Tek bölüm modu — önizlemede tıklanan/lısteden seçilen bölüm ── */
             <>
@@ -663,9 +683,9 @@ export default function TemaEditorPage() {
                           <span className="text-panel-muted text-xs ml-auto shrink-0">Düzenle ›</span>
                         </button>
                         <button onClick={() => moveSec(i, -1)} disabled={i === 0}
-                          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
+                          className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
                         <button onClick={() => moveSec(i, 1)} disabled={i === theme.sections.length - 1}
-                          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
+                          className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
                       </div>
                     )
                   })}
@@ -754,7 +774,8 @@ export default function TemaEditorPage() {
         </div>
 
         {/* Sağ: canlı önizleme */}
-        <div className="flex-1 min-w-0 flex flex-col p-3">
+        <div className={`flex-1 min-w-0 flex-col p-3
+                         ${mobilGorunum === 'onizleme' ? 'flex' : 'hidden sm:flex'}`}>
           <div className={`flex-1 min-h-0 ${device === 'mobile'
             ? 'flex justify-center bg-panel-input/50 rounded-2xl py-4' : ''}`}>
             <iframe key={`${saveCount}-${device}-${previewPath}`} ref={iframeRef}
@@ -838,10 +859,10 @@ function NavLinkRow({ link, index, count, collections, products, pages, onChange
         </select>
         <button onClick={() => onMove(-1)} disabled={index === 0}
           title="Yukarı taşı (menüde sola)"
-          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
         <button onClick={() => onMove(1)} disabled={index === count - 1}
           title="Aşağı taşı (menüde sağa)"
-          className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
+          className="w-8 h-8 sm:w-6 sm:h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
         <button onClick={onRemove}
           className="text-red-300 hover:text-red-300 px-1">×</button>
       </div>

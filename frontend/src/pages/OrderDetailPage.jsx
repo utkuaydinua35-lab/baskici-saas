@@ -236,9 +236,9 @@ export default function OrderDetailPage() {
                 <h1 className="text-2xl font-semibold text-gray-100">Sipariş #{detail.order_number}</h1>
                 <div className="flex flex-col gap-0.5">
                   <button onClick={() => neighbors.next && navigate(`/orders/${neighbors.next}`, { state: location.state })} disabled={!neighbors.next}
-                    title="Sonraki sipariş (J)" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
+                    title="Sonraki sipariş (J)" className="px-2.5 py-1.5 sm:px-1.5 sm:py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▲</button>
                   <button onClick={() => neighbors.prev && navigate(`/orders/${neighbors.prev}`, { state: location.state })} disabled={!neighbors.prev}
-                    title="Önceki sipariş (K)" className="px-1.5 py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
+                    title="Önceki sipariş (K)" className="px-2.5 py-1.5 sm:px-1.5 sm:py-0.5 rounded bg-brand-input text-gray-400 hover:text-gray-100 disabled:opacity-30 text-xs leading-none">▼</button>
                 </div>
               </div>
               {detail.is_acil && <Badge color="red">⚠ ACİL</Badge>}

@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import and_, func, or_, select, update as sa_update
 from sqlalchemy.orm import Session
 
 from app.services.site import site_url
@@ -221,6 +221,56 @@ def _eligible_total(db: Session, dc: DiscountCode, snapshot: list[dict]) -> Deci
     )
 
 
+def bekleyen_rezervasyon(db: Session, dc: DiscountCode,
+                         haric_email: str | None = None) -> int:
+    """Bu kupona bağlı, HENÜZ ÖDENMEMİŞ ama süresi dolmamış oturum sayısı.
+
+    NEDEN VAR: limit checkout AÇILIRKEN kontrol ediliyor, sayaç ise ödeme
+    DOĞRULANINCA artıyor. Arada SESSION_TTL (2 saat) var. Aynı kuponla N
+    oturum açıp hepsini ödeyen biri tek kullanımlık kuponu N kez
+    kullanabiliyordu (bkz. scripts/kupon_limit_test.py).
+
+    Bekleyen oturumu "rezerve" saymak bu boşluğu kapatıyor. Ayrı bir
+    rezervasyon tablosu ya da sayaç kolonu YOK — bu bilinçli: rezervasyonu
+    ayrı tutmak SERBEST BIRAKMA mantığı gerektirirdi (süre dolumu, başarısız
+    ödeme, iade) ve orada bir hata kuponu sonsuza kadar kilitlerdi. Burada
+    süre dolunca oturum kendiliğinden sayılmaz oluyor.
+
+    Birleşik indirimde ikinci kupon yalnız discount_breakdown'da olduğu için
+    iki yere de bakılıyor.
+
+    haric_email: KİŞİNİN KENDİ açık oturumu sayılmaz. Yoksa checkout'u yarıda
+    bırakıp geri dönen müşteri KENDİ kuponunu 2 saat kullanamazdı — sık ve
+    can sıkıcı bir durum. Bunun bedeli, aynı e-postayla eşzamanlı N oturum
+    açıp hepsini ödeyen birinin hâlâ yarışabilmesi; o yol da açık değil:
+    ödeme anındaki koşullu artırım sayacı limitte tutuyor ve işletmeye
+    Telegram uyarısı gidiyor (bkz. storefront_order.create_order_from_session).
+    "müşteri başına 1" kuponlarda zaten once_per_customer bunu kapatıyor.
+    """
+    simdi = datetime.now(timezone.utc)
+    q = select(func.count()).select_from(CheckoutSession).where(
+        CheckoutSession.status == "pending",
+        CheckoutSession.expires_at > simdi,
+        or_(CheckoutSession.discount_code_id == dc.id,
+            CheckoutSession.discount_breakdown.contains([{"id": str(dc.id)}])),
+    )
+    if haric_email:
+        q = q.where(or_(
+            CheckoutSession.customer["email"].astext.is_(None),
+            CheckoutSession.customer["email"].astext != haric_email.strip().lower(),
+        ))
+    return db.scalar(q) or 0
+
+
+def limit_doldu_mu(db: Session, dc: DiscountCode,
+                   haric_email: str | None = None) -> bool:
+    """Kullanım limiti (ödenmiş + rezerve) dolmuş mu?"""
+    if dc.usage_limit is None:
+        return False
+    return ((dc.usage_count or 0)
+            + bekleyen_rezervasyon(db, dc, haric_email)) >= dc.usage_limit
+
+
 def evaluate_discount(
     db: Session, dc: DiscountCode, items_total: Decimal, email: str | None,
     items_count: int | None = None, snapshot: list[dict] | None = None,
@@ -231,7 +281,9 @@ def evaluate_discount(
         raise CheckoutError("Kupon henüz aktif değil")
     if dc.ends_at and now > dc.ends_at:
         raise CheckoutError("Kuponun süresi dolmuş")
-    if dc.usage_limit is not None and dc.usage_count >= dc.usage_limit:
+    if limit_doldu_mu(db, dc, email):
+        # Rezerve dahil: BAŞKASININ açık checkout'u da hakkı tutuyor.
+        # Kişinin kendi açık oturumu sayılmaz (bkz. bekleyen_rezervasyon).
         raise CheckoutError("Kuponun kullanım limiti doldu")
     if dc.min_subtotal is not None and items_total < Decimal(str(dc.min_subtotal)):
         raise CheckoutError(
@@ -240,11 +292,16 @@ def evaluate_discount(
     if dc.min_quantity is not None and (items_count or 0) < dc.min_quantity:
         raise CheckoutError(f"Bu indirim en az {dc.min_quantity} ürünle geçerli")
     if dc.once_per_customer and email:
+        # ÖDENMİŞ ya da HÂLÂ AÇIK (rezerve) — ikisi de hakkı tüketir; yoksa
+        # aynı e-postayla eşzamanlı iki checkout açıp ikisini de ödemek
+        # "müşteri başına 1" kuralını deliyordu.
         used = db.scalar(
             select(CheckoutSession.id).where(
                 CheckoutSession.discount_code_id == dc.id,
-                CheckoutSession.status == "paid",
                 CheckoutSession.customer["email"].astext == email.lower(),
+                or_(CheckoutSession.status == "paid",
+                    and_(CheckoutSession.status == "pending",
+                         CheckoutSession.expires_at > now)),
             ).limit(1)
         )
         if used:
@@ -498,6 +555,22 @@ def create_session(
     dc = plan.primary
     discount = plan.total
     free_shipping = plan.free_shipping
+
+    # SON YARIŞ KAPISI. Yukarıdaki kontrol kilitsiz okumaydı: iki istek aynı
+    # anda "limit dolmadı" görüp ikisi de oturum açabilirdi. Limitli her kuponun
+    # satırını KİLİTLE, sayımı TEKRARLA, sonra oturumu ekle. Kilit commit'e
+    # kadar tutulduğu için ikinci istek burada bekler ve güncel sayıyı görür.
+    # Yalnız usage_limit'i olan kuponlar kilitlenir — limitsizde kilit maliyeti
+    # boşuna olurdu.
+    for _uygulanan, _tutar, _bedava in plan.applied:
+        if _uygulanan.usage_limit is None:
+            continue
+        db.execute(select(DiscountCode.id)
+                   .where(DiscountCode.id == _uygulanan.id)
+                   .with_for_update())
+        db.refresh(_uygulanan)
+        if limit_doldu_mu(db, _uygulanan, (customer or {}).get("email")):
+            raise CheckoutError("Kuponun kullanım limiti doldu")
 
     shipping = Decimal("0") if free_shipping else _shipping_fee(store, items_total)
 

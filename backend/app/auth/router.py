@@ -408,20 +408,28 @@ class _ChangePasswordRequest(_PwBaseModel):
 @router.post("/verify-password", response_model=None)
 def verify_password_endpoint(
     req: _VerifyPasswordRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Gecerli token GEREKIYOR ama token CALINMIS olabilir. Sinirsiz deneme,
+    # calinmis bir oturumu hesabin PAROLASINI ogrenmeye cevirirdi.
+    _login_rate_limit(request, db, user.email)
     if not user.password_hash or not verify_password(req.password, user.password_hash):
+        _login_record_fail(request, db, user.email, "verify_sifre_hatali", user.id)
         raise HTTPException(status_code=401, detail="Şifre yanlış")
     return {"ok": True}
 
 @router.post("/change-password", response_model=None)
 def change_password_endpoint(
     req: _ChangePasswordRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _login_rate_limit(request, db, user.email)
     if not user.password_hash or not verify_password(req.current_password, user.password_hash):
+        _login_record_fail(request, db, user.email, "degistir_sifre_hatali", user.id)
         raise HTTPException(status_code=401, detail="Mevcut şifre yanlış")
     if len(req.new_password) < 8:
         raise HTTPException(status_code=400, detail="Yeni şifre en az 8 karakter olmalı")
@@ -578,13 +586,21 @@ def twofa_enable(
 @router.post("/2fa/disable", response_model=None)
 def twofa_disable(
     req: _TwoFADisableRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """2FA'yı kapat — kimlik için şifre VEYA geçerli TOTP kodu gerekir."""
+    """2FA'yı kapat — kimlik için şifre VEYA geçerli TOTP kodu gerekir.
+
+    HIZ SINIRI SART: bu uc gecerli bir token istiyor ama 2FA'nin varlik
+    sebebi token'in CALINMIS olabilmesi. Sinirsiz deneme, calinmis bir
+    oturumla 6 haneli TOTP'nin (ya da parolanin) kirilip ikinci faktorun
+    kalici olarak kapatilmasi demekti.
+    """
     from app.services import totp_service
     if not user.totp_enabled:
         return {"ok": True}
+    _login_rate_limit(request, db, user.email)
     ok = False
     if req.password and user.password_hash and verify_password(req.password, user.password_hash):
         ok = True
@@ -592,6 +608,7 @@ def twofa_disable(
         secret = totp_service.decrypt_secret(user.totp_secret)
         ok = bool(secret and totp_service.verify_code(secret, req.code))
     if not ok:
+        _login_record_fail(request, db, user.email, "2fa_kapatma_hatali", user.id)
         raise HTTPException(401, "Doğrulama başarısız (şifre veya kod hatalı).")
     user.totp_enabled = False
     user.totp_secret = None

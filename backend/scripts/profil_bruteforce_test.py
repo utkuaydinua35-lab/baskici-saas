@@ -73,6 +73,15 @@ _t = C.post("/api/auth/login", json={"email": personel.email,
 es("personel giriş yapabildi", 200, _t.status_code)
 H = {"Authorization": f"Bearer {_t.json()['access_token']}"}
 
+# 2FA'yı GİRİŞTEN SONRA açıyoruz: 2fa/disable ucunun korunduğunu gerçekten
+# sınayabilmek için (kapalıysa uç erkenden {ok:true} döner). Girişten önce
+# açsaydık login access_token yerine mfa_token dönerdi.
+from app.services import totp_service  # noqa: E402
+
+personel.totp_secret = totp_service.encrypt_secret(totp_service.generate_secret())
+personel.totp_enabled = True
+db.commit()
+
 print("\n── yönetici profiline yanlış parolayla ardışık deneme ──")
 temizle()
 durumlar = []
@@ -91,6 +100,27 @@ print("\n── başarısız deneme KAYDA geçiyor mu (sınırlayıcı bunu say�
 sayi = db.scalar(text("select count(*) from login_attempts "
                       "where reason like '%profil%'")) or 0
 es("profil geçişi başarısızlığı kaydedildi", True, sayi > 0)
+
+print("\n── parola/2FA kâhinleri: geçerli token YETMEZ, sınır da olmalı ──")
+# Bu üç uç geçerli token istiyor. Ama 2FA'nın varlık sebebi token'ın ÇALINMIŞ
+# olabilmesi: sınırsız deneme, çalınmış oturumu kalıcı erişime çevirirdi.
+for yol, govde, ad in (
+    ("/api/auth/verify-password", {"password": "yanlis"}, "verify-password"),
+    ("/api/auth/change-password",
+     {"current_password": "yanlis", "new_password": "YeniParola12345!"}, "change-password"),
+    ("/api/auth/2fa/disable", {"password": "yanlis", "code": "000000"}, "2fa/disable"),
+):
+    temizle()
+    dd = []
+    for i in range(20):
+        r = C.post(yol, headers=H, json=govde)
+        dd.append(r.status_code)
+        if r.status_code == 429:
+            break
+    # 2fa/disable: 2FA kapalıysa uç erkenden {ok:true} döner — o durumda
+    # sınanacak bir şey yok, sınama atlanır.
+    es(f"{ad}: hiçbir deneme başarılı olmadı", False, 200 in dd)
+    es(f"{ad}: sınırsız denenemiyor (429)", True, 429 in dd)
 
 print("\n── meşru kullanım bozulmadı: kendi profilini seçmek ──")
 temizle()

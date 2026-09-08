@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 import { Modal } from './UrunlerPage'
+import { mutlak } from '../lib/taban'
 
 // Mağaza müşterileri — bu mağazada siparişi olanlar.
 export default function MusterilerPage() {
@@ -39,7 +40,7 @@ export default function MusterilerPage() {
 
   const exportSubscribers = async () => {
     try {
-      const res = await fetch('/api/customers/export/subscribers.csv', {
+      const res = await fetch(mutlak('/api/customers/export/subscribers.csv'), {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) throw new Error()

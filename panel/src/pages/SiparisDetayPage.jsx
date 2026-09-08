@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
+import { mutlak } from '../lib/taban'
 
 // Sipariş detayı — Shopify düzeni: solda ürünler + ödeme + zaman çizelgesi,
 // sağda müşteri/adres/kargo/üretim durumu. Veri: zengin /detail endpoint'i.
@@ -984,7 +985,7 @@ function TasarimKarti({ li }) {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(`/api/case-templates/designs/${d.id}/proof`, {
+      const res = await fetch(mutlak(`/api/case-templates/designs/${d.id}/proof`), {
         method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd,
       })
       if (!res.ok) throw new Error()

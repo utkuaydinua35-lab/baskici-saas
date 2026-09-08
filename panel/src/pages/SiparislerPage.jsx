@@ -4,6 +4,7 @@ import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { Modal } from './UrunlerPage'
+import { mutlak } from '../lib/taban'
 
 // Mağaza siparişleri — sade liste (üretim detayları Baskıcı'da kalır).
 const STAGE_LABELS = {
@@ -42,7 +43,7 @@ export default function SiparislerPage() {
 
   const exportCsv = async () => {
     try {
-      const res = await fetch(`/api/orders/export/orders.csv?store_id=${storeId}`, {
+      const res = await fetch(mutlak(`/api/orders/export/orders.csv?store_id=${storeId}`), {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) throw new Error()

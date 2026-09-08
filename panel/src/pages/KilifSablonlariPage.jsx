@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
+import { mutlak } from '../lib/taban'
 
 // Kılıf Şablonları — müşterinin tasarım stüdyosunda gördüğü boş kılıflar.
 // Her şablonda: mockup görseli + BASKI ALANI (müşterinin düzenleyebildiği
@@ -158,7 +159,7 @@ function HazirSablonlar({ storeId, templates }) {
       fd.append('file', file)
       const qs = new URLSearchParams({ store_id: storeId, label: ad.trim() })
       if (kilif) qs.set('case_template_id', kilif)
-      const res = await fetch(`/api/case-templates/overlays?${qs}`, {
+      const res = await fetch(mutlak(`/api/case-templates/overlays?${qs}`), {
         method: 'POST', body: fd,
         headers: { Authorization: `Bearer ${getToken()}` },
       })
@@ -417,7 +418,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(`/api/case-templates/${t.id}/image`, {
+      const res = await fetch(mutlak(`/api/case-templates/${t.id}/image`), {
         method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd,
       })
       if (!res.ok) throw new Error()
@@ -848,7 +849,7 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     setBusy(true); setErr('')
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch(`/api/case-templates/overlays/${overlay.id}/alan-gorseli`, {
+      const res = await fetch(mutlak(`/api/case-templates/overlays/${overlay.id}/alan-gorseli`), {
         method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Yüklenemedi')

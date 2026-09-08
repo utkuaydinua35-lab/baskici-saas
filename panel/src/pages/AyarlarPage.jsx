@@ -4,6 +4,7 @@ import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
 import { passkeySupported, registerPasskey } from '../lib/webauthn'
+import { mutlak } from '../lib/taban'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
@@ -64,7 +65,7 @@ export default function AyarlarPage() {
     setIccBusy(true); setIccHata('')
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch(`/api/store-settings/${storeId}/cmyk-profili`, {
+      const res = await fetch(mutlak(`/api/store-settings/${storeId}/cmyk-profili`), {
         method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
       })
       const r = await res.json().catch(() => ({}))

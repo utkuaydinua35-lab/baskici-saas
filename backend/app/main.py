@@ -142,9 +142,24 @@ async def security_headers(request, call_next):
             "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
+# Native kabuk (Capacitor) sayfayi KENDI origin'inde acar: iOS'ta
+# capacitor://localhost, Android'de http://localhost. Bu origin'ler listede
+# olmazsa uygulamanin HER istegi CORS'a takilir (preflight 400).
+#
+# GUVENLIGI ZAYIFLATMAZ: bu API kimligi CEREZLE degil Authorization: Bearer
+# basligiyla dogruluyor. CORS bir kimlik sinir degil; origin eklemek gecerli
+# token olmadan hicbir sey acmaz ve CSRF'e yol vermez (CSRF ortam kimligi,
+# yani cerez ister). Tarayici bu semalara zaten gezinemez.
+_IZINLI_ORIGIN = [
+    settings.frontend_url,
+    "capacitor://localhost",   # iOS native kabuk
+    "http://localhost",        # Android native kabuk
+    "https://localhost",       # Android (https semasi secilirse)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=_IZINLI_ORIGIN,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
+import { mutlak } from '../lib/taban'
 
 // Ürünler — katalog yönetimi (Faz 4'te tam sayfa editöre genişleyecek).
 export default function UrunlerPage() {
@@ -28,7 +29,7 @@ export default function UrunlerPage() {
 
   const exportCsv = async () => {
     try {
-      const res = await fetch(`/api/catalog/export?store_id=${storeId}`, {
+      const res = await fetch(mutlak(`/api/catalog/export?store_id=${storeId}`), {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) throw new Error()

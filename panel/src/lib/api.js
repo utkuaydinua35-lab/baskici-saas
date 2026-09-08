@@ -2,6 +2,8 @@
  * API client — token'ı localStorage'tan otomatik ekler.
  */
 
+import { mutlak, yanitiMutlaklastir } from './taban'
+
 const TOKEN_KEY = 'magaza_token'
 
 export function getToken() {
@@ -31,7 +33,9 @@ async function request(method, url, body) {
     opts.body = JSON.stringify(body)
   }
 
-  const res = await fetch(url, opts)
+  // Native kabukta origin capacitor://localhost olduğu için göreli yol
+  // sunucuya gitmez; taban tanımlıysa mutlaklaştırılır (web'de değişmez).
+  const res = await fetch(mutlak(url), opts)
   if (res.status === 204) return null
 
   let data = null
@@ -61,7 +65,10 @@ async function request(method, url, body) {
     throw new ApiError(res.status, detail)
   }
 
-  return data
+  // Yanıttaki /storage ve /uploads yolları da mutlaklaşsın — görseller
+  // 21 ayrı yerde <img src={...}> ile basılıyor, tek tek sarmak yerine
+  // sınırda bir kez geçiriliyor. Web'de bu fonksiyon veriyi hiç dolaşmaz.
+  return yanitiMutlaklastir(data)
 }
 
 export const api = {
@@ -71,12 +78,12 @@ export const api = {
     const headers = { 'Accept': 'application/json' }
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(url, { method: 'POST', headers, body: formData })
+    const res = await fetch(mutlak(url), { method: 'POST', headers, body: formData })
     if (res.status === 204) return null
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
     if (!res.ok) { const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`; throw new ApiError(res.status, detail) }
-    return data
+    return yanitiMutlaklastir(data)
   },
   put:   (url, body)  => request('PUT',    url, body ?? {}),
   patch: (url, body)  => request('PATCH',  url, body ?? {}),

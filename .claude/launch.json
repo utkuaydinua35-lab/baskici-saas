@@ -46,6 +46,15 @@
         "cd storefront && STORE_SLUG=bernz npx next dev -p 3003"
       ],
       "port": 3003
+    },
+    {
+      "name": "panel-native",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd panel && VITE_API_TABAN=http://localhost:8000 npx vite --port 5177 --strictPort"
+      ],
+      "port": 5177
     }
   ]
 }

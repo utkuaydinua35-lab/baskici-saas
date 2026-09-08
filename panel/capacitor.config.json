@@ -1,0 +1,7 @@
+{
+  "appId": "com.bernzcompany.magazapanel",
+  "appName": "BERNZ Commerce",
+  "webDir": "dist",
+  "ios": { "contentInset": "always" },
+  "android": { "allowMixedContent": false }
+}

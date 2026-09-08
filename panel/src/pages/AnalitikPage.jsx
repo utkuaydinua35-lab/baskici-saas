@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
+import { mutlak } from '../lib/taban'
 
 // Mağaza analitiği — ciro, en çok satanlar, checkout hunisi.
 const RANGES = [
@@ -44,8 +45,8 @@ export default function AnalitikPage() {
         <button onClick={async () => {
           const r = RANGES.find(x => x.key === range)
           try {
-            const res = await fetch(
-              `/api/analytics/export.csv?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`,
+            const res = await fetch(mutlak(
+              `/api/analytics/export.csv?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`),
               { headers: { Authorization: `Bearer ${getToken()}` } })
             if (!res.ok) throw new Error()
             const blob = await res.blob()

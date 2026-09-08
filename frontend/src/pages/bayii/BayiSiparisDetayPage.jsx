@@ -53,9 +53,12 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
   // null | 'tasarim' | 'onizleme' — hangi görselin büyütüleceği
   const [buyut, setBuyut] = useState(null)
   // Tailwind sınıfları KAYNAKTA tam geçmeli; `sm:${...}` derlemeye girmez.
+  // TELEFON: sabit genişlik (w-40) iki görseli alt alta düşürüyor, sayfa
+  // uzayıp karşılaştırma zorlaşıyordu. Dar ekranda kutular esner (yan yana,
+  // yarımşar); sm'den itibaren eski sabit kareler.
   const kutuBoyut = cokluMu
-    ? 'w-32 h-32 sm:w-44 sm:h-44 lg:w-52 lg:h-52'
-    : 'w-40 h-40 sm:w-56 sm:h-56 lg:w-72 lg:h-72'
+    ? 'w-full aspect-square sm:aspect-auto sm:w-44 sm:h-44 lg:w-52 lg:h-52'
+    : 'w-full aspect-square sm:aspect-auto sm:w-56 sm:h-56 lg:w-72 lg:h-72'
 
   const liste = (() => {
     const q = arama.trim().toLocaleLowerCase('tr')
@@ -117,8 +120,8 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
         </div>
       )}
       <div className="flex items-start gap-4 flex-wrap">
-        <div className="shrink-0 flex items-start gap-3 flex-wrap">
-          <div>
+        <div className="w-full sm:w-auto sm:shrink-0 flex items-start gap-3">
+          <div className="flex-1 min-w-0 sm:flex-none">
             <div className="relative group">
               <div onClick={() => kalem.gorsel && setBuyut('tasarim')}
                    className={`${kutuBoyut} rounded-2xl overflow-hidden border border-white/8
@@ -148,7 +151,7 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
             <div className="text-[10.5px] text-gray-500 text-center mt-1">Tasarım (basılan)</div>
           </div>
           {kalem.onizleme && (
-            <div>
+            <div className="flex-1 min-w-0 sm:flex-none">
               <div onClick={() => setBuyut('onizleme')}
                    className={`${kutuBoyut} rounded-2xl overflow-hidden border border-dashed
                                border-emerald-500/40 bg-emerald-500/5 grid place-items-center
@@ -162,7 +165,7 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
           )}
         </div>
 
-        <div className="flex-1 min-w-[190px]">
+        <div className="w-full sm:flex-1 sm:min-w-[190px]">
           <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
             Telefon modeli
           </div>

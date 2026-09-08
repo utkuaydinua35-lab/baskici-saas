@@ -59,8 +59,11 @@ export default function BayiSiparislerPage() {
         <Link to="/bayii/yeni" className="btn-primary">Yeni sipariş</Link>
       </div>
 
-      <div className="flex items-center gap-2.5 flex-wrap">
-        <div className="flex items-center gap-1 p-1 rounded-full border border-brand-border bg-brand-input/40">
+      {/* Telefonda süzgeç şeridi 375px'e SIĞMIYORDU (390px) — sağdaki sekme
+          kesiliyordu. Yan kaydırılabilir şerit + tam genişlik arama kutusu. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto no-scrollbar">
+        <div className="inline-flex items-center gap-1 p-1 rounded-full border border-brand-border bg-brand-input/40">
           {SUZGECLER.map((s) => (
             <button key={s.id} onClick={() => setSuzgec(s.id)}
                     className={`px-3.5 py-1.5 rounded-full text-[12.5px] transition-all
@@ -72,7 +75,8 @@ export default function BayiSiparislerPage() {
             </button>
           ))}
         </div>
-        <div className="relative flex-1 min-w-[180px] max-w-xs ml-auto">
+        </div>
+        <div className="relative w-full sm:flex-1 sm:min-w-[180px] sm:max-w-xs sm:ml-auto">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                className="w-4 h-4 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2">
             <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" strokeLinecap="round" />
@@ -136,10 +140,12 @@ export default function BayiSiparislerPage() {
                 <div className="text-[11.5px] text-gray-600 mt-0.5">{tarihYaz(o.tarih)}</div>
               </div>
 
-              <div className="flex flex-col items-end gap-2 shrink-0">
+              <div className="flex flex-col items-end gap-2 shrink-0 max-w-[38%]">
                 <DurumRozet siparis={o} />
                 {o.kargo_takip && (
-                  <span className="text-[11px] text-gray-500 font-mono">{o.kargo_takip}</span>
+                  <span className="text-[11px] text-gray-500 font-mono truncate max-w-full">
+                    {o.kargo_takip}
+                  </span>
                 )}
               </div>
             </button>

@@ -62,7 +62,39 @@ export default function BayiCariPage() {
           <Bos baslik="Hareket yok" aciklama="Sipariş verdikçe hareketler burada listelenir." />
         </div>
       ) : (
-        <div className="card !p-0 overflow-hidden">
+        <>
+        {/* TELEFON: tablo yan kaydırma gerektiriyordu — bakiyeyi görmek için
+            sağa kaydırmak zorundaydın. Aynı veri kart olarak, sm'den itibaren
+            tablo. */}
+        <div className="sm:hidden space-y-2.5">
+          {veri.items.map((t, i) => (
+            <div key={i} className="card !p-3.5 bayi-sira"
+                 style={{ '--gecikme': `${Math.min(i, 14) * 35}ms` }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                  borcMu(t) ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                            : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'}`}>
+                  {TUR_ADI[t.tur] || t.tur}
+                </span>
+                <span className={`text-[15px] font-medium ${
+                  borcMu(t) ? 'text-amber-300' : 'text-emerald-300'}`}>
+                  {borcMu(t) ? '+' : ''}{paraYaz(t.tutar, t.para_birimi)}
+                </span>
+              </div>
+              {t.aciklama && (
+                <div className="text-[12.5px] text-gray-300 mt-2 break-words">{t.aciklama}</div>
+              )}
+              <div className="flex items-center justify-between gap-2 mt-2 text-[11.5px]">
+                <span className="text-gray-600">{tarihYaz(t.tarih)}</span>
+                <span className="text-gray-500">
+                  bakiye {paraYaz(t.bakiye_sonra, t.para_birimi)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card !p-0 overflow-hidden hidden sm:block">
           <div className="overflow-x-auto">
             <table className="tbl">
               <thead>
@@ -96,6 +128,7 @@ export default function BayiCariPage() {
             </table>
           </div>
         </div>
+        </>
       )}
     </div>
   )

@@ -272,7 +272,10 @@ export function TasarimSecici({ storeId, mevcutId, onSec, onKapat }) {
     const t = setTimeout(async () => {
       if (!iptal) setYukleniyor(true)
       try {
-        const r = await api.get(`/api/designs?store_id=${storeId}`
+        // katalog=1: silinmiş siparişlerde kalan tasarımlar listelenmez —
+        // bayinin kendi kataloğunda da görünmeyen bir şeyi burada seçmek
+        // (ve sipariş onayında ona bağlamak) yanlış olurdu.
+        const r = await api.get(`/api/designs?store_id=${storeId}&katalog=1`
           + `&per_page=60${q.trim() ? `&search=${encodeURIComponent(q.trim())}` : ''}`)
         if (!iptal) setListe(r.items || [])
       } catch { if (!iptal) setListe([]) }

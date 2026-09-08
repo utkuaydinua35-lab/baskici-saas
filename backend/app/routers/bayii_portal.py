@@ -358,12 +358,17 @@ def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
     """
     if not d.store_id:
         return {"items": []}
+    from app.services import tasarim_katalog
+
     rows = db.scalars(
         select(Design).where(Design.store_id == d.store_id,
                              Design.tenant_id == d.tenant_id,
                              # Dosyası temizlenmiş tasarım SEÇİLEMEZ: seçilirse
                              # kalıp basılamaz. Listede göstermek yanıltır.
-                             Design.dosya_silindi_at.is_(None))
+                             Design.dosya_silindi_at.is_(None),
+                             # Yalnız silinmiş siparişlerde kalan tasarım da
+                             # görünmez (bkz. tasarim_katalog).
+                             tasarim_katalog.gorunur_kosulu())
         .order_by(desc(Design.created_at)).limit(min(limit, 300))
     ).all()
     return {"items": [

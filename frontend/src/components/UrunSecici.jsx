@@ -92,7 +92,7 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
 
       <div className="flex gap-4 flex-wrap sm:flex-nowrap">
         {/* Tasarım */}
-        <div className="shrink-0">
+        <div className="w-full sm:w-auto sm:shrink-0">
           <input ref={dosyaRef} type="file" accept=".jpg,.jpeg,.png,.pdf" hidden
                  onChange={(e) => { dosyaSec(e.target.files?.[0]); e.target.value = '' }} />
 
@@ -149,7 +149,7 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
             </button>
           )}
 
-          <div className="w-28 mt-1.5 space-y-1">
+          <div className="w-full sm:w-28 mt-1.5 space-y-1">
             {urun.dosya && (
               <div className="text-[10.5px] text-gray-600 truncate" title={urun.dosya.name}>
                 {urun.dosya.name}
@@ -162,7 +162,10 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
             )}
             {katalog?.length > 0 && (
               <button type="button" onClick={() => setKatalogAcik(true)}
-                      className="text-[10.5px] text-accent hover:brightness-125 transition">
+                      className="block w-full rounded-lg border border-accent/25 bg-accent/5
+                                 py-2 text-[12px] text-accent text-center transition
+                                 hover:brightness-125 sm:border-0 sm:bg-transparent
+                                 sm:py-0 sm:text-left sm:text-[10.5px]">
                 Tasarımlarımdan seç
               </button>
             )}
@@ -195,9 +198,13 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
             ) : (
               <button type="button" onClick={() => onzRef.current?.click()}
                       title="Tasarımın kılıf üzerinde nasıl duracağını gösteren görsel. Baskıya girmez."
-                      className="text-[10.5px] text-gray-500 hover:text-gray-300 transition
-                                 underline decoration-dotted underline-offset-2">
-                + Önizleme görseli ekle (isteğe bağlı)
+                      className="block w-full rounded-lg border border-white/10 py-2 text-[12px]
+                                 text-gray-400 text-center transition hover:text-gray-200
+                                 sm:border-0 sm:py-0 sm:text-left sm:text-[10.5px]
+                                 sm:text-gray-500 sm:underline sm:decoration-dotted
+                                 sm:underline-offset-2">
+                + Önizleme görseli <span className="sm:hidden">ekle</span>
+                <span className="hidden sm:inline">ekle (isteğe bağlı)</span>
               </button>
             )}
           </div>

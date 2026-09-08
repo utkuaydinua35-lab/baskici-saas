@@ -81,6 +81,10 @@ def list_designs(
     cmyk_done: bool | None = Query(None),
     is_kisiye_ozel: bool | None = Query(None),
     baski_dosyasi_yok: bool | None = Query(None),
+    # Bayi kataloğu görünümü: yalnız SİLİNMİŞ siparişlerde kalan tasarımları
+    # eler (bkz. app.services.tasarim_katalog). Varsayılan kapalı — yönetim
+    # listesi her şeyi görebilmeli.
+    katalog: bool = Query(False),
     page: int = Query(1, ge=1),
     per_page: int = Query(60, ge=1, le=200),
     user: User = Depends(get_current_user),
@@ -120,6 +124,10 @@ def list_designs(
         q = q.where(Design.is_kisiye_ozel == is_kisiye_ozel)
     if baski_dosyasi_yok is not None:
         q = q.where(Design.baski_dosyasi_yok == baski_dosyasi_yok)
+    if katalog:
+        from app.services import tasarim_katalog
+        q = q.where(Design.dosya_silindi_at.is_(None),
+                    tasarim_katalog.gorunur_kosulu())
 
     total = db.scalar(select(sql_func.count()).select_from(q.subquery())) or 0
     q = q.order_by(desc(Design.created_at)).limit(per_page).offset((page - 1) * per_page)

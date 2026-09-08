@@ -12,6 +12,11 @@ demektir:
   3) Tasarım hiçbir FİZİKSEL KALIP slotunda olmamalı.
   4) Hiç siparişe bağlı olmayan tasarıma dokunulmaz (bayinin katalogda
      bekleyen tasarımı olabilir).
+  5) SİLİNMİŞ sipariş (çöp kutusu) engel SAYILMAZ — ama yalnız silinmesinin
+     üzerinden de 48 saat geçtiyse. Çöpten geri alma penceresi içinde dosya
+     durur; yoksa geri alınan siparişin tasarımı yok olurdu. Bu kural olmadan
+     silinmiş sipariş dosyayı SONSUZA DEK tutuyordu (aşaması < 8 kaldığı için
+     "hepsi kargolanmış" koşulu asla sağlanmıyordu).
 Kayıt SİLİNMEZ, yalnız dosya silinir ve `dosya_silindi_at` işaretlenir; sipariş
 geçmişi bozulmaz. İşaretli tasarım katalogda GÖRÜNMEZ (seçilemez).
 """
@@ -51,6 +56,8 @@ def adaylari_bul(db: Session, saat: int = BEKLEME_SAAT) -> list[Design]:
            and not exists (
                  select 1 from line_items l join orders o on o.id = l.order_id
                   where l.assigned_design_id = d.id
+                    -- 48 saatten once silinmis siparis engel degil (kural 5)
+                    and (o.deleted_at is null or o.deleted_at > :sinir)
                     and (coalesce(o.current_stage, 1) < :asama
                          or not exists (
                               select 1 from order_status_history h

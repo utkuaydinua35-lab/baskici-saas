@@ -265,15 +265,27 @@ from starlette.responses import Response as _Resp
 class SafeStaticFiles(StaticFiles):
     """SVG/HTML/XML gibi tarayicida script calistirabilen dosyalari
     inline yerine attachment olarak + siki guvenlik basliklariyla servis eder.
-    Resimler (png/jpg/jpeg/gif/webp) normal inline gosterilir."""
-    _RISKY_EXT = {".svg", ".html", ".htm", ".xml", ".xhtml"}
+    Resimler (png/jpg/jpeg/gif/webp) normal inline gosterilir.
+
+    NEDEN ONEMLI: /storage PANEL alan adindan da servis ediliyor ve panel
+    JWT'yi localStorage'da tutuyor. Inline calisan bir SVG, yoneticinin
+    oturumunu calabilir. Musteri tasarim yukleme ucu SVG'yi KIMLIKSIZ kabul
+    ediyor (vektorel baski kaynagi) — yani dosyayi koyan saldirgan olabilir.
+
+    2026-09-08'DE YANDI: uzanti `Path(path).suffix` ile hesaplaniyordu ama
+    `Path` bu modulde hic import edilmemisti. Her istekte NameError firliyor,
+    ciplak `except Exception` yutuyor, uzanti bos kaliyordu — koruma yazildigi
+    gunden beri CALISMIYORDU. Bu yuzden artik:
+      · uzanti hicbir sey firlatmayan saf string islemiyle bulunuyor,
+      · except YOK (guvenlik kontrolu sessizce basarisiz olmamali),
+      · davranis scripts/statik_xss_test.py ile sinaniyor (kod degil, BASLIK).
+    """
+    _RISKY_EXT = {"svg", "html", "htm", "xml", "xhtml", "svgz"}
 
     async def get_response(self, path: str, scope):
         resp = await super().get_response(path, scope)
-        try:
-            ext = Path(path).suffix.lower()
-        except Exception:
-            ext = ""
+        ad = str(path).rsplit("/", 1)[-1]
+        ext = ad.rsplit(".", 1)[-1].lower() if "." in ad else ""
         # Tum statik dosyalara temel guvenlik basliklari
         resp.headers["X-Content-Type-Options"] = "nosniff"
         if ext in self._RISKY_EXT:

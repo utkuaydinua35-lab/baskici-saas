@@ -93,6 +93,10 @@ def _notify_customer(db: Session, r: DesignRequest) -> bool:
 
         from app.models import Store
         from app.services import email_service
+        # 2026-09-08: site_url import EDILMEMISTI -> NameError, asagidaki
+        # except onu yutuyordu ve fonksiyon her zaman False donuyordu; yani
+        # tasarim talebi durum e-postasi hic gonderilmedi.
+        from app.services.site import site_url
 
         store = db.get(Store, r.store_id)
         if not store:

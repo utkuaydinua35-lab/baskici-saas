@@ -2334,7 +2334,8 @@ def _takip_postasi_gonder(store_id, tenant_id, email: str,
         )
         email_service.send_email(email, "Sipariş takip bağlantın", html)
     except Exception:  # noqa: BLE001
-        logger.warning("[support] takip postası gönderilemedi", exc_info=True)
+        logging.getLogger("public_shop").warning(
+            "[support] takip postası gönderilemedi", exc_info=True)
     finally:
         db.close()
 

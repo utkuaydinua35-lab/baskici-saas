@@ -24,6 +24,20 @@ jobs:
           pip install -e .
       - name: Compile (syntax)
         run: python -m compileall -q backend/app
+
+      # Tanimsiz isim = calisma aninda NameError. 2026-09-08'de bu yuzden bir
+      # GUVENLIK KONTROLU sessizce olmustu: SafeStaticFiles'ta `Path` import
+      # edilmemis, NameError'i ciplak `except` yutmus, SVG/HTML koruması
+      # yazildigi gunden beri hic calismamisti. Derleme bunu yakalamaz.
+      - name: Tanimsiz isim taramasi (pyflakes F821)
+        working-directory: backend
+        run: |
+          pip install pyflakes
+          if python -m pyflakes app scripts | grep -i "undefined name"; then
+            echo "::error::Tanimsiz isim bulundu — calisma aninda NameError olur."
+            exit 1
+          fi
+          echo "tanimsiz isim yok"
       - name: Import app + configure mappers (import/iliski hatalari)
         working-directory: backend
         env:

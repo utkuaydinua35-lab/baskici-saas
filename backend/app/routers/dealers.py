@@ -519,10 +519,19 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             _h["net"][_c] = _h["net"].get(_c, 0.0) + float(_tut or 0)
             if _kind in dealer_debt.BORC_TURLERI:
                 _h["borc_var"] = True
+    # Adetler de tek sorguda — döngü içinde sipariş başına ayrı sorgu 500
+    # siparişlik sayfada 500 ekstra gidiş-dönüş demekti.
+    _adet: dict[uuid.UUID, int] = {}
+    if orders:
+        _adet = dict(db.execute(
+            select(LineItem.order_id,
+                   sql_func.coalesce(sql_func.sum(LineItem.quantity), 0))
+            .where(LineItem.order_id.in_([o.id for o in orders]))
+            .group_by(LineItem.order_id)).all())
     out = []
     for o in orders:
         _raw = o.raw or {}
-        _qty = db.scalar(select(sql_func.coalesce(sql_func.sum(LineItem.quantity), 0)).where(LineItem.order_id == o.id)) or 0
+        _qty = int(_adet.get(o.id) or 0)
         _kayit = _hareket.get(o.id) or {"borc_var": False, "net": {}}
         _acik = {c: round(v, 2) for c, v in _kayit["net"].items() if abs(v) > 0.005}
         out.append({
@@ -533,7 +542,7 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             "current_stage": o.current_stage,
             "fulfillment_status": o.fulfillment_status,
             "is_iptal": bool(o.is_iptal),
-            "total_qty": int(_qty),
+            "total_qty": _qty,
             "total_price": _raw.get("total_price"),        # ürün bedeli (bayi para birimi)
             "shipping_fee": _raw.get("shipping_fee"),      # kargo (₺, ayrı) — 0/None olabilir
             "currency": _raw.get("currency", "TRY"),

@@ -8,6 +8,7 @@ Paketleme — /api/packaging/*
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -129,8 +130,7 @@ def il_ilce(user: User = Depends(get_current_user)):
 SURAT_DOGRUDAN = "DIRECT_SURAT"
 
 
-def _surat_etiket_yolu(order_id) -> "Path":
-    from pathlib import Path
+def _surat_etiket_yolu(order_id) -> Path:
     d = storage.STORAGE_ROOT / "cache" / "kargo_etiket"
     d.mkdir(parents=True, exist_ok=True)
     return Path(d) / f"{order_id}.pdf"

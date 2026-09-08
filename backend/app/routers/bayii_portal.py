@@ -174,6 +174,9 @@ def _ser_kalem(li: LineItem, kaliptakiler: set | None = None) -> dict:
         "varyasyon": li.kilif_varyasyon,
         "gorsel": storage.get_thumbnail_url(d.file_path, d.file_format) if d else None,
         "tasarim": storage.get_design_url(d.file_path) if d else None,
+        # Önizleme AYRI alanda: baskı akışının yanlışlıkla almasını imkânsız
+        # kılmak için hiçbir yerde "gorsel" ile karıştırılmaz.
+        "onizleme": storage.onizleme_url(d.onizleme_path) if d else None,
         "tasarim_id": str(d.id) if d else None,
         "format": (d.file_format or "").lower() if d else None,
         "stok_bekliyor": stok_bekliyor,
@@ -357,7 +360,10 @@ def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
         return {"items": []}
     rows = db.scalars(
         select(Design).where(Design.store_id == d.store_id,
-                             Design.tenant_id == d.tenant_id)
+                             Design.tenant_id == d.tenant_id,
+                             # Dosyası temizlenmiş tasarım SEÇİLEMEZ: seçilirse
+                             # kalıp basılamaz. Listede göstermek yanıltır.
+                             Design.dosya_silindi_at.is_(None))
         .order_by(desc(Design.created_at)).limit(min(limit, 300))
     ).all()
     return {"items": [
@@ -366,7 +372,14 @@ def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
             "kod": x.code,
             "ad": x.name or x.code,
             "format": (x.file_format or "").lower(),
-            "gorsel": storage.get_thumbnail_url(x.file_path, x.file_format),
+            # LİSTEDE önizleme varsa O gösterilir (tasarımın kılıf üzerindeki
+            # hâli). Ama seçim yine TASARIMI bağlar — "id" tasarımın id'si ve
+            # kalıba giden dosya her zaman file_path'tir. Bu ayrım kritik:
+            # önizleme basılırsa kılıflar çöp olur.
+            "gorsel": (storage.onizleme_url(x.onizleme_path)
+                       or storage.get_thumbnail_url(x.file_path, x.file_format)),
+            "tasarim_gorseli": storage.get_thumbnail_url(x.file_path, x.file_format),
+            "onizleme_var": bool(x.onizleme_path),
             "tarih": x.created_at.isoformat() if x.created_at else None,
         }
         for x in rows
@@ -494,6 +507,30 @@ def _ayni_tasarimi_bul(db: Session, d: Dealer, veri: bytes, icerik_hash: str) ->
     return None
 
 
+def _onizleme_kaydet(db: Session, d: Dealer, ds: Design, dosya: UploadFile) -> bool:
+    """Tasarima ONIZLEME gorseli bagla. BASKIYA GIRMEZ.
+
+    Ayni tasarim tekrar kullanildiginda SONUNCU onizleme gecerli olur
+    (kullanicinin karari). Onizleme AYRI klasorde durur; kalip/PDF tarafi o
+    klasoru hic okumaz, dolayisiyla yanlislikla basilmasi mumkun degil.
+    """
+    veri = dosya.file.read()
+    if not veri:
+        return False
+    try:
+        yol = storage.save_onizleme(d.tenant_id, ds.id, veri,
+                                    dosya.filename or "onizleme.jpg")
+    except ValueError as e:
+        raise HTTPException(400, f"Önizleme: {e}") from e
+    except OSError as e:
+        raise HTTPException(500, f"Önizleme kaydedilemedi: {str(e)[:150]}") from e
+    eski = ds.onizleme_path
+    ds.onizleme_path = yol
+    if eski and eski != yol:
+        storage.delete_onizleme(eski)   # sonuncusu geçerli — eskisi yer kaplamasın
+    return True
+
+
 def _tasarim_kaydet(db: Session, d: Dealer, dosya: UploadFile, etiket: str,
                     arka: BackgroundTasks | None = None) -> Design:
     """Yüklenen dosyadan Design üret. Kod çakışmasın diye bayiye özel önek.
@@ -611,6 +648,11 @@ def siparis_olustur(
     adet: list[int] = Form(...),
     tasarim: list[UploadFile] | None = File(None),
     tasarim_id: list[str] | None = Form(None),
+    # ÖNİZLEME (opsiyonel): tasarımın kılıf üzerinde nasıl duracağını gösteren
+    # görsel. BASKIYA GİRMEZ. onizleme_var[i] = "1"/"0" konum konum eşleşir;
+    # dosyalar yalnız "1" olanlar için sırayla gelir (tasarım ile aynı desen).
+    onizleme: list[UploadFile] | None = File(None),
+    onizleme_var: list[str] | None = Form(None),
     kanal: str = Form(...),
     ad_soyad: str = Form(...),
     telefon: str = Form(""),
@@ -646,6 +688,16 @@ def siparis_olustur(
     gereken_dosya = sum(1 for k in kimlikler if not k.strip())
     if len(dosyalar) != gereken_dosya:
         raise HTTPException(400, "Ürün bilgileri eksik gönderildi (tasarım/model eşleşmiyor)")
+
+    # Önizleme hizalaması — tasarımdakiyle aynı katılıkta. Kayarsa bir ürünün
+    # önizlemesi BAŞKA ürüne bağlanır; baskıyı bozmaz ama bayiyi yanıltır.
+    onz_bayrak = [str(x).strip() == "1" for x in (onizleme_var or [])]
+    if onz_bayrak and len(onz_bayrak) != len(model):
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (önizleme/model eşleşmiyor)")
+    onz_bayrak += [False] * (len(model) - len(onz_bayrak))
+    onz_dosyalar = [f for f in (onizleme or []) if (f.filename or "").strip()]
+    if len(onz_dosyalar) != sum(onz_bayrak):
+        raise HTTPException(400, "Ürün bilgileri eksik gönderildi (önizleme/model eşleşmiyor)")
 
     modeller = [(m or "").strip() for m in model]
     for i, m in enumerate(modeller, 1):
@@ -689,7 +741,9 @@ def siparis_olustur(
 
     ozet = []
     sirali_dosya = iter(dosyalar)
+    sirali_onz = iter(onz_dosyalar)
     yeniden_kullanilan: list[str] = []   # aynısı zaten yüklüydü — kullanıcıya söylenir
+    onizlemeli = 0
     for i, (m, a) in enumerate(zip(modeller, adet)):
         kimlik = kimlikler[i].strip()
         if kimlik:
@@ -698,6 +752,9 @@ def siparis_olustur(
             ds = _tasarim_kaydet(db, d, next(sirali_dosya), f"{m} — {sa['name']}", arka)
             if getattr(ds, "_yeniden_kullanildi", False):
                 yeniden_kullanilan.append(ds.code)
+        if onz_bayrak[i]:
+            if _onizleme_kaydet(db, d, ds, next(sirali_onz)):
+                onizlemeli += 1
         db.add(LineItem(
             tenant_id=d.tenant_id, order_id=o.id,
             title=f"{m} — {ds.code}", quantity=a, position=i,
@@ -719,6 +776,7 @@ def siparis_olustur(
             "kalem_sayisi": len(ozet), "toplam_adet": toplam_adet,
             # Sessizce yeniden kullanmak kullanıcıyı yanıltır — açıkça bildirilir.
             "yeniden_kullanilan_tasarimlar": yeniden_kullanilan,
+            "onizlemeli_urun": onizlemeli,
             "mesaj": "Siparişin alındı, onay bekliyor."
                      + (f" (Aynı görsel zaten kayıtlıydı, tekrar yüklenmedi: "
                         f"{', '.join(yeniden_kullanilan)})" if yeniden_kullanilan else "")}

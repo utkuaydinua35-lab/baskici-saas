@@ -19,6 +19,13 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
   const [onizleme, setOnizleme] = useState('')
   const [hata, setHata] = useState('')
   const dosyaRef = useRef(null)
+  // ÖNİZLEME görseli: tasarımın kılıf üzerinde nasıl duracağını gösterir.
+  // BASKIYA GİRMEZ — kalıba her zaman TASARIM dosyası gider. Bu yüzden ayrı
+  // durumda tutulur ve tasarım alanlarıyla hiçbir yerde karışmaz.
+  const onzRef = useRef(null)
+  const onzUrl = useMemo(
+    () => (urun.onizleme ? URL.createObjectURL(urun.onizleme) : ''),
+    [urun.onizleme])
 
   // Önizleme URL'i sızmasın — dosya değişince/çıkışta serbest bırakılır
   useEffect(() => {
@@ -27,6 +34,8 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
     setOnizleme(u)
     return () => URL.revokeObjectURL(u)
   }, [urun.dosya])
+
+  useEffect(() => () => { if (onzUrl) URL.revokeObjectURL(onzUrl) }, [onzUrl])
 
   const dosyaSec = useCallback((f) => {
     setHata('')
@@ -155,6 +164,40 @@ export default function UrunSecici({ urun, modeller, katalog, onDegis, onSil,
               <button type="button" onClick={() => setKatalogAcik(true)}
                       className="text-[10.5px] text-accent hover:brightness-125 transition">
                 Tasarımlarımdan seç
+              </button>
+            )}
+          </div>
+
+          {/* ÖNİZLEME — opsiyonel, baskıya girmez */}
+          <div className="mt-2.5 w-full">
+            <input ref={onzRef} type="file" accept=".jpg,.jpeg,.png,.webp" hidden
+                   onChange={(e) => {
+                     const f = e.target.files?.[0]
+                     if (f) onDegis({ ...urun, onizleme: f })
+                     e.target.value = ''
+                   }} />
+            {urun.onizleme ? (
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-lg overflow-hidden border border-white/12 shrink-0">
+                  {onzUrl && <img src={onzUrl} alt="" className="w-full h-full object-cover" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10.5px] text-gray-400">Önizleme eklendi</div>
+                  <div className="text-[10px] text-gray-600 truncate" title={urun.onizleme.name}>
+                    {urun.onizleme.name}
+                  </div>
+                </div>
+                <button type="button" onClick={() => onDegis({ ...urun, onizleme: null })}
+                        className="text-[10.5px] text-gray-500 hover:text-red-300 transition shrink-0">
+                  Kaldır
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => onzRef.current?.click()}
+                      title="Tasarımın kılıf üzerinde nasıl duracağını gösteren görsel. Baskıya girmez."
+                      className="text-[10.5px] text-gray-500 hover:text-gray-300 transition
+                                 underline decoration-dotted underline-offset-2">
+                + Önizleme görseli ekle (isteğe bağlı)
               </button>
             )}
           </div>

@@ -229,6 +229,22 @@ def _review_invite_job():
         db.close()
 
 
+def _tasarim_temizlik_job() -> None:
+    """Kargolanmis siparislerin ham JPG/PNG tasarimlarini temizle."""
+    from app.database import SessionLocal
+    from app.services import tasarim_temizlik
+    db = SessionLocal()
+    try:
+        sonuc = tasarim_temizlik.calistir(db)
+        if sonuc["silinen"]:
+            logger.info("[tasarim-temizlik] %s dosya, %s MB",
+                        sonuc["silinen"], sonuc["mb"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[tasarim-temizlik] hata: %s", str(e)[:200])
+    finally:
+        db.close()
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -261,6 +277,11 @@ def start_scheduler():
     # Gunluk destek gorsel temizligi (14 gunden eski)
     _scheduler.add_job(lambda: _cleanup_uploads(14), "interval", hours=24,
                        id="cleanup_support_uploads", max_instances=1, coalesce=True)
+    # Kargolanan siparislerin JPG/PNG tasarim dosyalarini 48 saat sonra sil.
+    # Kurallar ve korumalar services/tasarim_temizlik'te; uretimdeki hicbir
+    # dosyaya dokunmaz.
+    _scheduler.add_job(_tasarim_temizlik_job, "interval", hours=6,
+                       id="tasarim_temizlik", max_instances=1, coalesce=True)
     # Asama otomasyonu — her 10 dk (zaman bazli gecisler)
     _scheduler.add_job(_review_invite_job, "cron", hour=11, minute=0,
                        id="review_invite", replace_existing=True)

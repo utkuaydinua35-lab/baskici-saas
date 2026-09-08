@@ -22,6 +22,9 @@ const ADIMLAR = ['Ürünler', 'Alıcı']
 const MAX_URUN = 20      // sunucudaki MAX_KALEM ile aynı
 let _sonrakiId = 1
 const bosUrun = () => ({ yerelId: _sonrakiId++, dosya: null, tasarim: null,
+                         // onizleme: baskıya GİRMEYEN, kılıf üzerindeki
+                         // görünümü gösteren opsiyonel görsel
+                         onizleme: null,
                          model: '', modelEtiket: '', adet: 1 })
 
 export default function BayiYeniSiparisPage() {
@@ -80,6 +83,10 @@ export default function BayiYeniSiparisPage() {
         // esler: tasarim_id[i] bossa sıradaki yuklenen dosya kullanilir.
         if (u.tasarim) fd.append('tasarim_id', u.tasarim.id)
         else { fd.append('tasarim_id', ''); fd.append('tasarim', u.dosya) }
+        // ÖNİZLEME: baskıya GİRMEZ, ayrı alanlarda gider ki tasarımla
+        // hiçbir noktada karışmasın.
+        if (u.onizleme) { fd.append('onizleme_var', '1'); fd.append('onizleme', u.onizleme) }
+        else fd.append('onizleme_var', '0')
         fd.append('model', u.model)
         fd.append('adet', String(u.adet))
       }

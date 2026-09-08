@@ -160,6 +160,51 @@ def save_design_file(
     }
 
 
+ONIZLEME_UZANTI = {"jpg", "jpeg", "png", "webp"}
+MAX_ONIZLEME = 15 * 1024 * 1024
+
+
+def save_onizleme(tenant_id, design_id, file_data: bytes, original_filename: str) -> str:
+    """ÖNİZLEME görselini kaydet; goreli yolu doner.
+
+    Tasarim dosyasindan AYRI klasorde durur — baski akisinin yanlislikla
+    onizlemeyi almasi imkansiz olsun diye. Kalip/PDF tarafi bu klasoru hic
+    okumaz.
+    """
+    ext = get_extension(original_filename)
+    if ext not in ONIZLEME_UZANTI:
+        raise ValueError(f"Önizleme için izin verilen formatlar: "
+                         f"{', '.join(sorted(ONIZLEME_UZANTI)).upper()}")
+    if not file_data:
+        raise ValueError("Önizleme dosyası boş")
+    if len(file_data) > MAX_ONIZLEME:
+        raise ValueError(f"Önizleme çok büyük (max {MAX_ONIZLEME // 1024 // 1024} MB)")
+    rel_dir = Path(str(tenant_id)) / "onizleme"
+    (STORAGE_ROOT / rel_dir).mkdir(parents=True, exist_ok=True)
+    rel = rel_dir / f"{design_id}.{ext}"
+    (STORAGE_ROOT / rel).write_bytes(file_data)
+    return str(rel)
+
+
+def onizleme_url(relative_path: str | None) -> str | None:
+    if not relative_path:
+        return None
+    return f"/storage/{relative_path}"
+
+
+def delete_onizleme(relative_path: str | None) -> bool:
+    if not relative_path:
+        return False
+    try:
+        yol = STORAGE_ROOT / relative_path
+        if yol.is_file():
+            yol.unlink()
+            return True
+    except OSError:
+        pass
+    return False
+
+
 def read_design_file(relative_path: str | None) -> bytes | None:
     """Kayitli tasarim dosyasinin BAYTLARI; yoksa/okunamazsa None.
 

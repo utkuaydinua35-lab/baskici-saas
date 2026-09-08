@@ -241,6 +241,14 @@ class Design(Base):
     # yeni dosya yazmak yerine mevcut tasarima baglanir. Hash tek basina
     # YETERLI SAYILMAZ — eslesme bulununca dosya bayt bayt karsilastirilir.
     icerik_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # ÖNİZLEME görseli — tasarımın kılıf üzerinde nasıl duracağını gösterir.
+    # BASKIYA GİRMEZ: kalıp her zaman file_path'i kullanır. Yalnızca katalogda
+    # ve sipariş ekranlarında gösterilir.
+    onizleme_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Kargolandıktan 48 saat sonra JPG/PNG tasarım dosyası silinir (yer kazancı).
+    # Kayıt DURUR — sipariş geçmişi bozulmasın — ama katalogda SEÇİLEMEZ.
+    dosya_silindi_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True)
 
     product_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     product_title: Mapped[str | None] = mapped_column(String(500), nullable=True)

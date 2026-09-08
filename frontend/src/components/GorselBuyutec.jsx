@@ -67,11 +67,10 @@ export default function GorselBuyutec({ acik, kapat, kaynak, tasarimId, format, 
         </div>
       </div>
       <div className={`flex-1 min-h-0 p-4 ${yakinlas
-                        ? 'overflow-auto' : 'flex items-center justify-center overflow-hidden'}`}
-           onClick={(e) => e.stopPropagation()}>
+                        ? 'overflow-auto' : 'flex items-center justify-center overflow-hidden'}`}>
         {url
           ? <img src={url} alt={baslik || ''}
-                 onClick={() => setYakinlas((y) => !y)}
+                 onClick={(e) => { e.stopPropagation(); setYakinlas((y) => !y) }}
                  className={yakinlas
                    ? 'max-w-none cursor-zoom-out'
                    : 'max-w-full max-h-full object-contain cursor-zoom-in'} />

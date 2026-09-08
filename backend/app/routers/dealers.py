@@ -479,6 +479,8 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
     if not d:
         raise HTTPException(404, "Bayii bulunamadi")
     from sqlalchemy import desc as _desc
+
+    from app.services import dealer_debt
     orders = db.scalars(
         select(Order).where(Order.tenant_id == user.tenant_id, Order.store_id == d.store_id)
         .order_by(_desc(Order.created_at_platform)).limit(500)
@@ -488,18 +490,31 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
     # siparişi geri çektiyse borç zaten iade edilmiştir ve silmek bakiyeyi
     # DEĞİŞTİRMEZ. "Cari borcundan düşülecek" demek kullanıcıyı yanıltıyordu
     # (ikinci kez düşecek sanılıyor — düşmüyor, servis idempotent).
-    # Tek sorguda net: sipariş başına hareketlerin toplamı.
-    _net = {
-        r[0]: r[1] for r in db.execute(
-            select(DealerTransaction.ref_order_id,
+    # Para birimleri AYRI yürür (ürün bayi biriminde, kargo hep ₺) — tek bir
+    # sayıya toplamak yanıltıcı olurdu. Ayrıca "hiç borç yazılmamış" (sipariş
+    # henüz onaylanmadı) ile "yazılmış ama iade edilmiş" farkı burada ayrılıyor;
+    # ikisinde de bakiye değişmez ama kullanıcıya söylenecek cümle farklı.
+    _hareket: dict[uuid.UUID, dict] = {}
+    if orders:
+        for _oid, _cur, _kind, _tut in db.execute(
+            select(DealerTransaction.ref_order_id, DealerTransaction.currency,
+                   DealerTransaction.kind,
                    sql_func.coalesce(sql_func.sum(DealerTransaction.amount), 0))
-            .where(DealerTransaction.ref_order_id.in_([o.id for o in orders] or [None]))
-            .group_by(DealerTransaction.ref_order_id))
-    }
+            .where(DealerTransaction.ref_order_id.in_([o.id for o in orders]))
+            .group_by(DealerTransaction.ref_order_id, DealerTransaction.currency,
+                      DealerTransaction.kind)
+        ):
+            _h = _hareket.setdefault(_oid, {"borc_var": False, "net": {}})
+            _c = (_cur or "TRY").upper()
+            _h["net"][_c] = _h["net"].get(_c, 0.0) + float(_tut or 0)
+            if _kind in dealer_debt.BORC_TURLERI:
+                _h["borc_var"] = True
     out = []
     for o in orders:
         _raw = o.raw or {}
         _qty = db.scalar(select(sql_func.coalesce(sql_func.sum(LineItem.quantity), 0)).where(LineItem.order_id == o.id)) or 0
+        _kayit = _hareket.get(o.id) or {"borc_var": False, "net": {}}
+        _acik = {c: round(v, 2) for c, v in _kayit["net"].items() if abs(v) > 0.005}
         out.append({
             "id": str(o.id),
             "order_number": o.order_number,
@@ -512,10 +527,12 @@ def list_dealer_orders(dealer_id: uuid.UUID, user: User = Depends(require_permis
             "total_price": _raw.get("total_price"),        # ürün bedeli (bayi para birimi)
             "shipping_fee": _raw.get("shipping_fee"),      # kargo (₺, ayrı) — 0/None olabilir
             "currency": _raw.get("currency", "TRY"),
-            # Silme onayının doğru cümleyi kurabilmesi için: borç hâlâ açık mı?
-            # 0 ise (ya da hiç hareket yoksa) silmek bakiyeyi değiştirmez.
-            "cari_net": float(_net.get(o.id) or 0),
-            "borc_acik": abs(float(_net.get(o.id) or 0)) > 0.005,
+            # Silme onayının doğru cümleyi kurabilmesi için (bkz. _hareket):
+            # cari_kayit_var=False → borç hiç yazılmadı; cari_acik boş → iade
+            # edilmiş. İkisinde de silmek bakiyeyi DEĞİŞTİRMEZ.
+            "cari_kayit_var": _kayit["borc_var"],
+            "cari_acik": _acik,
+            "borc_acik": bool(_acik),
             "note": o.note,
         })
     return out

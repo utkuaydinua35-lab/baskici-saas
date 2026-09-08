@@ -131,10 +131,33 @@ def _kayit():
 # şu an borç AÇIK (5. bölümde geri yazıldı)
 _k = _kayit()
 es("borç açıkken borc_acik=True", True, _k and _k["borc_acik"])
+es("cari kaydı var", True, _k and _k["cari_kayit_var"])
+# Para birimleri ayrı: ürün TRY + kargo TRY tek satırda toplanır.
+es("açık tutar 225 TRY", {"TRY": 225.0}, _k and _k["cari_acik"])
 dealer_debt.uygula(db, o, reverse=True); db.commit()
 _k = _kayit()
 es("iade sonrası borc_acik=False", False, _k and _k["borc_acik"])
-es("net sıfır", 0.0, _k and _k["cari_net"])
+es("açık tutar kalmadı", {}, _k and _k["cari_acik"])
+es("cari kaydı HÂLÂ var (iade edilmiş ≠ hiç yazılmamış)", True,
+   _k and _k["cari_kayit_var"])
+
+print("\n── 8. ONAYLANMAMIŞ sipariş: borç hiç yazılmamış ──")
+# 2026-09-08'de yandı: onay metni siparişin TUTARINA bakıyordu, tutar ise
+# sipariş açılırken doluyor. Onaylanmamış siparişte "borcu zaten iade
+# edilmiş" deniyordu — oysa hiç borç yazılmamıştı.
+o2 = Order(tenant_id=tenant.id, store_id=store.id, order_number=f"{IZ}-2",
+           external_id=f"{IZ}-2", customer_name="T2", current_stage=1,
+           raw={"dealer_id": _DID, "total_price": 300, "currency": "TRY"})
+db.add(o2); db.commit()
+_O2 = str(o2.id)
+_r = _C.get(f"/api/dealers/{_DID}/orders", headers=_H)
+_k2 = next((x for x in _r.json() if x["id"] == _O2), None)
+es("onaylanmamış: tutar VAR", 300, _k2 and _k2["total_price"])
+es("onaylanmamış: cari kaydı YOK", False, _k2 and _k2["cari_kayit_var"])
+es("onaylanmamış: borc_acik=False", False, _k2 and _k2["borc_acik"])
+es("onaylanmamış: açık tutar boş", {}, _k2 and _k2["cari_acik"])
+db.execute(text("delete from orders where id=:o"), {"o": _O2})
+db.commit()
 
 db.execute(text("delete from dealer_transactions where dealer_id=:d"), {"d": _DID})
 db.execute(text("delete from line_items where order_id=:o"), {"o": _OID})

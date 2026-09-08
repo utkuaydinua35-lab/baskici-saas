@@ -39,27 +39,30 @@ export default function DealerDashboardPage() {
   // gösteriyoruz; para işlemi olduğu için ne olacağı sürpriz olmamalı.
   const [silinen, setSilinen] = useState(null)
   const siparisSil = async (o, force = false) => {
-    const urun = Number(o.total_price) || 0
-    const kargo = Number(o.shipping_fee) || 0
-    const satirlar = [
-      urun > 0 ? `${fmt(urun, o.currency)} ürün bedeli` : null,
-      kargo > 0 ? `${fmt(kargo, 'TRY')} kargo` : null,
-    ].filter(Boolean)
+    // Onay metni siparişin TUTARINA değil cari KAYDINA bakar: tutar sipariş
+    // açılırken doluyor, borç ise ONAY sırasında yazılıyor. Onaylanmamış
+    // siparişte tutar var ama borç yok — "iade edilmiş" demek yanlış olurdu.
+    const acik = Object.entries(o.cari_acik || {})
+      .map(([cur, tutar]) => fmt(tutar, cur))
     const mesaj = `#${o.order_number} silinecek.\n\n` +
-      (!satirlar.length
-        ? 'Bu siparişin cari borç kaydı yok.\n\n'
-        : o.borc_acik === false
-          ? 'Borcu ZATEN iade edilmiş (bayi geri çekmiş olabilir) — '
+      (acik.length
+        ? `Bayinin cari borcundan düşülecek:\n• ${acik.join('\n• ')}\n\n`
+        : o.cari_kayit_var
+          ? 'Borcu ZATEN iade edilmiş (bayi geri çekmiş / iptal edilmiş) — '
             + 'silmek bakiyeyi DEĞİŞTİRMEZ.\n\n'
-          : `Bayinin cari borcundan düşülecek:\n• ${satirlar.join('\n• ')}\n\n`) +
+          : 'Bu siparişe cari borç yazılmamış (henüz onaylanmadıysa normal) — '
+            + 'silmek bakiyeyi DEĞİŞTİRMEZ.\n\n') +
       'Sipariş çöp kutusuna gider, geri alırsan borç tekrar yazılır. Devam?'
     if (!force && !confirm(mesaj)) return
     setSilinen(o.id)
     try {
       const q = force ? '?force=true' : ''
-      await api.del(`/api/dealers/${id}/orders/${o.id}${q}`)
+      // Bildirim tahmin etmiyor: sunucu ne iade ettiyse onu söylüyor.
+      const r = await api.del(`/api/dealers/${id}/orders/${o.id}${q}`)
+      const iade = (r?.iade || []).map((x) => fmt(Math.abs(x.delta), x.currency))
       toast.success(`#${o.order_number} silindi`
-        + (o.borc_acik === false ? ' (borç zaten iade edilmişti)' : ', borç geri alındı'))
+        + (iade.length ? ` · ${iade.join(' + ')} borç geri alındı`
+                       : ' · bakiye değişmedi'))
       load()
     } catch (e) {
       const d = e?.detail || ''

@@ -57,8 +57,6 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .card {
   @apply relative border border-panel-border rounded-[20px] p-4;
   background: var(--cam);
-  backdrop-filter: blur(120px);
-  -webkit-backdrop-filter: blur(120px);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.25s ease, border-color 0.25s ease;
@@ -78,6 +76,50 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   transform: translateY(-2px);
   border-color: rgba(255, 255, 255, 0.18);
   box-shadow: 0 14px 40px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+/* ── Üste binen katmanlar: modal, komut paleti, çekmece örtüsü ──
+   Sayfa kartı ile üste binen yüzey AYNI ŞEY DEĞİL. Kart yalnız zeminin
+   (aurora) üstünde durur; oradaki saydamlık güzel durur ve arkasında
+   okunacak bir şey yoktur. Modal ise İÇERİĞİN üstünde durur — .card'ın
+   gradyanı sağ alt ucunda %49 saydam olduğu için arkadaki ürün listesi
+   okunur kalıyor ve iki metin birbirine karışıyordu.
+
+   Çözüm cam hissini atmak değil, doğru yere koymak: yüzey neredeyse
+   opak olur, cam etkisi arkadaki SAYFAYI bulanıklaştırarak verilir. */
+.fixed.inset-0 .card,
+.katman {
+  background: linear-gradient(127.09deg,
+    rgba(6, 11, 40, 0.985) 19.41%, rgba(13, 19, 48, 0.965) 76.65%);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+/* Modal fareyle üzerine gelince zıplamasın — kart davranışı burada yanlış */
+.fixed.inset-0 .card:hover {
+  transform: none;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+.katman {
+  @apply relative border border-panel-border rounded-[20px];
+}
+
+/* ── Cam bulanıklığı ────────────────────────────────────────
+   @supports ŞART: derleyici (esbuild) varsayılan hedefi Safari 14'ü
+   içerdiği için düz yazılan `backdrop-filter`ı `-webkit-backdrop-filter`a
+   ÇEVİRİP standardını atıyordu. Chrome `-webkit-` sürümünü desteklemiyor
+   → panelde cam efekti hiçbir zaman bulanıklaştırmadı, yalnız saydamdı.
+   Bu da modal arkasındaki yazının okunmasının asıl sebebiydi.
+   Koşulu derleme zamanında çözemediği için @supports blokları olduğu
+   gibi kalıyor; iki tarayıcı ailesi de doğru özelliği alıyor. */
+@supports (backdrop-filter: blur(1px)) {
+  .card { backdrop-filter: blur(120px); }
+  .fixed.inset-0 { backdrop-filter: blur(7px); }
+  .fixed.inset-0 .card, .katman { backdrop-filter: blur(28px) saturate(140%); }
+}
+@supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
+  .card { -webkit-backdrop-filter: blur(120px); }
+  .fixed.inset-0 { -webkit-backdrop-filter: blur(7px); }
+  .fixed.inset-0 .card, .katman { -webkit-backdrop-filter: blur(28px) saturate(140%); }
 }
 
 /* Vurgulu kart — gradyan çerçeve döner (istatistik kartlarında) */

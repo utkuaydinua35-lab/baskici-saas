@@ -108,9 +108,7 @@ export default function KomutPaleti({ acik, kapat }) {
     <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[10vh] px-4
       bg-[#060b28]/70 backdrop-blur-sm"
       onMouseDown={e => e.target === e.currentTarget && kapat()}>
-      <div className="w-full max-w-xl rounded-[20px] border border-panel-border overflow-hidden menu-pop"
-        style={{ background: 'var(--cam)', backdropFilter: 'blur(120px)',
-                 boxShadow: '0 24px 60px rgb(0 0 0 / .55)' }}>
+      <div className="katman w-full max-w-xl overflow-hidden menu-pop">
 
         <div className="flex items-center gap-2.5 px-4 border-b border-panel-border">
           <span className="text-panel-muted">🔍</span>

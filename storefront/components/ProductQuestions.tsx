@@ -54,7 +54,7 @@ export default function ProductQuestions({ productSlug }: { productSlug: string 
         <h2 className="text-base font-semibold">Sorular ve Cevaplar</h2>
         {!open && (
           <button onClick={() => setOpen(true)}
-            className="ml-auto text-sm underline hover:no-underline">
+            className="ml-auto text-sm underline hover:no-underline py-2 -my-2 px-1">
             Soru sor
           </button>
         )}

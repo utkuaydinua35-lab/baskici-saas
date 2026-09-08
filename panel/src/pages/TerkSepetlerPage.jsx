@@ -69,7 +69,59 @@ export default function TerkSepetlerPage() {
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
 
-      <div className="card !p-0 overflow-hidden">
+            {/* TELEFON: 6 sütunlu tablo yan kaydırma istiyordu — kart listesi. */}
+      <div className="sm:hidden space-y-2">
+        {data.items.map(s => {
+          const [label, cls] = STATUS[s.status] || [s.status, 'text-panel-muted']
+          return (
+            <div key={s.id} className="card !p-3">
+              <div onClick={() => setDetailId(s.id)} className="cursor-pointer">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{s.customer_name || '—'}</div>
+                    <div className="text-xs text-panel-muted truncate">{s.email}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="tabular-nums font-medium text-sm">{fmt(s.amount)}</div>
+                    {s.discount_code && (
+                      <div className="text-[10px] text-emerald-300 font-mono">{s.discount_code}</div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-1.5 text-[11.5px]">
+                  <span className={cls}>{label}</span>
+                  <span className="text-panel-muted">· {s.item_count} kalem</span>
+                  <span className="text-panel-muted ml-auto">
+                    {s.created_at ? new Date(s.created_at).toLocaleString('tr-TR', {
+                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-2.5">
+                {s.status === 'draft' ? (
+                  <div className="flex items-center gap-2">
+                    {s.reminder_sent_at && <span className="text-xs text-emerald-300">✉✓</span>}
+                    <button onClick={e => copyLink(s, e)}
+                      className="flex-1 py-2 rounded-lg border border-panel-border text-xs">🔗 Linki Kopyala</button>
+                  </div>
+                ) : s.reminder_sent_at ? (
+                  <span className="text-xs text-emerald-300">✓ Hatırlatma gönderildi</span>
+                ) : (
+                  <button onClick={e => sendReminder(s, e)} disabled={busyId === s.id}
+                    className="w-full py-2 rounded-lg border border-panel-border text-xs">
+                    {busyId === s.id ? 'Gönderiliyor…' : '✉ Hatırlat'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {data.items.length === 0 && (
+          <div className="card !p-6 text-sm text-panel-muted text-center">Terk edilmiş sepet yok.</div>
+        )}
+      </div>
+
+      <div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>

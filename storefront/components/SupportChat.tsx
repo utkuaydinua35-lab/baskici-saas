@@ -177,7 +177,8 @@ export default function SupportChat({
           whatsappVisible ? "bottom-40" : "bottom-[5.5rem]"}`}>
           <div className="relative bg-white border border-zinc-200 rounded-2xl shadow-xl px-3.5 py-3 pr-7">
             <button onClick={davetiKapat} aria-label="Kapat"
-              className="absolute top-1 right-2 text-zinc-400 hover:text-zinc-700 text-sm leading-none">×</button>
+              className="absolute top-0 right-0 p-2.5 text-zinc-400 hover:text-zinc-700
+                         text-sm leading-none">×</button>
             <button onClick={() => { setOpen(true); davetiKapat(); }} className="text-left">
               <div className="text-xs font-semibold text-zinc-900">👋 Ben {asistanAdi}</div>
               <div className="text-[11px] text-zinc-600 mt-0.5 leading-snug">

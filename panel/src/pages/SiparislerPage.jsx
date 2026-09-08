@@ -89,13 +89,14 @@ export default function SiparislerPage() {
         <h1 className="text-xl font-semibold">Siparişler</h1>
         <span className="text-sm text-panel-muted">{data.total ?? 0} sipariş</span>
         <button onClick={() => { setShowArchive(a => !a); setSelected(new Set()) }}
-          className={`px-2.5 py-1 rounded-full text-xs border transition ${showArchive
+          className={`px-2.5 py-2 sm:py-1 rounded-full text-xs border transition ${showArchive
             ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
             : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
           📦 Arşiv
         </button>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
-          placeholder="Sipariş no veya müşteri ara…" className="input !w-64 ml-auto" />
+          placeholder="Sipariş no veya müşteri ara…"
+          className="input w-full sm:!w-64 sm:ml-auto" />
         <button onClick={exportCsv} className="btn-ghost text-xs">⬇ CSV</button>
         <button onClick={() => setDraftOpen(true)} className="btn-primary">＋ Sipariş Oluştur</button>
       </div>
@@ -126,7 +127,63 @@ export default function SiparislerPage() {
         </div>
       )}
 
-      <div className="card !p-0 overflow-hidden">
+      {/* TELEFON: 8 sütunlu tablo yan kaydırma istiyordu — kart listesi.
+          Toplu seçim korunuyor: karta basmak seçer, ok satırı detaya götürür.
+          sm ve üstünde aşağıdaki tablo görünür (masaüstü aynen eskisi). */}
+      <div className="sm:hidden space-y-2">
+        {visible.map(o => {
+          const secili = selected.has(o.id)
+          return (
+            <div key={o.id}
+                 className={`card !p-3 border transition-colors ${
+                   secili ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-panel-border'}`}>
+              <div className="flex items-start gap-2.5">
+                <label className="p-1 -m-1 shrink-0 cursor-pointer">
+                  <input type="checkbox" checked={secili} onChange={() => toggleOne(o.id)}
+                         aria-label="Siparişi seç" className="w-5 h-5 accent-emerald-600" />
+                </label>
+                <Link to={`/siparisler/${o.id}`} className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-medium text-sm">
+                      {o.name || `#${o.order_number}`}
+                    </span>
+                    <span className="tabular-nums font-medium text-sm shrink-0">
+                      {o.total_price
+                        ? new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' })
+                            .format(Number(o.total_price))
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="text-[13px] mt-0.5 truncate">{o.customer_name || '—'}</div>
+                  <div className="text-[11px] text-panel-muted mt-0.5">
+                    {o.item_count} kalem
+                    {o.created_at_platform && <> · {new Date(o.created_at_platform)
+                      .toLocaleString('tr-TR', { day: '2-digit', month: 'short',
+                                                 hour: '2-digit', minute: '2-digit' })}</>}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <FinancialBadge status={o.financial_status} />
+                    <span className="text-[11px] text-panel-muted">
+                      {o.cancelled_at
+                        ? <span className="text-red-300">İptal</span>
+                        : STAGE_LABELS[o.current_stage] || '—'}
+                    </span>
+                  </div>
+                </Link>
+              </div>
+            </div>
+          )
+        })}
+        {loading && <div className="card !p-4 text-sm text-panel-muted">Yükleniyor…</div>}
+        {!loading && visible.length === 0 && (
+          <div className="card !p-6 text-sm text-panel-muted text-center">
+            {showArchive ? 'Arşivde sipariş yok.'
+              : search ? 'Sonuç bulunamadı.' : 'Henüz sipariş yok — ilk satışına az kaldı!'}
+          </div>
+        )}
+      </div>
+
+      <div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>

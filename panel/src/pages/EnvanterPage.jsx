@@ -69,7 +69,8 @@ export default function EnvanterPage() {
           {data.out_of_stock > 0 && <span className="text-red-300"> · {data.out_of_stock} stoksuz</span>}
         </span>
         <input value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Ürün, model veya SKU ara…" className="input !w-64 ml-auto" />
+          placeholder="Ürün, model veya SKU ara…"
+          className="input w-full sm:!w-64 sm:ml-auto" />
       </div>
 
       <div className="flex gap-1 bg-panel-input rounded-xl p-1 w-fit text-sm">
@@ -82,7 +83,76 @@ export default function EnvanterPage() {
         ))}
       </div>
 
-      <div className="card !p-0 overflow-hidden">
+      {/* TELEFON: bu bir veri GİRİŞİ ızgarası — yüzlerce satır, her birinde
+          13px'lik yerel onay kutusu ve kısa sayı alanı vardı (ölçüldü: 697
+          öğe 30px altında). Kartta hedefler büyütülüyor: onay kutusu 20px,
+          adet için −/+ basamakları. sm ve üstünde tablo aynen kalıyor. */}
+      <div className="sm:hidden space-y-2">
+        {data.items.map(row => {
+          const tracked = val(row, 'track_stock')
+          const qty = val(row, 'quantity')
+          const changed = !!edits[row.variant_id]
+          return (
+            <div key={row.variant_id}
+                 className={`card !p-3 ${changed ? 'border border-sky-500/40 bg-sky-500/5' : ''}`}>
+              {/* inline-block + dikey iç boşluk: düz metin bağlantısı 18px
+                  yüksekliğinde kalıyordu, parmakla isabet zor. */}
+              <Link to={`/urunler/${row.product_id}`}
+                    className="font-medium text-sm hover:underline inline-block py-1.5">
+                {row.product_title}
+              </Link>
+              <div className="text-xs text-panel-muted mt-0.5">
+                {row.model_display}{row.variation ? ` · ${row.variation}` : ''}
+                {row.sku && <span className="font-mono"> · {row.sku}</span>}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {row.product_status !== 'active' && (
+                  <span className="text-[10px] bg-white/5 text-panel-muted px-1.5 py-0.5 rounded-full">
+                    {row.product_status === 'draft' ? 'taslak' : 'arşiv'}
+                  </span>
+                )}
+                {!row.is_active && (
+                  <span className="text-[10px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded-full">
+                    varyant pasif
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-3 mt-3">
+                <label className="flex items-center gap-2 text-[13px] py-1.5">
+                  <input type="checkbox" checked={!!tracked}
+                    onChange={e => patch(row.variant_id, { track_stock: e.target.checked })}
+                    className="w-5 h-5 accent-emerald-600" />
+                  Stok takibi
+                </label>
+                {tracked ? (
+                  <div className={`flex items-center rounded-full border ${
+                    qty <= 0 ? 'border-red-500/40' : qty < 5 ? 'border-amber-500/40' : 'border-panel-border'}`}>
+                    <button type="button" aria-label="Azalt"
+                      onClick={() => patch(row.variant_id, { quantity: Math.max(0, qty - 1) })}
+                      className="w-10 h-10 grid place-items-center text-panel-muted">−</button>
+                    <input type="number" min="0" value={qty} inputMode="numeric"
+                      onChange={e => patch(row.variant_id, { quantity: Math.max(0, Number(e.target.value) || 0) })}
+                      aria-label="Stok adedi"
+                      className="w-12 bg-transparent text-center tabular-nums outline-none text-sm" />
+                    <button type="button" aria-label="Artır"
+                      onClick={() => patch(row.variant_id, { quantity: qty + 1 })}
+                      className="w-10 h-10 grid place-items-center text-panel-muted">+</button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-panel-muted">∞ sınırsız</span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {data.items.length === 0 && (
+          <div className="card !p-6 text-sm text-panel-muted text-center">
+            {filter === 'all' && !q ? 'Henüz varyant yok.' : 'Bu filtrede sonuç yok.'}
+          </div>
+        )}
+      </div>
+
+      <div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>

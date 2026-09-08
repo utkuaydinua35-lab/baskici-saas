@@ -35,7 +35,53 @@ export default function KuponlarPage() {
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
 
-      <div className="card !p-0 overflow-hidden">
+            {/* TELEFON: 7 sütunlu tablo yan kaydırma istiyordu — kart listesi. */}
+      <div className="sm:hidden space-y-2">
+        {coupons.map(c => (
+          <div key={c.id} className="card !p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-mono font-semibold text-sm break-all">{c.code}</div>
+                <div className="text-[13px] mt-0.5">{kindLabel(c)}</div>
+              </div>
+              <button onClick={() => toggle(c)}
+                className={`text-xs px-3 py-2 rounded-full shrink-0 ${c.is_active
+                  ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>
+                {c.is_active ? 'Aktif' : 'Pasif'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {c.is_automatic && (
+                <span className="text-[10px] font-medium text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded-full">⚡ otomatik</span>
+              )}
+              {c.combinable && (
+                <span className="text-[10px] font-medium text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded-full">🔗 birleşir</span>
+              )}
+            </div>
+            <div className="text-[11.5px] text-panel-muted mt-2 leading-relaxed">
+              {[
+                c.min_subtotal && `min ${fmt(c.min_subtotal)}`,
+                c.min_quantity && `min ${c.min_quantity} adet`,
+                c.collection_id && 'koleksiyona özel',
+                c.once_per_customer && 'müşteri başına 1',
+              ].filter(Boolean).join(' · ') || 'koşulsuz'}
+              <br />
+              kullanım: {c.usage_count}{c.usage_limit ? ` / ${c.usage_limit}` : ''} · {dateRange(c)}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setEditing(c)}
+                className="flex-1 py-2 rounded-lg border border-panel-border text-xs">Düzenle</button>
+              <button onClick={() => remove(c)}
+                className="flex-1 py-2 rounded-lg border border-red-500/30 text-red-300 text-xs">Sil</button>
+            </div>
+          </div>
+        ))}
+        {coupons.length === 0 && (
+          <div className="card !p-6 text-sm text-panel-muted text-center">Henüz kupon yok.</div>
+        )}
+      </div>
+
+      <div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>

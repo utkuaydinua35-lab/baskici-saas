@@ -167,12 +167,12 @@ export default function SayfalarPage() {
           <div key={i} className="border border-panel-border rounded-xl overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-panel-input">
               <button onClick={() => setOpenIdx(openIdx === i ? null : i)}
-                className="flex-1 text-left text-sm font-medium">
+                className="flex-1 text-left text-sm font-medium py-1.5">
                 {pg.title || 'Adsız sayfa'}
                 <span className="text-panel-muted text-xs ml-2">/sayfa/{pg.slug || '…'}</span>
               </button>
               <button onClick={() => removePage(i)}
-                className="text-xs text-red-300 hover:text-red-300 px-1">Sil</button>
+                className="text-xs text-red-300 hover:text-red-300 px-2 py-1.5">Sil</button>
             </div>
             {openIdx === i && (
               <div className="p-3 bg-panel-card space-y-2">

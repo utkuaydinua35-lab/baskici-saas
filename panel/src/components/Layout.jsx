@@ -208,7 +208,7 @@ function ProfileMenu({ user, logout, refresh }) {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 pl-2 border-l border-panel-border group">
+        className="flex items-center gap-2 pl-2 py-1.5 border-l border-panel-border group">
         <Avatar user={user} />
         <span className="hidden sm:block text-[11px] font-medium truncate max-w-32 text-white/80 group-hover:text-white transition-colors">
           {user?.full_name || user?.email}

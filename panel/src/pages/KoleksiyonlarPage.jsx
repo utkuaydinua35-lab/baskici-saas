@@ -109,9 +109,12 @@ export default function KoleksiyonlarPage() {
       </form>
       {err && <p className="text-sm text-red-300">{err}</p>}
 
+      {/* TELEFON: satırdaki başlık + rozetler + altı düğme tek satıra sığmayıp
+          taşıyordu. Satır sarıyor, eylem grubu ikinci satıra tam genişlik
+          iniyor ve düğmelerin dokunma yüksekliği artıyor (sm'de eskisi gibi). */}
       <div className="card !p-0 divide-y divide-panel-border overflow-hidden">
         {collections.map(c => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+          <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 text-sm flex-wrap">
             {c.image_url ? (
               <img src={c.image_url} alt={c.title}
                 className="w-10 h-10 rounded-lg object-cover border border-panel-border shrink-0" />
@@ -130,7 +133,9 @@ export default function KoleksiyonlarPage() {
                 title="Ürünler kurala göre otomatik seçilir">⚙️ akıllı</span>
             )}
             <span className="text-xs text-panel-muted">/{c.slug} · {c.product_count ?? 0} ürün</span>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-x-3 gap-y-1.5 flex-wrap
+                            w-full sm:w-auto pt-1 sm:pt-0
+                            [&>button]:py-2 sm:[&>button]:py-0">
               <button onClick={() => toggle(c)}
                 className={`text-xs px-2 py-0.5 rounded-full ${c.is_active
                   ? 'bg-emerald-500/10 text-emerald-300' : 'bg-white/5 text-panel-muted'}`}>

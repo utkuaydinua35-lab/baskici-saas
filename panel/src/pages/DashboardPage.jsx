@@ -99,7 +99,9 @@ export default function DashboardPage() {
                     <div className="text-xs text-panel-muted mt-0.5">{c.hint}</div>
                   </div>
                   {c.to && (
-                    <Link to={c.to} className="ml-auto shrink-0 text-xs text-panel-accent hover:underline">
+                    <Link to={c.to}
+                          className="ml-auto shrink-0 text-xs text-panel-accent hover:underline
+                                     inline-flex items-center min-h-[34px] px-1">
                       Düzelt →
                     </Link>
                   )}
@@ -126,7 +128,7 @@ export default function DashboardPage() {
               {guide.filter(g => g.done).length}/{guide.length} tamamlandı
             </span>
             <button onClick={() => { localStorage.setItem(`kurulum_gizle_${storeId}`, '1'); setGuide([]) }}
-              className="ml-auto text-xs text-panel-muted hover:text-panel-ink">Gizle</button>
+              className="ml-auto text-xs text-panel-muted hover:text-panel-ink py-1.5 px-1">Gizle</button>
           </div>
           <div className="mt-2 h-1.5 rounded-full bg-panel-input overflow-hidden">
             <div className="h-full bg-emerald-600 transition-all"
@@ -135,7 +137,7 @@ export default function DashboardPage() {
           <ul className="mt-3 space-y-1.5">
             {guide.map(g => (
               <li key={g.label}>
-                <Link to={g.to} className="flex items-center gap-2.5 text-sm group">
+                <Link to={g.to} className="flex items-center gap-2.5 text-sm group py-1.5">
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] shrink-0 ${
                     g.done ? 'bg-emerald-600 text-white' : 'border-2 border-panel-border'}`}>
                     {g.done ? '✓' : ''}

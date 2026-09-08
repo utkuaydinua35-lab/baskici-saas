@@ -91,7 +91,44 @@ export default function MusterilerPage() {
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
 
-      <div className="card !p-0 overflow-hidden">
+            {/* TELEFON: tablo yan kaydırma istiyordu — kart listesi. */}
+      <div className="sm:hidden space-y-2">
+        {data.items.map(c => (
+          <button key={c.id} onClick={() => openDetail(c.id)}
+                  className="card !p-3 w-full text-left">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium text-sm truncate">
+                  {c.name || '—'}
+                  {c.accepts_marketing && (
+                    <span className="ml-1.5 text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full"
+                          title="Bülten abonesi">📮</span>
+                  )}
+                </div>
+                <div className="text-xs text-panel-muted truncate">{c.email}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="tabular-nums font-medium text-sm">{fmt(c.total_spent)}</div>
+                <div className="text-[11px] text-panel-muted">
+                  {c.orders_count} sipariş
+                  {c.orders_count > 1 && <span className="ml-1 text-emerald-300">tekrar</span>}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] text-panel-muted mt-1.5">
+              son sipariş: {c.last_order_at
+                ? new Date(c.last_order_at).toLocaleDateString('tr-TR') : '—'}
+            </div>
+          </button>
+        ))}
+        {data.items.length === 0 && (
+          <div className="card !p-6 text-sm text-panel-muted text-center">
+            {q ? 'Sonuç bulunamadı.' : 'Bu mağazada henüz müşteri yok.'}
+          </div>
+        )}
+      </div>
+
+      <div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted text-xs bg-panel-input">
             <tr>

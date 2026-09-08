@@ -125,16 +125,22 @@ export default function UrunlerPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      {/* TELEFON: dört düğme tek satıra sığmayıp taşıyordu — sarıyor ve
+          "Yeni Ürün" tam genişlik birincil eylem oluyor. */}
+      <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-semibold">Ürünler</h1>
         <span className="text-sm text-panel-muted">
           {filtreVar ? `${filtreli.length} / ${products.length} ürün` : `${products.length} ürün`}
         </span>
-        <div className="ml-auto flex gap-2">
+        <Link to="/urunler/yeni"
+              className="btn-primary ml-auto order-2 sm:order-none w-full sm:w-auto text-center">
+          + Yeni Ürün
+        </Link>
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto sm:ml-auto
+                        [&>button]:!py-2 sm:[&>button]:!py-1.5">
           <button onClick={() => setShowSets(true)} className="btn-ghost text-xs">🧩 Varyant Setleri</button>
           <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
           <button onClick={() => setShowImport(true)} className="btn-ghost text-xs">⬆ İçe Aktar</button>
-          <Link to="/urunler/yeni" className="btn-primary">+ Yeni Ürün</Link>
         </div>
       </div>
 
@@ -182,7 +188,7 @@ export default function UrunlerPage() {
           <div className="flex gap-1.5 flex-wrap items-center">
             {[['', 'Tümü'], ['active', 'Yayında'], ['draft', 'Taslak'], ['archived', 'Arşiv']].map(([v, l]) => (
               <button key={v} onClick={() => setDurum(v)}
-                className={`px-2.5 py-1 rounded-lg text-xs border transition ${durum === v
+                className={`px-2.5 py-2 sm:py-1 rounded-lg text-xs border transition ${durum === v
                   ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
                   : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                 {l}
@@ -195,7 +201,7 @@ export default function UrunlerPage() {
             {[['varyantsiz', '⚠️ Varyantsız'], ['gorselsiz', '🖼️ Görselsiz'],
               ['maliyetsiz', '💰 Maliyeti yok'], ['indirimli', '🏷️ İndirimli']].map(([v, l]) => (
               <button key={v} onClick={() => setOzel(ozel === v ? '' : v)}
-                className={`px-2.5 py-1 rounded-lg text-xs border transition ${ozel === v
+                className={`px-2.5 py-2 sm:py-1 rounded-lg text-xs border transition ${ozel === v
                   ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 font-medium'
                   : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
                 {l}
@@ -261,7 +267,41 @@ export default function UrunlerPage() {
 
       {/* Shopify tarzı liste görünümü — satır tıklanınca detaya gider */}
       {filtreli.length > 0 && (
-      <div className="card !p-0 overflow-hidden">
+        <>
+      {/* TELEFON: tablo yerine kart; seçim kutusu ve kapak görseli korunuyor. */}
+      <div className="sm:hidden space-y-2">
+        {filtreli.map(p => (
+          <div key={p.id}
+               className={`card !p-3 flex items-center gap-3 ${
+                 checked.has(p.id) ? 'border border-emerald-500/40 bg-emerald-500/5' : ''}`}>
+            <label className="p-1 -m-1 shrink-0 cursor-pointer">
+              <input type="checkbox" checked={checked.has(p.id)}
+                onClick={e => toggleCheck(p.id, e)} onChange={() => {}}
+                aria-label="Ürünü seç" className="w-5 h-5 accent-emerald-600" />
+            </label>
+            <div onClick={() => navigate(`/urunler/${p.id}`)}
+                 className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer">
+              <div className="w-12 h-12 rounded-lg bg-panel-input overflow-hidden shrink-0 flex items-center justify-center">
+                {p.cover_image
+                  ? <img src={p.cover_image} alt={p.title} className="w-full h-full object-cover" />
+                  : <span className="opacity-30">🖼️</span>}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-sm truncate">{p.title}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <StatusBadge status={p.status} />
+                  <span className="text-[11.5px] text-panel-muted">
+                    {p.variant_count} varyant
+                  </span>
+                </div>
+              </div>
+              <div className="tabular-nums text-sm font-medium shrink-0">{fmtPrice(p.base_price)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+<div className="card !p-0 overflow-hidden hidden sm:block">
         <table className="w-full text-sm">
           <thead className="text-panel-muted bg-panel-input text-xs">
             <tr>
@@ -306,6 +346,7 @@ export default function UrunlerPage() {
           </tbody>
         </table>
       </div>
+        </>
       )}
       {!loading && products.length === 0 && (
         <div className="card text-center !p-10">

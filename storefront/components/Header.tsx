@@ -192,11 +192,13 @@ export default function Header({
           )}
         </nav>
 
+        {/* TELEFON: ikonlar 19-20px dokunma alanına sahipti (ölçüldü) —
+            p-2/-m-2 ile alan ~36px'e çıkıyor, GÖRÜNÜM değişmiyor. */}
         <div className="ml-auto flex items-center gap-4">
           <SearchBox />
           <FavHeaderLink />
           <Link href="/hesap" aria-label="Hesabım"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+            className="p-2 -m-2 sm:p-0 sm:m-0 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="8" r="3.5" />
               <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
@@ -205,13 +207,13 @@ export default function Header({
           </Link>
           {cartDrawer ? (
             <button onClick={() => setDrawerOpen(true)}
-              className="relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+              className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
               aria-label="Sepeti aç">
               {cartInner}
             </button>
           ) : (
             <Link href="/sepet"
-              className="relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+              className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
               aria-label="Sepet">
               {cartInner}
             </Link>
@@ -364,7 +366,7 @@ function SearchBox() {
   return (
     <>
       <button onClick={() => setOpen(true)} aria-label="Ara"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+        className="p-2 -m-2 sm:p-0 sm:m-0 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.5" y2="16.5" />

@@ -66,7 +66,7 @@ export default function FavButton({ item, floating = true }: { item: FavItem; fl
       className={
         floating
           ? "absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center hover:scale-110 transition-transform"
-          : "inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-zinc-900"
+          : "inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-zinc-900 py-2 -my-2"
       }
     >
       <svg width="18" height="18" viewBox="0 0 24 24"

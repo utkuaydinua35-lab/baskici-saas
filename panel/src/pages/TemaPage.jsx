@@ -137,7 +137,7 @@ export default function TemaPage() {
                   </div>
                 ) : (
                   <button onClick={() => setRenaming({ key: d.key, name: d.name })}
-                    className="font-medium text-sm truncate hover:underline text-left"
+                    className="font-medium text-sm truncate hover:underline text-left py-1.5"
                     title="Adı değiştirmek için tıklayın">
                     {d.name} ✏️
                   </button>
@@ -154,7 +154,7 @@ export default function TemaPage() {
                 🚀 Yayınla
               </button>
               <button onClick={() => remove(d)} disabled={busy}
-                className="text-red-300 hover:text-red-300 text-xs px-1">Sil</button>
+                className="text-red-300 hover:text-red-300 text-xs px-2 py-1.5">Sil</button>
             </div>
           ))}
           {drafts.length === 0 && (

@@ -62,14 +62,15 @@ export default function YorumlarPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-xl font-semibold mr-2">
+      {/* TELEFON: başlık + iki grup sekme tek satıra sığmayıp taşıyordu. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <h1 className="text-xl font-semibold mr-2 w-full sm:w-auto">
           {kind === 'question' ? 'Ürün Soruları' : 'Yorumlar'}
         </h1>
         <div className="flex gap-1 bg-panel-input rounded-lg p-0.5 mr-2">
           {[['review', '⭐ Yorumlar'], ['question', '❓ Sorular']].map(([k, l]) => (
             <button key={k} onClick={() => setKind(k)}
-              className={`px-2.5 py-1 rounded-md text-xs transition ${kind === k
+              className={`px-2.5 py-2 sm:py-1 rounded-md text-xs transition ${kind === k
                 ? 'bg-panel-card shadow-sm font-medium' : 'text-panel-muted hover:text-panel-ink'}`}>
               {l}
             </button>
@@ -77,7 +78,7 @@ export default function YorumlarPage() {
         </div>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 rounded-xl text-xs border transition ${tab === t.key
+            className={`px-3 py-2 sm:py-1.5 rounded-xl text-xs border transition ${tab === t.key
               ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
               : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
             {t.label}

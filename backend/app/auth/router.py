@@ -689,11 +689,20 @@ def list_profiles(
 @router.post("/select-profile", response_model=TokenResponse)
 def select_profile(
     req: _SelectProfileRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Profil sec — ayni tenant icinde, PIN'liyse PIN dogrula, secilen profilin token'ini ver."""
+    """Profil sec — ayni tenant icinde, PIN'liyse PIN dogrula, secilen profilin token'ini ver.
+
+    HIZ SINIRI NEDEN BURADA (2026-09-08'de acikti): yonetici profiline gecis
+    yoneticinin 2FA koduyla — 2FA yoksa PAROLASIYLA — korunuyor. Bu yolda
+    sinir yoktu; ayni tenant'taki bir personel token'i ile 6 haneli TOTP ya da
+    yonetici parolasi SINIRSIZ denenebiliyordu. Yani /login'deki brute-force
+    korumasinin etrafindan dolasan bir yoldu. Kanit: scripts/profil_bruteforce_test.py
+    """
     import uuid as _uuid
+    _login_rate_limit(request, db)
     try:
         target_id = _uuid.UUID(req.user_id)
     except (ValueError, AttributeError):
@@ -739,10 +748,14 @@ def select_profile(
                             target.totp_backup_codes = remaining
                             ok = True
                 if not ok:
+                    _login_record_fail(request, db, target.email,
+                                       "profil_2fa_hatali", target.id)
                     raise HTTPException(status_code=401, detail="Yönetici profili için 2FA kodu gerekli veya yanlış.")
             else:
                 if not req.password or not target.password_hash \
                         or not verify_password(req.password, target.password_hash):
+                    _login_record_fail(request, db, target.email,
+                                       "profil_sifre_hatali", target.id)
                     raise HTTPException(status_code=401, detail="Yönetici profili için parola gerekli (veya 2FA kurun).")
         # Yönetici profilinde PIN kullanılmaz — varsa kaldır.
         if target.pin_hash:

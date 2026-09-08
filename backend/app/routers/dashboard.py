@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Numeric, cast, desc, func as sql_func, select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import AskiItem, Mold, Notification, Order, StockItem, User
 from app.stages import all_stages_payload
@@ -32,8 +32,14 @@ def worklist(
 
 
 @router.post("/_test-daily-summary", response_model=dict)
-def test_daily_summary(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Sabah Telegram ozetini hemen gonder (test). 08:00 cron'u beklemeden."""
+def test_daily_summary(user: User = Depends(require_permission("dashboard")),
+                       db: Session = Depends(get_db)):
+    """Sabah Telegram ozetini hemen gonder (test). 08:00 cron'u beklemeden.
+
+    Yalnizca get_current_user ile korunuyordu: kiracidaki HERHANGI bir
+    personel isletme sahibinin Telegram kanalina istedigi kadar ozet
+    yollayabiliyordu.
+    """
     from app.services import daily_summary
     sent = daily_summary.send_daily_summary(db)
     return {"ok": True, "sent": sent}
@@ -42,7 +48,11 @@ def test_daily_summary(user: User = Depends(get_current_user), db: Session = Dep
 @router.get("/summary", response_model=dict)
 def summary(
     store_id: uuid.UUID | None = Query(None),
-    user: User = Depends(get_current_user),
+    # 2026-09-08'de acikti: yalnizca get_current_user vardi. Panel menusu
+    # Dashboard'u `perm: 'dashboard'` ile gizliyordu ama UC ACIKTI —
+    # yalniz "paketleme" izni olan bir personel CIROYU (bugun/hafta/ay ve
+    # gunluk seri) okuyabiliyordu. Menuyu gizlemek API'yi kapatmaz.
+    user: User = Depends(require_permission("dashboard")),
     db: Session = Depends(get_db),
 ):
     tid = user.tenant_id

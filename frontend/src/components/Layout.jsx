@@ -7,6 +7,11 @@ import { api, setToken } from '../lib/api'
 
 export default function Layout() {
   const { user, tenant, logout } = useAuth()
+  // Senkron TUM magazalari cekiyor (agir is + Shopify kotasi); ucu artik
+  // "siparisler" izni istiyor. Dugmeyi de ayni izne bagliyoruz ki izinsiz
+  // kullanici gorup 403 almasin.
+  const _yonetici = user?.role === 'yonetici' || user?.role === 'owner'
+  const canSync = _yonetici || (user?.permissions || []).includes('siparisler')
   const navigate = useNavigate()
 
   const handleLogout = () => {
@@ -68,7 +73,7 @@ export default function Layout() {
               <span>🔍</span><span className="hidden lg:inline">Ara</span>
               <kbd className="hidden lg:inline text-[10px] px-1.5 py-0.5 rounded bg-brand-bg/70 border border-brand-border text-gray-500">⌘K</kbd>
             </button>
-            <SyncButton />
+            {canSync && <SyncButton />}
             <NotificationBell />
             <ProfileDropdown user={user} onLogout={handleLogout} />
           </div>

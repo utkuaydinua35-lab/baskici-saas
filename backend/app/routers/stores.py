@@ -88,6 +88,28 @@ _SECRET_KEYS = {
 }
 
 
+# Ad LİSTESİ tek başına yetmiyor: eşleşme tam ad üzerindeydi ve zamanla
+# eklenen `ig_access_token`, `meta_capi_token`, `storefront_password` listeye
+# girmediği için AÇIK dönüyordu. GET /api/stores kiracıdaki her kullanıcıya
+# açık olduğundan (izin gerektirmiyor), bu anahtarlar paketleme personeline
+# kadar herkese görünüyordu — Instagram token'ı DM okuma/gönderme yetkisi
+# veriyor. Artık kural VARSAYILAN-MASKELE: adında şu işaretlerden biri geçen
+# her alan maskelenir, böylece yarın eklenen anahtar da kapalı doğar.
+_SECRET_ISARETLERI = ("secret", "token", "password", "sifre", "şifre",
+                      "salt", "api_key", "apikey", "private", "_key")
+# İşaret içerdiği hâlde SIR OLMAYAN alanlar (UI'da açık görünmeli).
+# Şu an boş; buraya eklemeden önce alanın gerçekten açık olması gerektiğinden
+# emin ol — yanlış ekleme sırrı ifşa eder.
+_ACIK_ISTISNALAR: set[str] = set()
+
+
+def _sir_mi(anahtar: str) -> bool:
+    k = anahtar.lower()
+    if k in _ACIK_ISTISNALAR:
+        return False
+    return k in _SECRET_KEYS or any(i in k for i in _SECRET_ISARETLERI)
+
+
 def _mask_config(config: dict[str, Any]) -> dict[str, Any]:
     """
     Hassas alanları UI'da maskele (kayıt değişmez, sadece dönüş).
@@ -95,7 +117,7 @@ def _mask_config(config: dict[str, Any]) -> dict[str, Any]:
     """
     masked = {}
     for k, v in (config or {}).items():
-        if k in _SECRET_KEYS and isinstance(v, str) and v:
+        if _sir_mi(k) and isinstance(v, str) and v:
             # Sadece son 4 karakter (kullanici kendi girdigini tanisin); geri kalan TAMAMEN gizli
             masked[k] = ("••••••••" + v[-4:]) if len(v) >= 4 else "••••••••"
         else:

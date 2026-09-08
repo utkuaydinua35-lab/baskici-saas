@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func as sql_func, select, update
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Notification, User
 from app.services.sync_service import sync_all_stores
@@ -51,7 +51,12 @@ def list_notifications(
 
 @router.post("/sync-all", response_model=None)
 def sync_all(
-    user: User = Depends(get_current_user),
+    # TUM magazalarin senkronunu tetikliyor: agir is + Shopify API kotasi.
+    # Izin istemiyordu, yani kiracidaki herhangi bir personel (or. yalniz
+    # paketleme yetkisi olan) bunu tekrar tekrar calistirip kotayi yakabilir
+    # ve isletmenin senkronunu kilitleyebilirdi. Ust bardaki dugme de ayni
+    # izne baglandi, yoksa gorunup 403 verirdi.
+    user: User = Depends(require_permission("siparisler")),
     db: Session = Depends(get_db),
 ):
     results = sync_all_stores(db)

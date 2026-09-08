@@ -860,7 +860,8 @@ function EntegrasyonSection({ storeId, cfg, toast }) {
               ⚠️ Anahtarı şimdi kopyalayın — bir daha gösterilmeyecek
             </div>
             <div className="flex gap-2 items-center">
-              <code className="flex-1 text-[11px] bg-white rounded-lg px-2 py-1.5 break-all border border-amber-500/30">
+              <code className="flex-1 text-[11px] bg-[#0f1535] text-panel-ink font-mono
+                rounded-lg px-2 py-1.5 break-all border border-amber-500/30">
                 {yeni}
               </code>
               <button onClick={() => kopyala(yeni)} className="btn-ghost !py-1 text-xs">Kopyala</button>

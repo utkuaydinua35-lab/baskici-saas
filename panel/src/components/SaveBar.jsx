@@ -18,7 +18,13 @@ export default function SaveBar({ dirty, busy, onSave, onDiscard }) {
   return (
     <div className={`fixed top-0 left-0 right-0 z-[90] transition-transform duration-300 ${
       dirty ? 'translate-y-0' : '-translate-y-full'}`}>
-      <div className="bg-panel-ink text-white px-4 py-2.5 flex items-center gap-3 shadow-lg">
+      {/* DİKKAT: burada bir zaman `bg-panel-ink` vardı. Açık temada
+          panel-ink koyu griydi (koyu bant + beyaz yazı, doğru); koyu temaya
+          geçince panel-ink BEYAZ oldu ve bant beyaz zemin + beyaz yazı
+          hâline geldi — hiç görünmüyordu. Metin tokenı zemin olarak
+          KULLANILMAZ; zemin için yüzey tokenı gerekir. */}
+      <div className="bg-[#0f1535]/95 backdrop-blur-xl border-b border-panel-accent/40
+        text-white px-4 py-2.5 flex items-center gap-3 shadow-lg shadow-black/40">
         <span className="text-sm flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           Kaydedilmemiş değişiklikleriniz var
@@ -30,7 +36,8 @@ export default function SaveBar({ dirty, busy, onSave, onDiscard }) {
             Vazgeç
           </button>
           <button onClick={onSave} disabled={busy}
-            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-panel-accent hover:bg-emerald-600 disabled:opacity-50">
+            className="px-4 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-50
+              bg-gradient-to-r from-panel-accent to-panel-cyan hover:brightness-110 transition">
             {busy ? 'Kaydediliyor…' : 'Kaydet'}
           </button>
         </div>

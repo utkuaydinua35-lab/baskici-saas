@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "app:build": "VITE_API_TABAN=https://magazapanel.bernzcompany.com vite build && cap sync",
-    "app:ios": "npm run app:build && cap open ios"
+    "app:ios": "npm run app:build && cap open ios",
+    "kontrast": "node scripts/kontrast.mjs",
+    "prebuild": "node scripts/kontrast.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.6.9",

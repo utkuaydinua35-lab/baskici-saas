@@ -37,6 +37,36 @@ export function kilidiAcikIsaretle() {
   } catch { /* özel mod */ }
 }
 
+/**
+ * Uygulama arka plana alındığında kilit yeniden kurulsun mu?
+ *
+ * NEDEN GEREKLİ: iOS uygulamaları neredeyse hiç tamamen kapatılmıyor —
+ * kullanıcı ana ekrana çıkıp günlerce geri dönüyor. Kilidi yalnız SOĞUK
+ * AÇILIŞA bağlarsak Face ID pratikte hiç sorulmaz ve özellik ölü kalır.
+ * Bu yüzden uygulama bir süre arka planda kaldıysa dönüşte tekrar sorulur.
+ *
+ * Süre localStorage'ta tutuluyor (sessionStorage değil): iki panel arasında
+ * ortak olmalı ve arka plandayken de kalmalı.
+ */
+const ARKA_PLAN_ANAHTARI = 'kilit_arka_plan'
+const KILIT_SURESI_MS = 5 * 60 * 1000
+
+export function arkaPlanaGecti() {
+  try { localStorage.setItem(ARKA_PLAN_ANAHTARI, String(Date.now())) } catch { /* özel mod */ }
+}
+
+/** Arka planda yeterince kaldıysa kilidi unut ve true dön. */
+export function kilitTekrarGerekli() {
+  let t = 0
+  try { t = Number(localStorage.getItem(ARKA_PLAN_ANAHTARI) || 0) } catch { return false }
+  if (!t || Date.now() - t < KILIT_SURESI_MS) return false
+  try {
+    sessionStorage.removeItem(KILIT_ANAHTARI)
+    localStorage.removeItem(ARKA_PLAN_ANAHTARI)
+  } catch { /* özel mod */ }
+  return true
+}
+
 /** Açılışta hangi aşamadayız? */
 function baslangicAsamasi() {
   if (!getToken()) return 'giris'
@@ -91,6 +121,22 @@ function KilitEkrani({ onAcildi, onSifreyleGir }) {
  */
 export default function KabukAkisi({ panel }) {
   const [asama, setAsama] = useState(baslangicAsamasi)
+
+  // Arka plandan dönüşte kilit — bkz. kilitTekrarGerekli().
+  useEffect(() => {
+    let birak = () => {}
+    ;(async () => {
+      try {
+        const { App } = await import('@capacitor/app')
+        const dinleyici = await App.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) { arkaPlanaGecti(); return }
+          if (getToken() && kilitTekrarGerekli()) setAsama('kilit')
+        })
+        birak = () => dinleyici.remove()
+      } catch { /* eklenti yoksa kilit yalnız soğuk açılışta kurulur */ }
+    })()
+    return () => birak()
+  }, [])
 
   // Cihazda biyometri YOKSA kilit ekranında takılı kalmayalım.
   useEffect(() => {

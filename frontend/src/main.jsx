@@ -6,9 +6,13 @@ import './index.css'
 import { AuthProvider } from './lib/auth'
 import { ToastProvider } from './components/Toast'
 import { TEMEL, nativeMi } from './lib/taban'
+import { kilidiKur } from './lib/kilit'
 
 // Uygulama derlemesinde (TEMEL dolu) hash tabanlı, web'de yol tabanlı.
 const Router = TEMEL ? HashRouter : BrowserRouter
+
+// Uygulamada arka planda kalınca kilit yeniden kurulur; web'de çıkar.
+kilidiKur()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

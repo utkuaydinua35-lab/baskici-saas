@@ -4,18 +4,63 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { mutlak } from '../lib/taban'
 
-// Animasyonlu dekoratif arka plan — drift eden renkli blob'lar + ince nokta ızgara
+/**
+ * Animasyonlu dekoratif arka plan.
+ *
+ * Dört katman, hepsi birbirinden bağımsız hızda: dolaşan renkli ışık lekeleri,
+ * yavaşça kayan nokta ızgara, çok soluk dönen bir huzme ve yükselen zerrecikler.
+ * Süreler bilerek birbirine bölünmüyor — aksi halde döngüler aynı anda başa
+ * sarar ve göz tekrarı yakalar.
+ *
+ * Tamamı transform/opacity ile çalışır (layout ya da paint tetiklemez) ve
+ * `prefers-reduced-motion` açıkken durur; bkz. index.css.
+ */
+
+// Zerrecikler: konum/süre/gecikme sabit bir listeden gelir — her render'da
+// rastgele üretilseydi kullanıcı yazdıkça zerreler baştan başlardı.
+const ZERRELER = [
+  { sol: '12%',  boy: 3, sure: 19, gecikme: 0,   opak: 0.5 },
+  { sol: '26%',  boy: 2, sure: 26, gecikme: 3,   opak: 0.4 },
+  { sol: '38%',  boy: 4, sure: 22, gecikme: 7,   opak: 0.35 },
+  { sol: '51%',  boy: 2, sure: 31, gecikme: 1.5, opak: 0.45 },
+  { sol: '64%',  boy: 3, sure: 24, gecikme: 9,   opak: 0.4 },
+  { sol: '77%',  boy: 2, sure: 29, gecikme: 5,   opak: 0.35 },
+  { sol: '88%',  boy: 4, sure: 21, gecikme: 12,  opak: 0.3 },
+  { sol: '5%',   boy: 2, sure: 34, gecikme: 15,  opak: 0.4 },
+]
+
 function AuthBackground() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="login-blob absolute -top-24 -left-24 w-[26rem] h-[26rem] rounded-full opacity-30 blur-3xl"
+      {/* Dolaşan ışık lekeleri.
+          Burada bir ara dönen konik "huzme" katmanı da vardı; konik geçişin
+          kaçınılmaz keskin sınırı, düşük opaklıkta bile kartın arkasından
+          geçen ince çizgiler olarak görünüyordu — hareketten çok arıza gibi
+          duruyordu. Yerine dördüncü bir leke kondu: aynı büyük ölçekli
+          hareketi veriyor, kenarı yok, üstelik daha ucuz. */}
+      <div className="login-blob-a absolute -top-32 -left-32 w-[28rem] h-[28rem] rounded-full blur-3xl"
         style={{ background: 'radial-gradient(circle, rgb(var(--accent-rgb)) 0%, transparent 70%)' }} />
-      <div className="login-blob absolute top-1/3 -right-32 w-[30rem] h-[30rem] rounded-full opacity-25 blur-3xl"
-        style={{ background: 'radial-gradient(circle, #9b5cff 0%, transparent 70%)', animationDelay: '4s' }} />
-      <div className="login-blob absolute -bottom-32 left-1/4 w-[24rem] h-[24rem] rounded-full opacity-20 blur-3xl"
-        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)', animationDelay: '8s' }} />
-      <div className="absolute inset-0 opacity-[0.05]"
+      <div className="login-blob-b absolute top-1/4 -right-40 w-[34rem] h-[34rem] rounded-full blur-3xl"
+        style={{ background: 'radial-gradient(circle, #9b5cff 0%, transparent 70%)' }} />
+      <div className="login-blob-c absolute -bottom-40 left-1/5 w-[26rem] h-[26rem] rounded-full blur-3xl"
+        style={{ background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)' }} />
+      <div className="login-blob-d absolute top-[-6rem] right-1/4 w-[22rem] h-[22rem] rounded-full blur-3xl"
+        style={{ background: 'radial-gradient(circle, #c084fc 0%, transparent 70%)' }} />
+
+      {/* Kayan nokta ızgara */}
+      <div className="login-izgara absolute inset-0 opacity-[0.05]"
         style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
+
+      {/* Yükselen zerrecikler */}
+      {ZERRELER.map((z, i) => (
+        <span key={i} className="login-zerre absolute bottom-[-6vh] rounded-full bg-white"
+          style={{
+            left: z.sol, width: z.boy, height: z.boy,
+            opacity: z.opak,
+            animationDuration: `${z.sure}s`,
+            animationDelay: `-${z.gecikme}s`,   // negatif: sayfa açılır açılmaz dolu görünsün
+          }} />
+      ))}
     </div>
   )
 }
@@ -26,7 +71,8 @@ function Logo({ emoji }) {
       style={{ boxShadow: '0 12px 44px -8px rgb(var(--accent-rgb) / 0.55)' }}>
       {emoji
         ? <span className="text-3xl">{emoji}</span>
-        : <img src="/favicon.svg" alt="BERNZ" className="w-9 h-9" draggable="false" />}
+        : <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="BERNZ"
+               className="w-9 h-9" draggable="false" />}
       <span className="login-sheen" aria-hidden="true" />
     </div>
   )
@@ -48,12 +94,12 @@ function AuthShell({ children }) {
   return (
     <div className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden">
       <AuthBackground />
-      <div className="relative w-full max-w-sm animate-fadeinup">{children}</div>
+      <div className="relative w-full max-w-sm">{children}</div>
     </div>
   )
 }
 
-const CARD_CLS = "rounded-2xl border border-white/10 bg-brand-card/70 backdrop-blur-xl p-6 shadow-2xl"
+const CARD_CLS = "login-kart login-kademe-2 relative rounded-2xl border border-white/10 bg-brand-card/70 backdrop-blur-xl p-6 shadow-2xl"
 
 export default function LoginPage() {
   const { login, loginWithPasskey, verifyTwoFactor } = useAuth()
@@ -121,7 +167,7 @@ export default function LoginPage() {
   if (mfaToken) {
     return (
       <AuthShell>
-        <div className="text-center mb-6">
+        <div className="login-kademe-1 text-center mb-6">
           <Logo emoji="🔐" />
           <h1 className="text-xl font-semibold text-gray-100">İki Adımlı Doğrulama</h1>
           <p className="text-sm text-gray-500 mt-1">Authenticator uygulamandaki 6 haneli kodu gir</p>
@@ -149,7 +195,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <div className="text-center mb-6">
+      <div className="login-kademe-1 text-center mb-6">
         <Logo />
         <h1 className="text-2xl font-semibold text-gray-100 tracking-tight">Baskıcı Paneli</h1>
         <p className="text-sm text-gray-500 mt-1">Hesabınla giriş yap, üretime devam et</p>
@@ -191,6 +237,7 @@ export default function LoginPage() {
         {errBox}
 
         <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 relative overflow-hidden">
+          {loading && <span className="login-dugme-isik" aria-hidden="true" />}
           {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
         </button>
 
@@ -220,7 +267,7 @@ export default function LoginPage() {
         BERNZ Company · Baskıcı Paneli
       </p>
       <img
-        src="/bernz-company.png"
+        src={`${import.meta.env.BASE_URL}bernz-company.png`}
         alt="BERNZ Company"
         draggable="false"
         onError={e => { e.currentTarget.style.display = 'none' }}

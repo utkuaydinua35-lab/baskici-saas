@@ -196,8 +196,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 }
 /* Opaklik nefesi ayri sure ile: hareketle ayni anda tepe yapmasin. */
 @keyframes blob-nefes {
-  0%, 100% { opacity: 0.18; }
-  50%      { opacity: 0.52; }
+  0%, 100% { opacity: 0.30; }
+  50%      { opacity: 0.78; }
 }
 .login-blob-a { will-change: transform;
   animation: blob-a 13s ease-in-out infinite, blob-nefes 7s ease-in-out infinite; }
@@ -210,13 +210,24 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .login-blob-d { will-change: transform;
   animation: blob-b 23s ease-in-out infinite reverse, blob-nefes 13s ease-in-out infinite; }
 
-/* Nokta izgara yavasca kayar — tek basina fark edilmez ama zeminin "durgun"
-   hissini kaldiran sey bu. Bir hucre kadar kayip basa doner, dikis gorunmez. */
-@keyframes izgara-kay {
-  0%   { background-position: 0 0; }
-  100% { background-position: 28px 28px; }
+/* NOT: burada bir ara nokta izgarayi kaydiran bir animasyon vardi. Ise
+   yaramiyordu ve yaramasi da mumkun degildi: desen kusursuz tekrarli oldugu
+   icin bir hucre kadar kayinca EKRAN AYNI goruntuyu veriyor. Izgara artik
+   sabit bir doku; hareket hissini asagidaki huzmeler ve zerrecikler veriyor.
+
+   Hareketin okunabilmesi icin gozun takip edebilecegi bir KENAR gerekiyor.
+   Bulanik lekeler renk alanini degistiriyor ama sinirlari olmadigi icin
+   "yer degistirdi" hissi vermiyor; huzmeler ekrani boydan boya gectigi icin
+   veriyor. */
+@keyframes huzme-gec {
+  0%   { transform: translate3d(-70vw, 0, 0) rotate(-16deg); }
+  100% { transform: translate3d(120vw, 0, 0) rotate(-16deg); }
 }
-.login-izgara { animation: izgara-kay 11s linear infinite; }
+.login-huzme {
+  position: absolute; top: -30%; height: 160%; width: 26vw;
+  filter: blur(30px); pointer-events: none; will-change: transform;
+  animation: huzme-gec linear infinite;
+}
 
 /* Yukselen zerrecikler. Sayilari az (8), hepsi ayni keyframe'i farkli
    gecikme/sure ile kullaniyor; DOM ve GPU maliyeti ihmal edilebilir. */
@@ -229,21 +240,17 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .login-zerre { will-change: transform; animation-name: zerre-yuksel;
   animation-timing-function: linear; animation-iteration-count: infinite; }
 
-@keyframes login-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-7px); }
-}
 @keyframes sheen {
   0%   { background-position: -150% 0; }
   100% { background-position: 250% 0; }
 }
-.login-logo   { animation: login-float 4.5s ease-in-out infinite; }
 .login-sheen  {
   position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.22) 50%, transparent 65%);
   background-size: 250% 100%;
-  animation: sheen 5.5s ease-in-out infinite;
+  background-position: -150% 0;
 }
+.login-logo:hover .login-sheen { animation: sheen 1.1s ease-out; }
 
 /* Kart kenarliginda dolasan ince isik — camin kenarina vuran yansima.
    DIKKAT: burada bir ara `transform: rotate()` kullanildi ve YANLISTI —
@@ -277,44 +284,71 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 /* Kart icerigi donen kenarligin ustunde kalsin. */
 .login-kart > * { position: relative; z-index: 1; }
 
-/* ── Logo ve dugme parlakligi ─────────────────────────────────────────────
-   Logonun arkasinda nefes alan bir hale, dugmelerin uzerinde ise belirli
-   araliklarla gecen bir isik var. Isik SUREKLI degil: 7 saniyelik dongunun
-   yalniz ilk ~%18'inde gorunuyor, geri kalaninda ekran sakin kaliyor —
-   surekli parlayan bir dugme goz yorar ve ucuz durur. */
-@keyframes hale-nefes {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50%      { opacity: 0.9;  transform: scale(1.14); }
-}
+/* ── Logo ve dugme etkilesimi ─────────────────────────────────────────────
+   Burada once SUREKLI calisan bir hale nabzi ve dugmelerin uzerinden
+   araliklarla gecen bir isik vardi; kullanici begenmedi ve hakliydi —
+   kendiliginden yanip sonen ogeler dikkat ceker ama bir sey SOYLEMEZ.
+   Simdi hareket kullanicinin eylemine bagli: uzerine gelince/dokununca
+   tepki veriyor, bos dururken sakin. */
+
+/* Logo: sabit yumusak hale (nabiz yok). Uzerine gelince buyuyup parliyor. */
 .login-hale {
   position: absolute; inset: -35%; border-radius: 9999px; z-index: -1;
   background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.55) 0%, transparent 68%);
   filter: blur(18px); pointer-events: none;
-  animation: hale-nefes 3.6s ease-in-out infinite;
+  opacity: 0.55;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
+.login-logo {
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.login-logo:hover { transform: scale(1.07) rotate(-2deg); }
+.login-logo:hover .login-hale { opacity: 1; transform: scale(1.2); }
 
+/* Dugmeler: bos dururken hicbir animasyon YOK.
+   Uzerine gelince isik BIR KEZ gecer, dugme bir tik yukselir, golge acilir. */
 @keyframes dugme-parla {
-  0%      { transform: translateX(-140%); }
-  18%     { transform: translateX(240%); }
-  100%    { transform: translateX(240%); }
+  from { transform: translateX(-140%); }
+  to   { transform: translateX(240%); }
 }
-/* Dugmenin kendisi .btn-primary/.btn-secondary; isigi tasiyan sahte oge. */
+.login-parla {
+  transition: transform 0.18s ease, box-shadow 0.25s ease, filter 0.25s ease;
+}
 .login-parla::after {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.30), transparent);
+  content: ''; position: absolute; top: 0; bottom: 0; width: 45%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.34), transparent);
   transform: translateX(-140%);
-  animation: dugme-parla 7s ease-in-out infinite;
   pointer-events: none;
 }
-.login-parla-gec::after { animation-delay: 3.5s; }   /* ikinci dugme sirayla parlasin */
+/* Ozgulluk NOTU: asagida `.btn-primary:hover { transform: translateY(-1px) }`
+   diye genel bir kural var ve kaynak sirasinda daha sonra geliyor; bu yuzden
+   hover tepkisi kart baglami eklenerek yaziliyor (0,2,0 > 0,1,1). */
+.login-kart .login-parla:hover:not(:disabled),
+.login-parla.login-parla:hover:not(:disabled) {
+  transform: translateY(-3px);
+  filter: brightness(1.14);
+  box-shadow: 0 0 0 1px rgb(var(--accent-rgb) / 0.45),
+              0 14px 34px -10px rgb(var(--accent-rgb) / 0.85);
+}
+.login-parla:hover:not(:disabled)::after { animation: dugme-parla 0.75s ease-out; }
+.login-kart .login-parla:active:not(:disabled),
+.login-parla.login-parla:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.985);
+}
 
-/* Alt marka gorseli: uzerinden yumusak bir isik gecer. */
+/* Girdiler de dokunusa cevap versin — odakta zaten cerceve var, uzerine
+   gelince hafif bir aydinlanma yeter. */
+.login-kart .input { transition: background-color 0.2s ease, border-color 0.2s ease; }
+.login-kart .input:hover:not(:focus) { background-color: rgb(255 255 255 / 0.04); }
+
+/* Alt marka gorseli: uzerine gelince isik gecer. */
 .login-marka-isik {
   position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / 0.30) 50%, transparent 62%);
   background-size: 260% 100%;
-  animation: sheen 6.5s ease-in-out infinite;
+  background-position: -150% 0;
 }
+.login-marka:hover .login-marka-isik { animation: sheen 1.1s ease-out; }
 
 /* Giris dugmesi beklerken uzerinden isik gecer — istegin surdugunu gosterir. */
 @keyframes dugme-isik {
@@ -336,8 +370,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 @media (prefers-reduced-motion: reduce) {
   .login-blob-a, .login-blob-b, .login-blob-c, .login-blob-d,
   .login-izgara, .login-zerre,
-  .login-logo, .login-sheen, .login-kart::before, .login-dugme-isik,
-  .login-hale, .login-parla::after, .login-marka-isik,
+  .login-sheen, .login-kart::before, .login-dugme-isik,
+  .login-huzme, .login-parla::after, .login-marka-isik,
   .login-kademe-1, .login-kademe-2, .login-kademe-3 { animation: none; }
   .login-zerre { opacity: 0; }
 }

@@ -19,18 +19,18 @@ import { mutlak } from '../lib/taban'
 // Zerrecikler: konum/süre/gecikme sabit bir listeden gelir — her render'da
 // rastgele üretilseydi kullanıcı yazdıkça zerreler baştan başlardı.
 const ZERRELER = [
-  { sol: '6%',   boy: 3, sure: 11, gecikme: 0,   opak: 0.55 },
-  { sol: '14%',  boy: 2, sure: 15, gecikme: 4,   opak: 0.45 },
-  { sol: '23%',  boy: 4, sure: 13, gecikme: 8,   opak: 0.5 },
-  { sol: '31%',  boy: 2, sure: 17, gecikme: 2,   opak: 0.4 },
-  { sol: '42%',  boy: 3, sure: 12, gecikme: 6,   opak: 0.55 },
-  { sol: '50%',  boy: 2, sure: 16, gecikme: 10,  opak: 0.4 },
-  { sol: '58%',  boy: 4, sure: 14, gecikme: 1,   opak: 0.45 },
-  { sol: '67%',  boy: 2, sure: 18, gecikme: 7,   opak: 0.5 },
-  { sol: '75%',  boy: 3, sure: 12, gecikme: 11,  opak: 0.45 },
-  { sol: '83%',  boy: 2, sure: 15, gecikme: 3,   opak: 0.4 },
-  { sol: '91%',  boy: 4, sure: 13, gecikme: 9,   opak: 0.5 },
-  { sol: '97%',  boy: 2, sure: 17, gecikme: 5,   opak: 0.35 },
+  { sol: '6%',   boy: 5, sure: 9,  gecikme: 0,   opak: 0.8 },
+  { sol: '14%',  boy: 3, sure: 13, gecikme: 4,   opak: 0.6 },
+  { sol: '23%',  boy: 6, sure: 11, gecikme: 8,   opak: 0.75 },
+  { sol: '31%',  boy: 3, sure: 15, gecikme: 2,   opak: 0.55 },
+  { sol: '42%',  boy: 5, sure: 10, gecikme: 6,   opak: 0.8 },
+  { sol: '50%',  boy: 3, sure: 14, gecikme: 10,  opak: 0.55 },
+  { sol: '58%',  boy: 6, sure: 12, gecikme: 1,   opak: 0.7 },
+  { sol: '67%',  boy: 3, sure: 16, gecikme: 7,   opak: 0.6 },
+  { sol: '75%',  boy: 5, sure: 10, gecikme: 11,  opak: 0.75 },
+  { sol: '83%',  boy: 3, sure: 13, gecikme: 3,   opak: 0.55 },
+  { sol: '91%',  boy: 6, sure: 11, gecikme: 9,   opak: 0.7 },
+  { sol: '97%',  boy: 3, sure: 15, gecikme: 5,   opak: 0.5 },
 ]
 
 function AuthBackground() {
@@ -51,7 +51,20 @@ function AuthBackground() {
       <div className="login-blob-d absolute top-[-6rem] right-1/4 w-[22rem] h-[22rem] rounded-full blur-3xl"
         style={{ background: 'radial-gradient(circle, #c084fc 0%, transparent 70%)' }} />
 
-      {/* Kayan nokta ızgara */}
+      {/* Ekranı boydan boya geçen huzmeler — hareketin asıl okunduğu katman.
+          Lekelerin sınırı olmadığı için "yer değiştirdi" hissi vermiyorlar;
+          bunlar geçtiği için veriyor. */}
+      <div className="login-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgb(var(--accent-rgb) / 0.30), transparent)',
+        animationDuration: '17s' }} />
+      <div className="login-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgb(255 255 255 / 0.10), transparent)',
+        animationDuration: '26s', animationDelay: '-9s' }} />
+      <div className="login-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgb(192 132 252 / 0.26), transparent)',
+        animationDuration: '21s', animationDelay: '-14s' }} />
+
+      {/* Nokta ızgara — sabit doku */}
       <div className="login-izgara absolute inset-0 opacity-[0.05]"
         style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
 
@@ -274,7 +287,7 @@ export default function LoginPage() {
         BERNZ Company · Baskıcı Paneli
       </p>
       {/* Görselin üzerinden ışık geçebilmesi için kırpan bir sarmalayıcı gerekli. */}
-      <span className="relative block w-14 mx-auto mt-4 rounded-lg overflow-hidden">
+      <span className="login-marka relative block w-14 mx-auto mt-4 rounded-lg overflow-hidden">
         <img
           src={`${import.meta.env.BASE_URL}bernz-company.png`}
           alt="BERNZ Company"

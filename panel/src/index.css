@@ -330,8 +330,8 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 @keyframes giris-nefes {
-  0%, 100% { opacity: 0.18; }
-  50%      { opacity: 0.52; }
+  0%, 100% { opacity: 0.30; }
+  50%      { opacity: 0.78; }
 }
 .giris-blob-a { will-change: transform;
   animation: giris-blob-a 13s ease-in-out infinite, giris-nefes 7s ease-in-out infinite; }
@@ -342,12 +342,24 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
 .giris-blob-d { will-change: transform;
   animation: giris-blob-b 23s ease-in-out infinite reverse, giris-nefes 13s ease-in-out infinite; }
 
-/* Nokta ızgara: bir hücre kadar kayıp başa döner, dikiş görünmez. */
-@keyframes giris-izgara {
-  0%   { background-position: 0 0; }
-  100% { background-position: 28px 28px; }
+/* NOT: burada bir ara nokta ızgarayı kaydıran bir animasyon vardı. İşe
+   yaramıyordu ve yaraması da mümkün değildi: desen kusursuz tekrarlı olduğu
+   için bir hücre kadar kayınca EKRAN AYNI görüntüyü veriyor. Izgara artık
+   sabit bir doku.
+
+   Hareketin okunabilmesi için gözün takip edebileceği bir KENAR gerekiyor.
+   Bulanık lekeler renk alanını değiştiriyor ama sınırları olmadığı için
+   "yer değiştirdi" hissi vermiyor; huzmeler ekranı boydan boya geçtiği için
+   veriyor. */
+@keyframes giris-huzme {
+  0%   { transform: translate3d(-70vw, 0, 0) rotate(-16deg); }
+  100% { transform: translate3d(120vw, 0, 0) rotate(-16deg); }
 }
-.giris-izgara { animation: giris-izgara 11s linear infinite; }
+.giris-huzme {
+  position: absolute; top: -30%; height: 160%; width: 26vw;
+  filter: blur(30px); pointer-events: none; will-change: transform;
+  animation: giris-huzme linear infinite;
+}
 
 @keyframes giris-zerre {
   0%   { transform: translate3d(0, 0, 0); opacity: 0; }
@@ -358,38 +370,49 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
 .giris-zerre { will-change: transform; animation-name: giris-zerre;
   animation-timing-function: linear; animation-iteration-count: infinite; }
 
-/* Logo halesi + marka işaretinin süzülmesi */
-@keyframes giris-hale {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50%      { opacity: 0.9;  transform: scale(1.14); }
-}
+/* Logo ve düğme etkileşimi.
+   Burada önce SÜREKLİ çalışan bir hale nabzı ve düğmelerin üzerinden
+   aralıklarla geçen bir ışık vardı; kendiliğinden yanıp sönen öğeler dikkat
+   çeker ama bir şey SÖYLEMEZ. Artık hareket kullanıcının eylemine bağlı:
+   üzerine gelince/dokununca tepki veriyor, boş dururken sakin. */
 .giris-hale {
   position: absolute; inset: -45%; border-radius: 9999px; z-index: -1;
   background: radial-gradient(circle, rgba(0, 117, 255, 0.6) 0%, rgba(33, 212, 253, 0.25) 45%, transparent 70%);
   filter: blur(16px); pointer-events: none;
-  animation: giris-hale 3.6s ease-in-out infinite;
+  opacity: 0.6;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
-@keyframes giris-suzul {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-6px); }
-}
-.giris-logo { animation: giris-suzul 4.5s ease-in-out infinite; }
+.giris-logo { transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.giris-logo:hover { transform: scale(1.07) rotate(-2deg); }
+.giris-logo:hover .giris-hale { opacity: 1; transform: scale(1.22); }
 
-/* Düğme parlaklığı: ışık SÜREKLİ değil, 7 saniyelik döngünün yalnız ilk
-   ~%18'inde geçiyor — sürekli parlayan düğme göz yorar ve ucuz durur. */
+/* Düğmeler: boş dururken hiçbir animasyon YOK. Üzerine gelince ışık BİR KEZ
+   geçer, düğme bir tık yükselir, halka açılır. */
 @keyframes giris-parla {
-  0%   { transform: translateX(-140%); }
-  18%  { transform: translateX(240%); }
-  100% { transform: translateX(240%); }
+  from { transform: translateX(-140%); }
+  to   { transform: translateX(240%); }
 }
 .giris-parla::after {
-  content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.32), transparent);
+  content: ''; position: absolute; top: 0; bottom: 0; width: 45%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.34), transparent);
   transform: translateX(-140%);
-  animation: giris-parla 7s ease-in-out infinite;
   pointer-events: none;
 }
-.giris-parla-gec::after { animation-delay: 3.5s; }
+/* Özgüllük NOTU: panelde `.btn-primary:hover` için genel kurallar var ve
+   kaynak sırasında daha önce/sonra gelebiliyor; sınıf iki kez yazılarak
+   (0,2,0) üstünlük garantiye alınıyor. */
+.giris-parla.giris-parla:hover:not(:disabled) {
+  transform: translateY(-3px);
+  filter: brightness(1.14);
+  box-shadow: 0 0 0 1px rgba(33, 212, 253, 0.45),
+              0 14px 34px -10px rgba(0, 117, 255, 0.85);
+}
+.giris-parla:hover:not(:disabled)::after { animation: giris-parla 0.75s ease-out; }
+.giris-parla.giris-parla:active:not(:disabled) { transform: translateY(-1px) scale(0.985); }
+
+/* Girdiler de dokunuşa cevap versin. */
+.giris-kart .input { transition: background-color 0.2s ease, border-color 0.2s ease; }
+.giris-kart .input:hover:not(:focus) { background-color: rgba(255, 255, 255, 0.05); }
 
 /* Kart kenarında dolaşan yansıma. Elemanın kendisi DÖNDÜRÜLMEZ — dönen
    dikdörtgenin köşeleri kartın dışına taşıp ekrana çizgi çizer; dönen şey
@@ -429,7 +452,7 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
   .skeleton { animation: none; }
   .menu-pop, .animate-slidein { animation: none; }
   .giris-blob-a, .giris-blob-b, .giris-blob-c, .giris-blob-d,
-  .giris-izgara, .giris-zerre, .giris-hale, .giris-logo,
+  .giris-huzme, .giris-zerre,
   .giris-parla::after, .giris-kart::before,
   .giris-kademe-1, .giris-kademe-2 { animation: none; }
   .giris-zerre { opacity: 0; }

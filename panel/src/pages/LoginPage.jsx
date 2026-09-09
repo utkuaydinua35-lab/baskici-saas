@@ -19,18 +19,18 @@ import { kilidiAcikIsaretle } from '../KabukAkisi'
 // Sabit liste — her render'da rastgele üretilseydi kullanıcı yazdıkça
 // zerreler baştan başlardı.
 const ZERRELER = [
-  { sol: '6%',  boy: 3, sure: 11, gecikme: 0,  opak: 0.55 },
-  { sol: '14%', boy: 2, sure: 15, gecikme: 4,  opak: 0.45 },
-  { sol: '23%', boy: 4, sure: 13, gecikme: 8,  opak: 0.5 },
-  { sol: '31%', boy: 2, sure: 17, gecikme: 2,  opak: 0.4 },
-  { sol: '42%', boy: 3, sure: 12, gecikme: 6,  opak: 0.55 },
-  { sol: '50%', boy: 2, sure: 16, gecikme: 10, opak: 0.4 },
-  { sol: '58%', boy: 4, sure: 14, gecikme: 1,  opak: 0.45 },
-  { sol: '67%', boy: 2, sure: 18, gecikme: 7,  opak: 0.5 },
-  { sol: '75%', boy: 3, sure: 12, gecikme: 11, opak: 0.45 },
-  { sol: '83%', boy: 2, sure: 15, gecikme: 3,  opak: 0.4 },
-  { sol: '91%', boy: 4, sure: 13, gecikme: 9,  opak: 0.5 },
-  { sol: '97%', boy: 2, sure: 17, gecikme: 5,  opak: 0.35 },
+  { sol: '6%',  boy: 5, sure: 9,  gecikme: 0,  opak: 0.8 },
+  { sol: '14%', boy: 3, sure: 13, gecikme: 4,  opak: 0.6 },
+  { sol: '23%', boy: 6, sure: 11, gecikme: 8,  opak: 0.75 },
+  { sol: '31%', boy: 3, sure: 15, gecikme: 2,  opak: 0.55 },
+  { sol: '42%', boy: 5, sure: 10, gecikme: 6,  opak: 0.8 },
+  { sol: '50%', boy: 3, sure: 14, gecikme: 10, opak: 0.55 },
+  { sol: '58%', boy: 6, sure: 12, gecikme: 1,  opak: 0.7 },
+  { sol: '67%', boy: 3, sure: 16, gecikme: 7,  opak: 0.6 },
+  { sol: '75%', boy: 5, sure: 10, gecikme: 11, opak: 0.75 },
+  { sol: '83%', boy: 3, sure: 13, gecikme: 3,  opak: 0.55 },
+  { sol: '91%', boy: 6, sure: 11, gecikme: 9,  opak: 0.7 },
+  { sol: '97%', boy: 3, sure: 15, gecikme: 5,  opak: 0.5 },
 ]
 
 function GirisArkaPlan() {
@@ -45,6 +45,17 @@ function GirisArkaPlan() {
       <div className="giris-blob-d absolute top-[-6rem] right-1/4 w-[22rem] h-[22rem] rounded-full blur-3xl"
         style={{ background: 'radial-gradient(circle, #9f7aea 0%, transparent 70%)' }} />
 
+      {/* Ekranı boydan boya geçen huzmeler — hareketin asıl okunduğu katman. */}
+      <div className="giris-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgba(0,117,255,0.34), transparent)',
+        animationDuration: '17s' }} />
+      <div className="giris-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent)',
+        animationDuration: '26s', animationDelay: '-9s' }} />
+      <div className="giris-huzme" style={{
+        left: 0, background: 'linear-gradient(90deg, transparent, rgba(33,212,253,0.30), transparent)',
+        animationDuration: '21s', animationDelay: '-14s' }} />
+
       <div className="giris-izgara absolute inset-0 opacity-[0.05]"
         style={{ backgroundImage: 'radial-gradient(rgb(255 255 255) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
 
@@ -52,6 +63,7 @@ function GirisArkaPlan() {
         <span key={i} className="giris-zerre absolute bottom-[-6vh] rounded-full bg-white"
           style={{
             left: z.sol, width: z.boy, height: z.boy, opacity: z.opak,
+            boxShadow: '0 0 6px rgba(255,255,255,0.6)',
             animationDuration: `${z.sure}s`,
             animationDelay: `-${z.gecikme}s`,   // negatif: sayfa açılır açılmaz dolu görünsün
           }} />
@@ -158,7 +170,7 @@ export default function LoginPage() {
             </label>
           )}
           {error && <p className="text-xs text-red-300">{error}</p>}
-          <button disabled={busy} className="giris-parla btn-primary w-full">
+          <button disabled={busy} className="giris-parla btn-primary relative overflow-hidden w-full">
             {busy ? 'Giriş yapılıyor…' : mfaToken ? 'Doğrula' : 'Giriş Yap'}
           </button>
 
@@ -170,7 +182,7 @@ export default function LoginPage() {
                 <div className="h-px flex-1 bg-panel-border" />
               </div>
               <button type="button" onClick={passkeyLogin} disabled={pkBusy}
-                className="giris-parla giris-parla-gec btn-ghost relative overflow-hidden w-full !py-2.5 text-sm">
+                className="giris-parla btn-ghost relative overflow-hidden w-full !py-2.5 text-sm">
                 {pkBusy ? 'Bekleniyor…' : '🔑 Geçiş anahtarı ile giriş'}
               </button>
             </>

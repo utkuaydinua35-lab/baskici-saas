@@ -302,6 +302,123 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* ── Giriş ekranı: canlı arka plan ────────────────────────────────────────
+   Baskıcı Paneli'ndeki (frontend/) düzenin mağaza paleti ile karşılığı; iki
+   uygulama ayrı olduğu için bilinçli olarak kopyalandı, paylaşılan paket
+   kurulmadı. Süreler bilerek birbirine bölünmüyor — aksi halde döngüler aynı
+   anda başa sarar ve göz tekrarı yakalar.
+
+   Tamamı transform/opacity ile çalışır: layout ya da paint tetiklenmez, iş
+   GPU'da kalır. prefers-reduced-motion açıkken hepsi durur (en altta). */
+@keyframes giris-blob-a {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  25%  { transform: translate3d(180px, 120px, 0) scale(1.22); }
+  50%  { transform: translate3d(80px, 260px, 0) scale(0.86); }
+  75%  { transform: translate3d(-140px, 110px, 0) scale(1.14); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes giris-blob-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(-230px, 150px, 0) scale(1.28); }
+  66%  { transform: translate3d(-90px, -190px, 0) scale(0.82); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes giris-blob-c {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  40%  { transform: translate3d(150px, -170px, 0) scale(0.85); }
+  70%  { transform: translate3d(250px, 90px, 0) scale(1.32); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes giris-nefes {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.52; }
+}
+.giris-blob-a { will-change: transform;
+  animation: giris-blob-a 13s ease-in-out infinite, giris-nefes 7s ease-in-out infinite; }
+.giris-blob-b { will-change: transform;
+  animation: giris-blob-b 17s ease-in-out infinite, giris-nefes 9s ease-in-out infinite; }
+.giris-blob-c { will-change: transform;
+  animation: giris-blob-c 19s ease-in-out infinite, giris-nefes 11s ease-in-out infinite; }
+.giris-blob-d { will-change: transform;
+  animation: giris-blob-b 23s ease-in-out infinite reverse, giris-nefes 13s ease-in-out infinite; }
+
+/* Nokta ızgara: bir hücre kadar kayıp başa döner, dikiş görünmez. */
+@keyframes giris-izgara {
+  0%   { background-position: 0 0; }
+  100% { background-position: 28px 28px; }
+}
+.giris-izgara { animation: giris-izgara 11s linear infinite; }
+
+@keyframes giris-zerre {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  10%  { opacity: 0.8; }
+  85%  { opacity: 0.8; }
+  100% { transform: translate3d(26px, -108vh, 0); opacity: 0; }
+}
+.giris-zerre { will-change: transform; animation-name: giris-zerre;
+  animation-timing-function: linear; animation-iteration-count: infinite; }
+
+/* Logo halesi + marka işaretinin süzülmesi */
+@keyframes giris-hale {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.14); }
+}
+.giris-hale {
+  position: absolute; inset: -45%; border-radius: 9999px; z-index: -1;
+  background: radial-gradient(circle, rgba(0, 117, 255, 0.6) 0%, rgba(33, 212, 253, 0.25) 45%, transparent 70%);
+  filter: blur(16px); pointer-events: none;
+  animation: giris-hale 3.6s ease-in-out infinite;
+}
+@keyframes giris-suzul {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.giris-logo { animation: giris-suzul 4.5s ease-in-out infinite; }
+
+/* Düğme parlaklığı: ışık SÜREKLİ değil, 7 saniyelik döngünün yalnız ilk
+   ~%18'inde geçiyor — sürekli parlayan düğme göz yorar ve ucuz durur. */
+@keyframes giris-parla {
+  0%   { transform: translateX(-140%); }
+  18%  { transform: translateX(240%); }
+  100% { transform: translateX(240%); }
+}
+.giris-parla::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.32), transparent);
+  transform: translateX(-140%);
+  animation: giris-parla 7s ease-in-out infinite;
+  pointer-events: none;
+}
+.giris-parla-gec::after { animation-delay: 3.5s; }
+
+/* Kart kenarında dolaşan yansıma. Elemanın kendisi DÖNDÜRÜLMEZ — dönen
+   dikdörtgenin köşeleri kartın dışına taşıp ekrana çizgi çizer; dönen şey
+   gradyanın açısı (@property --aci, yukarıda tanımlı). */
+.giris-kart::before {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit;
+  padding: 1px; pointer-events: none; z-index: 0;
+  /* Geçişler geniş tutuldu: dar bir dilim, koyu zeminde parlak bir ÇUBUK
+     gibi okunuyordu; yayvan olunca kenarda dolaşan ışık hissi veriyor. */
+  background: conic-gradient(from var(--aci),
+    transparent 0deg, rgb(33 212 253 / 0.75) 55deg, transparent 150deg,
+    transparent 240deg, rgb(255 255 255 / 0.22) 300deg, transparent 355deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: cerceve-don 9s linear infinite;
+  opacity: 0.6;
+}
+.giris-kart > * { position: relative; z-index: 1; }
+
+/* Kademeli giriş */
+@keyframes giris-belir {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.giris-kademe-1 { animation: giris-belir 0.5s ease-out both; }
+.giris-kademe-2 { animation: giris-belir 0.5s ease-out 0.09s both; }
+
 /* Hareket azaltma tercihi: SÜREKLİ dönen/kayan her şey durur.
    Tek seferlik giriş geçişleri kalır — onlar rahatsız etmiyor. */
 @media (prefers-reduced-motion: reduce) {
@@ -311,4 +428,9 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
   .nabiz-halka,
   .skeleton { animation: none; }
   .menu-pop, .animate-slidein { animation: none; }
+  .giris-blob-a, .giris-blob-b, .giris-blob-c, .giris-blob-d,
+  .giris-izgara, .giris-zerre, .giris-hale, .giris-logo,
+  .giris-parla::after, .giris-kart::before,
+  .giris-kademe-1, .giris-kademe-2 { animation: none; }
+  .giris-zerre { opacity: 0; }
 }

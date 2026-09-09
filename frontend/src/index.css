@@ -177,38 +177,38 @@ h1, h2, h3 { letter-spacing: -0.02em; }
    tasindigi icin telefonu yormaz. prefers-reduced-motion'da hepsi durur. */
 @keyframes blob-a {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
-  25%  { transform: translate3d(90px, 60px, 0) scale(1.12); }
-  50%  { transform: translate3d(40px, 130px, 0) scale(0.94); }
-  75%  { transform: translate3d(-60px, 50px, 0) scale(1.06); }
+  25%  { transform: translate3d(180px, 120px, 0) scale(1.22); }
+  50%  { transform: translate3d(80px, 260px, 0) scale(0.86); }
+  75%  { transform: translate3d(-140px, 110px, 0) scale(1.14); }
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 @keyframes blob-b {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
-  33%  { transform: translate3d(-110px, 70px, 0) scale(1.15); }
-  66%  { transform: translate3d(-40px, -90px, 0) scale(0.9); }
+  33%  { transform: translate3d(-230px, 150px, 0) scale(1.28); }
+  66%  { transform: translate3d(-90px, -190px, 0) scale(0.82); }
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 @keyframes blob-c {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
-  40%  { transform: translate3d(70px, -80px, 0) scale(0.92); }
-  70%  { transform: translate3d(120px, 40px, 0) scale(1.18); }
+  40%  { transform: translate3d(150px, -170px, 0) scale(0.85); }
+  70%  { transform: translate3d(250px, 90px, 0) scale(1.32); }
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 /* Opaklik nefesi ayri sure ile: hareketle ayni anda tepe yapmasin. */
 @keyframes blob-nefes {
-  0%, 100% { opacity: 0.22; }
-  50%      { opacity: 0.40; }
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 0.52; }
 }
 .login-blob-a { will-change: transform;
-  animation: blob-a 23s ease-in-out infinite, blob-nefes 11s ease-in-out infinite; }
+  animation: blob-a 13s ease-in-out infinite, blob-nefes 7s ease-in-out infinite; }
 .login-blob-b { will-change: transform;
-  animation: blob-b 31s ease-in-out infinite, blob-nefes 13s ease-in-out infinite; }
+  animation: blob-b 17s ease-in-out infinite, blob-nefes 9s ease-in-out infinite; }
 .login-blob-c { will-change: transform;
-  animation: blob-c 37s ease-in-out infinite, blob-nefes 17s ease-in-out infinite; }
+  animation: blob-c 19s ease-in-out infinite, blob-nefes 11s ease-in-out infinite; }
 /* Dorduncu leke b'nin yolunu TERS yonde kullanir — ayri keyframe yazmadan
    farkli bir gezinti cikar. */
 .login-blob-d { will-change: transform;
-  animation: blob-b 43s ease-in-out infinite reverse, blob-nefes 19s ease-in-out infinite; }
+  animation: blob-b 23s ease-in-out infinite reverse, blob-nefes 13s ease-in-out infinite; }
 
 /* Nokta izgara yavasca kayar — tek basina fark edilmez ama zeminin "durgun"
    hissini kaldiran sey bu. Bir hucre kadar kayip basa doner, dikis gorunmez. */
@@ -216,15 +216,15 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   0%   { background-position: 0 0; }
   100% { background-position: 28px 28px; }
 }
-.login-izgara { animation: izgara-kay 24s linear infinite; }
+.login-izgara { animation: izgara-kay 11s linear infinite; }
 
 /* Yukselen zerrecikler. Sayilari az (8), hepsi ayni keyframe'i farkli
    gecikme/sure ile kullaniyor; DOM ve GPU maliyeti ihmal edilebilir. */
 @keyframes zerre-yuksel {
   0%   { transform: translate3d(0, 0, 0); opacity: 0; }
-  12%  { opacity: 0.55; }
-  88%  { opacity: 0.55; }
-  100% { transform: translate3d(16px, -108vh, 0); opacity: 0; }
+  10%  { opacity: 0.8; }
+  85%  { opacity: 0.8; }
+  100% { transform: translate3d(26px, -108vh, 0); opacity: 0; }
 }
 .login-zerre { will-change: transform; animation-name: zerre-yuksel;
   animation-timing-function: linear; animation-iteration-count: infinite; }
@@ -271,11 +271,50 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   -webkit-mask-composite: xor;
           mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           mask-composite: exclude;
-  animation: kenar-don 14s linear infinite;
-  opacity: 0.7;
+  animation: kenar-don 7s linear infinite;
+  opacity: 0.9;
 }
 /* Kart icerigi donen kenarligin ustunde kalsin. */
 .login-kart > * { position: relative; z-index: 1; }
+
+/* ── Logo ve dugme parlakligi ─────────────────────────────────────────────
+   Logonun arkasinda nefes alan bir hale, dugmelerin uzerinde ise belirli
+   araliklarla gecen bir isik var. Isik SUREKLI degil: 7 saniyelik dongunun
+   yalniz ilk ~%18'inde gorunuyor, geri kalaninda ekran sakin kaliyor —
+   surekli parlayan bir dugme goz yorar ve ucuz durur. */
+@keyframes hale-nefes {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.14); }
+}
+.login-hale {
+  position: absolute; inset: -35%; border-radius: 9999px; z-index: -1;
+  background: radial-gradient(circle, rgb(var(--accent-rgb) / 0.55) 0%, transparent 68%);
+  filter: blur(18px); pointer-events: none;
+  animation: hale-nefes 3.6s ease-in-out infinite;
+}
+
+@keyframes dugme-parla {
+  0%      { transform: translateX(-140%); }
+  18%     { transform: translateX(240%); }
+  100%    { transform: translateX(240%); }
+}
+/* Dugmenin kendisi .btn-primary/.btn-secondary; isigi tasiyan sahte oge. */
+.login-parla::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.30), transparent);
+  transform: translateX(-140%);
+  animation: dugme-parla 7s ease-in-out infinite;
+  pointer-events: none;
+}
+.login-parla-gec::after { animation-delay: 3.5s; }   /* ikinci dugme sirayla parlasin */
+
+/* Alt marka gorseli: uzerinden yumusak bir isik gecer. */
+.login-marka-isik {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / 0.30) 50%, transparent 62%);
+  background-size: 260% 100%;
+  animation: sheen 6.5s ease-in-out infinite;
+}
 
 /* Giris dugmesi beklerken uzerinden isik gecer — istegin surdugunu gosterir. */
 @keyframes dugme-isik {
@@ -298,6 +337,7 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   .login-blob-a, .login-blob-b, .login-blob-c, .login-blob-d,
   .login-izgara, .login-zerre,
   .login-logo, .login-sheen, .login-kart::before, .login-dugme-isik,
+  .login-hale, .login-parla::after, .login-marka-isik,
   .login-kademe-1, .login-kademe-2, .login-kademe-3 { animation: none; }
   .login-zerre { opacity: 0; }
 }

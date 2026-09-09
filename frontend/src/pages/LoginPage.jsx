@@ -19,14 +19,18 @@ import { mutlak } from '../lib/taban'
 // Zerrecikler: konum/süre/gecikme sabit bir listeden gelir — her render'da
 // rastgele üretilseydi kullanıcı yazdıkça zerreler baştan başlardı.
 const ZERRELER = [
-  { sol: '12%',  boy: 3, sure: 19, gecikme: 0,   opak: 0.5 },
-  { sol: '26%',  boy: 2, sure: 26, gecikme: 3,   opak: 0.4 },
-  { sol: '38%',  boy: 4, sure: 22, gecikme: 7,   opak: 0.35 },
-  { sol: '51%',  boy: 2, sure: 31, gecikme: 1.5, opak: 0.45 },
-  { sol: '64%',  boy: 3, sure: 24, gecikme: 9,   opak: 0.4 },
-  { sol: '77%',  boy: 2, sure: 29, gecikme: 5,   opak: 0.35 },
-  { sol: '88%',  boy: 4, sure: 21, gecikme: 12,  opak: 0.3 },
-  { sol: '5%',   boy: 2, sure: 34, gecikme: 15,  opak: 0.4 },
+  { sol: '6%',   boy: 3, sure: 11, gecikme: 0,   opak: 0.55 },
+  { sol: '14%',  boy: 2, sure: 15, gecikme: 4,   opak: 0.45 },
+  { sol: '23%',  boy: 4, sure: 13, gecikme: 8,   opak: 0.5 },
+  { sol: '31%',  boy: 2, sure: 17, gecikme: 2,   opak: 0.4 },
+  { sol: '42%',  boy: 3, sure: 12, gecikme: 6,   opak: 0.55 },
+  { sol: '50%',  boy: 2, sure: 16, gecikme: 10,  opak: 0.4 },
+  { sol: '58%',  boy: 4, sure: 14, gecikme: 1,   opak: 0.45 },
+  { sol: '67%',  boy: 2, sure: 18, gecikme: 7,   opak: 0.5 },
+  { sol: '75%',  boy: 3, sure: 12, gecikme: 11,  opak: 0.45 },
+  { sol: '83%',  boy: 2, sure: 15, gecikme: 3,   opak: 0.4 },
+  { sol: '91%',  boy: 4, sure: 13, gecikme: 9,   opak: 0.5 },
+  { sol: '97%',  boy: 2, sure: 17, gecikme: 5,   opak: 0.35 },
 ]
 
 function AuthBackground() {
@@ -67,13 +71,16 @@ function AuthBackground() {
 
 function Logo({ emoji }) {
   return (
-    <div className="login-logo relative w-16 h-16 mx-auto mb-4 rounded-2xl bg-brand-card border border-white/10 flex items-center justify-center overflow-hidden"
+    <div className="login-logo relative w-16 h-16 mx-auto mb-4 rounded-2xl bg-brand-card border border-white/10 flex items-center justify-center"
       style={{ boxShadow: '0 12px 44px -8px rgb(var(--accent-rgb) / 0.55)' }}>
+      <span className="login-hale" aria-hidden="true" />
       {emoji
         ? <span className="text-3xl">{emoji}</span>
         : <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="BERNZ"
                className="w-9 h-9" draggable="false" />}
-      <span className="login-sheen" aria-hidden="true" />
+      <span className="absolute inset-0 rounded-2xl overflow-hidden" aria-hidden="true">
+        <span className="login-sheen" />
+      </span>
     </div>
   )
 }
@@ -181,7 +188,7 @@ export default function LoginPage() {
             <p className="text-[11px] text-gray-600 mt-1.5">Telefonuna erişemiyorsan yedek kodunu da girebilirsin.</p>
           </div>
           {errBox}
-          <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5">
+          <button type="submit" disabled={loading} className="login-parla btn-primary w-full !py-2.5 relative overflow-hidden">
             {loading ? 'Doğrulanıyor…' : 'Doğrula ve gir'}
           </button>
           <div className="text-center">
@@ -236,14 +243,14 @@ export default function LoginPage() {
 
         {errBox}
 
-        <button type="submit" disabled={loading} className="btn-primary w-full !py-2.5 relative overflow-hidden">
+        <button type="submit" disabled={loading} className="login-parla btn-primary w-full !py-2.5 relative overflow-hidden">
           {loading && <span className="login-dugme-isik" aria-hidden="true" />}
           {loading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
         </button>
 
         {passkeySupported() && (
           <button type="button" onClick={handlePasskey} disabled={loading}
-            className="btn-secondary w-full !py-2.5 flex items-center justify-center gap-2">
+            className="login-parla login-parla-gec btn-secondary w-full !py-2.5 relative overflow-hidden flex items-center justify-center gap-2">
             🔑 Geçiş anahtarı ile giriş
           </button>
         )}
@@ -266,13 +273,17 @@ export default function LoginPage() {
       <p className="text-center text-[11px] text-gray-600 mt-5 tracking-wide">
         BERNZ Company · Baskıcı Paneli
       </p>
-      <img
-        src={`${import.meta.env.BASE_URL}bernz-company.png`}
-        alt="BERNZ Company"
-        draggable="false"
-        onError={e => { e.currentTarget.style.display = 'none' }}
-        className="mx-auto mt-4 w-14 rounded-lg border border-white/10 opacity-90 shadow-lg"
-      />
+      {/* Görselin üzerinden ışık geçebilmesi için kırpan bir sarmalayıcı gerekli. */}
+      <span className="relative block w-14 mx-auto mt-4 rounded-lg overflow-hidden">
+        <img
+          src={`${import.meta.env.BASE_URL}bernz-company.png`}
+          alt="BERNZ Company"
+          draggable="false"
+          onError={e => { e.currentTarget.style.display = 'none' }}
+          className="block w-14 rounded-lg border border-white/10 opacity-90 shadow-lg"
+        />
+        <span className="login-marka-isik" aria-hidden="true" />
+      </span>
     </AuthShell>
   )
 }

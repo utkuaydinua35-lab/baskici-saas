@@ -206,7 +206,7 @@ export default function UrunDetayPage() {
         <Field label="Ürün adı">
           <input className="input mt-1" value={form.title} onChange={set('title')} maxLength={300} />
         </Field>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Fiyat (₺)">
             <input className="input mt-1" type="number" step="0.01" min="0"
               value={form.base_price} onChange={set('base_price')} />
@@ -219,7 +219,7 @@ export default function UrunDetayPage() {
             <input className="input mt-1 font-mono text-xs" value={form.slug} onChange={set('slug')} />
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Birim maliyet (₺, ops.)">
             <input className="input mt-1" type="number" step="0.01" min="0"
               value={form.cost_price} onChange={set('cost_price')} placeholder="kâr raporu için" />

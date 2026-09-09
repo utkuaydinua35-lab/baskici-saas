@@ -15,3 +15,34 @@ html.native .sticky.top-0 { padding-top: env(safe-area-inset-top); }
 
 html.native main,
 html.native .fixed.inset-0 > * { padding-bottom: env(safe-area-inset-bottom); }
+
+/* ── Dokunmatik hedef boyutu ───────────────────────────────────────────────
+ * Apple HIG en az 44×44pt ister; üst çubuktaki düğmeler 27×32 ve 34×30'du —
+ * özellikle telefonda menüyü açmanın TEK yolu olan ☰ düğmesi ıskalanıyordu.
+ *
+ * `pointer: coarse` yalnız parmakla kullanılan cihazlarda eşleşir; fare/
+ * trackpad ile açılan masaüstü görünümü (pointer: fine) hiç etkilenmez.
+ * Bilerek `html.native` ile SINIRLANMADI: aynı sorun tarayıcıdan telefonla
+ * girenlerde de var, kural ikisini birden düzeltir.
+ */
+@media (pointer: coarse) {
+  header button,
+  header > div > a,
+  header select {
+    min-width: 44px;
+    min-height: 44px;
+    flex: 0 0 auto;          /* esnek satırda 44'ün altına ezilmesin */
+  }
+
+  /* Mağaza adı rozeti tek satırda kısalsın ki düğmeler yer bulsun. */
+  header > span,
+  header > select {
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Toplu seçim kutuları 20×20'ydi; satırda parmakla isabet ettirmek zordu. */
+  input[type="checkbox"] { width: 24px; height: 24px; }
+}

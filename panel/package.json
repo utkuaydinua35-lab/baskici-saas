@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "app:build": "VITE_API_TABAN=https://magazapanel.bernzcompany.com vite build && cap sync",
+    "app:build": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 VITE_API_TABAN=https://magazapanel.bernzcompany.com vite build && cap sync",
     "app:ios": "npm run app:build && cap open ios",
     "kontrast": "node scripts/kontrast.mjs",
     "prebuild": "node scripts/kontrast.mjs"

@@ -112,9 +112,13 @@ export default function Layout() {
           </button>
           {storefrontUrl && (
             <a href={storefrontUrl} target="_blank" rel="noopener noreferrer"
+              aria-label="Vitrini Gör"
               className="text-xs text-white/80 hover:text-white border border-panel-border
-                hover:border-white/25 hover:bg-white/5 rounded-[10px] px-2.5 py-1.5 transition-all">
-              Vitrini Gör ↗
+                hover:border-white/25 hover:bg-white/5 rounded-[10px] px-2.5 py-1.5 transition-all
+                whitespace-nowrap">
+              {/* Telefonda yazı iki satıra kırılıp 48px'lik üst çubuğu taşırıyordu;
+                  dar ekranda yalnız ok kalır, erişilebilir ad aria-label'da. */}
+              <span className="hidden sm:inline">Vitrini Gör </span>↗
             </a>
           )}
           <ProfileMenu user={user} logout={logout} refresh={refresh} />

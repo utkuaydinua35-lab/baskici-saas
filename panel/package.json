@@ -13,6 +13,7 @@
     "prebuild": "node scripts/kontrast.mjs"
   },
   "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "^9.1.2",
     "@capacitor/android": "^7.6.9",
     "@capacitor/app": "^7.1.2",
     "@capacitor/camera": "^7.0.5",

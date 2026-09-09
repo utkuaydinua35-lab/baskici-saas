@@ -105,7 +105,19 @@ export function buYoldaMiyiz(yol) {
  */
 export function platformSifirla() {
   try {
-    localStorage.removeItem('platform_secimi')
+    sessionStorage.removeItem('platform_secimi')
+  } catch { /* özel mod */ }
+  location.replace('/')
+}
+
+/**
+ * Uygulamada oturum bittiğinde (çıkış ya da 401) Studio'nun KENDİ login
+ * ekranına düşmek yanlış olur: giriş artık kabuğun ortak adımı ve iki panel
+ * için birden yapılıyor. Köke dönmek kabuk akışını baştan başlatır.
+ */
+export function kabugaDon() {
+  try {
+    sessionStorage.removeItem('platform_secimi')
   } catch { /* özel mod */ }
   location.replace('/')
 }

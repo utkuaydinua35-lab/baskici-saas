@@ -1,4 +1,4 @@
-import { StrictMode, useState } from 'react'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
@@ -12,26 +12,15 @@ import './index.css'
 import './native.css'
 import { nativeKur } from './lib/native'
 import { nativeMi } from './lib/kamera'
-import PlatformSecici, { secilenPlatform, STUDIO_ADRES } from './PlatformSecici'
+import KabukAkisi from './KabukAkisi'
 nativeKur()
 
 /**
- * Uygulamada iki panel tek pakette duruyor; hangisinin açılacağı bir kez
- * sorulur ve hatırlanır. Web'de `secilenPlatform()` her zaman 'magaza'
- * döndüğü için bu sarmalayıcı hiçbir şey değiştirmez.
+ * Panelin tamamı (yönlendirici + sağlayıcılar). Kabuk akışı bunu bir
+ * fonksiyon olarak alıyor; böylece giriş/kilit/seçim aşamalarında panel HİÇ
+ * kurulmuyor, gereksiz istek atılmıyor.
  */
-function Kok() {
-  const [platform, setPlatform] = useState(secilenPlatform)
-
-  // Daha önce Studio seçilmişse doğrudan oraya git — panel hiç çizilmesin.
-  // Zaten /studio altındaysak yönlendirme YAPMA: Capacitor uzantısız yolları
-  // köke düşürdüğü için bu, boş ekranla sonuçlanan bir döngü olurdu.
-  if (platform === 'studio' && !location.pathname.startsWith('/studio')) {
-    location.replace(STUDIO_ADRES)
-    return null
-  }
-  if (!platform) return <PlatformSecici onSec={setPlatform} />
-
+function Panel() {
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -43,6 +32,15 @@ function Kok() {
       </AuthProvider>
     </BrowserRouter>
   )
+}
+
+/**
+ * Web'de doğrudan panel açılır — bugünkü davranış birebir korunur.
+ * Uygulamada araya giriş → kilit → platform seçimi akışı girer.
+ */
+function Kok() {
+  if (!nativeMi()) return <Panel />
+  return <KabukAkisi panel={() => <Panel />} />
 }
 
 createRoot(document.getElementById('root')).render(

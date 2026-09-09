@@ -5,6 +5,8 @@ import { BRAND, TAGLINE } from '../lib/brand'
 import BrandMark from '../components/BrandMark'
 import { loginPasskey, passkeySupported } from '../lib/webauthn'
 import { setToken } from '../lib/api'
+import { NATIVE } from '../lib/taban'
+import { kilidiAcikIsaretle } from '../KabukAkisi'
 
 // Giriş — Baskıcı ile aynı hesaplar (2FA destekli).
 export default function LoginPage() {
@@ -18,6 +20,21 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [pkBusy, setPkBusy] = useState(false)
 
+  /**
+   * Giriş başarılı — nereye gidilecek?
+   *
+   * Web'de her şey aynı: panelin köküne git. UYGULAMADA ise girişten sonra
+   * PLATFORM SEÇİMİ geliyor; kabuk akışının (KabukAkisi.jsx) yeni token'la
+   * baştan kurulması için tam yükleme yapılır. Ayrıca kilit bu açılışta
+   * zaten aşılmış sayılır — kullanıcı az önce şifresini girdi, hemen
+   * ardından yüz/parmak istemek gereksiz olurdu.
+   */
+  const girisTamam = () => {
+    if (!NATIVE) { navigate('/', { replace: true }); return }
+    kilidiAcikIsaretle()
+    window.location.replace('/')
+  }
+
   // Geçiş anahtarı (passkey) ile giriş — şifre/2FA gerekmez, phishing-dirençli.
   // Aynı anahtar Baskıcı panelinde de geçerlidir (ortak RP ID).
   const passkeyLogin = async () => {
@@ -25,7 +42,8 @@ export default function LoginPage() {
     try {
       const data = await loginPasskey()
       setToken(data.access_token)
-      window.location.href = '/'   // auth context'i taze token'la kursun
+      if (NATIVE) kilidiAcikIsaretle()
+      window.location.replace('/')   // auth context'i taze token'la kursun
     } catch (e2) {
       const msg = typeof e2?.detail === 'string' ? e2.detail
         : e2?.name === 'NotAllowedError' ? 'Geçiş anahtarı iptal edildi'
@@ -40,12 +58,12 @@ export default function LoginPage() {
     try {
       if (mfaToken) {
         await verifyTwoFactor(mfaToken, code.trim())
-        navigate('/', { replace: true })
+        girisTamam()
         return
       }
       const r = await login(email.trim(), password)
       if (r?.requires_2fa) { setMfaToken(r.mfa_token); return }
-      navigate('/', { replace: true })
+      girisTamam()
     } catch (e2) {
       setError(typeof e2?.detail === 'string' ? e2.detail : 'Giriş başarısız')
     } finally { setBusy(false) }

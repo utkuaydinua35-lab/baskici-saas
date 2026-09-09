@@ -62,6 +62,9 @@ export function AuthProvider({ children }) {
     setToken(null)
     setUser(null)
     setTenant(null)
+    // Uygulamada çıkıştan sonra yeniden giriş yapılınca platform seçimi
+    // yeniden sorulsun; eski seçim kalırsa doğrudan panele düşerdi.
+    try { sessionStorage.removeItem('platform_secimi') } catch { /* özel mod */ }
     api.post('/api/auth/logout', {}).catch(() => {})
   }
 

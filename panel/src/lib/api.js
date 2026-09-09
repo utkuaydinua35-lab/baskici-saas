@@ -2,16 +2,32 @@
  * API client — token'ı localStorage'tan otomatik ekler.
  */
 
-import { mutlak, yanitiMutlaklastir } from './taban'
+import { mutlak, yanitiMutlaklastir, NATIVE } from './taban'
 
 const TOKEN_KEY = 'magaza_token'
+// Studio'nun (Baskıcı Paneli) kendi anahtarı. UYGULAMADA iki panel aynı
+// pakette ve aynı origin'de duruyor; arkalarında TEK backend ve TEK hesap
+// var, dolayısıyla bir kez giriş yapmak ikisi için de yeterli olmalı.
+// Web'de bu eşleme YAPILMAZ: iki panel ayrı alan adlarında, localStorage'ları
+// zaten ayrı ve bugünkü davranış korunur.
+const STUDIO_TOKEN_KEY = 'baskici_token'
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  const t = localStorage.getItem(TOKEN_KEY)
+  // Uygulamada Studio'dan girilmişse token onun anahtarında olabilir; iki
+  // panel tek hesabı paylaştığı için o da geçerlidir. Web'de bu geri dönüş
+  // KAPALI (NATIVE false) — panellerin oturumları orada ayrı kalmalı.
+  if (t || !NATIVE) return t
+  try { return localStorage.getItem(STUDIO_TOKEN_KEY) } catch { return null }
 }
 export function setToken(token) {
   if (token) localStorage.setItem(TOKEN_KEY, token)
   else localStorage.removeItem(TOKEN_KEY)
+  if (!NATIVE) return
+  try {
+    if (token) localStorage.setItem(STUDIO_TOKEN_KEY, token)
+    else localStorage.removeItem(STUDIO_TOKEN_KEY)
+  } catch { /* özel mod */ }
 }
 
 export class ApiError extends Error {

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api, setToken } from '../lib/api'
-import { nativeMi, platformSifirla, uygulamaYolu } from '../lib/taban'
+import { nativeMi, platformSifirla, uygulamaYolu, kabugaDon } from '../lib/taban'
 
 export default function Layout() {
   const { user, tenant, logout } = useAuth()
@@ -17,6 +17,8 @@ export default function Layout() {
 
   const handleLogout = () => {
     logout()
+    // Uygulamada giriş kabuğun ortak adımı — Studio'nun kendi login'i değil.
+    if (nativeMi()) { kabugaDon(); return }
     navigate('/login', { replace: true })
   }
 

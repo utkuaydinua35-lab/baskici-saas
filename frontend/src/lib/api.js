@@ -2,16 +2,30 @@
  * API client — token'ı localStorage'tan otomatik ekler.
  */
 
-import { mutlak, yanitiMutlaklastir, uygulamaYolu, buYoldaMiyiz } from './taban'
+import { mutlak, yanitiMutlaklastir, uygulamaYolu, buYoldaMiyiz, API_TABAN, kabugaDon } from './taban'
 
 const TOKEN_KEY = 'baskici_token'
+// Mağaza panelinin (BERNZ Commerce) kendi anahtarı. UYGULAMADA iki panel
+// aynı pakette ve aynı origin'de; arkalarında TEK backend ve TEK hesap var,
+// bir kez giriş ikisi için de yeterli. Web'de eşleme YAPILMAZ — iki panel
+// ayrı alan adlarında ve localStorage'ları zaten ayrı.
+const MAGAZA_TOKEN_KEY = 'magaza_token'
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  const t = localStorage.getItem(TOKEN_KEY)
+  // Uygulamada mağaza panelinden girilmişse token onun anahtarında olabilir;
+  // iki panel tek hesabı paylaşıyor. Web'de KAPALI (API_TABAN boş).
+  if (t || !API_TABAN) return t
+  try { return localStorage.getItem(MAGAZA_TOKEN_KEY) } catch { return null }
 }
 export function setToken(token) {
   if (token) localStorage.setItem(TOKEN_KEY, token)
   else localStorage.removeItem(TOKEN_KEY)
+  if (!API_TABAN) return
+  try {
+    if (token) localStorage.setItem(MAGAZA_TOKEN_KEY, token)
+    else localStorage.removeItem(MAGAZA_TOKEN_KEY)
+  } catch { /* özel mod */ }
 }
 
 // Sunucuya ULAŞILAMADIĞINI gösteren durumlar. Deploy sırasında backend birkaç
@@ -84,7 +98,8 @@ async function request(method, url, body, yeniden = false) {
       setToken(null)
       // Uygulamada Studio `/studio/` altında duruyor; kök '/login' oraya
       // gitmez, mağaza panelinin login'ini açardı.
-      if (!buYoldaMiyiz('/login')) location.href = uygulamaYolu('/login')
+      if (API_TABAN) kabugaDon()          // uygulamada ortak giriş ekranı
+      else if (!buYoldaMiyiz('/login')) location.href = uygulamaYolu('/login')
     }
     // Deploy sırasındaki birkaç saniyelik kesinti kullanıcıya HİÇ görünmesin:
     // OKUMA isteği geçici bir hatayla dönerse bir kez sessizce tekrar dene.

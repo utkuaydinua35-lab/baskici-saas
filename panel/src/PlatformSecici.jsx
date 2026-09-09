@@ -2,14 +2,19 @@
  * Platform seçici — YALNIZ uygulamada (Capacitor kabuğu).
  *
  * Uygulamanın içinde iki ayrı web uygulaması paketli:
- *   /          → BERNZ Commerce (mağaza paneli, bu paket)
- *   /studio/   → Baskıcı Paneli (Studio, frontend/ derlemesi)
+ *   /                → BERNZ Commerce (mağaza paneli, bu paket)
+ *   /studio/         → Baskıcı Paneli (Studio, frontend/ derlemesi)
  *
- * İkisi de AYNI origin'de (`capacitor://localhost`) durduğu için seçim
- * localStorage'ta saklanabiliyor ve geçiş tek bir sayfa yüklemesi.
+ * İkisi de AYNI origin'de (`capacitor://localhost`) durduğu ve arkalarında
+ * TEK backend olduğu için oturum ortak: bir kez giriş yapmak yeter.
  *
- * Web'de bu ekran HİÇ görünmez: `nativeMi()` false döner, mağaza paneli
- * bugünkü gibi doğrudan açılır.
+ * Seçim `sessionStorage`ta tutulur, `localStorage`ta değil. Sebep: kullanıcı
+ * her AÇILIŞTA hangi paneli açacağını seçsin isteniyor; ama panel içindeki
+ * bir sayfa yenilemesi (ör. girişten sonraki tam yükleme) seçiciyi tekrar
+ * göstermemeli. sessionStorage tam olarak bu ayrımı verir: uygulama
+ * kapatılıp açılınca silinir, aynı oturum içindeki yenilemelerde durur.
+ *
+ * Web'de bu ekran HİÇ görünmez: `nativeMi()` false döner.
  */
 import { nativeMi } from './lib/kamera'
 
@@ -25,27 +30,27 @@ const ANAHTAR = 'platform_secimi'
  */
 export const STUDIO_ADRES = '/studio/index.html'
 
-/** '' (seçilmemiş) | 'magaza' | 'studio'. Web'de her zaman 'magaza'. */
+/** Bu açılışta seçilen platform: '' | 'magaza' | 'studio'. */
 export function secilenPlatform() {
   if (!nativeMi()) return 'magaza'
   try {
-    return localStorage.getItem(ANAHTAR) || ''
+    return sessionStorage.getItem(ANAHTAR) || ''
   } catch {
     return ''
   }
 }
 
-/** Seçimi unut ve seçiciye dön — iki uygulamadan da çağrılır. */
+/** Seçimi unut ve seçiciye dön — iki panelin hesap menüsünden de çağrılır. */
 export function platformSifirla() {
   try {
-    localStorage.removeItem(ANAHTAR)
+    sessionStorage.removeItem(ANAHTAR)
   } catch { /* özel mod */ }
   location.replace('/')
 }
 
 function sec(deger) {
   try {
-    localStorage.setItem(ANAHTAR, deger)
+    sessionStorage.setItem(ANAHTAR, deger)
   } catch { /* özel mod — seçim kalıcı olmaz, akış yine de çalışır */ }
 }
 
@@ -66,7 +71,7 @@ function Kart({ ikon, ad, aciklama, onClick, vurgu }) {
   )
 }
 
-export default function PlatformSecici({ onSec }) {
+export default function PlatformSecici({ onSec, kullanici }) {
   const magaza = () => { sec('magaza'); onSec('magaza') }
   const studio = () => { sec('studio'); location.replace(STUDIO_ADRES) }
 
@@ -75,7 +80,7 @@ export default function PlatformSecici({ onSec }) {
       <div className="text-center">
         <div className="text-lg font-semibold text-white">Hangi paneli açalım?</div>
         <div className="text-xs text-panel-muted mt-1">
-          Seçimin hatırlanır; sonra hesap menüsünden değiştirebilirsin.
+          {kullanici ? `${kullanici} olarak giriş yapıldı` : 'Girişin hatırlandı'}
         </div>
       </div>
 

@@ -19,6 +19,7 @@
     "@capacitor/camera": "^7.0.5",
     "@capacitor/core": "^7.6.9",
     "@capacitor/ios": "^7.6.9",
+    "@capacitor/push-notifications": "^7.0.7",
     "@capacitor/status-bar": "^7.0.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

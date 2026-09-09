@@ -17,6 +17,7 @@
 import { useEffect, useState } from 'react'
 import { getToken, setToken } from './lib/api'
 import { biyometriDogrula, biyometriVarMi } from './lib/biyometri'
+import { bildirimleriKur } from './lib/bildirim'
 import PlatformSecici, { STUDIO_ADRES, secilenPlatform } from './PlatformSecici'
 
 // Kilidin bu açılışta bir kez açıldığını işaretler. Girişin hemen ardından ya
@@ -137,6 +138,15 @@ export default function KabukAkisi({ panel }) {
     })()
     return () => birak()
   }, [])
+
+  // Kullanıcı içeri girdiyse bildirimleri kur. Giriş/kilit ekranındayken
+  // SORMUYORUZ: Apple izni bir kez soruyor, reddedilirse bir daha
+  // sorulamıyor — kullanıcı henüz uygulamayı görmeden sormak reddi
+  // olasılaştırır.
+  useEffect(() => {
+    if (asama === 'giris' || asama === 'kilit') return
+    bildirimleriKur()
+  }, [asama])
 
   // Cihazda biyometri YOKSA kilit ekranında takılı kalmayalım.
   useEffect(() => {

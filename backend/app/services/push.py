@@ -1,4 +1,4 @@
-"""Web Push (PWA mobil bildirim) servisi.
+"""Bildirim servisi — tarayici (Web Push) + uygulama (APNs).
 
 VAPID imzali Web Push gonderir (pywebpush). Anahtarlar .env'de:
   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (base64url) + VAPID_SUBJECT (mailto:...).
@@ -13,6 +13,11 @@ Gonderim yardimcilari:
   - send_to_platform_admins(db, ...)      is_platform_admin kullanicilar (cross-tenant)
 
 Olu abonelikler (404/410) otomatik silinir. push_enabled() False ise sessizce no-op.
+
+UYGULAMA BILDIRIMI: ayni cagrilar native uygulamaya da gider. Kullanicinin
+kayitli cihaz jetonlari (DeviceToken) APNs uzerinden beslenir; boylece
+mevcut TETIKLEYICILERIN HICBIRI degismeden uygulama da bildirim alir.
+APNs yapilandirilmamissa o kisim sessizce atlanir (bkz. services/apns.py).
 """
 from __future__ import annotations
 
@@ -24,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import PushSubscription, User
+from app.models import DeviceToken, PushSubscription, User
 
 logger = logging.getLogger("push")
 
@@ -75,33 +80,110 @@ class _DeadSubscription(Exception):
     pass
 
 
+# ─── Bildirim hangi paneli acmali? ────────────────────────────────────────
+# Uygulamada iki panel TEK kabukta: mağaza paneli kökte, Studio `/studio/`
+# altinda. Bildirime dokunuldugunda dogru olani acmak icin adresin hangi
+# panele ait oldugunu bilmemiz gerekiyor — `/orders/123` yalnizca Studio'da,
+# `/siparisler/123` yalnizca magaza panelinde var.
+#
+# Liste Studio'nun (frontend/src/App.jsx) KENDINE OZGU ust duzey rotalari.
+# Iki panelde de bulunan yollar (/analitik, /ayarlar, /musteriler, /) magaza
+# paneline gider — uygulamanin varsayilan yuzu orasi.
+#
+# YENI TETIKLEYICI EKLERKEN buraya bakin; scripts/bildirim_hedef_test.py
+# kullanimdaki tum adresleri sabitliyor.
+_STUDIO_ONEKLERI = (
+    "/orders", "/bayii", "/bayiler", "/bayi-siparisleri", "/destek",
+    "/kalip", "/paketleme", "/notlar", "/aski", "/designs", "/kisiye-ozel",
+    "/stok", "/telafiler", "/pipeline", "/platform", "/denetim", "/stores",
+    "/urun-studyosu", "/varyantli-urunler", "/aksesuarlar", "/couple",
+    "/telefon-modelleri", "/sosyal-medya", "/pazarlama", "/baskici-paneli",
+    "/shortcuts", "/profil-sec", "/aksesuar",
+)
+
+
+def hedef_uygulama(url: str | None) -> str:
+    """'studio' | 'magaza' — bildirimin acacagi panel."""
+    if not url:
+        return "magaza"
+    yol = url.split("?", 1)[0].rstrip("/") or "/"
+    for on in _STUDIO_ONEKLERI:
+        if yol == on or yol.startswith(on + "/"):
+            return "studio"
+    return "magaza"
+
+
 def _dispatch(db: Session, subs: list[PushSubscription], title: str, body: str,
-              url: str | None = None, tag: str | None = None) -> int:
-    if not push_enabled() or not subs:
-        return 0
-    payload = {"title": title, "body": (body or "")[:300], "url": url or "/", "tag": tag}
+              url: str | None = None, tag: str | None = None,
+              cihazlar: list[DeviceToken] | None = None) -> int:
+    """Tarayici aboneliklerine ve uygulama cihazlarina gonderir.
+
+    Iki tasiyici birbirinden BAGIMSIZ: biri yapilandirilmamis ya da hatali
+    olsa oteki calismaya devam eder. Donus, toplam basarili gonderim sayisi.
+    """
     sent = 0
-    dead: list[PushSubscription] = []
-    for sub in subs:
-        try:
-            if _send_one(sub, payload):
-                sent += 1
-        except _DeadSubscription:
-            dead.append(sub)
-    if dead:
-        for d in dead:
-            db.delete(d)
+
+    # ── tarayici (Web Push) ──
+    if push_enabled() and subs:
+        payload = {"title": title, "body": (body or "")[:300], "url": url or "/", "tag": tag}
+        dead: list[PushSubscription] = []
+        for sub in subs:
+            try:
+                if _send_one(sub, payload):
+                    sent += 1
+            except _DeadSubscription:
+                dead.append(sub)
+        if dead:
+            for d in dead:
+                db.delete(d)
+            try:
+                db.commit()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+
+    # ── uygulama (APNs) ──
+    sent += _cihazlara(db, cihazlar or [], title, body, url, tag)
+    return sent
+
+
+def _cihazlara(db: Session, cihazlar: list[DeviceToken], title: str, body: str,
+               url: str | None, tag: str | None) -> int:
+    """Native cihaz jetonlarina gonder; olu jetonlarin kaydini sil."""
+    if not cihazlar:
+        return 0
+    from app.services import apns
+
+    if not apns.apns_enabled():
+        return 0
+
+    ios = [c for c in cihazlar if c.platform == "ios"]
+    if not ios:
+        return 0
+
+    try:
+        gonderilen, olu = apns.gonder([c.token for c in ios], title, body, url, tag,
+                                      uygulama=hedef_uygulama(url))
+    except Exception as e:  # noqa: BLE001 — bildirim hicbir is akisini durdurmasin
+        logger.warning(f"[push] apns gonderimi patladi: {str(e)[:160]}")
+        return 0
+
+    if olu:
+        olu_kume = set(olu)
+        for c in ios:
+            if c.token in olu_kume:
+                db.delete(c)
         try:
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
-    return sent
+    return gonderilen
 
 
 def send_to_user(db: Session, user_id, title: str, body: str,
                  url: str | None = None, tag: str | None = None) -> int:
     subs = db.scalars(select(PushSubscription).where(PushSubscription.user_id == user_id)).all()
-    return _dispatch(db, list(subs), title, body, url, tag)
+    cihaz = db.scalars(select(DeviceToken).where(DeviceToken.user_id == user_id)).all()
+    return _dispatch(db, list(subs), title, body, url, tag, list(cihaz))
 
 
 def send_to_tenant(db: Session, tenant_id, title: str, body: str,
@@ -117,7 +199,11 @@ def send_to_tenant(db: Session, tenant_id, title: str, body: str,
         PushSubscription.tenant_id == tenant_id,
         PushSubscription.user_id.notin_(bayi_ids),
     )).all()
-    return _dispatch(db, list(subs), title, body, url, tag)
+    cihaz = db.scalars(select(DeviceToken).where(
+        DeviceToken.tenant_id == tenant_id,
+        DeviceToken.user_id.notin_(bayi_ids),
+    )).all()
+    return _dispatch(db, list(subs), title, body, url, tag, list(cihaz))
 
 
 def send_to_platform_admins(db: Session, title: str, body: str,
@@ -126,7 +212,8 @@ def send_to_platform_admins(db: Session, title: str, body: str,
     if not admin_ids:
         return 0
     subs = db.scalars(select(PushSubscription).where(PushSubscription.user_id.in_(admin_ids))).all()
-    return _dispatch(db, list(subs), title, body, url, tag)
+    cihaz = db.scalars(select(DeviceToken).where(DeviceToken.user_id.in_(admin_ids))).all()
+    return _dispatch(db, list(subs), title, body, url, tag, list(cihaz))
 
 
 # ─── VAPID anahtar uretimi (CLI) ──────────────────────────────────────────

@@ -2170,6 +2170,36 @@ class PushSubscription(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DeviceToken(Base):
+    """Native uygulama bildirim jetonu (iOS APNs / Android FCM).
+
+    PushSubscription tarayıcı içindir; uygulama kabuğunda tarayıcı aboneliği
+    YOK, işletim sistemi cihaz başına bir jeton veriyor. Aynı kişi hem
+    tarayıcıdan hem uygulamadan bildirim alabilsin diye iki tablo ayrı
+    duruyor; gönderim tarafında (services/push.py) ikisi birden taranıyor.
+
+    Jeton cihaza özgü ve DEĞİŞEBİLİR (yeniden kurulum, yedekten dönme).
+    Bu yüzden benzersiz olan jetonun kendisi: aynı jeton başka kullanıcıya
+    geçtiyse kayıt sahiplendirilir, eski sahibe bildirim gitmez.
+    """
+    __tablename__ = "device_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    token: Mapped[str] = mapped_column(Text, unique=True)
+    platform: Mapped[str] = mapped_column(String(10))          # ios | android
+    device_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ProductReview(Base):
     """Ürün yorumu — YALNIZCA doğrulanmış alıcı (lookup_token'lı paid session).
 

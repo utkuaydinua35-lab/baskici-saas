@@ -4,6 +4,7 @@
  */
 import { createContext, useContext, useEffect, useState } from 'react'
 import { api, ApiError, getToken, setToken } from './api'
+import { bildirimleriBirak } from './bildirim'
 
 const AuthContext = createContext(null)
 
@@ -59,6 +60,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    bildirimleriBirak()      // token silinmeden ÖNCE — istek yetkili gitsin
     setToken(null)
     setUser(null)
     setTenant(null)

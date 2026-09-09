@@ -110,6 +110,17 @@ class Settings(BaseSettings):
     vapid_private_key: str = Field("", alias="VAPID_PRIVATE_KEY")
     vapid_subject: str = Field("mailto:imalchera.gfx@gmail.com", alias="VAPID_SUBJECT")
 
+    # ── APNs (iOS uygulama bildirimi) ────────────────────────────────────
+    # Web Push tarayici icindir; uygulamaya bildirim Apple'in APNs'i uzerinden
+    # gider. Anahtar Apple Developer hesabindan alinan .p8 dosyasidir (ES256).
+    # Dosyanin KENDISI .env'e konmaz; yolu verilir.
+    apns_key_path: str = Field("", alias="APNS_KEY_PATH")      # .p8 dosya yolu
+    apns_key_id: str = Field("", alias="APNS_KEY_ID")          # 10 karakter
+    apns_team_id: str = Field("", alias="APNS_TEAM_ID")        # 10 karakter
+    apns_bundle_id: str = Field("com.bernzcompany.magazapanel", alias="APNS_BUNDLE_ID")
+    # "sandbox" = Xcode'dan kurulan derlemeler, "production" = TestFlight/App Store.
+    apns_env: str = Field("sandbox", alias="APNS_ENV")
+
     # SMTP (e-posta gonderimi — sifre sifirlama). Bos ise e-posta ozelligi kapali.
     smtp_host: str = Field("", alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")

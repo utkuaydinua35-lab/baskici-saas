@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { passkeySupported } from '../lib/webauthn'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { mutlak } from '../lib/taban'
 
 // Animasyonlu dekoratif arka plan — drift eden renkli blob'lar + ince nokta ızgara
 function AuthBackground() {
@@ -62,7 +63,7 @@ export default function LoginPage() {
   // Varsayılan false -> kapalıyken bir an bile görünüp kaybolmaz.
   const [signupAllowed, setSignupAllowed] = useState(false)
   useEffect(() => {
-    fetch('/api/auth/public-config')
+    fetch(mutlak('/api/auth/public-config'))
       .then(r => r.ok ? r.json() : null)
       .then(d => setSignupAllowed(!!d?.signup_allowed))
       .catch(() => {})

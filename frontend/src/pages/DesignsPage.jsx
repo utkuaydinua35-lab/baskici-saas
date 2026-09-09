@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, getToken } from '../lib/api'
 import { useToast } from '../components/Toast'
+import { mutlak } from '../lib/taban'
 
 const KALIP_TIPLERI = [
   { value: '', label: 'Belirtilmedi' },
@@ -1051,7 +1052,7 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
       // .jpg yuklenmis bir tasarimi .pdf ile duzeltmek).
       if (yeniDosya) fd.append('file', yeniDosya)
 
-      const res = await fetch(`/api/designs/${design.id}`, {
+      const res = await fetch(mutlak(`/api/designs/${design.id}`), {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${getToken()}` },
         body: fd,

@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
 import { renk } from '../lib/durum'
+import { mutlak } from '../lib/taban'
 
 // Renkler ortak olcekten (lib/durum) — ayni anlam her sayfada ayni renk.
 const PRINT_STATUSES = [
@@ -369,7 +370,7 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
   const downloadPdf = async () => {
     setPdfBusy(true)
     setPdfDurum('')
-    const istek = () => fetch(`/api/molds/${mold.id}/pdf`, {
+    const istek = () => fetch(mutlak(`/api/molds/${mold.id}/pdf`), {
       headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
     })
     const basla = Date.now()

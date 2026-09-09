@@ -14,6 +14,7 @@ const KALIP_TIPLERI = [
 ]
 
 import BayiHesapDialog from '../components/BayiHesapDialog'
+import { mutlak } from '../lib/taban'
 
 export default function DealersPage() {
   const toast = useToast()
@@ -211,7 +212,7 @@ export function CariDialog({ dealer, onClose, onChanged }) {
       if (pdfFrom) qp.set('date_from', pdfFrom)
       if (pdfTo) qp.set('date_to', pdfTo)
       const qs = qp.toString() ? `?${qp}` : ''
-      const res = await fetch(`/api/dealers/${dealer.id}/statement.pdf${qs}`, {
+      const res = await fetch(mutlak(`/api/dealers/${dealer.id}/statement.pdf${qs}`), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error()

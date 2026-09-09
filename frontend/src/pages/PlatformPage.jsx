@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, setToken } from '../lib/api'
 import { useToast } from '../components/Toast'
+import { mutlak, uygulamaYolu } from '../lib/taban'
 
 function fmtDate(d) {
   if (!d) return '—'
@@ -146,7 +147,7 @@ function Backups() {
   const download = async (name) => {
     try {
       const token = localStorage.getItem('baskici_token')
-      const res = await fetch(`/api/platform/backups/${encodeURIComponent(name)}/download`, {
+      const res = await fetch(mutlak(`/api/platform/backups/${encodeURIComponent(name)}/download`), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error()
@@ -363,7 +364,7 @@ function TenantProfiles({ tenantId }) {
     try {
       const r = await api.post(`/api/platform/users/${u.id}/impersonate`, {})
       setToken(r.access_token)
-      window.location.href = '/'
+      window.location.href = uygulamaYolu('/')
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Giriş yapılamadı') }
   }
 

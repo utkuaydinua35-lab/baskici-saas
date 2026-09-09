@@ -2,6 +2,8 @@
  * API client — token'ı localStorage'tan otomatik ekler.
  */
 
+import { mutlak, yanitiMutlaklastir, uygulamaYolu, buYoldaMiyiz } from './taban'
+
 const TOKEN_KEY = 'baskici_token'
 
 export function getToken() {
@@ -64,7 +66,7 @@ async function request(method, url, body, yeniden = false) {
     opts.body = JSON.stringify(body)
   }
 
-  const res = await fetch(url, opts)
+  const res = await fetch(mutlak(url), opts)
   if (res.status === 204) return null
 
   let data = null
@@ -80,7 +82,9 @@ async function request(method, url, body, yeniden = false) {
     // Auth uçları (login/2fa) hariç — orada 401 normal hata akışıdır.
     if (res.status === 401 && token && !url.includes('/api/auth/')) {
       setToken(null)
-      if (!location.pathname.startsWith('/login')) location.href = '/login'
+      // Uygulamada Studio `/studio/` altında duruyor; kök '/login' oraya
+      // gitmez, mağaza panelinin login'ini açardı.
+      if (!buYoldaMiyiz('/login')) location.href = uygulamaYolu('/login')
     }
     // Deploy sırasındaki birkaç saniyelik kesinti kullanıcıya HİÇ görünmesin:
     // OKUMA isteği geçici bir hatayla dönerse bir kez sessizce tekrar dene.
@@ -93,7 +97,7 @@ async function request(method, url, body, yeniden = false) {
                        (data && typeof data === 'object') ? data : null)
   }
 
-  return data
+  return yanitiMutlaklastir(data)
 }
 
 export const api = {
@@ -103,7 +107,7 @@ export const api = {
     const headers = { 'Accept': 'application/json' }
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(url, { method: 'POST', headers, body: formData })
+    const res = await fetch(mutlak(url), { method: 'POST', headers, body: formData })
     if (res.status === 204) return null
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
@@ -111,7 +115,7 @@ export const api = {
       throw new ApiError(res.status, hataMetni(res.status, data),
                          (data && typeof data === 'object') ? data : null)
     }
-    return data
+    return yanitiMutlaklastir(data)
   },
   put:   (url, body)  => request('PUT',    url, body ?? {}),
   patch: (url, body)  => request('PATCH',  url, body ?? {}),

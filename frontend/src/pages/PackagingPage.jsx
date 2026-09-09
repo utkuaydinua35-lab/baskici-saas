@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, getToken } from '../lib/api'
 import { zebraDurum, zebraTaban, zebraYazdir } from '../lib/zebra'
 import { qzDurum, qzYazdir, qzYazicilar, qzYaziciSec } from '../lib/qz'
+import { mutlak } from '../lib/taban'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
 const CARGO_HOUR = 18   // kargo kesim saati
@@ -93,7 +94,7 @@ export default function PackagingPage() {
   // istediği için tarayıcı sekmesinden açılamıyor; token ile burada çekiyoruz.
   const qzSertifikaIndir = async () => {
     try {
-      const r = await fetch('/api/packaging/qz-sertifika', {
+      const r = await fetch(mutlak('/api/packaging/qz-sertifika'), {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!r.ok) { setMsg({ ok: false, text: 'Sertifika alınamadı' }); return }
@@ -174,7 +175,7 @@ export default function PackagingPage() {
         doldur: doldur ? 'true' : 'false',
       })
       const res = await fetch(
-        `/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`,
+        mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`),
         { headers: { Authorization: `Bearer ${getToken()}` } })
       if (!res.ok) {
         let d = ''
@@ -331,7 +332,7 @@ export default function PackagingPage() {
 
   const downloadLabel = async () => {
     if (!order) return
-    const res = await fetch(`/api/packaging/order/${encodeURIComponent(order.id)}/label`, {
+    const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(order.id)}/label`), {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
     if (!res.ok) { setMsg({ ok: false, text: 'Etiket üretilemedi' }); return }
@@ -347,7 +348,7 @@ export default function PackagingPage() {
   const printAdresEtiketi = async (orderId) => {
     if (await zplDene(orderId, 'adres')) return true
     try {
-      const res = await fetch(`/api/packaging/order/${encodeURIComponent(orderId)}/label`, {
+      const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/label`), {
         headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) return false
@@ -393,7 +394,7 @@ export default function PackagingPage() {
   // Basit Kargo SVG, Sürat (doğrudan) PDF döndürür — Content-Type'a bakılır.
   const fetchKargoEtiket = async (orderId) => {
     try {
-      const res = await fetch(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`,
+      const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`),
         { headers: { Authorization: `Bearer ${getToken()}` } })
       if (!res.ok) return null
       const tip = res.headers.get('content-type') || ''

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api, setToken } from '../lib/api'
+import { nativeMi, platformSifirla, uygulamaYolu } from '../lib/taban'
 
 export default function Layout() {
   const { user, tenant, logout } = useAuth()
@@ -300,7 +301,7 @@ function NotificationBell() {
   // destek mesajı → o talep). link yoksa sadece okundu olur.
   const openNotif = (n) => {
     markRead(n.id)
-    if (n.link) { setOpen(false); window.location.href = n.link }
+    if (n.link) { setOpen(false); window.location.href = uygulamaYolu(n.link) }
   }
   const markAll = async () => {
     try { await api.post('/api/notifications/read-all', {}); load() } catch {}
@@ -339,7 +340,7 @@ function NotificationBell() {
           </div>
           <div className="max-h-96 overflow-y-auto">
             {wlBadge && (
-              <button onClick={() => { dismissWlBadge(); window.location.href = '/?worklist=1' }}
+              <button onClick={() => { dismissWlBadge(); window.location.href = uygulamaYolu('/?worklist=1') }}
                 className="w-full text-left px-3 py-2.5 border-b border-brand-border/50 hover:bg-brand-input flex gap-2 bg-accent/5">
                 <span className="text-base shrink-0">📋</span>
                 <div className="min-w-0 flex-1">
@@ -426,6 +427,12 @@ function ProfileDropdown({ user, onLogout }) {
           {can('ayarlar') && (
             <button onClick={() => { _nav('/denetim'); setOpen(false) }} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
               <span className="w-5 text-center">📜</span> Denetim Kaydı
+            </button>
+          )}
+          {/* Uygulamada BERNZ Commerce de aynı pakette; seçiciye dönüş. */}
+          {nativeMi() && (
+            <button onClick={platformSifirla} className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-brand-input flex items-center gap-2">
+              <span className="w-5 text-center">🔀</span> Platform değiştir
             </button>
           )}
           <div className="border-t border-brand-border my-1" />

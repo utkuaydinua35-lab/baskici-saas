@@ -9,6 +9,7 @@ import SlotAssignDialog from '../components/SlotAssignDialog'
 import KalipSlotLabels from '../components/KalipSlotLabels'
 import KalipAyarlari from '../components/KalipAyarlari'
 import { loadLabelSettings } from '../lib/kalipLabel'
+import { mutlak } from '../lib/taban'
 
 const STAGE_ICONS = { edit: '✏️', check: '✓', send: '📤', printer: '🖨', 'check-circle': '✅', circle: '○' }
 const VAR_COLORS = {
@@ -208,7 +209,7 @@ export default function MoldDetailPage() {
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
-      const res = await fetch(`/api/molds/${moldId}/pdf`, {
+      const res = await fetch(mutlak(`/api/molds/${moldId}/pdf`), {
         headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
       })
       if (res.status === 409) {
@@ -270,7 +271,7 @@ export default function MoldDetailPage() {
   const beyazPdfIndir = async () => {
     setBeyazBusy(true)
     try {
-      const res = await fetch(`/api/molds/${moldId}/beyaz-pdf`, {
+      const res = await fetch(mutlak(`/api/molds/${moldId}/beyaz-pdf`), {
         headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
       })
       if (!res.ok) {

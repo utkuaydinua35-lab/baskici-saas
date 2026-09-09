@@ -6,6 +6,8 @@ import { useStore } from '../lib/store'
 import { useToast } from './Toast'
 import BrandMark from './BrandMark'
 import KomutPaleti from './KomutPaleti'
+import { nativeMi } from '../lib/kamera'
+import { platformSifirla } from '../PlatformSecici'
 
 // Shopify yerleşim mantığı: koyu üst bar (marka + mağaza + vitrin linki +
 // profil menüsü), solda GRUPLU menü, Ayarlar en altta sabit.
@@ -236,6 +238,8 @@ function ProfileMenu({ user, logout, refresh }) {
               <span className="text-[10px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">aktif</span>}</>,
               () => { setModal('guvenlik'); setOpen(false) })}
             {item('🔑', 'Şifre değiştir', () => { setModal('sifre'); setOpen(false) })}
+            {/* Uygulamada Studio da aynı pakette; seçiciye dönmenin yolu. */}
+            {nativeMi() && item('🔀', 'Platform değiştir', platformSifirla)}
             <div className="my-1 border-t border-panel-border" />
             {item('🚪', 'Çıkış yap', logout, 'text-red-300 hover:!bg-red-500/10')}
           </div>

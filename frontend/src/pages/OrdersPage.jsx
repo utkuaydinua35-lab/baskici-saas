@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
 import ManualOrderDialog from '../components/ManualOrderDialog'
+import { mutlak } from '../lib/taban'
 
 function ExportButton({ storeId }) {
   const [open, setOpen] = useState(false)
@@ -24,7 +25,7 @@ function ExportButton({ storeId }) {
       const params = new URLSearchParams({ format })
       if (storeId) params.set('store_id', storeId)
       const token = localStorage.getItem('baskici_token')
-      const res = await fetch(`/api/orders/_export?${params}`, {
+      const res = await fetch(mutlak(`/api/orders/_export?${params}`), {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) throw new Error('İndirme hatası')

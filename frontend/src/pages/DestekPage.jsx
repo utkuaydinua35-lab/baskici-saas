@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
+import { mutlak } from '../lib/taban'
 
 const STATUS_LABEL = { acik: 'Açık', cevaplandi: 'Cevaplandı', kapali: 'Kapalı' }
 const STATUS_COLOR = {
@@ -137,7 +138,7 @@ export default function DestekPage() {
     const fd = new FormData()
     fd.append('file', file)
     const token = localStorage.getItem('baskici_token')
-    const res = await fetch('/api/support/upload', {
+    const res = await fetch(mutlak('/api/support/upload'), {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: fd,

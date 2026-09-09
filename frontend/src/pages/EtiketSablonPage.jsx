@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, getToken } from '../lib/api'
 import { useToast } from '../components/Toast'
+import { mutlak } from '../lib/taban'
 
 // Kargo etiketi şablonu — soldan ayarla, sağda ANINDA gör.
 //
@@ -69,7 +70,7 @@ export default function EtiketSablonPage({ embedded = false }) {
   const ciz = useCallback(async (a) => {
     setCiziliyor(true)
     try {
-      const res = await fetch('/api/packaging/etiket-onizleme', {
+      const res = await fetch(mutlak('/api/packaging/etiket-onizleme'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ ayarlar: a, store_id: magazaId || null }),

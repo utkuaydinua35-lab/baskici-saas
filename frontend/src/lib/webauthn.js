@@ -1,6 +1,7 @@
 // WebAuthn (geçiş anahtarı / passkey) yardımcıları.
 // Sunucu base64url alanlarla options gönderir; tarayıcı ArrayBuffer ister.
 import { api } from './api'
+import { nativeMi } from './taban'
 
 function b64uToBuf(b64u) {
   const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/')
@@ -19,6 +20,15 @@ function bufToB64u(buf) {
 }
 
 export function passkeySupported() {
+  // UYGULAMADA ÇALIŞMAZ. WebAuthn, sayfanın origin'inin RP ID ile aynı alan
+  // adında ve https olmasını şart koşar; native kabukta sayfa
+  // `capacitor://localhost` üzerinden açılıyor, RP ID ise
+  // studio.bernzcompany.com. Tarayıcı isteği reddediyor ve kullanıcı
+  // "Geçiş anahtarıyla giriş yapılamadı" hatası alıyordu — düğmeyi hiç
+  // göstermemek dürüst olan. Uygulamada açmak için Associated Domains +
+  // yerel passkey API'si (ASAuthorization) gerekir; o da ücretli Apple
+  // Developer takım kimliği ve alan adında apple-app-site-association ister.
+  if (nativeMi()) return false
   return !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create)
 }
 

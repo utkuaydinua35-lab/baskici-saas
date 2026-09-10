@@ -97,7 +97,11 @@ def _send(db: Session, order: Order) -> bool:
         emoji="📦",
         **brand,
     )
-    ok = email_service.send_email(email, subj_over or "Siparişiniz kargoya verildi 📦", html)
+    from app.services import email_log
+    _konu = subj_over or "Siparişiniz kargoya verildi 📦"
+    ok = email_log.gonder_ve_kaydet(
+        db, tenant_id=order.tenant_id, to=email, subject=_konu, html=html,
+        order_id=order.id, template_key="kargo")
     if not ok:
         return False
 

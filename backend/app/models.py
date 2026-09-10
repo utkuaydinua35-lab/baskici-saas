@@ -730,15 +730,29 @@ class EmailTemplate(Base):
 
 
 class EmailLog(Base):
-    """Gönderilen e-posta kaydı (görsel 5 'E-posta Geçmişi')."""
+    """Gönderilen e-postanın kaydı ve TESLİMAT DURUMU.
+
+    ⚠ NEDEN VAR: müşteri "mail gelmedi" dediğinde elimizde hiçbir kanıt yoktu.
+    send_email yalnız True/False dönüyordu; Resend'in verdiği message id
+    atılıyordu ve bounce/complaint bildirimi hiç toplanmıyordu. Yani mailin
+    kutuya düşüp düşmediği SİSTEMDEN CEVAPLANAMIYORDU — eksik stok akışının
+    WhatsApp'a taşınmasının asıl sebebi buydu.
+
+    `durum` akışı: gonderildi → iletildi | sekti | sikayet | gecikti
+    (Resend webhook'u günceller; webhook gelmezse "gonderildi"de kalır ve
+    panelde "sağlayıcıdan bilgi gelmedi" olarak gösterilir.)
+    """
     __tablename__ = "email_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
-    order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    # Siparişe bağlı OLMAYAN mailler de kaydedilebilsin (şifre sıfırlama,
+    # pazarlama testi): teşhis için gönderim kaydı her hâlükârda değerli.
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=True, index=True
     )
 
     template_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -749,9 +763,25 @@ class EmailLog(Base):
         String(20), default="gonderildi", server_default=text("'gonderildi'"), nullable=False
     )
 
+    # ── Teşhis alanları ──
+    provider: Mapped[str | None] = mapped_column(String(20), nullable=True)  # resend | smtp
+    # Resend'in message id'si — webhook olayları BUNUNLA eşleşir.
+    provider_message_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_event: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    bounced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    order: Mapped[Order] = relationship(back_populates="email_logs")
+    order: Mapped[Order | None] = relationship(back_populates="email_logs")
 
 
 class ActivityLog(Base):

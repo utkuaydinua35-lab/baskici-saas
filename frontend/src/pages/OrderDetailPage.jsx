@@ -1379,6 +1379,8 @@ function OnayTab({ orderId }) {
 
       <MusteriBaglantilari orderId={orderId} />
 
+      <EpostaGecmisi orderId={orderId} />
+
       {items.length > 1 && (
         <PanelCard title="Geçmiş Versiyonlar" icon="🕐">
           <div className="space-y-2">
@@ -1402,6 +1404,82 @@ function OnayTab({ orderId }) {
   )
 }
 
+
+const EPOSTA_DURUM = {
+  iletildi: { cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', ikon: '✓' },
+  gonderildi: { cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30', ikon: '↗' },
+  gecikti: { cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30', ikon: '⏳' },
+  sekti: { cls: 'bg-red-500/15 text-red-300 border-red-500/30', ikon: '✕' },
+  sikayet: { cls: 'bg-red-500/15 text-red-300 border-red-500/30', ikon: '⚠' },
+  basarisiz: { cls: 'bg-red-500/15 text-red-300 border-red-500/30', ikon: '✕' },
+}
+
+// Siparişe giden e-postalar + teslimat durumu.
+// ⚠ NEDEN VAR: müşteri "mail gelmedi" dediğinde elimizde hiçbir kanıt yoktu.
+// "Ulaştı" ile "bilmiyoruz" ayrı gösterilir — ikisini karıştırmak, olmayan
+// bilgiyi varmış gibi sunmak olurdu.
+function EpostaGecmisi({ orderId }) {
+  const [d, setD] = useState(null)
+
+  useEffect(() => {
+    let iptal = false
+    api.get(`/api/orders/${orderId}/eposta-gecmisi`)
+      .then(r => { if (!iptal) setD(r) })
+      .catch(() => { if (!iptal) setD({ items: [] }) })
+    return () => { iptal = true }
+  }, [orderId])
+
+  if (!d) return null
+  const items = d.items || []
+
+  return (
+    <PanelCard title="E-posta Geçmişi" icon="📧">
+      {items.length === 0 ? (
+        <p className="text-[11px] text-gray-600">
+          Bu siparişe henüz e-posta gönderilmedi.
+          {d.eposta ? '' : ' (Siparişte e-posta adresi de yok.)'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map(m => {
+            const st = EPOSTA_DURUM[m.durum] || EPOSTA_DURUM.gonderildi
+            return (
+              <div key={m.id} className="border border-brand-border rounded-lg p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs text-gray-200 min-w-0 break-words">{m.subject}</span>
+                  <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border ${st.cls}`}>
+                    {st.ikon} {m.durum_etiket}
+                  </span>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-1 break-all">{m.to}</div>
+                <div className="text-[10px] text-gray-600 mt-0.5">
+                  {formatDate(m.gonderildi_at)}
+                  {m.iletildi_at && ` · ulaştı ${formatDate(m.iletildi_at)}`}
+                  {m.acildi_at && ` · açıldı ${formatDate(m.acildi_at)}`}
+                </div>
+                {m.hata && (
+                  <div className="text-[10px] text-red-300 mt-1 break-words">{m.hata}</div>
+                )}
+                {m.geri_bildirim_bekleniyor && (
+                  <div className="text-[10px] text-gray-500 mt-1">
+                    Sağlayıcıdan teslimat bilgisi henüz gelmedi
+                    {d.webhook_acik ? '' : ' — teslimat bildirimi kurulu değil'}.
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {!d.webhook_acik && items.length > 0 && (
+        <div className="text-[10px] text-gray-600 mt-2 leading-relaxed">
+          ⓘ Teslimat bildirimi (Resend webhook) kurulu değil; durumlar
+          "Gönderildi"de kalır. Kurulunca ulaştı / geri döndü bilgisi buraya düşer.
+        </div>
+      )}
+    </PanelCard>
+  )
+}
 
 function kalanSure(iso) {
   if (!iso) return ''

@@ -71,8 +71,14 @@ def send_stok_eksik(db: Session, order: Order, urun: str) -> tuple[bool, str]:
         emoji="📦",
         **brand,
     )
+    # ⚠ TEŞHİS: gönderim email_logs'a yazılır (sağlayıcı message id ile).
+    # "Mail gelmedi" şikayetinin cevabı bu kayıtta; eskiden hiçbir iz yoktu.
+    from app.services import email_log
     try:
-        ok = email_service.send_email(to, "Siparişinizdeki bir ürün hakkında", html)
+        ok = email_log.gonder_ve_kaydet(
+            db, tenant_id=order.tenant_id, to=to,
+            subject="Siparişinizdeki bir ürün hakkında", html=html,
+            order_id=order.id, template_key="stok_eksik")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[stok_eksik] gonderilemedi: {e}")
         return False, f"Gönderilemedi: {str(e)[:120]}"

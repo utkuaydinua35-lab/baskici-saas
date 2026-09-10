@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import smtplib
 import ssl
+from dataclasses import dataclass
 from email.message import EmailMessage
 
 from app.config import get_settings
@@ -20,8 +21,25 @@ def is_configured() -> bool:
     return bool(s.resend_api_key) or bool(s.smtp_host and s.smtp_user and s.smtp_password)
 
 
+@dataclass(frozen=True)
+class Sonuc:
+    """Gönderim sonucu.
+
+    ⚠ `message_id` TEŞHİSİN OMURGASI: Resend'in webhook olayları (iletildi,
+    sekti, şikayet) bu kimlikle geliyor. Eskiden atılıyordu ve "mail ulaştı mı"
+    sorusu sistemden CEVAPLANAMIYORDU.
+    """
+    ok: bool
+    saglayici: str = ""          # resend | smtp
+    message_id: str | None = None
+    hata: str | None = None
+
+    def __bool__(self) -> bool:   # eski `if send_email(...)` kullanımı sürsün
+        return self.ok
+
+
 def _send_resend(s, to: str, subject: str, html: str, text: str | None,
-                 headers: dict | None) -> bool:
+                 headers: dict | None) -> Sonuc:
     """HTTPS (443) üzerinden Resend API ile gönder — SMTP portları kapalı VPS için."""
     import httpx
     sender = s.resend_from or s.smtp_from or s.smtp_user
@@ -38,24 +56,42 @@ def _send_resend(s, to: str, subject: str, html: str, text: str | None,
             timeout=20,
         )
         if r.status_code in (200, 201):
-            logger.info(f"[email] gönderildi (resend) -> {to} ({subject})")
-            return True
-        logger.warning(f"[email] resend hata {r.status_code}: {r.text[:300]}")
-        return False
+            try:
+                mid = (r.json() or {}).get("id")
+            except Exception:  # noqa: BLE001 — gövde bozuksa gönderim yine başarılı
+                mid = None
+            logger.info(f"[email] gönderildi (resend) -> {to} ({subject}) id={mid}")
+            return Sonuc(True, "resend", mid)
+        _h = f"HTTP {r.status_code}: {r.text[:280]}"
+        logger.warning(f"[email] resend hata {_h}")
+        return Sonuc(False, "resend", None, _h)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[email] resend gönderim hatası: {e}")
-        return False
+        return Sonuc(False, "resend", None, str(e)[:280])
 
 
 def send_email(to: str, subject: str, html: str, text: str | None = None,
                headers: dict | None = None) -> bool:
-    """E-posta gönder. Başarılıysa True. Ayarlı değilse / hata olursa False.
+    """E-posta gönder — Başarılıysa True (eski sözleşme, DEĞİŞMEDİ).
+
+    Sağlayıcı message id'si gerekiyorsa `send_email_ex` kullanın; bu sarmalayıcı
+    yalnız bool döner çünkü bazı çağıranlar sonucu doğrudan JSON yanıtına
+    koyuyor.
+    """
+    return bool(send_email_ex(to, subject, html, text, headers))
+
+
+def send_email_ex(to: str, subject: str, html: str, text: str | None = None,
+                  headers: dict | None = None) -> Sonuc:
+    """E-posta gönder ve SONUCU AYRINTILI dön (sağlayıcı, message id, hata).
+
     RESEND_API_KEY doluysa HTTPS API ile, değilse SMTP ile gönderir.
-    headers: ek e-posta başlıkları (örn. List-Unsubscribe)."""
+    headers: ek e-posta başlıkları (örn. List-Unsubscribe).
+    """
     s = get_settings()
     if not is_configured():
         logger.warning("[email] mail yapılandırılmamış — gönderilmedi")
-        return False
+        return Sonuc(False, "", None, "E-posta yapılandırılmamış")
 
     # SMTP portları kapalı VPS'lerde Resend (443) tercih edilir
     if s.resend_api_key:
@@ -84,10 +120,11 @@ def send_email(to: str, subject: str, html: str, text: str | None = None,
                 srv.login(s.smtp_user, s.smtp_password)
                 srv.send_message(msg)
         logger.info(f"[email] gönderildi -> {to} ({subject})")
-        return True
+        # SMTP'de sağlayıcı message id yok; teslimat geri bildirimi de gelmez.
+        return Sonuc(True, "smtp", msg.get("Message-ID"))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[email] gönderim hatası: {e}")
-        return False
+        return Sonuc(False, "smtp", None, str(e)[:280])
 
 
 # ─── Şık e-posta şablonu (tüm e-postalar ortak görünüm) ──────────────

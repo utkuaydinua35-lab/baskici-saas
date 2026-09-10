@@ -2,6 +2,9 @@
 
 Basit Kargo kargo durumu:
   POST /api/webhooks/basit-kargo/{secret}
+
+Resend e-posta teslimat durumu:
+  POST /api/webhooks/resend/{secret}
 Payload (status değişikliği): {id, barcode, status, handler{...}, handlerShipmentCode}
 Order.kargo_info.barcode ile eşleştirir → kargo_info günceller, DELIVERED'da stage 9
 (Teslim), sorunlu durumlarda Telegram uyarısı.
@@ -145,3 +148,56 @@ def basit_kargo_webhook(
 
     db.commit()
     return {"ok": True, "matched": True, "status": status, "changed": changed}
+
+
+# ─── Resend: e-posta teslimat durumu ──────────────────────────────────────
+@router.post("/resend/{secret}", response_model=None)
+def resend_webhook(
+    secret: str,
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_db),
+):
+    """Resend olayları → email_logs.durum.
+
+    ⚠ NEDEN: "mail gelmedi" şikayetinde elimizde kanıt yoktu. Bu uç sayesinde
+    her mailin ULAŞTI / GERİ DÖNDÜ / SPAM bilgisi siparişin altında görünüyor.
+
+    Olay gövdesi: {type: "email.delivered", created_at, data: {email_id, ...}}
+    Eşleşme email_id ile — gönderirken kaydettiğimiz provider_message_id.
+    Bilinmeyen id sessizce yutulur (200): Resend 4xx'te tekrar tekrar dener ve
+    bizimle ilgisi olmayan bir gönderim kuyruğu tıkardı.
+    """
+    s = get_settings()
+    expected = (s.resend_webhook_secret or "").strip()
+    if not expected or not hmac.compare_digest(
+            secret.encode("utf-8", "replace"),
+            expected.encode("utf-8", "replace")):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    from app.services import email_log
+
+    olay = str(payload.get("type") or "").strip()
+    data = payload.get("data") or {}
+    mid = str(data.get("email_id") or data.get("id") or "").strip()
+    zaman = _webhook_zamani(payload.get("created_at"))
+
+    if olay not in email_log.OLAY_DURUM:
+        # Yeni olay türleri eklenebilir; bilmediğimizi hata saymıyoruz.
+        return {"ok": True, "matched": False, "reason": "bilinmeyen olay"}
+
+    eslesti = email_log.olay_isle(db, olay, mid, zaman)
+    if eslesti:
+        db.commit()
+    else:
+        logger.info(f"[resend] eşleşmeyen olay {olay} id={mid[:40]}")
+    return {"ok": True, "matched": eslesti, "event": olay}
+
+
+def _webhook_zamani(ham) -> datetime:
+    """Olayın zamanı; okunamazsa şimdi (kayıt zamansız kalmasın)."""
+    if isinstance(ham, str) and ham:
+        try:
+            return datetime.fromisoformat(ham.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return datetime.now(UTC)

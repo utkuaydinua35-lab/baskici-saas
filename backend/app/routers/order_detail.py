@@ -1084,9 +1084,12 @@ def send_customer_email(
         footer=f"Sipariş #{order.order_number} · Bu e-posta siparişinizle ilgilidir.",
         **bk,
     )
-    ok = email_service.send_email(to, req.subject, html)
+    from app.services import email_log
+    ok = email_log.gonder_ve_kaydet(
+        db, tenant_id=order.tenant_id, to=to, subject=req.subject, html=html,
+        order_id=order.id, template_key="elle")
     if not ok:
-        raise HTTPException(502, "E-posta gönderilemedi (SMTP)")
+        raise HTTPException(502, "E-posta gönderilemedi")
     _log_history(db, order, user, action="musteri_email", note=(req.subject or "")[:80])
     db.commit()
     return {"ok": True, "to": to}
@@ -1161,6 +1164,38 @@ def adres_degisim_baglantisi(
     return {"link": baglanti, "message": metin, "phone": tel,
             "wa_url": md_svc.wa_url(tel, metin),
             "gecerlilik_dk": ad_svc.GECERLILIK_DAKIKA}
+
+
+@router.get("/{order_ref}/eposta-gecmisi", response_model=dict)
+def eposta_gecmisi(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bu siparişe gönderilen e-postalar ve TESLİMAT DURUMLARI.
+
+    ⚠ NEDEN VAR: "mail gelmedi" şikayetinde elimizde hiçbir kanıt yoktu.
+    Artık her gönderim kaydediliyor ve Resend webhook'u ULAŞTI / GERİ DÖNDÜ /
+    SPAM bilgisini işliyor. Bilgi gelmemişse "bekleniyor" olarak gösterilir —
+    "bilinmiyor" ile "ulaşmadı" ASLA karıştırılmamalı.
+    """
+    from app.config import get_settings
+    from app.models import EmailLog
+    from app.services import email_log
+
+    order = _resolve_order(db, order_ref, user.tenant_id, with_rels=False)
+    kayitlar = db.scalars(
+        select(EmailLog)
+        .where(EmailLog.order_id == order.id, EmailLog.tenant_id == user.tenant_id)
+        .order_by(desc(EmailLog.created_at))
+        .limit(50)
+    ).all()
+    return {
+        "items": [email_log.ozet(k) for k in kayitlar],
+        "eposta": order.customer_email,
+        # Webhook kurulu değilse panel "durum gelmiyor" diye boşuna beklemesin.
+        "webhook_acik": bool((get_settings().resend_webhook_secret or "").strip()),
+    }
 
 
 @router.get("/{order_ref}/musteri-baglantilari", response_model=dict)

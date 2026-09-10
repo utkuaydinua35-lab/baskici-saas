@@ -281,8 +281,11 @@ def _send_confirmation_email(db: Session, session: CheckoutSession, order: Order
         emoji="🛍️",
         **brand,
     )
-    email_service.send_email(
-        email, subj_over or f"Siparişiniz alındı — #{order.order_number}", html)
+    from app.services import email_log
+    email_log.gonder_ve_kaydet(
+        db, tenant_id=order.tenant_id, to=email,
+        subject=subj_over or f"Siparişiniz alındı — #{order.order_number}",
+        html=html, order_id=order.id, template_key="siparis_alindi")
 
 
 def create_order_from_session(db: Session, session: CheckoutSession) -> Order:

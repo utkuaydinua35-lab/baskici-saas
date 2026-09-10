@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.models import SupportMessage, SupportThread, User
+from app.models import Order, SupportMessage, SupportThread, User
 from app.services import support as sup
 from app.services import uploads as uploads_service
 
@@ -97,7 +97,7 @@ _STAGE_LABEL = {
 
 def _order_detail_for_thread(db: Session, t: SupportThread) -> dict | None:
     """Konuşmanın sipariş numarasına göre sipariş özetini (kalemler/durum/kargo) döndür."""
-    from app.models import LineItem, Order
+    from app.models import LineItem
     onum = (t.order_number or "").strip()
     if not onum:
         return None
@@ -248,8 +248,19 @@ def _send_reply_email(db: Session, thread: SupportThread, body: str, img_url: st
     text = (f"Destek talebiniz yanıtlandı — Sipariş #{onum}\n\nMerhaba {ad},\n\n"
             f"{(body or '').strip()}\n\nGörüntüle/Yanıtla: {track}")
     subject = f"Destek talebiniz yanıtlandı — Sipariş #{onum}"
-    ok = email_service.send_email(to, subject, html, text)
-    return ok, (None if ok else "Gönderim başarısız (SMTP log'una bakın)")
+    from app.services import email_log
+    # SupportThread siparişe order_number ile bağlı (FK yok). Çözebilirsek
+    # e-posta siparişin altında görünsün; çözemezsek kayıt yine tutulur —
+    # teşhis için gönderimin kendisi de değerli.
+    _oid = None
+    if thread.order_number:
+        _oid = db.scalar(select(Order.id).where(
+            Order.tenant_id == thread.tenant_id,
+            Order.order_number == str(thread.order_number)).limit(1))
+    ok = email_log.gonder_ve_kaydet(
+        db, tenant_id=thread.tenant_id, to=to, subject=subject, html=html,
+        text=text, order_id=_oid, template_key="destek_yanit")
+    return ok, (None if ok else "Gönderim başarısız — e-posta geçmişindeki hataya bakın")
 
 
 @router.post("/threads/{thread_id}/reply", response_model=dict)

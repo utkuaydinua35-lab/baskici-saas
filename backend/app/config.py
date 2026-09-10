@@ -149,6 +149,9 @@ class Settings(BaseSettings):
     basit_kargo_brand_id: str = Field("", alias="BASIT_KARGO_BRAND_ID")      # opsiyonel marka
     # Webhook secret (URL'de): boş ise webhook kapalı (tüm istekler 404).
     basit_kargo_webhook_secret: str = Field("", alias="BASIT_KARGO_WEBHOOK_SECRET")
+    # Resend teslimat/bounce webhook secret'i (URL'de). Boşsa webhook kapalı
+    # (tüm istekler 404) ve e-posta durumu "gonderildi"de kalır.
+    resend_webhook_secret: str = Field("", alias="RESEND_WEBHOOK_SECRET")
 
     @property
     def is_production(self) -> bool:

@@ -150,6 +150,22 @@ else:
     es("seçilebilir hedef model var", True, _hedef is not None)
     _stoksuz = next((m["deger"] for m in _hepsi if m.get("stokta") is False), None)
 
+    print("\n── Special'da model yoksa ÜRÜN değiştirerek çıkış ──")
+    # Müşterinin telefonu Special listesinde olmayabilir; o zaman Special'da
+    # kalamaz ama başka bir ürüne geçerek modelini koruyabilmeli.
+    _tum = _v.get("markalar_tum") or []
+    es("tam model listesi de gönderildi", True, len(_tum) > 0)
+    _tumHepsi = [m["deger"] for g in _tum for m in g["modeller"]]
+    es("tam liste Special'dan GENİŞ", True, len(_tumHepsi) > len(_hepsi))
+    _disarida = next((m for m in _tumHepsi
+                      if m not in {x["deger"] for x in _hepsi}), None)
+    es("Special'da olmayan bir model var", True, _disarida is not None)
+    if _disarida:
+        # Ürün seçilmeden Special dışı model REDDEDİLİR
+        es("ürünsüz, Special dışı model reddedildi", 400,
+           C.post(f"/api/public/model-degisim/{TOKEN}",
+                  json={"model": _disarida}).status_code)
+
     print("\n── sipariş özeti sayfada ──")
     _sip = _v.get("siparis") or {}
     es("sipariş numarası var", True, bool(_sip.get("no")))
@@ -158,6 +174,13 @@ else:
        any(k.get("bu_kalem") for k in (_sip.get("kalemler") or [])))
     es("her kalemde durum var", True,
        all(k.get("durum") for k in (_sip.get("kalemler") or [])))
+    # Görsel ve model alanları SAYFADA gösteriliyor; anahtarları hep gelsin.
+    es("kalemlerde görsel alanı var", True,
+       all("gorsel" in k for k in (_sip.get("kalemler") or [])))
+    es("kalemlerde model alanı var", True,
+       all("model" in k for k in (_sip.get("kalemler") or [])))
+    es("en az bir kalemde model ÇÖZÜLDÜ", True,
+       any(k.get("model") for k in (_sip.get("kalemler") or [])))
 
     es("geçersiz model reddedildi", 400,
        C.post(f"/api/public/model-degisim/{TOKEN}",

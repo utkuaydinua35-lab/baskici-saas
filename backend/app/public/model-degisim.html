@@ -39,8 +39,14 @@
   .kalem{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
     padding:10px 0;border-top:1px solid var(--border)}
   .kalem:first-child{border-top:0}
+  .kalem .gorsel{width:46px;height:46px;border-radius:9px;object-fit:cover;
+    background:#0c0e14;flex:0 0 auto}
+  .kalem .sol{display:flex;gap:10px;align-items:flex-start;min-width:0}
   .kalem .ad{font-size:13.5px}
-  .kalem .mdl{font-size:12px;color:var(--muted);margin-top:2px}
+  .cikis{display:block;width:100%;margin-top:10px;background:none;border:0;
+    color:var(--accent);font-size:12.5px;text-decoration:underline;cursor:pointer;
+    padding:6px 0;text-align:left}
+  .kalem .mdl{display:block;font-size:12px;color:var(--muted);margin-top:3px}
   .rozet{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
   .r-hazir{background:var(--green-bg);color:#86efac;border:1px solid rgba(34,197,94,.4)}
   .r-bekl{background:var(--amber-bg);color:#fcd34d;border:1px solid rgba(245,158,11,.4)}
@@ -134,7 +140,7 @@ async function yukle() {
   }
 
   const kalan = saatKaldi(v.son_gecerlilik);
-  const markalar = v.markalar || [];
+  const markalar = [...(v.markalar || [])];
   const sip = v.siparis || {};
   const kalemler = sip.kalemler || [];
   const katalog = v.katalog || [];
@@ -167,6 +173,11 @@ async function yukle() {
         <option value="">Önce marka seçiniz</option>
       </select>
 
+      ${(v.ozel_seri && (v.markalar_tum || []).length) ? `
+        <button class="cikis" id="tumModeller">
+          Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum
+        </button>` : ''}
+
       <button class="btn" id="gonder" disabled>Değişikliği onayla</button>
       <div class="kucuk">
         ${kalan ? `Bu bağlantı ${kacir(kalan)} sonra geçersiz olacak. ` : ''}
@@ -194,9 +205,12 @@ async function yukle() {
       <div class="card">
         ${kalemler.map(k => `
           <div class="kalem${k.bu_kalem ? ' bu' : ''}">
-            <span>
-              <span class="ad">${kacir(k.urun)}</span>
-              ${k.model ? `<span class="mdl">${kacir(k.model)}</span>` : ''}
+            <span class="sol">
+              ${k.gorsel ? `<img class="gorsel" src="${kacir(k.gorsel)}" alt="" loading="lazy">` : ''}
+              <span style="min-width:0">
+                <span class="ad">${kacir(k.urun)}</span>
+                ${k.model ? `<span class="mdl">${kacir(k.model)}</span>` : ''}
+              </span>
             </span>
             <span class="rozet ${rozetSinif(k.durum)}">${kacir(k.durum)}</span>
           </div>`).join('')}
@@ -236,12 +250,36 @@ async function yukle() {
   };
   // ── Ürün kataloğu: kategori + arama ──────────────────────────────────
   let secilenUrun = null;
+  let tumModelModu = false;   // Special'dan çıkıp tam model listesine geçildi mi
   let aktifKategori = null;   // null = tümü
 
   const guncelleGonder = () => {
+    // Tam model modunda Special'dan çıkılıyor demektir; ürün seçimi zorunlu.
+    if (tumModelModu) { gonder.disabled = !(model.value && secilenUrun); return; }
     gonder.disabled = !(model.value || secilenUrun);
   };
   model.onchange = guncelleGonder;
+
+  // BERNZ Special'da müşterinin telefonu listede olmayabilir. O durumda
+  // Special'da kalmak mümkün değil; ama başka bir ürüne geçerek modelini
+  // koruyabilir. Bu düğme tam model listesini açar ve ürün seçimini ZORUNLU
+  // kılar — yoksa üretilemeyecek bir seçim yapılmış olurdu.
+  const tumBtn = document.getElementById('tumModeller');
+  if (tumBtn) {
+    tumBtn.onclick = () => {
+      tumModelModu = !tumModelModu;
+      markalar.length = 0;
+      (tumModelModu ? (v.markalar_tum || []) : (v.markalar || [])).forEach(g => markalar.push(g));
+      marka.innerHTML = '<option value="">Seçiniz…</option>' +
+        markalar.map((g, i) => `<option value="${i}">${kacir(g.marka)}</option>`).join('');
+      model.innerHTML = '<option value="">Önce marka seçiniz</option>';
+      model.disabled = true;
+      tumBtn.textContent = tumModelModu
+        ? '← BERNZ Special model listesine dön'
+        : 'Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum';
+      guncelleGonder();
+    };
+  }
 
   const cipler = document.getElementById('cipler');
   const izgara = document.getElementById('izgara');

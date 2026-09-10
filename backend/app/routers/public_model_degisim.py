@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
-    LineItem, ModelDegisimTalebi, Mold, MoldItem, MoldStatusHistory,
+    CatalogImage, CatalogProduct, LineItem, ModelDegisimTalebi, Mold, MoldItem, MoldStatusHistory,
     Notification, Order, OrderStatusHistory, PhoneModel,
 )
 from app.routers.public_tracker import rate_limit
@@ -191,12 +191,37 @@ def _siparis_ozeti(db: Session, t: ModelDegisimTalebi) -> dict:
     _ad = " ".join(x for x in [adres.get("first_name"), adres.get("last_name")] if x).strip()
     _satir = " ".join(x for x in [adres.get("address1"), adres.get("address2")] if x).strip()
 
+    from app.services import mold_planner as _mp
+
+    _kalem_listesi = list(db.scalars(
+        select(LineItem).where(LineItem.order_id == order.id)).all())
+
+    # Görsel kaynağı: kalemin kendi `product_image_url`'i çoğu kalemde BOŞ
+    # (üretimde 609/8575). Aynı başlıklı katalog ürününün görseli çok daha
+    # kapsayıcı (5558/8575), o yüzden ikisi birlikte kullanılıyor.
+    _basliklar = {(li.title or "").strip() for li in _kalem_listesi if li.title}
+    _katalog_gorsel: dict[str, str] = {}
+    if _basliklar:
+        for _p, _yol in db.execute(
+            select(CatalogProduct.title, CatalogImage.file_path)
+            .join(CatalogImage, CatalogImage.product_id == CatalogProduct.id)
+            .where(CatalogProduct.tenant_id == t.tenant_id,
+                   CatalogProduct.title.in_(_basliklar))
+            .order_by(CatalogImage.position)
+        ).all():
+            _katalog_gorsel.setdefault((_p or "").strip(), f"/storage/{_yol}")
+
     kalemler = []
-    for li in db.scalars(select(LineItem).where(LineItem.order_id == order.id)).all():
+    for li in _kalem_listesi:
+        # Model TEK KAYNAKTAN: elle düzeltilmişse o, yoksa siparişten çözülen.
+        # Yalnız device_model_override'a bakmak, düzeltilmemiş kalemlerde
+        # modeli boş gösteriyordu.
+        _model = (li.device_model_override or "").strip() or _mp.extract_phone_model(li) or None
         kalemler.append({
-            "urun": (li.title or "")[:120],
-            "model": li.device_model_override or None,
-            "adet": li.quantity if hasattr(li, "quantity") else None,
+            "urun": (li.title or "")[:160],
+            "model": _model,
+            "gorsel": (li.product_image_url
+                       or _katalog_gorsel.get((li.title or "").strip()) or None),
             "durum": _kalem_durumu(li),
             "bu_kalem": str(li.id) == str(t.line_item_id),
         })
@@ -227,12 +252,18 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         return {"durum": "suresi_doldu"}
 
     markalar, ozel = _model_secenekleri(db, t)
+    # BERNZ Special'da müşterinin telefonu listede olmayabilir. O durumda
+    # Special'da kalmak mümkün değil ama BAŞKA bir ürüne geçerek modelini
+    # koruyabilir — bu yüzden tam liste de gönderilir ve sayfada "modelim
+    # listede yok" seçeneğiyle açılır.
+    tum = _markalara_ayir(_tum_modeller(db, t.tenant_id)) if ozel else None
     return {
         "durum": "bekliyor",
         "urun": t.urun_adi,
         "mevcut_model": t.mevcut_model,
         "ozel_seri": ozel,
         "markalar": markalar,
+        "markalar_tum": tum,
         "siparis": _siparis_ozeti(db, t),
         "katalog": urun_katalog.katalog(db, t.tenant_id),
         "son_gecerlilik": t.expires_at.isoformat() if t.expires_at else None,
@@ -317,6 +348,12 @@ def uygula(token: str, istek: SecimIstegi,
 
     if model:
         markalar, ozel = _model_secenekleri(db, t)
+        # BERNZ Special stok kısıtı YALNIZ Special'da kalınırken geçerli.
+        # Müşteri başka bir ürüne geçiyorsa (urun seçtiyse) o ürünün model
+        # yelpazesi geçerlidir — aksi halde "modelim Special'da yok" diyen
+        # müşteriye çıkış yolu bırakmamış olurduk.
+        if ozel and urun is not None:
+            markalar, ozel = _markalara_ayir(_tum_modeller(db, t.tenant_id)), False
         # ⚠ Yalnız STOKTA olan seçilebilir. Listede görünen ama stokta olmayan
         # bir modelin sunucuda da reddedilmesi şart: sayfadaki `disabled`
         # yalnız görsel bir engel.
@@ -327,7 +364,10 @@ def uygula(token: str, istek: SecimIstegi,
         if ozel:
             from app.services import ozel_seri
             if not ozel_seri.stokta_mi(db, t.tenant_id, model):
-                raise HTTPException(status_code=400, detail="Bu model şu an stokta değil.")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bu model BERNZ Special'da stokta değil. Farklı bir ürün "
+                           "seçerek bu modelde devam edebilirsiniz.")
 
 
     # ⚠ ÖNCE kalıptan çek: aşağıdaki alan değişiklikleri sırasında hata çıksa

@@ -490,6 +490,10 @@ def _serialize_mold_detail(mo, db):
         "hazir_count": hazir_count,
         "created_at": mo.created_at.isoformat() if mo.created_at else None,
         "updated_at": mo.updated_at.isoformat() if getattr(mo, "updated_at", None) else None,
+        # Baskıcının kalıbı açınca GÖRMESİ gereken uyarılar. Şu an tek kaynağı:
+        # müşteri linkten modelini değiştirdi ve kalem kalıptan çekildi. Bunu
+        # görmezse eski modelin kılıfını basar ve doğrudan çöpe gider.
+        "uyarilar": list(getattr(mo, "uyarilar", None) or []),
         "items": items,
     }
 
@@ -821,6 +825,10 @@ class RemoveItemRequest(BaseModel):
     # sipariş ekranında "Stokta mevcut değil" görür — yanlış sebep göstermek
     # bayiyi yanıltır, o yüzden tahmin edilmez, açıkça işaretlenir.
     stok_yok: bool = False
+    # WhatsApp: hazır mesaj + 12 saatlik "modelini değiştir" bağlantısı üretilir
+    # ve yanıtta wa.me adresi döner. Panel bunu yeni sekmede açar; mesajı
+    # operatör kendi hesabından gönderir (bkz. services/model_degisim.py).
+    musteriye_whatsapp: bool = False
 
 
 # ⚠ Bu uç kalıbın İÇERİĞİNİ değiştirir → hazırlanmış PDF geçersizdir.
@@ -862,6 +870,7 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     }
 
     _mail_sonuc = None
+    _whatsapp = None
     if payload.action == "replan":
         # line item tekrar kalıba eklenmemiş -> sonraki planda çıkar
         # (line_item_id yoksa order_number+design_code fallback'i ile esle)
@@ -898,6 +907,34 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
                         note += f" · 📧 {_urun} için müşteriye bildirim gönderildi"
             except Exception as e:  # noqa: BLE001
                 _mail_sonuc = f"Bildirim gönderilemedi: {str(e)[:120]}"
+
+        # WhatsApp — hazır mesaj + tek kullanımlık değişiklik bağlantısı.
+        # Hata çıkarsa kalıptan çıkarma İŞLEMİNİ BOZMAZ; düğme sonuçsuz kalır.
+        if payload.musteriye_whatsapp and li is not None:
+            try:
+                from app.services import model_degisim as _md
+                _ord2 = db.scalar(select(Order).where(Order.id == li.order_id))
+                if _ord2 is None:
+                    _whatsapp = {"hata": "Sipariş bulunamadı"}
+                else:
+                    _tel = _md.siparis_telefonu(_ord2)
+                    if not _tel:
+                        _whatsapp = {"hata": "Siparişte geçerli bir cep telefonu yok"}
+                    else:
+                        _urun2 = _slot_urun_adi(db, it)
+                        _talep = _md.talep_olustur(
+                            db, _ord2, li, urun_adi=_urun2,
+                            model=(it.model or li.device_model_override),
+                            mold_variation=mo.variation)
+                        _metin = _md.mesaj(
+                            _ord2, urun_adi=_urun2,
+                            model=(it.model or li.device_model_override or "ürününüz"),
+                            baglanti=_md.link(_talep.token), tur=_talep.kalip_turu)
+                        _whatsapp = {"url": _md.wa_url(_tel, _metin), "mesaj": _metin}
+                        note += " · 💬 WhatsApp bağlantısı üretildi"
+            except Exception as e:  # noqa: BLE001
+                _whatsapp = {"hata": f"Bağlantı üretilemedi: {str(e)[:120]}"}
+
         _log_mold(db, mo, user, action="item_replan", note=note, payload=_undo)
     elif payload.action == "cancel":
         # Kalıptan çıkar ve plana DÖNMESİN — kalemi kalıcı 'hazır/hariç' işaretle
@@ -936,6 +973,8 @@ def remove_mold_item(mold_id: uuid.UUID, item_id: uuid.UUID, payload: RemoveItem
     _out = _serialize_mold_detail(mo, db)
     if _mail_sonuc:
         _out["mail_sonuc"] = _mail_sonuc
+    if _whatsapp:
+        _out["whatsapp"] = _whatsapp
     return _out
 
 

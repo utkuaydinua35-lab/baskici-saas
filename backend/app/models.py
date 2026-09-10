@@ -886,6 +886,11 @@ class Mold(Base):
 
     # Baskici Paneli: baski durumu (pipeline'dan bagimsiz)
     print_status: Mapped[str] = mapped_column(String(20), default="bekliyor", server_default=text("'bekliyor'"))  # bekliyor | basildi | eksik_var | hatali_basildi
+
+    # Baskıcıya kalıp açılınca gösterilecek uyarılar: [{at, mesaj}]
+    # ÖRN: müşteri linkten telefon modelini değiştirdiği için kalemin kalıptan
+    # çekilmesi. Baskıcı bunu görmezse çöpe gidecek bir kılıf basılır.
+    uyarilar: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"), default=list)
     # Slot pozisyonlarini KILITLE: slot silinince kalanlar kaymaz, herkes yerinde kalir.
     # Yarim basilmis bir kaliptan tek kalemi yeniden basarken kritik — kalem 1. slota
     # kayarsa baski birkac mm oynayabiliyor ve ince tasarimlarda bu goze batiyor.
@@ -2198,6 +2203,54 @@ class DeviceToken(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ModelDegisimTalebi(Base):
+    """Müşteriye WhatsApp'tan gönderilen 'telefon modelini değiştir' bağlantısı.
+
+    NEDEN VAR: bir kalem stok yokluğu nedeniyle kalıptan çıkarıldığında müşteriye
+    haber veriyoruz. Müşteri beklemek yerine modelini (ve şeffaf/parlak kalıpta
+    varyasyonunu) değiştirmek isteyebilir. Bu tablo o tek kullanımlık, süreli
+    bağlantıyı tutar.
+
+    Bağlantı KISA ÖMÜRLÜ (12 saat): stok durumu ve plan hızla değişiyor, eski
+    bir bağlantıdan gelen değişiklik çoktan basılmış bir kalıbı bozabilirdi.
+
+    Token tahmin edilemez (secrets.token_urlsafe) ve sayfada hassas veri YOK —
+    public onay akışıyla (DesignApproval) aynı sözleşme.
+    """
+    __tablename__ = "model_degisim_talepleri"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+    # Kalem silinebilir (senkron yeniden oluşturabiliyor) — bağlantı ölmesin diye
+    # SET NULL; o durumda talep "artık uygulanamaz" olarak kapanır.
+    line_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("line_items.id", ondelete="SET NULL"), nullable=True
+    )
+
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    # Hangi kalıptan çıkarıldı — mesajın ve seçeneklerin içeriğini belirler.
+    # seffaf | parlak | diger
+    kalip_turu: Mapped[str] = mapped_column(String(10))
+
+    # Anlık kopya: kalem sonradan değişse de müşteriye ne gösterdiğimiz kalsın.
+    urun_adi: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    mevcut_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    durum: Mapped[str] = mapped_column(String(20), default="bekliyor")  # bekliyor | uygulandi | iptal
+    secilen_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    secilen_varyasyon: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uygulandi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ProductReview(Base):

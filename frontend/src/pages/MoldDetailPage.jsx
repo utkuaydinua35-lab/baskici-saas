@@ -79,18 +79,30 @@ export default function MoldDetailPage() {
 
   const [removeTarget, setRemoveTarget] = useState(null)
   const [stokMaili, setStokMaili] = useState(false)
+  const [stokWhatsapp, setStokWhatsapp] = useState(false)
   const [stokYok, setStokYok] = useState(false)
   const removeItem = async (itemId, action) => {
     try {
       const d = await api.post(`/api/molds/${moldId}/items/${itemId}/remove`,
         { action, musteriye_mail: action === 'replan' && stokMaili,
-          stok_yok: action === 'replan' && stokYok })
+          stok_yok: action === 'replan' && stokYok,
+          musteriye_whatsapp: action === 'replan' && stokWhatsapp })
       setMold(d)
       const h = await api.get(`/api/molds/${moldId}/history`)
       setHistory(h.items || [])
       setRemoveTarget(null)
       setStokMaili(false)
+      setStokWhatsapp(false)
       if (d?.mail_sonuc) toast.success(d.mail_sonuc)
+      // WhatsApp: mesaj hazır, operatör kendi hesabından gönderiyor.
+      // Yeni sekmede açılır — pencere engellenirse kullanıcıya söylenir,
+      // sessizce kaybolmasın.
+      if (d?.whatsapp?.url) {
+        const w = window.open(d.whatsapp.url, '_blank', 'noopener')
+        if (!w) toast.error('WhatsApp açılamadı — tarayıcı pencereyi engelledi')
+      } else if (d?.whatsapp?.hata) {
+        toast.error(d.whatsapp.hata)
+      }
     } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Çıkarılamadı') }
   }
 
@@ -360,6 +372,32 @@ export default function MoldDetailPage() {
         </div>
       </div>
 
+      {/* ⚠ Baskıcı uyarıları — kalıp açılınca EN ÜSTTE görünür.
+          Kaynağı: müşteri linkten telefon modelini değiştirdi ve kalem bu
+          kalıptan çekildi. Görülmezse eski modelin kılıfı basılır ve çöpe
+          gider; bu yüzden kapatılabilir değil. */}
+      {(mold.uyarilar || []).length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="text-[13px] font-semibold text-amber-200 mb-1">
+            ⚠ Bu kalıpta değişiklik oldu
+          </div>
+          <ul className="space-y-1">
+            {(mold.uyarilar || []).map((u, i) => (
+              <li key={i} className="text-[12px] text-amber-100/90">
+                {u.mesaj}
+                {(u.slot != null || u.model || u.siparis) && (
+                  <span className="text-amber-200/60">
+                    {' — '}
+                    {[u.slot != null ? `slot #${u.slot}` : null, u.model, u.siparis]
+                      .filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <DeleteMoldDialog
         open={showDelete}
         mold={mold}
@@ -623,11 +661,27 @@ export default function MoldDetailPage() {
                   </span>
                 </span>
               </label>
+              {/* WhatsApp: mesaj + 12 saatlik "modelini degistir" baglantisi.
+                  Mail ulasmiyor sikayeti uzerine eklendi; mesaji operator
+                  kendi hesabindan gonderiyor, teslim gozle goruluyor. */}
+              <label className="flex items-start gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 cursor-pointer">
+                <input type="checkbox" checked={stokWhatsapp}
+                       onChange={e => setStokWhatsapp(e.target.checked)}
+                       className="mt-0.5 w-4 h-4 accent-emerald-400 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-[12px] text-emerald-200">💬 WhatsApp'tan bildir</span>
+                  <span className="block text-[10px] text-gray-500 mt-0.5">
+                    Hazır mesaj + <b>12 saat geçerli</b> "telefon modelini değiştir"
+                    bağlantısı üretilir, WhatsApp yeni sekmede açılır. Gönder'e sen
+                    basarsın. Yalnızca <b>Geri planla</b> ile birlikte çalışır.
+                  </span>
+                </span>
+              </label>
               <button onClick={() => removeItem(removeTarget.id, 'cancel')}
                 className="w-full text-left px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20">
                 ✕ İptal et <span className="block text-[11px] text-gray-400 mt-0.5">Kalemi plandan tamamen çıkar, geri dönmesin</span>
               </button>
-              <button onClick={() => { setRemoveTarget(null); setStokMaili(false) }}
+              <button onClick={() => { setRemoveTarget(null); setStokMaili(false); setStokWhatsapp(false) }}
                 className="w-full px-3 py-2 rounded-lg border border-brand-border text-gray-400 hover:text-gray-200">
                 Vazgeç
               </button>

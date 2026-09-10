@@ -40,6 +40,7 @@ const MoldGeneratorPage = lazyWithReload(() => import('./pages/MoldGeneratorPage
 const BaskiciPaneliPage = lazyWithReload(() => import('./pages/BaskiciPaneliPage'))
 const OrdersPage = lazyWithReload(() => import('./pages/OrdersPage'))
 const PhoneModelsPage = lazyWithReload(() => import('./pages/PhoneModelsPage'))
+const OzelSeriStokPage = lazyWithReload(() => import('./pages/OzelSeriStokPage'))
 const StockPage = lazyWithReload(() => import('./pages/StockPage'))
 const PackagingPage = lazyWithReload(() => import('./pages/PackagingPage'))
 const PipelinePage = lazyWithReload(() => import('./pages/PipelinePage'))
@@ -114,6 +115,7 @@ export default function App() {
             <Route path="/telafiler" element={<TelafilerPage />} />
             <Route path="/aski" element={<AskiPage />} />
             <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />
+            <Route path="/ozel-seri-stok" element={<OzelSeriStokPage />} />
             <Route path="/stok" element={<StockPage />} />
             <Route path="/paketleme" element={<PackagingPage />} />
             <Route path="/destek" element={<DestekPage />} />

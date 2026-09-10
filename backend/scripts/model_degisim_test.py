@@ -68,9 +68,7 @@ es("SEFFAF (şapkasız)", "seffaf", md.kalip_turu("SEFFAF"))
 es("PARLAK", "parlak", md.kalip_turu("PARLAK"))
 es("SİYAH → diğer", "diger", md.kalip_turu("SİYAH"))
 es("None → diğer", "diger", md.kalip_turu(None))
-es("diğer kalıpta varyasyon YOK", [], md.secilebilir_varyasyonlar("diger"))
-es("parlak'ta ŞEFFAF sunuluyor", True, "ŞEFFAF" in md.secilebilir_varyasyonlar("parlak"))
-es("şeffaf'ta ŞEFFAF sunulmuyor", False, "ŞEFFAF" in md.secilebilir_varyasyonlar("seffaf"))
+# "Ürün seçeneği" kaldırıldı; yerine tasarım kataloğu gelecek.
 
 print("\n── mesaj metinleri ──")
 _o = Order(tenant_id=uuid.uuid4(), customer_name="Ayşe Yılmaz", order_number="1234")
@@ -137,31 +135,47 @@ else:
 
     _v = C.get(f"/api/public/model-degisim/{TOKEN}").json()
     es("sayfa verisi: bekliyor", "bekliyor", _v.get("durum"))
-    _liste = _v.get("modeller") or []
-    es("model listesi dolu", True, len(_liste) > 0)
-    es("liste {deger, etiket} biçiminde", True,
-       bool(_liste) and {"deger", "etiket"} <= set(_liste[0]))
-    # Mevcut modelden FARKLI, ölçüsü çözülebilen bir hedef seç
-    _hedef = next((m["deger"] for m in _liste if m["deger"] != _talep.mevcut_model), None)
+    _markalar = _v.get("markalar") or []
+    es("marka grupları geldi", True, len(_markalar) > 0)
+    es("gruplar {marka, modeller} biçiminde", True,
+       {"marka", "modeller"} <= set(_markalar[0]))
+    es("PARLAK → özel seri listesi", True, bool(_v.get("ozel_seri")))
+    _hepsi = [m for g in _markalar for m in g["modeller"]]
+    # BERNZ Special: liste kısa ve SABİT — tüm katalog (300+) sunulmamalı.
+    es("Special listesi kısa (≤40)", True, len(_hepsi) <= 40)
+    es("stokta olmayan model LİSTELENİYOR", True,
+       any(m.get("stokta") is False for m in _hepsi))
+    _hedef = next((m["deger"] for m in _hepsi
+                   if m.get("stokta") and m["deger"] != _talep.mevcut_model), None)
     es("seçilebilir hedef model var", True, _hedef is not None)
-    es("parlak → varyasyon sunuluyor", True, "ŞEFFAF" in (_v.get("varyasyonlar") or []))
+    _stoksuz = next((m["deger"] for m in _hepsi if m.get("stokta") is False), None)
+
+    print("\n── sipariş özeti sayfada ──")
+    _sip = _v.get("siparis") or {}
+    es("sipariş numarası var", True, bool(_sip.get("no")))
+    es("kalem listesi var", True, len(_sip.get("kalemler") or []) > 0)
+    es("bu kalem işaretli", True,
+       any(k.get("bu_kalem") for k in (_sip.get("kalemler") or [])))
+    es("her kalemde durum var", True,
+       all(k.get("durum") for k in (_sip.get("kalemler") or [])))
 
     es("geçersiz model reddedildi", 400,
        C.post(f"/api/public/model-degisim/{TOKEN}",
               json={"model": "Nokia 3310 Ultra"}).status_code)
-    es("sunulmayan varyasyon reddedildi", 400,
-       C.post(f"/api/public/model-degisim/{TOKEN}",
-              json={"model": _hedef, "varyasyon": "MAGSAFE"}).status_code)
+    # ⚠ Sayfadaki `disabled` yalnız görsel engel; sunucu da reddetmeli.
+    if _stoksuz:
+        es("STOKTA OLMAYAN model sunucuda reddedildi", 400,
+           C.post(f"/api/public/model-degisim/{TOKEN}",
+                  json={"model": _stoksuz}).status_code)
 
     _r2 = C.post(f"/api/public/model-degisim/{TOKEN}",
-                 json={"model": _hedef, "varyasyon": "ŞEFFAF"})
+                 json={"model": _hedef})
     es("değişiklik kabul edildi", 200, _r2.status_code)
 
     # API kendi oturumunda sildi; bu oturumun kimlik haritasını tazele.
     db.expunge_all()
     _li2 = db.get(LineItem, uuid.UUID(_li_id))
     es("model yazıldı", _hedef, _li2.device_model_override)
-    es("varyasyon yazıldı", "ŞEFFAF", _li2.kilif_varyasyon)
     es("KALIP SLOTU SİLİNDİ", 0, db.execute(
         text("select count(*) from mold_items where id = :i"), {"i": _mi_id}).scalar())
     es("kalem 'kalıba eklendi' değil", False, bool(_li2.is_kaliba_eklendi))

@@ -565,6 +565,7 @@ const NAV = [
     { to: '/stok', label: 'Stok', icon: '🗃️', perm: 'stok' },
     { to: '/aski', label: 'Askıda Bekleyenler', icon: '🎁', perm: 'stok' },
     { to: '/telefon-modelleri', label: 'Telefon Modelleri', icon: '📱', perm: 'telefon_modelleri' },
+    { to: '/ozel-seri-stok', label: 'BERNZ Special Stok', icon: '✨', perm: 'stok' },
   ] },
   // Not: "Denetim Kaydı" ve "Atölyeler" üst menüde değil — profil menüsünde (sağ üst).
 ]

@@ -34,6 +34,21 @@
   .uyari{background:var(--amber-bg);border:1px solid var(--amber);color:#fde68a}
   .hata{background:rgba(239,68,68,.12);border:1px solid #ef4444;color:#fecaca}
   .kucuk{font-size:12.5px;color:var(--muted);margin-top:14px}
+  .baslik{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.03em;
+    text-transform:uppercase;margin:22px 0 8px}
+  .kalem{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
+    padding:10px 0;border-top:1px solid var(--border)}
+  .kalem:first-child{border-top:0}
+  .kalem .ad{font-size:13.5px}
+  .kalem .mdl{font-size:12px;color:var(--muted);margin-top:2px}
+  .rozet{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .r-hazir{background:var(--green-bg);color:#86efac;border:1px solid rgba(34,197,94,.4)}
+  .r-bekl{background:var(--amber-bg);color:#fcd34d;border:1px solid rgba(245,158,11,.4)}
+  .r-uret{background:rgba(134,59,255,.14);color:#c4b5fd;border:1px solid rgba(134,59,255,.4)}
+  .bu{outline:1px solid var(--accent);outline-offset:4px;border-radius:8px}
+  .adres{font-size:13px;color:#c8cede;line-height:1.6}
+  .adres .k{color:var(--muted);font-size:12px}
+  option:disabled{color:#6b7280}
 </style>
 </head>
 <body>
@@ -80,49 +95,96 @@ async function yukle() {
       'tamamlanınca üretime alınacaktır. Değişiklik isterseniz bize yazabilirsiniz.');
   }
   if (v.durum === 'uygulandi') {
-    const ek = v.secilen_varyasyon ? ` · ${v.secilen_varyasyon}` : '';
     return ekranBasit('ok', 'Değişikliğiniz alındı',
-      `Siparişiniz ${v.secilen_model || ''}${ek} olarak güncellendi. Üretime bu ` +
+      `Siparişiniz ${v.secilen_model || ''} olarak güncellendi. Üretime bu ` +
       'şekilde alınacak. Teşekkür ederiz!');
   }
 
   const kalan = saatKaldi(v.son_gecerlilik);
-  const varyasyonlar = v.varyasyonlar || [];
+  const markalar = v.markalar || [];
+  const sip = v.siparis || {};
+  const kalemler = sip.kalemler || [];
+
+  const rozetSinif = (d) => d === 'Hazır' ? 'r-hazir'
+    : d === 'Stok bekleniyor' ? 'r-bekl' : 'r-uret';
+
   kok.innerHTML = `
     <h1>Telefon modeli değişikliği</h1>
-    <div class="sub">Siparişinizdeki ürün şu an stokta olmadığı için seçiminizi
-      değiştirebilirsiniz.</div>
+    <div class="sub">Siparişinizdeki ürün şu an stokta olmadığı için telefon
+      modelinizi değiştirebilirsiniz.${v.ozel_seri
+        ? ' BERNZ Special ürünlerde yalnız aşağıdaki modeller üretilebiliyor.' : ''}</div>
 
     <div class="card">
+      ${sip.no ? `<div class="satir"><span class="k">Sipariş</span><span>${kacir(sip.no)}</span></div>` : ''}
       ${v.urun ? `<div class="satir"><span class="k">Ürün</span><span>${kacir(v.urun)}</span></div>` : ''}
       ${v.mevcut_model ? `<div class="satir"><span class="k">Mevcut model</span><span>${kacir(v.mevcut_model)}</span></div>` : ''}
     </div>
 
+    <div class="baslik">Yeni telefon modeli</div>
     <div class="card">
-      <label for="model">Yeni telefon modeli</label>
-      <select id="model">
+      <label for="marka">Marka</label>
+      <select id="marka">
         <option value="">Seçiniz…</option>
-        ${(v.modeller || []).map(m =>
-          `<option value="${kacir(m.deger)}"${m.deger === v.mevcut_model ? ' disabled' : ''}>${kacir(m.etiket)}</option>`).join('')}
+        ${markalar.map((g, i) => `<option value="${i}">${kacir(g.marka)}</option>`).join('')}
       </select>
 
-      ${varyasyonlar.length ? `
-        <label for="varyasyon">Ürün seçeneği (isteğe bağlı)</label>
-        <select id="varyasyon">
-          <option value="">Değiştirme</option>
-          ${varyasyonlar.map(x => `<option value="${kacir(x)}">${kacir(x)}</option>`).join('')}
-        </select>` : ''}
+      <label for="model">Model</label>
+      <select id="model" disabled>
+        <option value="">Önce marka seçiniz</option>
+      </select>
 
       <button class="btn" id="gonder" disabled>Değişikliği onayla</button>
       <div class="kucuk">
         ${kalan ? `Bu bağlantı ${kacir(kalan)} sonra geçersiz olacak. ` : ''}
         Onayladıktan sonra değişiklik hemen üretim planına işlenir ve bu bağlantı kapanır.
       </div>
-    </div>`;
+    </div>
 
+    ${kalemler.length ? `
+      <div class="baslik">Siparişinizdeki ürünler</div>
+      <div class="card">
+        ${kalemler.map(k => `
+          <div class="kalem${k.bu_kalem ? ' bu' : ''}">
+            <span>
+              <span class="ad">${kacir(k.urun)}</span>
+              ${k.model ? `<span class="mdl">${kacir(k.model)}</span>` : ''}
+            </span>
+            <span class="rozet ${rozetSinif(k.durum)}">${kacir(k.durum)}</span>
+          </div>`).join('')}
+      </div>` : ''}
+
+    ${(sip.ad || sip.telefon || sip.adres) ? `
+      <div class="baslik">Teslimat bilgileriniz</div>
+      <div class="card adres">
+        ${sip.ad ? `<div><span class="k">Ad Soyad</span><br>${kacir(sip.ad)}</div>` : ''}
+        ${sip.telefon ? `<div style="margin-top:8px"><span class="k">Telefon</span><br>${kacir(sip.telefon)}</div>` : ''}
+        ${sip.adres ? `<div style="margin-top:8px"><span class="k">Adres</span><br>${kacir(sip.adres)}
+          ${[sip.ilce, sip.il].filter(Boolean).length ? `<br>${kacir([sip.ilce, sip.il].filter(Boolean).join(' / '))}` : ''}</div>` : ''}
+        <div class="kucuk">Bilgilerinizde bir yanlışlık varsa bu mesajı yanıtlayarak
+          bize bildirebilirsiniz.</div>
+      </div>` : ''}`;
+
+  const marka = document.getElementById('marka');
   const model = document.getElementById('model');
-  const varyasyon = document.getElementById('varyasyon');
   const gonder = document.getElementById('gonder');
+
+  marka.onchange = () => {
+    const g = markalar[Number(marka.value)];
+    if (!g) {
+      model.innerHTML = '<option value="">Önce marka seçiniz</option>';
+      model.disabled = true; gonder.disabled = true; return;
+    }
+    // Stokta olmayan model LİSTELENİR ama seçilemez — "var ama şu an yok"
+    // ile "hiç yok" farkı müşteriye görünsün.
+    model.innerHTML = '<option value="">Seçiniz…</option>' + g.modeller.map(m => {
+      const kapali = m.stokta === false || m.deger === v.mevcut_model;
+      const not = m.stokta === false ? ' — şu an stokta yok'
+        : (m.deger === v.mevcut_model ? ' — mevcut modeliniz' : '');
+      return `<option value="${kacir(m.deger)}"${kapali ? ' disabled' : ''}>${kacir(m.etiket)}${not}</option>`;
+    }).join('');
+    model.disabled = false;
+    gonder.disabled = true;
+  };
   model.onchange = () => { gonder.disabled = !model.value; };
 
   gonder.onclick = async () => {
@@ -132,7 +194,7 @@ async function yukle() {
       const r = await fetch(`/api/public/model-degisim/${encodeURIComponent(TOKEN)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model.value, varyasyon: varyasyon ? varyasyon.value : null }),
+        body: JSON.stringify({ model: model.value }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -140,9 +202,8 @@ async function yukle() {
           d.detail || 'Bir sorun oluştu. Lütfen bizimle iletişime geçin.');
         return;
       }
-      const ek = d.varyasyon ? ` · ${d.varyasyon}` : '';
       ekranBasit('ok', 'Değişikliğiniz alındı',
-        `Siparişiniz ${d.model}${ek} olarak güncellendi. Üretime bu şekilde ` +
+        `Siparişiniz ${d.model} olarak güncellendi. Üretime bu şekilde ` +
         'alınacak. Teşekkür ederiz!');
     } catch {
       gonder.disabled = false;

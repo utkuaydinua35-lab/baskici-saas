@@ -2253,6 +2253,35 @@ class ModelDegisimTalebi(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OzelSeriStok(Base):
+    """BERNZ Special (PARLAK) için stok bulundurulan telefon modelleri.
+
+    NEDEN AYRI TABLO: Special yalnız birkaç modelde stok tutuyor. Müşteriye
+    kalıp motorunun tanıdığı 300+ modelin tamamını sunmak, üretilemeyecek bir
+    siparişe dönüşür. Burada listelenenler DIŞINDA seçim yapılamaz.
+
+    `stokta=False` olan model listede GÖRÜNÜR ama seçilemez — müşteri "bu model
+    var ama şu an yok" bilgisini görsün, "hiç yok" sanmasın. Stok gelince
+    panelden işaretlenir ve bağlantıdaki liste kendiliğinden güncellenir.
+    """
+    __tablename__ = "ozel_seri_stok"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "model", name="uq_ozel_seri_tenant_model"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    # Kalıp motorunun TANIDIĞI ad (phone_models.has_spec ile doğrulanır).
+    model: Mapped[str] = mapped_column(String(100))
+    sira: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    stokta: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ProductReview(Base):
     """Ürün yorumu — YALNIZCA doğrulanmış alıcı (lookup_token'lı paid session).
 

@@ -123,6 +123,24 @@ es("başka siparişin kalem id'si ürün sanılmıyor", 400,
 es("hem model hem ürün boş → 400", 400,
    POST(f"/api/public/model-degisim/{TOKEN}", json={}).status_code)
 
+print("\n── adres bağlantısı ucu (token'a bağlı) ──")
+# Bu uç, model bağlantısını elinde tutana adres değişikliği bağlantısı
+# veriyor. Token yoksa/geçersizse hiçbir şey üretmemeli.
+es("bilinmeyen token 404", 404,
+   POST(f"/api/public/model-degisim/{'z' * 32}/adres-degisim").status_code)
+es("token'sız uç 404", 404, POST("/api/public/model-degisim//adres-degisim").status_code)
+es("GET ile çağrılamaz", 405,
+   GET(f"/api/public/model-degisim/{TOKEN}/adres-degisim").status_code)
+_ra = POST(f"/api/public/model-degisim/{TOKEN}/adres-degisim")
+# 409 = bu siparişte kargo başlamış (kapı çalışıyor); ikisi de kabul, 5xx asla.
+es("geçerli token'da 200 ya da 409", True, _ra.status_code in (200, 409))
+if _ra.status_code == 200:
+    es("yanıtta yalnız bağlantı var", ["link"], sorted(_ra.json().keys()))
+    es("üretilen bağlantı model token'ını taşımıyor", False, TOKEN in _ra.text)
+else:
+    es("kapalıyken sebep var, sistem detayı yok", True,
+       bool(_ra.json().get("detail")) and "sqlalchemy" not in _ra.text.lower())
+
 print("\n── girdi dayanıklılığı ──")
 for ad, govde in [
     ("aşırı uzun model", {"model": "A" * 5000}),
@@ -211,6 +229,7 @@ es("başka IP etkilenmiyor", True,
          headers={"CF-Connecting-IP": "10.9.7.7"}).status_code != 429)
 
 # ── temizlik ──
+db.execute(text("delete from adres_degisim_talepleri where order_id = :o"), {"o": str(_oid)})
 db.execute(text("delete from model_degisim_talepleri where urun_adi like 'Güvenlik Testi%'"))
 db.execute(text("delete from order_status_history where order_id = :o "
                 "and action = 'musteri_model_degisikligi'"), {"o": str(_oid)})

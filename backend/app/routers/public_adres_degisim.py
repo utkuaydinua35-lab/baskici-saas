@@ -50,9 +50,18 @@ def _gecerli_mi(t: AdresDegisimTalebi) -> bool:
     return bool(t.expires_at and t.expires_at > datetime.now(UTC))
 
 
-def _siparis(db: Session, t: AdresDegisimTalebi) -> Order | None:
-    return db.scalar(select(Order).where(Order.id == t.order_id)
-                     .execution_options(include_deleted=True))
+def _siparis(db: Session, t: AdresDegisimTalebi, *, kilitle: bool = False) -> Order | None:
+    """Siparişi getirir. `kilitle=True` SİPARİŞ satırını kilitler.
+
+    ⚠ Talep satırını kilitlemek yetmez: aynı siparişe ait İKİ FARKLI bağlantı
+    (operatör mesajı yeniledi, müşteride iki bağlantı var) ayrı satırlardır ve
+    birbirini beklemez — ikisi de "daha önce değiştirilmemiş" görüp ikisi de
+    uygulanabilirdi. Siparişte buluşuyorlar, kilit oraya konur.
+    """
+    q = select(Order).where(Order.id == t.order_id)
+    if kilitle:
+        q = q.with_for_update()
+    return db.scalar(q.execution_options(include_deleted=True))
 
 
 @router.get("/adres-degisim/{token}", response_class=HTMLResponse)
@@ -67,6 +76,10 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         return {"durum": "uygulandi"}
     if not _gecerli_mi(t):
         return {"durum": "suresi_doldu"}
+    # Aynı sipariş için BAŞKA bir bağlantı zaten uygulanmışsa bu bekleyen
+    # bağlantı da ölüdür — adres yalnız bir kez değiştirilebilir.
+    if ad.zaten_degistirildi(db, t.order_id):
+        return {"durum": "kapali", "sebep": ad.BIR_KEZ_MESAJI}
 
     order = _siparis(db, t)
     izin, sebep = ad.degistirilebilir_mi(order)
@@ -118,7 +131,10 @@ def uygula(token: str, istek: AdresIstegi,
     if not _gecerli_mi(t):
         raise HTTPException(status_code=410, detail="Bağlantının süresi doldu.")
 
-    order = _siparis(db, t)
+    order = _siparis(db, t, kilitle=True)
+    # ⚠ Sipariş satırı KİLİTLENDİKTEN sonra bakılır (bkz. _siparis).
+    if ad.zaten_degistirildi(db, t.order_id):
+        raise HTTPException(status_code=409, detail=ad.BIR_KEZ_MESAJI)
     # ⚠ Bağlantı üretildikten sonra kargo başlamış olabilir — burada TEKRAR bak.
     izin, sebep = ad.degistirilebilir_mi(order)
     if not izin:

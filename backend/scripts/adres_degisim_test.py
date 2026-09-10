@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -28,7 +28,7 @@ from sqlalchemy import select, text  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Order, Store  # noqa: E402
+from app.models import AdresDegisimTalebi, Order, Store  # noqa: E402
 from app.services import adres_degisim as ad  # noqa: E402
 
 GECTI = KALDI = 0
@@ -132,6 +132,12 @@ else:
     _eski_bk = getattr(_ord, "barkod_kodu", None)
     _eski_fs = _ord.fulfillment_status
 
+    # Önceki koşudan artık kalmış olabilir; "bir kez" kuralı yüzünden tek bir
+    # kalıntı satır tüm koşuyu bloklar.
+    db.execute(text("delete from adres_degisim_talepleri where order_id=:o"),
+               {"o": str(_ord.id)})
+    db.commit()
+
     # Önce kargo kapısını KAPALI kur: kapının gerçekten tuttuğunu görelim.
     _ord.kargo_info = {"takip_no": "TEST123"}
     db.commit()
@@ -170,6 +176,17 @@ else:
     es("geçersiz e-posta 400", 400,
        POST(f"/api/public/adres-degisim/{TOKEN}", json=_g).status_code)
 
+    def _kurali_sifirla():
+        """Test kurgusu: "adres bir kez değişir" kuralını geri alır.
+
+        Kural GERÇEK ve ayrı bir bölümde sınanıyor; burada amacı, tek bir
+        siparişle onlarca senaryo denemek. Aksi halde ilk başarılı istekten
+        sonra hiçbir bağlantı üretilemezdi.
+        """
+        db.execute(text("update adres_degisim_talepleri set durum='iptal' "
+                        "where order_id=:o and durum='uygulandi'"), {"o": str(_ord.id)})
+        db.commit()
+
     print("\n── girdi dayanıklılığı (5xx YOK) ──")
     # Bu istekler BAŞARILI olursa bağlantı kapanır; her biri için ayrı talep
     # üretiyoruz ki bir sonraki sınama geçerli bir bağlantı bulsun.
@@ -180,6 +197,7 @@ else:
         ("tip uyumsuz", {**_tam, "ad": 123}),
         ("eksik gövde", {}),
     ]:
+        _kurali_sifirla()
         _tg = ad.talep_olustur(db, _ord); db.commit()
         db.execute(text("update adres_degisim_talepleri set durum='bekliyor' where id=:i"),
                    {"i": str(_tg.id)})
@@ -188,6 +206,7 @@ else:
         es(f"{ad_} → 5xx YOK", True, r.status_code < 500)
 
     print("\n── GERÇEK UYGULAMA: adres yazılıyor mu ──")
+    _kurali_sifirla()
     _t2 = ad.talep_olustur(db, _ord); db.commit()
     _r = POST(f"/api/public/adres-degisim/{_t2.token}",
               json={**_tam, "adres2": "D:7", "eposta": "test@ornek.com", "pazarlama": True})
@@ -218,6 +237,65 @@ else:
     es("veritabanı ayakta", True,
        db.execute(text("select count(*) from orders")).scalar() > 0)
 
+    print("\n── ADRES YALNIZ BİR KEZ DEĞİŞTİRİLEBİLİR ──")
+    # İşletme kuralı: ikinci bir değişiklik yok. Üç kapı da tutmalı —
+    # bağlantı üretimi, sayfa görünümü ve uygulama.
+    try:
+        ad.talep_olustur(db, _ord)
+        _bir_kez = "ÜRETİLDİ"
+    except ad.ZatenDegistirildi:
+        _bir_kez = "REDDEDİLDİ"
+    db.rollback()
+    es("yeni bağlantı üretilemiyor", "REDDEDİLDİ", _bir_kez)
+    es("servis 'zaten değiştirildi' diyor", True, ad.zaten_degistirildi(db, _ord.id))
+
+    # Elde KALMIŞ (henüz uygulanmamış) ikinci bir bağlantı da ölmeli:
+    # operatör mesajı iki kez göndermiş olabilir.
+    _bekleyen = AdresDegisimTalebi(
+        tenant_id=_ord.tenant_id, order_id=_ord.id, token="test-bekleyen-bir-kez",
+        durum="bekliyor", eski_adres={},
+        expires_at=datetime.now(UTC) + timedelta(hours=1))
+    db.add(_bekleyen); db.commit()
+    _vb = GET("/api/public/adres-degisim/test-bekleyen-bir-kez").json()
+    es("bekleyen ikinci bağlantı 'kapali'", "kapali", _vb.get("durum"))
+    es("sebep 'daha önce yapılmış' diyor", True, "daha önce" in (_vb.get("sebep") or ""))
+    es("bekleyen ikinci bağlantıda POST 409", 409,
+       POST("/api/public/adres-degisim/test-bekleyen-bir-kez", json=_tam).status_code)
+
+    # Eşzamanlı iki FARKLI bağlantı: sipariş satırı kilidi olmasa ikisi de
+    # "daha önce değiştirilmemiş" görüp ikisi de uygulanırdı.
+    db.execute(text("delete from adres_degisim_talepleri where token = "
+                    "'test-bekleyen-bir-kez'"))
+    db.execute(text("update adres_degisim_talepleri set durum='iptal' where id=:i"),
+               {"i": str(_t2.id)})
+    db.commit()
+    _ikili = []
+    for _n in (1, 2):
+        _x = AdresDegisimTalebi(
+            tenant_id=_ord.tenant_id, order_id=_ord.id, token=f"test-yaris-{_n}",
+            durum="bekliyor", eski_adres={},
+            expires_at=datetime.now(UTC) + timedelta(hours=1))
+        db.add(_x); _ikili.append(f"test-yaris-{_n}")
+    db.commit()
+    _yip = {"CF-Connecting-IP": "10.7.9.8"}
+
+    def _yaris(tk):
+        return C.post(f"/api/public/adres-degisim/{tk}", headers=_yip,
+                      json=_tam).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        _ys = list(ex.map(_yaris, _ikili))
+    es("iki FARKLI bağlantıdan yalnız biri uygulandı", 1, sum(1 for x in _ys if x == 200))
+    es("öteki 409 aldı", True, 409 in _ys)
+    es("kayıtta tek 'uygulandi' var", 1,
+       db.execute(text("select count(*) from adres_degisim_talepleri where order_id=:o "
+                       "and durum='uygulandi'"), {"o": str(_ord.id)}).scalar())
+
+    # Kalan bölümler için kuralı gevşet (aksi halde bağlantı üretilemez).
+    db.execute(text("update adres_degisim_talepleri set durum='iptal' "
+                    "where order_id=:o and durum='uygulandi'"), {"o": str(_ord.id)})
+    db.commit()
+
     print("\n── bilgi sızması ──")
     _m = GET(f"/api/public/adres-degisim/{TOKEN}").text
     es("token yanıtta YOK", False, TOKEN in _m)
@@ -228,6 +306,7 @@ else:
        (_eski_raw.get("shipping_address", {}).get("address1") or "@@") in _s)
 
     print("\n── süre ve tek kullanım ──")
+    _kurali_sifirla()
     _t3 = ad.talep_olustur(db, _ord); db.commit()
     db.execute(text("update adres_degisim_talepleri set durum='bekliyor', "
                     "expires_at = now() - interval '1 minute' where id = :i"),

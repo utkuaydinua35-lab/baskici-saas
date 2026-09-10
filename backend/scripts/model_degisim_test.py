@@ -47,6 +47,23 @@ def es(ad, beklenen, gercek):
 
 
 C = TestClient(app)
+
+# Hız sınırı IP başına (services/rate_limit.py, 10 istek/60 sn). Bu dosya
+# tek akışta onlarca istek atıyor; kendi trafiğimiz sınıra takılınca sonraki
+# doğrulamalar 429 görüp anlamsız biçimde düşüyordu. Her isteğe ayrı IP
+# veriyoruz. Sınırın KENDİSİ güvenlik testinde ayrıca sınanıyor.
+_IP_SAYAC = [0]
+_ASIL_ISTEK = C.request
+
+
+def _istek(method, url, **kw):
+    _IP_SAYAC[0] += 1
+    h = dict(kw.pop("headers", None) or {})
+    h.setdefault("CF-Connecting-IP", f"10.6.{_IP_SAYAC[0] // 250}.{_IP_SAYAC[0] % 250 + 1}")
+    return _ASIL_ISTEK(method, url, headers=h, **kw)
+
+
+C.request = _istek
 db = SessionLocal()
 
 print("\n── telefon normalleştirme ──")
@@ -190,6 +207,40 @@ else:
        all("model" in k for k in (_sip.get("kalemler") or [])))
     es("en az bir kalemde model ÇÖZÜLDÜ", True,
        any(k.get("model") for k in (_sip.get("kalemler") or [])))
+
+    print("\n── 'şuraya tıklayarak' → adres değişikliği bağlantısı ──")
+    # Sayfanın altındaki bağlantı bu uçtan besleniyor. Bağlantı ÖNCEDEN
+    # üretilmiyor (60 dk geçerli, sayfa 12 saat) — tıklama anında üretilir.
+    _adk = _sip.get("adres_degisim") or {}
+    es("kapı bilgisi sayfaya gidiyor", True, "acik" in _adk)
+    _ad_yol = f"/api/public/model-degisim/{TOKEN}/adres-degisim"
+
+    from app.services import adres_degisim as _ads
+
+    db.execute(text("delete from adres_degisim_talepleri where order_id = :o"),
+               {"o": _ord_id}); db.commit()
+    _izin, _ = _ads.degistirilebilir_mi(db.get(Order, uuid.UUID(_ord_id)))
+    if _izin:
+        es("kapı açıkken sayfada bağlantı gösteriliyor", True, _adk.get("acik"))
+        _ra = C.post(_ad_yol)
+        es("bağlantı üretildi", 200, _ra.status_code)
+        es("adres sayfasına gidiyor", True,
+           "/adres-degisim/" in (_ra.json().get("link") or ""))
+        # ⚠ Bağlantıyı üretmek adresi DEĞİŞTİRMEZ; "bir kez" hakkı yanmamalı.
+        es("ikinci tıklama da bağlantı veriyor", 200, C.post(_ad_yol).status_code)
+
+        # Adres bir kez değiştirildikten sonra bağlantı ARTIK üretilmemeli.
+        db.execute(text("update adres_degisim_talepleri set durum='uygulandi' "
+                        "where order_id = :o"), {"o": _ord_id}); db.commit()
+        _rk = C.post(_ad_yol)
+        es("adres zaten değişmişse 409", 409, _rk.status_code)
+        es("sebep müşteriye anlaşılır", True,
+           "daha önce" in (_rk.json().get("detail") or ""))
+    else:
+        es("kargo başlamışsa bağlantı gizli", False, _adk.get("acik"))
+        es("kargo başlamışsa uç 409", 409, C.post(_ad_yol).status_code)
+    db.execute(text("delete from adres_degisim_talepleri where order_id = :o"),
+               {"o": _ord_id}); db.commit()
 
     es("geçersiz model reddedildi", 400,
        C.post(f"/api/public/model-degisim/{TOKEN}",

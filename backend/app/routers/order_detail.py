@@ -1147,7 +1147,11 @@ def adres_degisim_baglantisi(
         raise HTTPException(status_code=422,
                             detail="Siparişte geçerli bir cep telefonu yok.")
 
-    talep = ad_svc.talep_olustur(db, order)
+    try:
+        talep = ad_svc.talep_olustur(db, order)
+    except ad_svc.ZatenDegistirildi as e:
+        # Adres bir kez değiştirilebilir; ikinci düzeltme panelden elle yapılır.
+        raise HTTPException(status_code=409, detail=str(e)) from e
     baglanti = ad_svc.link(talep.token)
     metin = ad_svc.mesaj(order, baglanti)
     _log_history(db, order, user, action="adres_baglantisi",

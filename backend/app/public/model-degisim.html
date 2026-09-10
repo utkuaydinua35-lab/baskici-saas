@@ -35,6 +35,8 @@
   .uyari{background:var(--amber-bg);border:1px solid var(--amber);color:#fde68a}
   .hata{background:rgba(239,68,68,.12);border:1px solid #ef4444;color:#fecaca}
   .kucuk{font-size:12.5px;color:var(--muted);margin-top:14px}
+  .bag{color:var(--accent);font-weight:600;text-decoration:underline;cursor:pointer}
+  .bag[aria-busy="true"]{opacity:.6;cursor:default}
   .baslik{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.03em;
     text-transform:uppercase;margin:22px 0 8px}
   .kalem{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
@@ -264,9 +266,50 @@ async function yukle() {
         ${sip.telefon ? `<div style="margin-top:8px"><span class="k">Telefon</span><br>${kacir(sip.telefon)}</div>` : ''}
         ${sip.adres ? `<div style="margin-top:8px"><span class="k">Adres</span><br>${kacir(sip.adres)}
           ${[sip.ilce, sip.il].filter(Boolean).length ? `<br>${kacir([sip.ilce, sip.il].filter(Boolean).join(' / '))}` : ''}</div>` : ''}
-        <div class="kucuk">Bilgilerinizde bir yanlışlık varsa bu mesajı yanıtlayarak
-          bize bildirebilirsiniz.</div>
+        <div class="kucuk" id="adresNot">${sip.adres_degisim && sip.adres_degisim.acik
+          ? `Bilgilerinizde bir yanlışlık varsa <span class="bag" id="adresBag"
+               role="button" tabindex="0">şuraya tıklayarak</span> teslimat adresinizi
+             güncelleyebilirsiniz. Adres değişikliği yalnızca bir kez yapılabilir.`
+          : `Bilgilerinizde bir yanlışlık varsa bu mesajı yanıtlayarak bize
+             bildirebilirsiniz.${sip.adres_degisim && sip.adres_degisim.sebep
+               ? ' ' + kacir(sip.adres_degisim.sebep) : ''}`}</div>
       </div>` : ''}`;
+
+  // ── "şuraya tıklayarak" → adres değişikliği sayfası ──────────────────
+  // Bağlantı ÖNCEDEN üretilmiyor: adres bağlantısı 60 dakika geçerli, bu
+  // sayfa 12 saat. Sayfa açılırken üretilseydi müşteri tıkladığında çoktan
+  // ölmüş olurdu. Tıklama anında üretilip oraya gidiliyor.
+  const adresBag = document.getElementById('adresBag');
+  if (adresBag) {
+    const git = async () => {
+      if (adresBag.getAttribute('aria-busy') === 'true') return;
+      adresBag.setAttribute('aria-busy', 'true');
+      const eskiMetin = adresBag.textContent;
+      adresBag.textContent = 'açılıyor…';
+      try {
+        const r = await fetch(
+          `/api/public/model-degisim/${encodeURIComponent(TOKEN)}/adres-degisim`,
+          { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.link) {
+          adresBag.removeAttribute('aria-busy');
+          adresBag.textContent = eskiMetin;
+          const not = document.getElementById('adresNot');
+          if (not) not.innerHTML = kacir(d.detail
+            || 'Adres değişikliği şu an yapılamıyor. Lütfen bu mesajı yanıtlayın.');
+          return;
+        }
+        location.href = d.link;
+      } catch {
+        adresBag.removeAttribute('aria-busy');
+        adresBag.textContent = eskiMetin;
+      }
+    };
+    adresBag.onclick = git;
+    adresBag.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); git(); }
+    };
+  }
 
   // ── İlk açılışta kısa tanıtım ────────────────────────────────────────
   // Müşteri bu sayfayı beklemiyordu; ne yapması gerektiğini bir bakışta

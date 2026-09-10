@@ -60,14 +60,41 @@ def degistirilebilir_mi(order: Order) -> tuple[bool, str]:
     return True, ""
 
 
+def zaten_degistirildi(db: Session, order_id) -> bool:
+    """Bu sipariş için adres DAHA ÖNCE değiştirilmiş mi?
+
+    İşletme kuralı: adres yalnız BİR KEZ değiştirilebilir. Sınırsız değişiklik
+    hem kargo planını hem de operatörün güvenini bozuyor; ikinci bir düzeltme
+    gerekiyorsa panelden elle yapılır.
+    """
+    return db.query(AdresDegisimTalebi).filter(
+        AdresDegisimTalebi.order_id == order_id,
+        AdresDegisimTalebi.durum == "uygulandi",
+    ).first() is not None
+
+
+BIR_KEZ_MESAJI = ("Bu sipariş için adres değişikliği daha önce yapılmış. "
+                  "Yeni bir değişiklik için bizimle iletişime geçin.")
+
+
 # ─── Bağlantı ─────────────────────────────────────────────────────────────
 def link(token: str) -> str:
     base = get_settings().support_public_base_url.rstrip("/")
     return f"{base}/adres-degisim/{token}"
 
 
+class ZatenDegistirildi(Exception):
+    """Adres bu sipariş için bir kez değiştirilmiş."""
+
+
 def talep_olustur(db: Session, order: Order) -> AdresDegisimTalebi:
-    """Yeni talep; hâlâ geçerli olan varsa süresi tazelenip o döndürülür."""
+    """Yeni talep; hâlâ geçerli olan varsa süresi tazelenip o döndürülür.
+
+    Adres daha önce değiştirilmişse ZatenDegistirildi yükseltir — bağlantıyı
+    hiç üretmemek, müşteriye boşuna sayfa açtırmaktan iyi.
+    """
+    if zaten_degistirildi(db, order.id):
+        raise ZatenDegistirildi(BIR_KEZ_MESAJI)
     simdi = datetime.now(UTC)
     mevcut = next(
         (t for t in db.query(AdresDegisimTalebi).filter(

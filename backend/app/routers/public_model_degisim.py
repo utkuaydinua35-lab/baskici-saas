@@ -243,8 +243,18 @@ def _siparis_ozeti(db: Session, t: ModelDegisimTalebi) -> dict:
             "bu_kalem": str(li.id) == str(t.line_item_id),
         })
 
+    # Sayfanın alt kısmındaki "adresimi güncelle" bağlantısı yalnız gerçekten
+    # değiştirilebiliyorsa gösterilir; aksi halde müşteri tıklayıp duvara
+    # çarpar. Sebep de gönderiliyor ki ne yapması gerektiğini bilsin.
+    from app.services import adres_degisim as _adsvc
+
+    _izin, _sebep = _adsvc.degistirilebilir_mi(order)
+    if _izin and _adsvc.zaten_degistirildi(db, order.id):
+        _izin, _sebep = False, _adsvc.BIR_KEZ_MESAJI
+
     return {
         "no": order.name or (f"#{order.order_number}" if order.order_number else None),
+        "adres_degisim": {"acik": _izin, "sebep": _sebep},
         "ad": _ad or (order.customer_name or None),
         "telefon": adres.get("phone") or ham.get("phone") or None,
         "adres": _satir or None,
@@ -300,6 +310,36 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         "katalog": urun_katalog.katalog(db, t.tenant_id, _magaza),
         "son_gecerlilik": t.expires_at.isoformat() if t.expires_at else None,
     }
+
+
+@router.post("/api/public/model-degisim/{token}/adres-degisim", response_model=dict)
+def adres_baglantisi(token: str, db: Session = Depends(get_db),
+                     _rl: None = Depends(rate_limit)):
+    """Bu siparişin adres değişikliği bağlantısını üretir.
+
+    Neden güvenli: bu token müşteriye siparişteki telefona WhatsApp'tan
+    gönderildi; yani elinde tutan kişi zaten numaranın sahibi. Operatörden
+    ikinci bir mesaj istemek müşteriyi bekletmekten başka bir güvenlik
+    kazandırmıyor. Üretilen adres bağlantısı yine 60 dakikalık ve tek
+    kullanımlık; kargo kapısı hem burada hem uygulama anında yeniden bakılır.
+    """
+    t = _talep(db, token)
+    if not _sureli_mi(t):
+        raise HTTPException(status_code=410, detail="Bağlantının süresi doldu.")
+
+    order = db.scalar(select(Order).where(Order.id == t.order_id)
+                      .execution_options(include_deleted=True))
+    from app.services import adres_degisim as ad_svc
+
+    izin, sebep = ad_svc.degistirilebilir_mi(order)
+    if not izin:
+        raise HTTPException(status_code=409, detail=sebep)
+    try:
+        talep = ad_svc.talep_olustur(db, order)
+    except ad_svc.ZatenDegistirildi as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    db.commit()
+    return {"link": ad_svc.link(talep.token)}
 
 
 class SecimIstegi(BaseModel):

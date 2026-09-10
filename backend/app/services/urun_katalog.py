@@ -1,9 +1,19 @@
 """Model değişikliği sayfasındaki alternatif ürün kataloğu.
 
 Müşteri, eksik stok nedeniyle bekleyen kalemini başka bir tasarım ürünüyle
-değiştirmek isteyebilir. Ürünler işletmenin panelden oluşturduğu BİR
-KOLEKSİYONDAN gelir (bkz. KOLEKSIYON_ADI) — böylece müşteriye yalnız bu iş
-için uygun görülen ürünler sunulur.
+değiştirmek isteyebilir. Ürünler işletmenin oluşturduğu BİR KOLEKSİYONDAN
+gelir (bkz. KOLEKSIYON_ADI) — böylece müşteriye yalnız bu iş için uygun
+görülen ürünler sunulur.
+
+KAYNAK İKİ YERDE OLABİLİR:
+  · Mağaza SHOPIFY'daysa koleksiyon Shopify'da tutulur ve oradan okunur.
+    Vitrin (catalog_collections) o mağazada kullanılmıyor.
+  · Vitrin mağazasıysa kendi koleksiyon tablosundan okunur.
+Önce Shopify denenir, bulunamazsa vitrine düşülür — böylece iki kurulum da
+tek kod yoluyla çalışır.
+
+⚠ Shopify çağrısı AĞ üzerinden ve yavaş. Müşteri sayfası her açılışta
+Shopify'a gitmemeli; sonuç kısa süreli önbellekte tutulur.
 
 KATEGORİLER ELLE GİRİLMEZ. Ürün adları düzenli:
     BERNZ "Berserk Hero" Tasarım Telefon Kılıfı - Berserk Serisi
@@ -91,6 +101,47 @@ def _urun_gorseli(p: CatalogProduct) -> str | None:
     return f"/storage/{gorseller[0].file_path}" if gorseller else None
 
 
+# ─── Shopify kaynağı ─────────────────────────────────────────────────────
+# Koleksiyon içeriği sık değişmiyor; müşteri sayfasını yavaşlatmamak için
+# kısa süreli önbellek. (store_id) -> (zaman, urunler)
+_ONBELLEK_SN = 600
+_onbellek: dict[str, tuple[float, list[dict]]] = {}
+
+
+def _shopify_urunleri(store) -> list[dict]:
+    """Shopify'daki KOLEKSIYON_ADI koleksiyonunun ürünleri; yoksa boş liste."""
+    import time
+
+    anahtar = str(store.id)
+    simdi = time.time()
+    vurus = _onbellek.get(anahtar)
+    if vurus and simdi - vurus[0] < _ONBELLEK_SN:
+        return vurus[1]
+
+    urunler: list[dict] = []
+    try:
+        from app.adapters.shopify import ShopifyAdapter
+
+        ad = ShopifyAdapter(store)
+        hedef = _katla(KOLEKSIYON_ADI)
+        koll = next((c for c in ad.get_collections() if _katla(c["title"]) == hedef), None)
+        if koll:
+            urunler = ad.get_collection_products(koll["id"])
+    except Exception:  # noqa: BLE001 — katalog gelmezse sayfanın gerisi çalışsın
+        urunler = []
+
+    _onbellek[anahtar] = (simdi, urunler)
+    return urunler
+
+
+def onbellegi_dusur(store_id=None) -> None:
+    """Koleksiyon değiştiğinde elle tazeleme için."""
+    if store_id is None:
+        _onbellek.clear()
+    else:
+        _onbellek.pop(str(store_id), None)
+
+
 def koleksiyon(db: Session, tenant_id) -> CatalogCollection | None:
     """Adı KOLEKSIYON_ADI olan aktif koleksiyon (tenant içinde)."""
     hedef = _katla(KOLEKSIYON_ADI)
@@ -102,16 +153,15 @@ def koleksiyon(db: Session, tenant_id) -> CatalogCollection | None:
     return None
 
 
-def katalog(db: Session, tenant_id) -> list[dict]:
-    """[{kategori, urunler:[{id, ad, gorsel, ara}]}] — koleksiyon yoksa boş liste.
+def ham_urunler(db: Session, tenant_id, store=None) -> list[dict]:
+    """Koleksiyondaki ürünler: [{id, baslik, gorsel}] — kaynak neresi olursa olsun."""
+    if store is not None and (store.platform or "").lower() == "shopify":
+        return [{"id": p["id"], "baslik": p["title"], "gorsel": p["image_url"] or None}
+                for p in _shopify_urunleri(store) if (p.get("title") or "").strip()]
 
-    `ara`: arama için katlanmış metin; istemci bunun üzerinden filtreler,
-    böylece "türk" yazan da "TÜRK" yazan da bulur.
-    """
     koll = koleksiyon(db, tenant_id)
     if koll is None:
         return []
-
     urunler = db.scalars(
         select(CatalogProduct)
         .join(catalog_product_collections,
@@ -121,21 +171,34 @@ def katalog(db: Session, tenant_id) -> list[dict]:
         .options(selectinload(CatalogProduct.images))
         .order_by(CatalogProduct.title)
     ).all()
+    return [{"id": str(p.id), "baslik": p.title, "gorsel": _urun_gorseli(p)} for p in urunler]
+
+
+def katalog(db: Session, tenant_id, store=None) -> list[dict]:
+    """[{kategori, urunler:[{id, ad, gorsel, ara}]}] — koleksiyon yoksa boş liste.
+
+    `ara`: arama için katlanmış metin; istemci bunun üzerinden filtreler,
+    böylece "türk" yazan da "TÜRK" yazan da bulur.
+    """
+    urunler = ham_urunler(db, tenant_id, store)
+    if not urunler:
+        return []
 
     # Gruplama anahtarı katlanmış ad; gösterilen etiket ise o grupta EN SIK
     # geçen özgün yazım (ÖZEL TASARIM ile OZEL TASARIM tek grup, etiket düzgün).
     gruplar: dict[str, dict] = {}
     for p in urunler:
-        ad = seri_adi(p.title) or "Diğer"
+        baslik = p["baslik"]
+        ad = seri_adi(baslik) or "Diğer"
         k = _katla(ad)
         g = gruplar.setdefault(k, {"etiketler": {}, "urunler": []})
         g["etiketler"][ad] = g["etiketler"].get(ad, 0) + 1
         g["urunler"].append({
-            "id": str(p.id),
-            "ad": kisa_ad(p.title),
-            "tam_ad": p.title,
-            "gorsel": _urun_gorseli(p),
-            "ara": _katla(p.title),
+            "id": p["id"],
+            "ad": kisa_ad(baslik),
+            "tam_ad": baslik,
+            "gorsel": p["gorsel"],
+            "ara": _katla(baslik),
         })
 
     cikti = []
@@ -149,16 +212,12 @@ def katalog(db: Session, tenant_id) -> list[dict]:
     return cikti
 
 
-def urun_dogrula(db: Session, tenant_id, urun_id: str) -> CatalogProduct | None:
-    """Seçilen ürün GERÇEKTEN bu koleksiyonda mı? (istek elle atılabilir)"""
-    koll = koleksiyon(db, tenant_id)
-    if koll is None:
-        return None
-    return db.scalar(
-        select(CatalogProduct)
-        .join(catalog_product_collections,
-              catalog_product_collections.c.product_id == CatalogProduct.id)
-        .where(catalog_product_collections.c.collection_id == koll.id,
-               CatalogProduct.id == urun_id,
-               CatalogProduct.status == "active")
-    )
+def urun_dogrula(db: Session, tenant_id, urun_id: str, store=None) -> str | None:
+    """Seçilen ürün GERÇEKTEN bu koleksiyonda mı? Başlığını döner, yoksa None.
+
+    İstek elle de atılabildiği için sunucu tarafında doğrulanır.
+    """
+    for p in ham_urunler(db, tenant_id, store):
+        if str(p["id"]) == str(urun_id):
+            return p["baslik"]
+    return None

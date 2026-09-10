@@ -120,7 +120,7 @@ else:
     db.commit()
     # Kimlikleri DÜZ metin olarak sakla: aşağıda oturum tazeleniyor, ORM
     # nesneleri üzerinden id okumak DetachedInstanceError veriyor.
-    _mi_id, _mo_id, _li_id = str(_mi.id), str(_mo.id), str(_li.id)
+    _mi_id, _mo_id, _li_id, _ord_id = str(_mi.id), str(_mo.id), str(_li.id), str(_ord.id)
 
     _talep = md.talep_olustur(db, _ord, _li, urun_adi="Test Ürün",
                               model="iPhone Eski", mold_variation="PARLAK")
@@ -129,9 +129,18 @@ else:
     es("talep oluştu, süresi 12 saat", True,
        timedelta(hours=11) < (_talep.expires_at - datetime.now(UTC)) <= timedelta(hours=12))
 
+    # Süreyi geriye çekip tekrar gönderim simüle et: token aynı kalmalı,
+    # süre BAŞTAN başlamalı (müşteriye "12 saat" diyen mesaj kalıntı süreyle
+    # gitmemeli).
+    db.execute(text("update model_degisim_talepleri set expires_at = now() + interval "
+                    "'2 hours' where id = :i"), {"i": str(_talep.id)})
+    db.commit(); db.expire_all()
     _ikinci = md.talep_olustur(db, _ord, _li, urun_adi="Test Ürün",
                                model="iPhone Eski", mold_variation="PARLAK")
+    db.commit()
     es("aynı kalem için İKİNCİ bağlantı üretilmedi", TOKEN, _ikinci.token)
+    es("tekrar gönderimde süre YENİLENDİ", True,
+       (_ikinci.expires_at - datetime.now(UTC)) > timedelta(hours=11))
 
     _v = C.get(f"/api/public/model-degisim/{TOKEN}").json()
     es("sayfa verisi: bekliyor", "bekliyor", _v.get("durum"))
@@ -197,6 +206,7 @@ else:
 
     # API kendi oturumunda sildi; bu oturumun kimlik haritasını tazele.
     db.expunge_all()
+    _ord = db.get(Order, uuid.UUID(_ord_id))   # expunge sonrası yeniden bağla
     _li2 = db.get(LineItem, uuid.UUID(_li_id))
     es("model yazıldı", _hedef, _li2.device_model_override)
     es("KALIP SLOTU SİLİNDİ", 0, db.execute(

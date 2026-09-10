@@ -187,6 +187,69 @@ class ShopifyAdapter(StorePlatform):
 
         return all_products
 
+    def get_collections(self) -> list[dict]:
+        """Mağazadaki koleksiyonlar (elle + akıllı): [{id, title}].
+
+        Shopify iki ayrı uçta tutuyor: custom_collections (elle seçilen) ve
+        smart_collections (kurallı). Panelde hangisiyle oluşturulduğu
+        bilinmediği için İKİSİ de taranır.
+        """
+        cikti: list[dict] = []
+        for tur in ("custom_collections", "smart_collections"):
+            url = f"{self._base_url()}/{tur}.json"
+            try:
+                r = self.session.get(url, headers=self._headers(),
+                                     params={"limit": 250, "fields": "id,title,handle"},
+                                     timeout=30)
+                r.raise_for_status()
+            except Exception:  # noqa: BLE001 — biri patlasa öteki denensin
+                continue
+            for c in r.json().get(tur, []):
+                cikti.append({"id": str(c.get("id", "")),
+                              "title": c.get("title", ""),
+                              "handle": c.get("handle", "")})
+        return cikti
+
+    def get_collection_products(self, collection_id: str, limit: int = 250) -> list[dict]:
+        """Bir koleksiyondaki ürünler: [{id, title, image_url, handle}].
+
+        `/collections/{id}/products.json` hem elle hem kurallı koleksiyonda
+        çalışır — tür ayrımı yapmaya gerek yok.
+        """
+        url = f"{self._base_url()}/collections/{collection_id}/products.json"
+        urunler: list[dict] = []
+        next_url: str | None = url
+        sayfa = 0
+        while next_url and sayfa < 10:
+            sayfa += 1
+            try:
+                if sayfa == 1:
+                    r = self.session.get(next_url, headers=self._headers(),
+                                         params={"limit": min(limit, 250)}, timeout=30)
+                else:
+                    r = self.session.get(next_url, headers=self._headers(), timeout=30)
+                r.raise_for_status()
+            except Exception:  # noqa: BLE001
+                break
+            for p in r.json().get("products", []):
+                gorsel = ""
+                if isinstance(p.get("image"), dict):
+                    gorsel = p["image"].get("src", "")
+                elif p.get("images"):
+                    gorsel = (p["images"][0] or {}).get("src", "")
+                urunler.append({"id": str(p.get("id", "")),
+                                "title": p.get("title", ""),
+                                "image_url": gorsel,
+                                "handle": p.get("handle", "")})
+            link = r.headers.get("Link", "")
+            next_url = None
+            if 'rel="next"' in link:
+                for part in link.split(","):
+                    if 'rel="next"' in part:
+                        next_url = part.split(";")[0].strip().strip("<>")
+                        break
+        return urunler
+
     def get_product_image(self, product_id: str | None) -> str | None:
         if not product_id:
             return None

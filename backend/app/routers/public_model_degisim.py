@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
     CatalogImage, CatalogProduct, LineItem, ModelDegisimTalebi, Mold, MoldItem, MoldStatusHistory,
-    Notification, Order, OrderStatusHistory, PhoneModel,
+    Notification, Order, OrderStatusHistory, PhoneModel, Store,
 )
 from app.routers.public_tracker import rate_limit
 from app.services import model_degisim as md
@@ -161,6 +161,15 @@ def _model_secenekleri(db: Session, t: ModelDegisimTalebi) -> tuple[list[dict], 
     return _markalara_ayir(_tum_modeller(db, t.tenant_id)), False
 
 
+def _siparis_magazasi(db: Session, t: ModelDegisimTalebi):
+    """Talebin siparişinin mağazası — katalog kaynağını (Shopify/vitrin) belirler."""
+    order = db.scalar(select(Order).where(Order.id == t.order_id)
+                      .execution_options(include_deleted=True))
+    if order is None or order.store_id is None:
+        return None
+    return db.scalar(select(Store).where(Store.id == order.store_id))
+
+
 def _kalem_durumu(li: LineItem) -> str:
     """Müşteriye gösterilecek kalem durumu — panel terimleri değil."""
     if li.is_hazir:
@@ -251,6 +260,7 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
     if not _sureli_mi(t):
         return {"durum": "suresi_doldu"}
 
+    _magaza = _siparis_magazasi(db, t)
     markalar, ozel = _model_secenekleri(db, t)
     # BERNZ Special'da müşterinin telefonu listede olmayabilir. O durumda
     # Special'da kalmak mümkün değil ama BAŞKA bir ürüne geçerek modelini
@@ -265,7 +275,7 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         "markalar": markalar,
         "markalar_tum": tum,
         "siparis": _siparis_ozeti(db, t),
-        "katalog": urun_katalog.katalog(db, t.tenant_id),
+        "katalog": urun_katalog.katalog(db, t.tenant_id, _magaza),
         "son_gecerlilik": t.expires_at.isoformat() if t.expires_at else None,
     }
 
@@ -335,14 +345,15 @@ def uygula(token: str, istek: SecimIstegi,
                             detail="Sipariş kalemi bulunamadı. Lütfen bizimle iletişime geçin.")
 
     model = (istek.model or "").strip()
-    urun = None
+    urun_adi = None
     if istek.urun_id:
         # ⚠ Seçilen ürün GERÇEKTEN koleksiyonda mı — istek elle de atılabilir.
-        urun = urun_katalog.urun_dogrula(db, t.tenant_id, istek.urun_id)
-        if urun is None:
+        urun_adi = urun_katalog.urun_dogrula(
+            db, t.tenant_id, istek.urun_id, _siparis_magazasi(db, t))
+        if urun_adi is None:
             raise HTTPException(status_code=400, detail="Seçilen ürün listede yok.")
 
-    if not model and urun is None:
+    if not model and urun_adi is None:
         raise HTTPException(status_code=400,
                             detail="Telefon modeli ya da ürün seçmelisiniz.")
 
@@ -352,7 +363,7 @@ def uygula(token: str, istek: SecimIstegi,
         # Müşteri başka bir ürüne geçiyorsa (urun seçtiyse) o ürünün model
         # yelpazesi geçerlidir — aksi halde "modelim Special'da yok" diyen
         # müşteriye çıkış yolu bırakmamış olurduk.
-        if ozel and urun is not None:
+        if ozel and urun_adi is not None:
             markalar, ozel = _markalara_ayir(_tum_modeller(db, t.tenant_id)), False
         # ⚠ Yalnız STOKTA olan seçilebilir. Listede görünen ama stokta olmayan
         # bir modelin sunucuda da reddedilmesi şart: sayfadaki `disabled`
@@ -385,7 +396,7 @@ def uygula(token: str, istek: SecimIstegi,
 
     t.durum = "uygulandi"
     t.secilen_model = model[:100] if model else None
-    t.secilen_varyasyon = (urun.title[:20] if urun is not None else None)
+    t.secilen_varyasyon = (urun_adi[:20] if urun_adi is not None else None)
     t.uygulandi_at = datetime.now(UTC)
 
     order = db.scalar(select(Order).where(Order.id == t.order_id)
@@ -394,16 +405,16 @@ def uygula(token: str, istek: SecimIstegi,
     _parcalar = []
     if model:
         _parcalar.append(f"model: {t.mevcut_model or '—'} → {model}")
-    if urun is not None:
+    if urun_adi is not None:
         # ⚠ TASARIM OTOMATİK DEĞİŞTİRİLMİYOR — bilinçli. Vitrin katalog ürünleri
         # ile üretimdeki tasarımlar AYRI kimlik uzayında (Design.product_id
         # katalog ürün id'siyle eşleşmiyor); tahminle tasarım atamak YANLIŞ
         # kılıf bastırır. Müşterinin seçimi kayda geçer, kalem kalıptan çekilir
         # ve panele bildirim düşer; tasarımı operatör bağlar.
-        _parcalar.append(f"ürün: {urun.title}")
+        _parcalar.append(f"ürün: {urun_adi}")
     _not = ("Müşteri değişiklik yaptı — " + " · ".join(_parcalar)
             + (f" · {cekilen} kalıp slotundan çıkarıldı" if cekilen else "")
-            + (" · ÜRÜN DEĞİŞİKLİĞİ: tasarımı elle bağlayın" if urun is not None else ""))
+            + (" · ÜRÜN DEĞİŞİKLİĞİ: tasarımı elle bağlayın" if urun_adi is not None else ""))
 
     db.add(OrderStatusHistory(
         tenant_id=t.tenant_id, order_id=t.order_id,
@@ -412,7 +423,7 @@ def uygula(token: str, istek: SecimIstegi,
     db.add(Notification(
         tenant_id=t.tenant_id, store_id=(order.store_id if order else None),
         kind="warn" if cekilen else "info",
-        title=(f"{_no} · müşteri ÜRÜN değiştirdi" if urun is not None
+        title=(f"{_no} · müşteri ÜRÜN değiştirdi" if urun_adi is not None
                else f"{_no} · müşteri model değiştirdi"),
         body=_not,
         link=f"/orders/{t.order_id}",
@@ -424,7 +435,7 @@ def uygula(token: str, istek: SecimIstegi,
         from app.services import push
         push.send_to_tenant(
             db, t.tenant_id,
-            (f"{_no} · müşteri ÜRÜN değiştirdi" if urun is not None
+            (f"{_no} · müşteri ÜRÜN değiştirdi" if urun_adi is not None
              else f"{_no} · müşteri model değiştirdi"), _not,
             url=f"/orders/{t.order_id}", tag=f"model-degisim-{t.order_id}",
         )
@@ -432,4 +443,4 @@ def uygula(token: str, istek: SecimIstegi,
         pass
 
     return {"ok": True, "model": model or None,
-            "urun": urun.title if urun is not None else None}
+            "urun": urun_adi}

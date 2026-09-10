@@ -103,6 +103,12 @@ def talep_olustur(db: Session, order: Order, line_item, *, urun_adi: str,
         None,
     )
     if mevcut:
+        # Operatör mesajı TEKRAR gönderiyorsa süre baştan başlar: müşteriye
+        # "12 saat geçerli" diyen bir mesaj, 11 saatlik kalıntı süreyle
+        # gitmemeli. Token AYNI kalır — daha önce gönderilmiş bağlantı da
+        # çalışmaya devam eder.
+        mevcut.expires_at = simdi + timedelta(hours=GECERLILIK_SAAT)
+        db.flush()
         return mevcut
 
     t = ModelDegisimTalebi(

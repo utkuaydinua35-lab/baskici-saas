@@ -131,6 +131,128 @@ kaynak = (Path(__file__).resolve().parent.parent
 es("barkod çubuğu çerçevesiz çiziliyor", True,
    "color=None, fill=(0, 0, 0), width=0" in kaynak)
 
+# ─────────────────────────────────────────────────────────────────────────
+# ZPL yolu: barkod RASTER DEĞİL, yazıcının kendi ^BC komutu
+# ─────────────────────────────────────────────────────────────────────────
+print("\n── 6. rasterleştirmenin ÇUBUK GENİŞLİĞİ HATASI ──")
+# Ölçüm: barkod etiketle birlikte rasterleştirilince her çubuk kenarı en yakın
+# noktaya yuvarlanıyor. Code128'in okuma toleransı modülün ~%25'i; ölçülen
+# sapma buna DAYANIYOR ve termal baskının çubuk şişmesi eklenince okunmuyor.
+# Bu bölüm hatayı ölçer ve ^BC yolunun onu SIFIRLADIĞINI gösterir.
+import re  # noqa: E402
+
+
+def _bitmap(zpl):
+    m = re.search(r"\^GFA,(\d+),\d+,(\d+),([0-9A-F]+)\^FS", zpl)
+    ham, sb = bytes.fromhex(m.group(3)), int(m.group(2))
+    return ham, sb, int(re.search(r"\^PW(\d+)", zpl).group(1)), int(m.group(1)) // sb
+
+
+def _kosu(ham, sb, w, y):
+    out, son, n = [], None, 0
+    for x in range(w):
+        s = bool((ham[y * sb + (x >> 3)] >> (7 - (x & 7))) & 1)
+        if s == son:
+            n += 1
+        else:
+            if son is not None:
+                out.append(n)
+            son, n = s, 1
+    out.append(n)
+    return out
+
+
+def raster_sapmasi(kod, w_mm, h_mm, dpi=203):
+    """Rasterleşmiş çubukların ideal genişlikten EN BÜYÜK sapması (modül oranı)."""
+    from app.services import zpl_label
+    pdf = label_pdf.render_label_pdf(_Sip(), "BERNZ", barkod_kodu=kod,
+                                     kargo_firma="Sürat Kargo")
+    z = zpl_label.pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm, h_mm=h_mm, doldur=True)
+    ham, sb, w, h = _bitmap(z)
+    ideal = bc.pattern_widths(kod)
+    en_iyi, en_cok = None, 0
+    for y in range(int(h * 0.5), h - 3):
+        k = _kosu(ham, sb, w, y)
+        if len(k) > en_cok:
+            en_cok, en_iyi = len(k), y
+    k = _kosu(ham, sb, w, en_iyi)
+    g = k[1:-1] if len(k) == len(ideal) + 2 else k
+    if len(g) != len(ideal):
+        return None
+    modul = sum(g) / sum(ideal)
+    return max(abs(gi - ii * modul) / modul for gi, ii in zip(g, ideal))
+
+
+_sapma = raster_sapmasi(KOD, 100, 150)
+es("raster sapması ölçülebildi", True, _sapma is not None)
+print(f"      · rasterde en büyük çubuk sapması: %{_sapma * 100:.0f} "
+      f"(Code128 toleransı ~%25)")
+es("raster sapması TOLERANSA DAYANIYOR (bu yüzden ^BC'ye geçildi)", True,
+   _sapma > 0.15)
+
+print("\n── 7. ^BC: modül TAM SAYI nokta, sapma yok ──")
+from app.services import zpl_label as _zl  # noqa: E402
+
+_BC = re.compile(r"\^BY(\d+)\^FO(\d+),(\d+)\^BCN,(\d+),N,N,N,N\^FD(.+?)\^FS")
+
+
+def _bc_zpl(kod, w_mm, h_mm, dpi=203):
+    yer = {}
+    pdf = label_pdf.render_label_pdf(_Sip(), "BERNZ", barkod_kodu=kod,
+                                     barkod_yerlesim=yer, kargo_firma="Sürat Kargo")
+    return _zl.pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm, h_mm=h_mm, doldur=True,
+                          barkod=yer or None), yer
+
+
+for _w, _h, _dpi in ((100, 150, 203), (80, 100, 203), (67, 100, 203), (100, 150, 300)):
+    _z, _yer = _bc_zpl(KOD, _w, _h, _dpi)
+    _m = _BC.search(_z)
+    _ad = f"{_w}x{_h}mm@{_dpi}"
+    if not _m:
+        es(f"{_ad} ^BC üretildi", True, False)
+        continue
+    _by, _x, _y, _yuk, _veri = (int(_m.group(1)), int(_m.group(2)), int(_m.group(3)),
+                                int(_m.group(4)), _m.group(5))
+    _pw = int(re.search(r"\^PW(\d+)", _z).group(1))
+    _ll = int(re.search(r"\^LL(\d+)", _z).group(1))
+    _gen = _by * bc.toplam_modul(KOD)
+    es(f"{_ad}: veri = alt küme C + kod", ">;" + KOD, _veri)
+    es(f"{_ad}: modül ≥ 0.25 mm (okuyucu alt sınırı)", True, _by / _dpi * 25.4 >= 0.25)
+    es(f"{_ad}: etikete sığıyor", True, _x >= 0 and _x + _gen <= _pw and _y + _yuk <= _ll)
+    # Çubuklar rasterde OLMAMALI: iki kez basılırsa üst üste biner.
+    _ham, _sb, _bw, _bh = _bitmap(_z)
+    _satir = _y + _yuk // 2
+    _siyah = sum(bin(_ham[_satir * _sb + i]).count("1") for i in range(_sb))
+    es(f"{_ad}: rasterde çubuk YOK (çift baskı olmaz)", 0, _siyah)
+
+print("\n── 8. alt küme seçimi ^BC ile barcode128 AYNI ──")
+for _k, _beklenen in (("40105913453122", ">;"), ("4010591345312", ">:"), ("A1-B2", ">:")):
+    _z, _ = _bc_zpl(_k, 100, 150)
+    _m = _BC.search(_z)
+    es(f"{_k} → {_beklenen}", _beklenen + _k, _m.group(5) if _m else None)
+
+print("\n── 9. ZPL'i bozacak karakter reddediliyor ──")
+for _kotu in ("12^XA34", "12~DG34", "12>;34"):
+    try:
+        _bc_zpl(_kotu, 100, 150)
+        _sonuc = "GECTI"
+    except _zl.ZplError:
+        _sonuc = "REDDEDILDI"
+    es(f"{_kotu!r} reddedildi", "REDDEDILDI", _sonuc)
+
+print("\n── 10. barkod kodundaki boşluklar temizleniyor ──")
+# Elle "4010 5913 4531 22" girilirse kod rakam sayılmaz, Code128-B'ye düşer ve
+# okuyucu boşluklu metin verir; karşı sistem bunu SAYI kabul etmez.
+_z, _yer = _bc_zpl("4010 5913 4531 22", 100, 150)
+es("boşluklar atıldı", "40105913453122", _yer.get("kod"))
+es("boşluksuz kod alt küme C'ye düştü", ">;40105913453122", _BC.search(_z).group(5))
+
+print("\n── 11. 300 dpi etiket artık reddedilmiyor ──")
+# AZAMI_NOKTA 203 dpi'ya göre sabitti; 300 dpi'lık GX430t'de geçerli etiketler
+# "çok geniş" diye reddediliyordu.
+es("300 dpi azami nokta 4 inç karşılığı", True, _zl.azami_nokta(300) >= 1200)
+es("203 dpi eski sınır korunuyor", True, _zl.azami_nokta(203) >= 832)
+
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")
 sys.exit(1 if KALDI else 0)

@@ -167,6 +167,7 @@ def _sar(metin: str, font, boyut: float, genislik: float) -> list[str]:
 
 def render_label_pdf(order, store_name: str | None = None,
                      barkod_kodu: str | None = None,
+                     barkod_yerlesim: dict | None = None,
                      kargo_firma: str | None = None,
                      ayarlar: dict | None = None,
                      site: str | None = None) -> bytes:
@@ -176,6 +177,10 @@ def render_label_pdf(order, store_name: str | None = None,
     gönderilerinde Sürat barkod görselini döndürmüyor ama gerçek takip
     numarasını veriyor; o numara Sürat'ın sisteminde KAYITLI olduğu için
     Code128 olarak basıldığında şubede karşılığı vardır.
+
+    `barkod_yerlesim` bir sözlük verilirse ÇUBUKLAR ÇİZİLMEZ; onun yerine
+    barkodun yeri/ölçüsü o sözlüğe yazılır. ZPL yolu bunu kullanıp barkodu
+    yazıcının kendi Code128 komutuna bastırıyor (bkz. zpl_label).
 
     Yerleşim: barkod bloğu SAYFANIN ALTINA sabitlenir, adres üstten akar.
     Böylece adres uzunluğu ne olursa olsun etiket dengeli durur ve barkodun
@@ -212,7 +217,11 @@ def render_label_pdf(order, store_name: str | None = None,
 
     a = _extract_address(order)
 
-    kod = str(barkod_kodu or order.barkod_kodu or order.order_number or "").strip()
+    # ⚠ İÇ BOŞLUKLAR DA atılır. Elle "4010 5913 4531 22" girilirse kod rakam
+    # sayılmaz, Code128-B'ye düşer (çubuklar iki katı incelir) ve okuyucu
+    # boşluklu bir metin verir — karşı sistem bunu SAYI olarak kabul etmez.
+    kod = "".join(str(barkod_kodu or order.barkod_kodu
+                      or order.order_number or "").split())
     # Barkod yüksekliği adres bittikten SONRA hesaplanır: kısa adreste barkod
     # büyür, uzun adreste küçülür. Böylece ortada ölü boşluk kalmaz ve barkod
     # her zaman olabildiğince büyük — okutması kolay — olur.
@@ -287,14 +296,25 @@ def render_label_pdf(order, store_name: str | None = None,
             sessiz = 10
             modul = ic / (sum(genislikler) + 2 * sessiz)
             x = m + sessiz * modul
-            bar = True
-            for g in genislikler:
-                gen = g * modul
-                if bar:
-                    pg.draw_rect(fitz.Rect(x, by, x + gen, by + bar_h),
-                                 color=None, fill=(0, 0, 0), width=0)
-                x += gen
-                bar = not bar
+            if barkod_yerlesim is not None:
+                # ÇUBUKLARI ÇİZMİYORUZ. Çağıran (ZPL) barkodu yazıcının KENDİ
+                # komutuyla bastıracak; burada çizip rasterleştirmek çubuk
+                # kenarlarını noktaya yuvarlıyor ve %26'ya varan genişlik
+                # sapması üretiyordu — Code128'in okuma toleransı ~%25.
+                barkod_yerlesim.update({
+                    "kod": kod, "x_pt": x, "y_pt": by,
+                    "w_pt": ic - 2 * sessiz * modul, "h_pt": bar_h,
+                    "modul_pt": modul, "sessiz_pt": sessiz * modul,
+                })
+            else:
+                bar = True
+                for g in genislikler:
+                    gen = g * modul
+                    if bar:
+                        pg.draw_rect(fitz.Rect(x, by, x + gen, by + bar_h),
+                                     color=None, fill=(0, 0, 0), width=0)
+                    x += gen
+                    bar = not bar
             by += bar_h + 4
             by = yaz(kod, A["takip_punto"], by, kalin=True, ortala=True)
         except barcode128.BarcodeError:

@@ -293,7 +293,7 @@ def etiket_onizleme(
 
 
 def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
-    """Sürat gönderisinin YAZDIRILACAK etiketi.
+    """Sürat gönderisinin YAZDIRILACAK etiketi. (pdf, barkod_yerlesim) döner.
 
     Sürat bu hesapta barkod GÖRSELİ döndürmüyor (takip no veriyor, Message=013,
     Barcode boş). Görsel varsa o kullanılır; yoksa kendi etiketimiz basılır ama
@@ -302,15 +302,18 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     """
     yol = _surat_etiket_yolu(order.id)
     if yol.exists():
-        return yol.read_bytes()
+        return yol.read_bytes(), None
     kod = (ki.get("barkod_no") or ki.get("takip_no") or "").strip()
     if not kod:
         raise HTTPException(404, "Sürat takip numarası yok — gönderiyi yeniden oluştur")
     from app.services import label_pdf as _lp
-    return _lp.render_label_pdf(order, _etiket_magaza_adi(db, order), barkod_kodu=kod,
-                                kargo_firma=ki.get("handler_name") or "Sürat Kargo",
-                                ayarlar=_etiket_ayarlari(db, order.tenant_id),
-                                site=_magaza_site(db, order))
+    yer: dict = {}
+    pdf = _lp.render_label_pdf(order, _etiket_magaza_adi(db, order), barkod_kodu=kod,
+                               barkod_yerlesim=yer,
+                               kargo_firma=ki.get("handler_name") or "Sürat Kargo",
+                               ayarlar=_etiket_ayarlari(db, order.tenant_id),
+                               site=_magaza_site(db, order))
+    return pdf, (yer or None)
 
 
 class KargoGonderRequest(BaseModel):
@@ -551,19 +554,26 @@ def order_zpl(
     order = _resolve_order(db, order_ref, user.tenant_id)
     try:
         if tip == "adres":
+            # ⚠ barkod_yerlesim: çubuklar rasterde DEĞİL, yazıcının ^BC
+            # komutuyla basılır. Rasterde çubuk kenarları noktaya yuvarlanıp
+            # %26'ya varan genişlik sapması üretiyordu (Code128 toleransı ~%25)
+            # ve okuyucu barkodu okuyamıyordu.
+            _yer: dict = {}
             pdf = label_pdf.render_label_pdf(
                 order, _etiket_magaza_adi(db, order),
+                barkod_yerlesim=_yer,
                 ayarlar=_etiket_ayarlari(db, order.tenant_id),
                 site=_magaza_site(db, order),
                 kargo_firma=_siparis_kargo_adi(db, order))
-            zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None, doldur=doldur)
+            zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None,
+                             doldur=doldur, barkod=_yer or None)
         else:
             ki = order.kargo_info or {}
             if ki.get("provider") == "surat":
                 # Sürat SVG değil PDF veriyor; adres etiketiyle aynı yoldan geçer.
-                pdf = _surat_etiket_pdf(db, order, ki)
+                pdf, _yer = _surat_etiket_pdf(db, order, ki)
                 zpl = pdf_to_zpl(pdf, dpi=dpi, w_mm=w_mm or None,
-                                 h_mm=h_mm or None, doldur=doldur)
+                                 h_mm=h_mm or None, doldur=doldur, barkod=_yer)
             else:
                 if not ki.get("id"):
                     raise HTTPException(404, "Bu sipariş için kargo etiketi yok")
@@ -590,7 +600,9 @@ def kargo_label(
     order = _resolve_order(db, order_ref, user.tenant_id)
     ki = order.kargo_info or {}
     if ki.get("provider") == "surat":
-        return Response(content=_surat_etiket_pdf(db, order, ki),
+        # Tarayıcıdan/PDF olarak bakıldığında çubuklar ÇİZİLİ olmalı — burada
+        # barkod_yerlesim İSTEMİYORUZ (o yalnız ZPL yolunda kullanılıyor).
+        return Response(content=_surat_etiket_pdf(db, order, ki)[0],
                         media_type="application/pdf")
     if not ki.get("id"):
         raise HTTPException(404, "Bu sipariş için kargo etiketi yok")

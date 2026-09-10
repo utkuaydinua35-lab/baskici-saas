@@ -26,7 +26,6 @@ const DashboardPage = lazyWithReload(() => import('./pages/DashboardPage'))
 const DesignsPage = lazyWithReload(() => import('./pages/DesignsPage'))
 const VaryantliUrunlerPage = lazyWithReload(() => import('./pages/VaryantliUrunlerPage'))
 const ProductStudioPage = lazyWithReload(() => import('./pages/ProductStudioPage'))
-const NotesPage = lazyWithReload(() => import('./pages/NotesPage'))
 const TelafilerPage = lazyWithReload(() => import('./pages/TelafilerPage'))
 const KisiyeOzelPage = lazyWithReload(() => import('./pages/KisiyeOzelPage'))
 const LoginPage = lazyWithReload(() => import('./pages/LoginPage'))
@@ -111,7 +110,6 @@ export default function App() {
             <Route path="/ayarlar/etiket" element={<EtiketSablonPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/:orderId" element={<OrderDetailPage />} />
-            <Route path="/notlar" element={<NotesPage />} />
             <Route path="/telafiler" element={<TelafilerPage />} />
             <Route path="/aski" element={<AskiPage />} />
             <Route path="/telefon-modelleri" element={<PhoneModelsPage />} />

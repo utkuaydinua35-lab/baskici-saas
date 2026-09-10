@@ -1457,41 +1457,6 @@ class ShopifyOAuthPending(Base):
         DateTime(timezone=True), server_default=func.now())
 
 
-class Note(Base):
-    """Siparis notlari (Apple Notes tarzi). Her magaza/bayii + tip (acik/gonderilmis) bir not.
-    auto_content: siparislerden otomatik uretilir. manual_content: kullanici elle ekler (korunur).
-    serbest notlar: store_id=None, is_serbest=True."""
-    __tablename__ = "notes"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
-    )
-    # store_id None ise serbest (elle) not
-    store_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, index=True
-    )
-    dealer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="CASCADE"), nullable=True, index=True
-    )
-    # 'acik' | 'gonderilmis' | 'serbest'
-    note_type: Mapped[str] = mapped_column(String(20), default="acik", index=True)
-    baslik: Mapped[str] = mapped_column(String(200))
-    # Otomatik uretilen icerik (siparislerden) — JSON satir listesi
-    auto_content: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
-    # Kullanicinin elle ekledigi serbest metin (korunur, otomatik ureten ezmez)
-    manual_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Satir-tabanli checklist icerigi: [{key,text,checked,kind,line_item_id,order_id,uyari}]
-    lines: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
-    is_serbest: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
-
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class MarketingSubscriber(Base):
     """Pazarlama (kampanya/bilgilendirme) e-posta abonesi — KVKK uyumlu.
 

@@ -83,7 +83,6 @@ DENEMELER = [
     ("telafi: liste",                    "GET", "/api/telafiler", None),
     ("askı: liste",                      "GET", "/api/aski", None),
     ("kişiye özel: liste",               "GET", "/api/kisiye-ozel", None),
-    ("notlar: liste",                    "GET", "/api/notes", None),
     ("bildirim: tüm mağaza senkronu",    "POST", "/api/notifications/sync-all", {}),
     ("dashboard: telegram tetikleyici",  "POST", "/api/dashboard/_test-daily-summary", {}),
 ]

@@ -94,7 +94,7 @@ class _DeadSubscription(Exception):
 # kullanimdaki tum adresleri sabitliyor.
 _STUDIO_ONEKLERI = (
     "/orders", "/bayii", "/bayiler", "/bayi-siparisleri", "/destek",
-    "/kalip", "/paketleme", "/notlar", "/aski", "/designs", "/kisiye-ozel",
+    "/kalip", "/paketleme", "/aski", "/designs", "/kisiye-ozel",
     "/stok", "/telafiler", "/pipeline", "/platform", "/denetim", "/stores",
     "/urun-studyosu", "/varyantli-urunler", "/aksesuarlar", "/couple",
     "/telefon-modelleri", "/sosyal-medya", "/pazarlama", "/baskici-paneli",

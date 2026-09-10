@@ -132,6 +132,28 @@ async def dogrulama_hatasi(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"detail": ozet, "alanlar": exc.errors()})
 
 
+@app.exception_handler(Exception)
+async def beklenmeyen_hata(request: Request, exc: Exception):
+    """Yakalanmayan her istisna → log + Telegram/bildirim + kullanıcıya sade mesaj.
+
+    ⚠ NEDEN: eskiden beklenmeyen bir hata yalnız log dosyasına düşüyordu ve o
+    dosyayı kimse okumuyordu. Bir müşteri sayfası patlasa, müşteri şikayet
+    edene kadar haberimiz olmuyordu.
+
+    İstemciye ayrıntı SIZDIRILMAZ: yığın izi ve iç mesaj yalnız bize gider.
+    """
+    logging.getLogger("hata").exception(
+        "beklenmeyen hata %s %s", request.method, request.url.path)
+    try:
+        from app.services import hata_uyari
+        hata_uyari.bildir(request.method, request.url.path, exc)
+    except Exception:  # noqa: BLE001 — uyarı yanıtı BOZMAZ
+        pass
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Beklenmeyen bir hata oluştu. Ekip bilgilendirildi."})
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     """API yanıtlarına güvenlik başlıkları — JSON'un tarayıcıda script gibi

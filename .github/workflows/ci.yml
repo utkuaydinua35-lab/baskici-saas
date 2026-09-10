@@ -1,7 +1,9 @@
 name: CI
 
-# Her push ve PR'da backend import/derleme + frontend build smoke testi.
-# Amac: boot'u bozan / build'i kiran hatalari VPS'e gitmeden yakalamak.
+# Her push ve PR'da backend import/derleme + frontend build + veritabani
+# gerektirmeyen test paketleri.
+# Amac: boot'u bozan / build'i kiran / davranisi degistiren hatalari VPS'e
+# gitmeden yakalamak.
 
 on:
   push:
@@ -47,6 +49,37 @@ jobs:
           ENV: "ci"
         run: |
           python -c "import app.main; from sqlalchemy.orm import configure_mappers; configure_mappers(); print('backend import + mappers OK')"
+
+  # 44 test paketi elle kosuluyordu ve her seferinde bir ALT KUMESI seciliyordu.
+  # 2026-09-11'de tam bu yuzden surat_dogrudan_test gunlerce KIRIK kaldi
+  # (bir fonksiyon iki deger donmeye basladi, test guncellenmedi, o gun o paket
+  # hic kosulmadi). Artik DB istemeyen her paket her push'ta kosuyor.
+  # DB isteyen paketler icin Postgres servisi eklenmeli — ayri is.
+  testler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      # Etiket/barkod testleri PDF uretiyor. Sistemde gercek bir TTF yoksa
+      # PyMuPDF base14'e duser ve Turkce karakterler ASCII'ye cevrilir —
+      # etiket testi bunu yakalar. DejaVu, VPS'tekiyle ayni font.
+      - name: Turkce font (etiket testleri icin)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core
+      - name: Test paketleri (DB gerektirmeyenler)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql+psycopg://ci:ci@localhost:5432/ci"
+          JWT_SECRET: "ci-dummy-secret"
+          SESSION_SECRET: "ci-dummy-session"
+          ENV: "ci"
+        run: python scripts/ci_testleri.py
 
   frontend:
     runs-on: ubuntu-latest

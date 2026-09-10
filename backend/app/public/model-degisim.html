@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Telefon Modeli Değişikliği</title>
+<title>BERNZ - Siparişimde değişiklik yapmak istiyorum.</title>
+<link rel="icon" href="/api/public/model-degisim-favicon" />
 <style>
   :root{
     --bg:#0f1117; --card:#171a23; --card2:#1e2230; --border:#2a2f3e;
@@ -85,6 +86,15 @@
   .urun .ad{padding:5px 6px 0;font-size:10.5px;line-height:1.3;color:#d7dbe6;
     height:calc(2.6em + 5px);overflow:hidden}
   .bos{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+  .dahafazla{display:block;width:100%;margin-top:12px;padding:12px;border-radius:12px;
+    background:var(--card2);border:1px solid var(--border);color:var(--text);
+    font-size:13.5px;font-weight:600;cursor:pointer}
+  .dahafazla:active{opacity:.75}
+  .onaykutu{display:flex;gap:10px;align-items:flex-start;background:var(--card2);
+    border:1px solid var(--border);border-radius:12px;padding:12px 14px;
+    margin-bottom:14px;cursor:pointer}
+  .onaykutu input{width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;margin-top:1px}
+  .onaykutu .mt{font-size:13px;color:#d7dbe6;line-height:1.45}
   .ortu{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:50;
     display:flex;align-items:center;justify-content:center;padding:20px}
   .tanitim{background:var(--card);border:1px solid var(--border);border-radius:18px;
@@ -223,8 +233,15 @@ async function yukle() {
                autocomplete="off" />
         <div class="cipler" id="cipler"></div>
         <div class="izgara" id="izgara"></div>
+        <button class="dahafazla" id="dahaFazla" hidden>Daha fazla göster</button>
       </div>
       </div>` : ''}
+
+    ${urunSecilebilir ? `
+      <label class="onaykutu" id="modelKutu" hidden>
+        <input type="checkbox" id="modelDeAc" />
+        <span class="mt">Telefon modelimi de değiştirmek istiyorum.</span>
+      </label>` : ''}
 
     ${kalemler.length ? `
       <div class="baslik">Siparişinizdeki ürünler</div>
@@ -286,6 +303,12 @@ async function yukle() {
     };
   }
 
+  // Ürün değiştirme modunda telefon modeli DEĞİŞMEZ (müşterinin telefonu
+  // aynı kalır); modeli de değiştirmek isteyen için ayrı onay kutusu var.
+  // Bu ayrım önemli: "farklı ürün" diyen müşteriye zorunlu model seçtirmek,
+  // yanlışlıkla telefonunu değiştirmesine yol açıyordu.
+  let modelDeDegissin = false;
+
   const marka = document.getElementById('marka');
   const model = document.getElementById('model');
   const gonder = document.getElementById('gonder');
@@ -310,16 +333,21 @@ async function yukle() {
   // ── Ürün kataloğu: kategori + arama ──────────────────────────────────
   let secilenUrun = null;
   let tumModelModu = false;   // Special'dan çıkıp tam model listesine geçildi mi
+  // ⚠ Katalog çizimi `if (katalog.length) { … }` bloğunun İÇİNDE tanımlı; blok
+  // kapsamı yüzünden yukarıdaki düğme onu göremiyordu ve tıklamada sessiz bir
+  // ReferenceError oluşuyordu (ızgara ilk açılışta yanlış sütunla kalıyordu).
+  // Dış kapsamda boş bir yer tutucu; blok içinde gerçek işlevle değiştiriliyor.
+  let ciz = () => {};
   let aktifKategori = null;   // null = tümü
 
   const guncelleGonder = () => {
-    // BERNZ Special'da tam model listesine geçildiyse Special'dan çıkılıyor
-    // demektir; o modelde üretim ancak başka bir üründe mümkün, ürün seçimi
-    // ZORUNLU. Şeffafta böyle bir kısıt yok.
-    if (tumModelModu && v.ozel_seri) {
-      gonder.disabled = !(model.value && secilenUrun); return;
+    // Ürün modunda: ürün seçimi yeter. Model yalnız onay kutusu işaretliyse
+    // gönderilir ve o zaman seçilmiş olmalı.
+    if (tumModelModu) {
+      gonder.disabled = !(secilenUrun && (!modelDeDegissin || model.value));
+      return;
     }
-    gonder.disabled = !(model.value || secilenUrun);
+    gonder.disabled = !model.value;
   };
   model.onchange = guncelleGonder;
 
@@ -343,12 +371,38 @@ async function yukle() {
       }
       const bolum = document.getElementById('katalogBolum');
       if (bolum) bolum.hidden = !tumModelModu;
+      const kutu = document.getElementById('modelKutu');
+      if (kutu) kutu.hidden = !tumModelModu;
+      // Ürün moduna geçince model alanları onay kutusuna bağlanır.
+      modelAlaniniAyarla();
       tumBtn.textContent = tumModelModu
         ? (v.ozel_seri ? '← BERNZ Special model listesine dön' : '← Ürün değişikliğinden vazgeç')
         : (v.ozel_seri
             ? 'Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum'
             : 'Farklı bir ürünle devam etmek istiyorum');
-      if (!tumModelModu) { secilenUrun = null; ciz(); }
+      // Izgara GİZLİYKEN sütun sayısı ölçülemiyor (3 sanıyordu). Bölüm
+      // görünür olduktan SONRA baştan çizdir ki ilk 5 satır doğru olsun.
+      if (katalog.length) { secilenUrun = tumModelModu ? secilenUrun : null; ciz(); }
+      guncelleGonder();
+    };
+  }
+
+  const modelSarmal = marka.closest('.card');
+  const modelKutu = document.getElementById('modelKutu');
+  const modelDeAc = document.getElementById('modelDeAc');
+  function modelAlaniniAyarla() {
+    const kapali = tumModelModu && !modelDeDegissin;
+    marka.disabled = kapali;
+    model.disabled = kapali || !marka.value;
+    marka.style.opacity = kapali ? '0.45' : '';
+    model.style.opacity = kapali ? '0.45' : '';
+    if (kapali) { marka.value = ''; model.innerHTML = '<option value="">Önce marka seçiniz</option>'; }
+  }
+  if (modelDeAc) {
+    modelDeAc.onchange = () => {
+      modelDeDegissin = modelDeAc.checked;
+      modelAlaniniAyarla();
+      if (modelDeDegissin && modelSarmal) modelSarmal.scrollIntoView({ behavior: 'smooth', block: 'center' });
       guncelleGonder();
     };
   }
@@ -356,22 +410,38 @@ async function yukle() {
   const cipler = document.getElementById('cipler');
   const izgara = document.getElementById('izgara');
   const ara = document.getElementById('ara');
+  const dahaFazla = document.getElementById('dahaFazla');
 
   if (katalog.length) {
-    const ciz = () => {
+    // Sayfalama: 575 ürünün tamamını basmak hem çok uzun bir sayfa yapıyor
+    // hem de telefonu yoruyor. Başlangıçta 5 satır, her tıkta 4 satır daha.
+    // Satır = o anki sütun sayısı (ızgara ekrana göre 4-6 sütun olabiliyor).
+    const ILK_SATIR = 5, EK_SATIR = 4;
+    let gosterilen = 0;
+
+    const sutunSayisi = () =>
+      getComputedStyle(izgara).gridTemplateColumns.split(' ').filter(Boolean).length || 4;
+
+    ciz = (sifirla = true) => {
       // Arama TÜM kategorilerde çalışır: müşteri ürünün hangi seride
       // olduğunu bilmek zorunda değil.
       const q = (ara.value || '').trim();
       const qk = katla(q);
-      let liste = [];
+      let tumu = [];
       for (const g of katalog) {
         if (!qk && aktifKategori && g.kategori !== aktifKategori) continue;
         for (const u of g.urunler) {
           if (qk && !u.ara.includes(qk)) continue;
-          liste.push(u);
+          tumu.push(u);
         }
       }
-      liste = liste.slice(0, 120);   // uzun listede telefon yorulmasın
+      if (sifirla) gosterilen = sutunSayisi() * ILK_SATIR;
+      const liste = tumu.slice(0, gosterilen);
+
+      dahaFazla.hidden = tumu.length <= liste.length;
+      if (!dahaFazla.hidden) {
+        dahaFazla.textContent = `Daha fazla göster (${tumu.length - liste.length} ürün daha)`;
+      }
 
       izgara.innerHTML = liste.length ? liste.map(u => `
         <div class="urun${secilenUrun === u.id ? ' secili' : ''}" data-id="${kacir(u.id)}">
@@ -386,7 +456,7 @@ async function yukle() {
         el.onclick = () => {
           const id = el.getAttribute('data-id');
           secilenUrun = (secilenUrun === id) ? null : id;   // tekrar tıkla → seçimi kaldır
-          ciz(); guncelleGonder();
+          ciz(false); guncelleGonder();
         };
       });
     };
@@ -405,7 +475,10 @@ async function yukle() {
       });
     };
 
-    ara.oninput = ciz;
+    ara.oninput = () => ciz();
+    if (dahaFazla) {
+      dahaFazla.onclick = () => { gosterilen += sutunSayisi() * EK_SATIR; ciz(false); };
+    }
     cipCiz(); ciz();
   }
 
@@ -416,7 +489,10 @@ async function yukle() {
       const r = await fetch(`/api/public/model-degisim/${encodeURIComponent(TOKEN)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model.value || null, urun_id: secilenUrun }),
+        body: JSON.stringify({
+          model: (tumModelModu && !modelDeDegissin) ? null : (model.value || null),
+          urun_id: secilenUrun,
+        }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {

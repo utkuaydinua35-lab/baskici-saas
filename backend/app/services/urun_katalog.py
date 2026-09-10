@@ -76,7 +76,19 @@ def seri_adi(baslik: str) -> str | None:
     return ad or None
 
 
-_TIRNAK = re.compile(r"[\"“”'‘’]([^\"“”'‘’]{2,})[\"“”'‘’]")
+# Tırnak çiftleri — SIRA ÖNEMLİ, açan/kapayan AYNI türden olmalı.
+# ⚠ Eskiden tek bir "herhangi tırnak" kalıbı vardı ve içindeki kesme
+# işaretinde duruyordu: `BERNZ "Don't Panic It's Organic" …` başlığından
+# yalnızca "Don" çıkıyordu. Artık her tür kendi eşiyle kapanıyor.
+_TIRNAK_CIFTLERI = [
+    re.compile(r'"([^"]{2,})"'),      # düz çift tırnak
+    re.compile(r"“([^”]{2,})”"),      # eğik çift tırnak
+    re.compile(r"‘([^’]{2,})’"),      # eğik tek tırnak (içindeki ' sorun değil)
+]
+# Düz tek tırnak ancak metinde TAM İKİ tane varsa çift sayılır; aksi halde
+# kesme işaretidir ("Editor's Choice" gibi).
+_DUZ_TEK = re.compile(r"'([^']{2,})'")
+_KARISIK = re.compile(r"[‘'“\"]([^’'”\"]{2,})[’'”\"]")
 
 
 def kisa_ad(baslik: str) -> str:
@@ -87,9 +99,22 @@ def kisa_ad(baslik: str) -> str:
     aynı "Tasarım Telefon Kılıfı" tekrarı giriyor. Tırnak içindeki tasarım adı
     varsa o kullanılır; yoksa seri eki atılmış başlık.
     """
-    m = _TIRNAK.search(baslik or "")
+    b = baslik or ""
+    for kalip in _TIRNAK_CIFTLERI:
+        m = kalip.search(b)
+        if m:
+            return m.group(1).strip()
+    if b.count("'") == 2:
+        m = _DUZ_TEK.search(b)
+        if m:
+            return m.group(1).strip()
+    # Son çare: karışık tırnak (‘911' gibi açan eğik, kapayan düz). Sıkı
+    # eşleşmeler tutmadığı için burada kesme işareti riski YOK — kesme işareti
+    # olsaydı yukarıdaki kalıplardan biri zaten yakalardı.
+    m = _KARISIK.search(b)
     if m:
         return m.group(1).strip()
+    m = None
     parcalar = _AYIRAC.split(baslik or "")
     if len(parcalar) > 1 and _katla(parcalar[-1]).endswith(_SERI_SON):
         return _AYIRAC.split(baslik)[0].strip() or (baslik or "").strip()
@@ -98,6 +123,21 @@ def kisa_ad(baslik: str) -> str:
 
 # Aile adının başındaki anlamsız kelimeler ("The Serenity Collection" → serenity)
 _ATLA = {"the", "bernz", "a", "an"}
+
+# Farklı ailelerin TEK başlık altında toplanması. Aile adı otomatik çıkarılıyor
+# ama bazı seriler müşteri gözünde aynı şey; ayrı ayrı durunca çip şeridi
+# gereksiz uzuyor. İşletmenin kararı — değiştirmek bu sözlükte bir satır.
+# (anahtar: _aile() çıktısı, değer: gösterilecek başlık)
+_BIRLESTIR = {
+    "pembe": "Estetik",       # Pembe Dünya
+    "girly": "Estetik",
+    "glow": "Estetik",        # Glow Up
+    "melek": "Estetik",
+    "sevimli": "Estetik",
+    "aura": "Estetik",
+    "celestial": "Estetik",
+    "meyve": "Estetik",
+}
 
 
 def _aile(seri: str) -> str:
@@ -254,7 +294,7 @@ def katalog(db: Session, tenant_id, store=None) -> list[dict]:
     for p in urunler:
         baslik = p["baslik"]
         seri = seri_adi(baslik) or "Diğer"
-        k = "" if seri == "Diğer" else _aile(seri)
+        k = "" if seri == "Diğer" else _BIRLESTIR.get(_aile(seri), _aile(seri))
         g = gruplar.setdefault(k, {"uyeler": {}, "urunler": []})
         g["uyeler"][seri] = g["uyeler"].get(seri, 0) + 1
         g["urunler"].append({
@@ -267,7 +307,10 @@ def katalog(db: Session, tenant_id, store=None) -> list[dict]:
 
     cikti, artan = [], []
     for k, g in gruplar.items():
-        etiket = "Diğer" if k == "" else _aile_etiketi(g["uyeler"])
+        # Elle birleştirilen ailelerde etiket sözlükten gelir; otomatik
+        # çıkarım "Pembe" gibi tek üyenin adını seçerdi.
+        etiket = "Diğer" if k == "" else (k if k in _BIRLESTIR.values()
+                                          else _aile_etiketi(g["uyeler"]))
         # Tek ürünlü kategoriler çip şeridini şişiriyor ve seçim kolaylığı
         # sağlamıyor — "Diğer"e katılır, aramadan yine bulunur.
         if etiket != "Diğer" and len(g["urunler"]) < 2:

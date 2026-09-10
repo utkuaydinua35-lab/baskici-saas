@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -48,11 +48,19 @@ except OSError:
 UYARI_METNI = "Telefon modeli değişikliği nedeniyle kalıptan ürün çıkarıldı."
 
 
-def _talep(db: Session, token: str) -> ModelDegisimTalebi:
-    t = db.scalar(
-        select(ModelDegisimTalebi).where(ModelDegisimTalebi.token == token)
-        .execution_options(include_deleted=True)
-    )
+def _talep(db: Session, token: str, *, kilitle: bool = False) -> ModelDegisimTalebi:
+    """Token'dan talep. `kilitle=True` satırı kilitler (bkz. uygula()).
+
+    ⚠ KİLİT NEDEN GEREKLİ: müşteri bağlantıyı iki sekmede açıp aynı anda
+    onaylarsa iki istek de "bekliyor" görüp İKİSİ de uygulanıyordu — kalem iki
+    kez işlenip çift bildirim ve çift geçmiş kaydı düşüyordu. Testte
+    doğrulandı: iki eşzamanlı istek de 200 dönüyordu. Satır kilidiyle ikinci
+    istek birincinin commit'ini bekler, sonra "uygulandi" görüp 409 alır.
+    """
+    q = select(ModelDegisimTalebi).where(ModelDegisimTalebi.token == token)
+    if kilitle:
+        q = q.with_for_update()
+    t = db.scalar(q.execution_options(include_deleted=True))
     if not t:
         raise HTTPException(status_code=404, detail="Bağlantı bulunamadı")
     return t
@@ -246,6 +254,19 @@ def _siparis_ozeti(db: Session, t: ModelDegisimTalebi) -> dict:
     }
 
 
+_FAVICON = Path(__file__).parent.parent / "public" / "bernz-favicon.png"
+
+
+@router.get("/api/public/model-degisim-favicon")
+def favicon():
+    """Sekme ikonu. `app/public` statik olarak sunulmuyor (HTML'ler dosyadan
+    okunup string olarak dönüyor), o yüzden küçük bir uç."""
+    if not _FAVICON.exists():
+        raise HTTPException(status_code=404, detail="yok")
+    return FileResponse(_FAVICON, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/model-degisim/{token}", response_class=HTMLResponse)
 def sayfa(token: str):
     return HTMLResponse(_SAYFA)
@@ -331,7 +352,9 @@ def _kaliptan_cek(db: Session, li: LineItem) -> int:
 @router.post("/api/public/model-degisim/{token}", response_model=dict)
 def uygula(token: str, istek: SecimIstegi,
            db: Session = Depends(get_db), _rl: None = Depends(rate_limit)):
-    t = _talep(db, token)
+    # Satır kilidi: aynı bağlantıya iki sekmeden aynı anda basılırsa yalnız
+    # biri uygulansın (bkz. _talep).
+    t = _talep(db, token, kilitle=True)
     if t.durum == "uygulandi":
         raise HTTPException(status_code=409, detail="Bu bağlantı zaten kullanıldı.")
     if not _sureli_mi(t):
@@ -364,6 +387,9 @@ def uygula(token: str, istek: SecimIstegi,
         # Müşteri başka bir ürüne geçiyorsa (urun seçtiyse) o ürünün model
         # yelpazesi geçerlidir — aksi halde "modelim Special'da yok" diyen
         # müşteriye çıkış yolu bırakmamış olurduk.
+        # NOT: ürün değiştiren müşteri için model DEĞİŞTİRMEK ZORUNDA DEĞİL;
+        # telefonu aynı kalır. Model yalnız açıkça istendiğinde gönderilir
+        # (sayfada "telefon modelimi de değiştirmek istiyorum" kutusu).
         if ozel and urun_adi is not None:
             markalar, ozel = _markalara_ayir(_tum_modeller(db, t.tenant_id)), False
         # ⚠ Yalnız STOKTA olan seçilebilir. Listede görünen ama stokta olmayan

@@ -22,5 +22,9 @@ Thumbs.db
 backend/storage/
 backend/uploads/
 *.sql.gz
+# Tam yedek arsivleri GB'larca — asla depoya girmemeli
+tam-yedek-*.tar
+tam-yedek-*.tar.sha256
+backend/backups/
 *.dump
 logs/

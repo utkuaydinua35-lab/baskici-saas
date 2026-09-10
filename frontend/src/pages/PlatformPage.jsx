@@ -106,6 +106,7 @@ export default function PlatformPage() {
         </div>
       )}
 
+      <TamYedek />
       <Backups />
 
       {showCreate && <CreateTenant onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); load() }} />}
@@ -122,6 +123,119 @@ function fmtSize(b) {
 function fmtDateTime(d) {
   if (!d) return '—'
   try { return new Date(d).toLocaleString('tr-TR') } catch { return d }
+}
+
+// Tam yedek = veritabani + tasarim dosyalari, tek arsivde, tek komutla geri
+// yuklenebilir. ⚠ Gecelik yedek yalniz VERITABANINI aliyor ve AYNI DISKTE
+// duruyor; disk olurse hem veri hem yedek gider ve 6+ GB tasarim dosyasi
+// kalici olarak kaybolur. Bu arsiv disari (kendi diskine) indirilmek icindir.
+function TamYedek() {
+  const toast = useToast()
+  const [d, setD] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    try { setD(await api.get('/api/platform/tam-yedek')) } catch { setD({ items: [] }) }
+  }
+  useEffect(() => { load() }, [])
+
+  const runNow = async () => {
+    setBusy(true)
+    toast.success('Yedek alınıyor — GB\'larca veri, birkaç dakika sürebilir.')
+    try { await api.post('/api/platform/tam-yedek', {}); await load(); toast.success('Tam yedek hazır') }
+    catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Yedek alınamadı') }
+    finally { setBusy(false) }
+  }
+
+  // ⚠ fetch+blob() KULLANILMIYOR: 5 GB'i bellege alip sekmeyi cokertir.
+  // Kisa omurlu imzali jetonla dogrudan link — tarayici diske akitir.
+  const download = async (name) => {
+    try {
+      const r = await api.post(`/api/platform/tam-yedek/${encodeURIComponent(name)}/indirme-jetonu`, {})
+      const u = mutlak(`/api/platform/tam-yedek/${encodeURIComponent(name)}/download?jeton=${encodeURIComponent(r.jeton)}`)
+      const a = document.createElement('a'); a.href = u; a.download = name
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch { toast.error('İndirme bağlantısı alınamadı') }
+  }
+
+  if (!d) return null
+  const items = d.items || []
+  const yas = d.yas_gun
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-100">📦 Tam Yedek (veritabanı + dosyalar)</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Tek arşiv, tek komutla geri yüklenir · son {d.keep} tanesi saklanır
+            {d.haric?.length ? ` · ${d.haric.join(', ')} hariç (yeniden üretilir)` : ''}
+          </p>
+        </div>
+        <button onClick={runNow} disabled={busy} className="btn-primary !text-sm disabled:opacity-50">
+          {busy ? 'Alınıyor…' : '+ Tam Yedek Al'}
+        </button>
+      </div>
+
+      {d.bayat && (
+        <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <b>⚠ Dışarıda güncel bir kopyan yok.</b>{' '}
+          {yas == null
+            ? 'Hiç tam yedek alınmamış.'
+            : `En son tam yedek ${Math.floor(yas)} gün önce alındı.`}{' '}
+          Sunucu diski ölürse gecelik yedekler de onunla gider — tasarım dosyaları
+          kalıcı olarak kaybolur. Tam yedek alıp kendi diskine indir.
+        </div>
+      )}
+
+      <div className="card !p-0 overflow-hidden">
+        {items.length === 0 ? (
+          <div className="p-8 text-center text-gray-500 text-sm">
+            Henüz tam yedek yok. "Tam Yedek Al" ile ilkini oluştur.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-brand-border text-left text-[11px] text-gray-500 uppercase">
+                <th className="px-4 py-2.5 font-medium">Dosya</th>
+                <th className="px-4 py-2.5 font-medium">Boyut</th>
+                <th className="px-4 py-2.5 font-medium">Tarih</th>
+                <th className="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(b => (
+                <tr key={b.name} className="border-b border-brand-border/40 hover:bg-brand-input/40">
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-300">
+                    {b.name}
+                    {b.sha256 && (
+                      <div className="text-[10px] text-gray-600 mt-0.5">sha256 {b.sha256.slice(0, 16)}…</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-400">{fmtSize(b.size)}</td>
+                  <td className="px-4 py-2.5 text-gray-400 text-xs">{fmtDateTime(b.created_at)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => download(b.name)} className="btn-secondary !text-xs">⬇ İndir</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="mt-3 text-[11px] text-gray-500 leading-relaxed">
+        <b className="text-gray-400">Geri yükleme:</b> arşivin içinde <code>GERI-YUKLE.sh</code> ve
+        <code> BENIOKU.txt</code> var. Sunucuda root olarak:{' '}
+        <code className="text-gray-400">tar -xf dosya.tar GERI-YUKLE.sh &amp;&amp; sudo bash GERI-YUKLE.sh dosya.tar --onayliyorum</code>.
+        Onay kelimesi yazılmazsa hiçbir şeye dokunmaz.
+        <br />
+        <b className="text-gray-400">Büyük dosya:</b> tarayıcı indirmesi yarıda kesilirse
+        sunucudan doğrudan çekmek daha sağlam:{' '}
+        <code className="text-gray-400">rsync -avP baskici:/srv/baskici/backups/DOSYA.tar .</code>
+      </div>
+    </div>
+  )
 }
 
 function Backups() {

@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_platform_admin
+from app.config import get_settings
 from app.auth.schemas import slugify
 from app.auth.security import create_access_token, hash_password
 from app.database import get_db
@@ -31,6 +32,12 @@ router = APIRouter(
     prefix="/api/platform", tags=["platform"],
     dependencies=[Depends(require_platform_admin)],
 )
+
+# ⚠ AYRI ROUTER — üstteki blok TÜM uçlara Bearer başlığı şartı koyuyor. Tarayıcı
+# <a href> ile başlık gönderemez, fetch+blob() ise GB'lık dosyayı belleğe alıp
+# sekmeyi çökertir. Bu router yalnız TAM YEDEK İNDİRME için var ve kendi
+# doğrulamasını imzalı jetonla yapıyor (bkz. download_full_backup).
+indirme_router = APIRouter(prefix="/api/platform", tags=["platform"])
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -361,3 +368,75 @@ def download_backup(name: str, user: User = Depends(require_platform_admin)):
     if not path:
         raise HTTPException(404, "Yedek bulunamadı")
     return FileResponse(str(path), media_type="application/gzip", filename=name)
+
+
+# ─── TAM YEDEK (veritabanı + dosyalar) ────────────────────────────────────
+# ⚠ Gecelik yedek yalnız veritabanını alıyor ve AYNI DİSKTE duruyor. Disk
+# ölürse hem veri hem yedek gider; üstelik 6+ GB tasarım dosyası hiç
+# yedeklenmiyordu. Tam yedek tek dosyada taşınır ve TEK KOMUTLA geri yüklenir.
+@router.get("/tam-yedek", response_model=dict)
+def list_full_backups(user: User = Depends(require_platform_admin)):
+    from app.services import backup
+    _yas = backup.tam_yedek_yasi_gun()
+    return {
+        "items": backup.list_full_backups(),
+        "keep": backup.TAM_KEEP,
+        "yas_gun": _yas,
+        # Panel uyarıyı buna göre gösteriyor: dışarı indirilmemiş bir yedek,
+        # olmayan yedektir — bayatladığı GÖRÜNMELİ.
+        "bayat": (_yas is None or _yas > 7),
+        "haric": list(backup.TAM_HARIC),
+    }
+
+
+@router.post("/tam-yedek", response_model=dict)
+def run_full_backup_now(user: User = Depends(require_platform_admin)):
+    """Tam yedek al. GB'larca veri kopyalar — dakikalar sürebilir."""
+    from app.services import backup
+    try:
+        return backup.run_full_backup()
+    except backup.BackupError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+# ⚠ TAM YEDEK GB'LARCA. Tarayıcıdan indirmek için Authorization BAŞLIĞI
+# kullanılamıyor: <a href> başlık gönderemez, fetch+blob() ise 5 GB'ı BELLEĞE
+# alıp sekmeyi çökertir. Bu yüzden kısa ömürlü, TEK DOSYAYA bağlı imzalı bir
+# jeton üretiliyor; tarayıcı doğrudan diske akıtıyor.
+_JETON_SANIYE = 300
+
+
+def _jeton_serici():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(get_settings().jwt_secret, salt="tam-yedek-indirme")
+
+
+@router.post("/tam-yedek/{name}/indirme-jetonu", response_model=dict)
+def full_backup_token(name: str, user: User = Depends(require_platform_admin)):
+    from app.services import backup
+    if not backup.full_backup_path(name):
+        raise HTTPException(404, "Yedek bulunamadı")
+    return {"jeton": _jeton_serici().dumps({"ad": name}), "saniye": _JETON_SANIYE}
+
+
+@indirme_router.get("/tam-yedek/{name}/download")
+def download_full_backup(name: str, jeton: str = ""):
+    """İmzalı jetonla indirme (auth başlığı YOK — bkz. yukarıdaki not)."""
+    from itsdangerous import BadSignature, SignatureExpired
+
+    from app.services import backup
+
+    try:
+        veri = _jeton_serici().loads(jeton, max_age=_JETON_SANIYE)
+    except SignatureExpired:
+        raise HTTPException(410, "İndirme bağlantısının süresi doldu, tekrar deneyin.")
+    except BadSignature:
+        raise HTTPException(403, "Geçersiz indirme bağlantısı.")
+    # Jeton TEK dosyaya bağlı: başka bir yedeğin adıyla kullanılamaz.
+    if veri.get("ad") != name:
+        raise HTTPException(403, "Bu bağlantı başka bir dosya için üretilmiş.")
+
+    path = backup.full_backup_path(name)
+    if not path:
+        raise HTTPException(404, "Yedek bulunamadı")
+    return FileResponse(str(path), media_type="application/x-tar", filename=name)

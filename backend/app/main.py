@@ -41,6 +41,7 @@ from app.routers.webhooks import router as webhooks_router
 from app.routers.marketing import router as marketing_router
 from app.routers.public_marketing import router as public_marketing_router
 from app.routers.platform import router as platform_router
+from app.routers.platform import indirme_router as platform_indirme_router
 from app.routers.support import router as support_router
 from app.routers.templates import router as templates_router
 from app.routers.pipeline import router as pipeline_router
@@ -205,6 +206,7 @@ app.include_router(webhooks_router)
 app.include_router(marketing_router)
 app.include_router(public_marketing_router)
 app.include_router(platform_router)
+app.include_router(platform_indirme_router)
 app.include_router(support_router)
 app.include_router(aski.router)
 app.include_router(audit_router)

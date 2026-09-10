@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission, require_permission
 from app.database import get_db
+from app.services.order_scope import acik_mi as _acik_mi
 from app.services import activity
 from app.models import (LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store,
                         Tenant, User)
@@ -347,11 +348,9 @@ def _build_tab_filter(q, tab: str, tenant_id=None):
         # En az bir line item kalıba eklenmemiş + hazır değil + tamamlanmamış + iptal değil
         has_pending = select(LineItem.order_id).where(
             LineItem.is_kaliba_eklendi == False, LineItem.is_hazir == False)
-        q = q.where(
-            Order.id.in_(has_pending),
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        )
+        # Kargoya verilmiş sipariş "kalıp bekliyor" olamaz — ölçüt tek kaynaktan.
+        from app.services.order_scope import acik_kosullar as _ak
+        q = q.where(Order.id.in_(has_pending), *_ak())
     elif tab == "gonderilmeyen":
         # Henüz SEVK EDİLMEMİŞ siparişler: gerçek açık + kargoda/teslim (stage>=8)
         # değil + takip no'su yok. Bayii 'teslim' siparişleri stage 8/9 olduğundan
@@ -542,13 +541,8 @@ def list_orders(
         # (Sadece stage<8 yetersizdi: pipeline'a hiç girmemis ama Shopify'da
         #  fulfilled olan eski siparisler yanlislikla sayiliyordu.)
         now = datetime.now(UTC)
-        _dl_base = (
-            Order.kargo_deadline.isnot(None),
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-            Order.current_stage < 8,
-        )
+        from app.services.order_scope import acik_kosullar as _ak
+        _dl_base = (Order.kargo_deadline.isnot(None), *_ak())
         if deadline == "overdue":
             q = q.where(*_dl_base, Order.kargo_deadline < now)
         elif deadline == "bugun":
@@ -619,12 +613,7 @@ def list_orders(
         item["kargo_firma"] = _ki.get("handler_name")
         _ki = o.kargo_info or {}
         item["is_acil"] = bool(
-            o.cancelled_at is None
-            and o.closed_at is None
-            and not getattr(o, "is_iptal", False)
-            and (o.fulfillment_status != "fulfilled")
-            and (o.financial_status != "refunded")
-            and (o.current_stage or 0) < 8                  # kargoda(8)/teslim(9) değil
+            _acik_mi(o)                                     # ölçüt tek kaynaktan
             and not (_ki.get("takip_no"))                   # takip no yoksa
             and o.created_at_platform is not None
             and o.created_at_platform < acil_threshold
@@ -1572,12 +1561,7 @@ def get_order(
     acil_threshold = datetime.now(UTC) - timedelta(days=ACIL_THRESHOLD_DAYS)
     _ki = order.kargo_info or {}
     data["is_acil"] = bool(
-        order.cancelled_at is None
-        and order.closed_at is None
-        and not getattr(order, "is_iptal", False)
-        and order.fulfillment_status != "fulfilled"
-        and order.financial_status != "refunded"
-        and (order.current_stage or 0) < 8
+        _acik_mi(order)                                     # ölçüt tek kaynaktan
         and not _ki.get("takip_no")
         and order.created_at_platform is not None
         and order.created_at_platform < acil_threshold

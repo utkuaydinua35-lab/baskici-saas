@@ -201,9 +201,9 @@ def searchable_orders(
     if durum == "gonderilmis":
         query = query.where(Order.fulfillment_status == "fulfilled")
     elif durum == "acik":
-        query = query.where(
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None))
-        )
+        # "Açık" kelimesi panelde HER YERDE aynı şeyi demeli (services/order_scope).
+        from app.services.order_scope import acik_kosullar
+        query = query.where(*acik_kosullar())
     s = (q or "").strip()
     if s:
         like = f"%{s}%"

@@ -26,16 +26,14 @@ ACIL_THRESHOLD_DAYS = 5
 
 
 def open_conds():
-    """'Gerçek açık' SQL koşulları: Shopify iptali (cancelled_at) DEĞİL + panel
-    iptali (is_iptal) DEĞİL + kargolanmamış (fulfilled değil) + iade (refunded)
-    değil. Paketleme kuyruğu ve 'gönderilmeyen' tab'ıyla AYNI tanım."""
-    return (
-        Order.cancelled_at.is_(None),
-        Order.closed_at.is_(None),          # Shopify'da arşivlenmiş (kapatılmış) değil
-        Order.is_iptal.is_(False),
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-    )
+    """'Gerçek açık' SQL koşulları — TEK KAYNAK: services/order_scope.
+
+    ⚠ Burada elle yazılmış bir kopya vardı ve `current_stage >= 8` (kargoya
+    verilmiş/teslim) kontrolü EKSİKTİ. Sonuç: paketleme kuyruğu 60 sipariş
+    gösterirken bu sayaç 171 gösteriyordu — aynı soruya iki farklı cevap.
+    """
+    from app.services.order_scope import acik_kosullar
+    return acik_kosullar()
 
 
 def _count(db, tid, *conds, store_id=None) -> int:

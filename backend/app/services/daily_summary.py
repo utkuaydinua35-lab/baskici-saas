@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func as sql_func, select
 
 from app.models import Mold, Order, StockItem, Tenant
+from app.services.order_scope import acik_kosullar as _acik_kosullar
 from app.services import telegram
 
 logger = logging.getLogger("daily_summary")
@@ -61,11 +62,6 @@ def _is_summary_tenant(t) -> bool:
 def _counts(db, tid) -> dict:
     """Bir tenant için özet sayılar (soft-delete global filtre otomatik dışlar)."""
     not_telafi = Order.is_telafi.is_(False)
-    acik_kosul = (
-        Order.cancelled_at.is_(None),
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-    )
 
     def oc(*conds) -> int:
         return db.scalar(
@@ -87,13 +83,7 @@ def _counts(db, tid) -> dict:
     # (Sadece stage<8 yetersiz: Shopify'da kargolanmış eski siparisleri saymasin.)
     _now = datetime.now(timezone.utc)
     _end_today = datetime.combine(bugun_tr, time.max, tzinfo=_TR).astimezone(timezone.utc)
-    _dl_base = (
-        Order.kargo_deadline.isnot(None),
-        Order.cancelled_at.is_(None),
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-        Order.current_stage < 8,
-    )
+    _dl_base = (Order.kargo_deadline.isnot(None), *_acik_kosullar())
     kargo_sozu_bugun = oc(*_dl_base, Order.kargo_deadline >= _now, Order.kargo_deadline <= _end_today)
     kargo_sozu_gecti = oc(*_dl_base, Order.kargo_deadline < _now)
 
@@ -130,10 +120,7 @@ def _counts_combined(db, tids: list) -> dict:
     """Birden fazla tenant için birleşik üretim sayıları (3. mesaj)."""
     not_telafi = Order.is_telafi.is_(False)
     not_cancelled = Order.cancelled_at.is_(None)
-    acik_kosul_ek = (
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-    )
+    acik_kosul_ek = _acik_kosullar()
     bugun_tr = datetime.now(_TR).date()
     start_today = datetime.combine(bugun_tr, time.min, tzinfo=_TR).astimezone(timezone.utc)
 

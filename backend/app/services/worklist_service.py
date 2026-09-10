@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.permissions import effective_permissions, is_admin
 from app.models import CustomerRequest, Mold, Order, StockItem
+from app.services.order_scope import acik_kosullar as _acik_kosullar
 
 _TR = ZoneInfo("Europe/Istanbul")
 
@@ -91,13 +92,8 @@ def build_worklist(db: Session, user) -> dict:
         # Kargo sözü (SLA) — GERÇEK açık sipariş: iptal/iade/fulfilled değil + stage<8
         _now = datetime.now(timezone.utc)
         _end_today = datetime.combine(bugun, time.max, tzinfo=_TR).astimezone(timezone.utc)
-        _dl_base = (
-            Order.kargo_deadline.isnot(None),
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-            Order.current_stage < 8,
-        )
+        # Açık sipariş ölçütü TEK KAYNAKTAN (services/order_scope).
+        _dl_base = (Order.kargo_deadline.isnot(None), *_acik_kosullar())
         kargo_gecti = oc(*_dl_base, Order.kargo_deadline < _now)
         if kargo_gecti:
             items.append({

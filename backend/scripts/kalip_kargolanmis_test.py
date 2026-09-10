@@ -65,6 +65,50 @@ es("planlayıcı order_scope kullanıyor", True, "acik_siparis_filtresi" in _kay
 es("elle yazılmış fulfillment kopyası YOK", False,
    'Order.fulfillment_status != "fulfilled"' in _kaynak)
 
+print("\n── ölçüt HER YERDE aynı mı (elle kopya kalmadı) ──")
+# Ölçütün kopyası çıkarılınca panelde aynı soruya iki farklı cevap veriliyordu:
+# paketleme kuyruğu 60, "gönderilmeyen" sekmesi 171 sipariş gösteriyordu.
+import subprocess  # noqa: E402
+
+_kok = Path(__file__).resolve().parent.parent / "app"
+_kopya = subprocess.run(
+    ["grep", "-rn", 'fulfillment_status != "fulfilled"', str(_kok)],
+    capture_output=True, text=True).stdout
+_kopya = [x for x in _kopya.split("\n") if x.strip() and "order_scope" not in x]
+es("elle yazılmış SQL kopyası YOK", [], _kopya)
+
+from app.services.order_counts import open_conds  # noqa: E402
+from app.services.order_scope import acik_kosullar, acik_mi  # noqa: E402
+# Tuple repr'ı bellek adresi taşır; koşulları TEK TEK SQL metnine çevirip
+# karşılaştırıyoruz.
+es("order_counts tek kaynağa delege ediyor",
+   [str(x) for x in acik_kosullar()], [str(x) for x in open_conds()])
+
+print("\n── nesne üzerinden ölçüt (acik_mi) SQL ile tutarlı ──")
+
+
+class _S:
+    cancelled_at = closed_at = None
+    is_iptal = False
+    fulfillment_status = financial_status = None
+    current_stage = 3
+
+
+es("temiz sipariş açık", True, acik_mi(_S()))
+_k = _S(); _k.current_stage = 8
+es("kargoda (8) açık DEĞİL", False, acik_mi(_k))
+_k = _S(); _k.current_stage = 9
+es("teslim (9) açık DEĞİL", False, acik_mi(_k))
+_k = _S(); _k.fulfillment_status = "fulfilled"
+es("fulfilled açık DEĞİL", False, acik_mi(_k))
+_k = _S(); _k.closed_at = datetime.now(UTC)
+es("arşivlenmiş açık DEĞİL", False, acik_mi(_k))
+_k = _S(); _k.is_iptal = True
+es("panelden iptal açık DEĞİL", False, acik_mi(_k))
+_k = _S(); _k.financial_status = "refunded"
+es("iade açık DEĞİL", False, acik_mi(_k))
+es("sipariş yoksa açık DEĞİL", False, acik_mi(None))
+
 print("\n── ölçütün kendisi: kargodaki sipariş AÇIK DEĞİL ──")
 _f = str(acik_siparis_filtresi("00000000-0000-0000-0000-000000000000"))
 es("current_stage şartı var", True, "current_stage" in _f)

@@ -56,13 +56,10 @@ def summary(
     db: Session = Depends(get_db),
 ):
     tid = user.tenant_id
-    not_cancelled = Order.cancelled_at.is_(None)
-    # Gercek acik siparis: iptal degil + kargoya verilmemis (fulfilled degil) + iade degil (refunded degil)
-    _acik_kosul = (
-        Order.cancelled_at.is_(None),
-        (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
-    )
+    # Gercek acik siparis TEK KAYNAKTAN (services/order_scope). Buradaki elle
+    # yazilmis kopyada `closed_at` ve `current_stage < 8` YOKTU.
+    from app.services.order_scope import acik_kosullar as _acik
+    _acik_kosul = _acik()
 
     # Telafiler ayri panelde — normal siparis KPI'larina dahil edilmez
     _not_telafi = Order.is_telafi.is_(False)

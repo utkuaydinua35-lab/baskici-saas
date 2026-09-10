@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
+from app.services.order_scope import acik_siparis_filtresi
 from app.models import (
     AskiItem, Design, LineItem, Order, OrderStatusHistory, Store, User,
 )
@@ -365,11 +366,7 @@ def check_open_orders(
     """Açık siparişlerin line item'larını askıda eşleşme için tara, eşleşenleri otomatik karşıla."""
     q = (
         select(Order)
-        .where(
-            Order.tenant_id == user.tenant_id,
-            Order.cancelled_at.is_(None),
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-        )
+        .where(acik_siparis_filtresi(user.tenant_id))
         .options(selectinload(Order.line_items))
     )
     if store_id:

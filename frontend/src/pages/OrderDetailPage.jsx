@@ -1340,6 +1340,8 @@ function OnayTab({ orderId }) {
         </PanelCard>
       )}
 
+      <MusteriBaglantilari orderId={orderId} />
+
       {items.length > 1 && (
         <PanelCard title="Geçmiş Versiyonlar" icon="🕐">
           <div className="space-y-2">
@@ -1360,6 +1362,125 @@ function OnayTab({ orderId }) {
         </PanelCard>
       )}
     </div>
+  )
+}
+
+
+function kalanSure(iso) {
+  if (!iso) return ''
+  const dk = Math.ceil((new Date(iso) - new Date()) / 60000)
+  if (dk <= 0) return 'süresi doldu'
+  if (dk < 60) return `${dk} dk kaldı`
+  const s = Math.floor(dk / 60)
+  return s < 24 ? `${s} sa ${dk % 60} dk kaldı` : `${Math.floor(s / 24)} gün kaldı`
+}
+
+const BAGLANTI_DURUM = {
+  bekliyor: { label: 'Bekliyor', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  uygulandi: { label: 'Kullanıldı', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
+  iptal: { label: 'İptal', cls: 'bg-gray-500/15 text-gray-400 border-gray-500/30' },
+}
+
+// Müşteriye gönderilen model/adres değişikliği bağlantıları.
+// NEDEN VAR: bağlantı yalnız üretildiği anda (kalıptan çıkarma penceresinde)
+// görünüyordu. WhatsApp sekmesi kapanırsa operatörün tek çıkışı kalemi tekrar
+// kalıptan çıkarmaktı — yani üretimi bozmak. Bağlantı zaten geçerli; burada
+// tekrar açılabiliyor.
+function MusteriBaglantilari({ orderId }) {
+  const [d, setD] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  const load = async () => {
+    try { setD(await api.get(`/api/orders/${orderId}/musteri-baglantilari`)) }
+    catch { setD({ model: [], adres: [] }) }
+  }
+  useEffect(() => { load() }, [orderId])
+
+  const ac = (url) => {
+    if (!url) return toast.error('Siparişte geçerli bir cep telefonu yok')
+    const w = window.open(url, '_blank', 'noopener')
+    if (!w) toast.error('WhatsApp açılamadı — tarayıcı pencereyi engelledi')
+  }
+
+  const adresUret = async () => {
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/orders/${orderId}/adres-degisim`, {})
+      await load()
+      ac(r.wa_url)
+    } catch (e) { toast.error(errMsg(e, 'Bağlantı üretilemedi')) }
+    finally { setBusy(false) }
+  }
+
+  if (!d) return null
+  const model = d.model || []
+  const adres = d.adres || []
+  const adresAcik = d.adres_uretilebilir?.acik
+
+  const Kart = ({ t, baslik, alt }) => (
+    <div className="border border-brand-border rounded-lg p-2.5 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-gray-200 truncate">{baslik}</span>
+        <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full border ${(BAGLANTI_DURUM[t.durum] || BAGLANTI_DURUM.iptal).cls}`}>
+          {(BAGLANTI_DURUM[t.durum] || BAGLANTI_DURUM.iptal).label}
+        </span>
+      </div>
+      {alt && <div className="text-[10px] text-gray-500">{alt}</div>}
+      {t.gecerli ? (
+        <>
+          <div className="text-[10px] text-gray-500">{kalanSure(t.expires_at)}</div>
+          <button onClick={() => ac(t.wa_url)}
+            className="w-full text-xs py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors">
+            💬 WhatsApp'tan gönder
+          </button>
+          <CopyField label="Hazır mesaj" value={t.message} />
+          <CopyField label="Yalnızca link" value={t.link} mono />
+        </>
+      ) : (
+        <div className="text-[10px] text-gray-600">
+          {t.durum === 'uygulandi' ? 'Müşteri kullandı — bağlantı kapandı.' : 'Süresi doldu.'}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <PanelCard title="Müşteri Değişiklik Bağlantıları" icon="🔗">
+      <p className="text-[11px] text-gray-500 mb-2.5 leading-relaxed">
+        Kalıptan çıkarırken üretilen bağlantılar burada durur; mesaj gönderilemediyse
+        tekrar açabilirsin. Kalemi yeniden kalıptan çıkarmana gerek yok.
+      </p>
+
+      {!d.phone && (
+        <div className="text-[10px] text-amber-400 mb-2">⚠ Siparişte geçerli bir cep telefonu yok — yalnızca link kopyalanabilir.</div>
+      )}
+
+      <div className="space-y-2">
+        {model.map(t => (
+          <Kart key={t.id} t={t}
+            baslik={`📱 Model — ${t.urun_adi || 'ürün'}`}
+            alt={t.durum === 'uygulandi'
+              ? `Seçilen: ${t.secilen_model || '—'}${t.secilen_varyasyon ? ' · ' + t.secilen_varyasyon : ''}`
+              : (t.mevcut_model || '')} />
+        ))}
+        {adres.map(t => (
+          <Kart key={t.id} t={t} baslik="🏠 Teslimat adresi" />
+        ))}
+        {!model.length && !adres.length && (
+          <div className="text-[11px] text-gray-600">Bu sipariş için henüz bağlantı üretilmedi.</div>
+        )}
+      </div>
+
+      <button onClick={adresUret} disabled={busy || !adresAcik}
+        title={adresAcik ? '' : (d.adres_uretilebilir?.sebep || '')}
+        className="mt-2.5 w-full text-xs py-1.5 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+        {busy ? 'Üretiliyor…' : '🏠 Adres değişikliği bağlantısı gönder'}
+      </button>
+      {!adresAcik && d.adres_uretilebilir?.sebep && (
+        <div className="text-[10px] text-gray-600 mt-1">{d.adres_uretilebilir.sebep}</div>
+      )}
+    </PanelCard>
   )
 }
 

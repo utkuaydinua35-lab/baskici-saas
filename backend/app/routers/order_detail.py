@@ -1162,6 +1162,92 @@ def adres_degisim_baglantisi(
             "gecerlilik_dk": ad_svc.GECERLILIK_DAKIKA}
 
 
+@router.get("/{order_ref}/musteri-baglantilari", response_model=dict)
+def musteri_baglantilari(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Siparişin müşteriye gönderilmiş model/adres değişikliği bağlantıları.
+
+    NEDEN VAR: bağlantı yalnız üretildiği anda (kalıptan çıkarma penceresinde)
+    görünüyordu. WhatsApp sekmesi kapanır ya da mesaj gönderilemezse operatörün
+    tek çıkışı kalemi tekrar kalıptan çıkarmaktı — yani üretimi bozmak. Bağlantı
+    zaten veritabanında ve süresi doluncaya dek geçerli; burada tekrar
+    gösteriliyor.
+
+    Yalnız SON 30 GÜN: bundan eskisi ne geçerli ne de operatör için anlamlı.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import AdresDegisimTalebi, ModelDegisimTalebi
+    from app.services import adres_degisim as ad_svc
+    from app.services import model_degisim as md_svc
+
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    simdi = datetime.now(UTC)
+    _sinir = simdi - timedelta(days=30)
+    tel = md_svc.siparis_telefonu(order)
+
+    def _ortak(t) -> dict:
+        _gecerli = bool(t.durum == "bekliyor" and t.expires_at and t.expires_at > simdi)
+        return {
+            "id": str(t.id), "durum": t.durum, "gecerli": _gecerli,
+            "expires_at": t.expires_at.isoformat() if t.expires_at else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+
+    model = []
+    for t in db.scalars(
+        select(ModelDegisimTalebi)
+        .where(ModelDegisimTalebi.order_id == order.id,
+               ModelDegisimTalebi.created_at >= _sinir)
+        .order_by(desc(ModelDegisimTalebi.created_at))
+    ).all():
+        d = _ortak(t)
+        d.update({"urun_adi": t.urun_adi, "mevcut_model": t.mevcut_model,
+                  "kalip_turu": t.kalip_turu, "secilen_model": t.secilen_model,
+                  "secilen_varyasyon": t.secilen_varyasyon})
+        # Ölü bağlantının mesajını üretmiyoruz: operatör yanlışlıkla gönderirse
+        # müşteri açılmayan bir sayfaya düşer.
+        if d["gecerli"]:
+            d["link"] = md_svc.link(t.token)
+            d["message"] = md_svc.mesaj(
+                order, urun_adi=t.urun_adi or "ürününüz",
+                model=t.mevcut_model or "ürününüz",
+                baglanti=d["link"], tur=t.kalip_turu)
+            d["wa_url"] = md_svc.wa_url(tel, d["message"]) if tel else None
+        model.append(d)
+
+    adres = []
+    for t in db.scalars(
+        select(AdresDegisimTalebi)
+        .where(AdresDegisimTalebi.order_id == order.id,
+               AdresDegisimTalebi.created_at >= _sinir)
+        .order_by(desc(AdresDegisimTalebi.created_at))
+    ).all():
+        d = _ortak(t)
+        if d["gecerli"]:
+            d["link"] = ad_svc.link(t.token)
+            d["message"] = ad_svc.mesaj(order, d["link"])
+            d["wa_url"] = md_svc.wa_url(tel, d["message"]) if tel else None
+        adres.append(d)
+
+    _izin, _sebep = ad_svc.degistirilebilir_mi(order)
+    if _izin and ad_svc.zaten_degistirildi(db, order.id):
+        _izin, _sebep = False, ad_svc.BIR_KEZ_MESAJI
+
+    return {
+        "phone": tel,
+        "model": model,
+        "adres": adres,
+        # Panel "Adres bağlantısı üret" düğmesini buna göre açıp kapatıyor.
+        "adres_uretilebilir": {"acik": _izin, "sebep": _sebep},
+        "model_gecerlilik_saat": md_svc.GECERLILIK_SAAT,
+        "adres_gecerlilik_dk": ad_svc.GECERLILIK_DAKIKA,
+    }
+
+
 @router.get("/{order_ref}/approvals", response_model=dict)
 def list_design_approvals(
     order_ref: str,

@@ -21,7 +21,7 @@ from app.adapters import get_adapter
 from app.database import get_db
 from app.models import (
     AccessoryProduct, CoupleProduct, Dealer, Design, LineItem, Mold, MoldItem, Order,
-    OrderStatusHistory, Store, User,
+    Notification, OrderStatusHistory, Store, User,
 )
 from app.services import basit_kargo, label_pdf, packaging as pkg, storage, surat
 from app import stages as stage_defs
@@ -388,6 +388,13 @@ def kargo_gonder(
         "status": res.get("status"),
         "shopify_oid": (order.external_id or str((order.raw or {}).get("id") or "")) or None,
         "fulfillment_id": fulfillment_id,
+        # ⚠ KALICI İZ. Shopify'a fulfillment yazılamazsa sipariş orada SONSUZA
+        # DEK "gönderilmemiş" görünür: Shopify kendi kargo mailini müşteriye
+        # hiç göndermez ve müşteri siparişi hâlâ hazırlanıyor sanır. Eskiden bu
+        # yalnız durum geçmişindeki bir not satırına düşüyordu, yani ancak elle
+        # bakınca fark ediliyordu. Canlıda 111 sipariş bu durumdaydı.
+        "shopify_ok": shopify_ok,
+        "shopify_err": (shopify_err or None) if not shopify_ok else None,
     }
 
     # 4) Stage 8 (Kargoda) + history + stok düşümü
@@ -408,6 +415,24 @@ def kargo_gonder(
         note=f"{handler_label} · takip {takip_no}" + ("" if shopify_ok else f" · Shopify yazılamadı: {shopify_err}"),
         created_by=user.full_name or user.email,
     ))
+
+    if not shopify_ok:
+        # Sessiz kalmıyoruz: operatör kargoyu verdi ama mağaza tarafı eksik.
+        _no = order.name or f"#{order.order_number or ''}"
+        db.add(Notification(
+            tenant_id=order.tenant_id, store_id=order.store_id, kind="warn",
+            title=f"{_no} · Shopify'a kargo YAZILAMADI",
+            body=(f"Takip {takip_no} sistemde var ama Shopify'da sipariş hâlâ "
+                  f"gönderilmemiş görünüyor. Sebep: {shopify_err or 'bilinmiyor'}"),
+            link=f"/orders/{order.id}",
+        ))
+        try:
+            from app.services import telegram
+            telegram.send_message(
+                f"⚠️ <b>Shopify'a kargo yazılamadı</b> · {_no}\n"
+                f"Takip: {takip_no}\n<code>{(shopify_err or '')[:300]}</code>")
+        except Exception:  # noqa: BLE001 — bildirim akışı bozmasın
+            pass
 
     # Vitrin siparişiyse müşteriye otomatik kargo bildirimi (bir kez, bloklamaz)
     from app.services.shipping_email import maybe_send_tracking_email

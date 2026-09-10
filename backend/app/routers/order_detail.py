@@ -589,6 +589,12 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
                 (_bk := (order.kargo_info or {}).get("barcode"))
                 and (order.kargo_info or {}).get("takip_no") == _bk
             ),
+            # ⚠ Shopify'a fulfillment YAZILAMADIYSA sipariş orada sonsuza dek
+            # "gönderilmemiş" görünür ve Shopify kendi kargo mailini hiç
+            # göndermez. Panel bunu rozetle söylüyor; eskiden yalnız durum
+            # geçmişindeki bir not satırındaydı.
+            "shopify_yazilamadi": (order.kargo_info or {}).get("shopify_ok") is False,
+            "shopify_hata": (order.kargo_info or {}).get("shopify_err"),
         } if (order.kargo_info or {}).get("takip_no") else None),
         # Kısmi kargolama: gönderiler + kalem başına bekleyen adet
         "shipping": shipments_svc.serialize(order),

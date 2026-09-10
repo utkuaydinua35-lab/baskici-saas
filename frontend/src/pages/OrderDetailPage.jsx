@@ -1036,6 +1036,20 @@ function TakipSatiri({ detail }) {
           ⚠ Bu, Basit Kargo'nun kendi barkodu — gerçek kargo takip numarası henüz gelmedi.
         </div>
       )}
+      {/* ⚠ Shopify'a fulfillment yazılamadıysa sipariş ORADA hâlâ
+          "gönderilmemiş" görünür ve Shopify kendi kargo mailini müşteriye HİÇ
+          göndermez. Eskiden bu yalnız durum geçmişindeki bir not satırındaydı,
+          yani ancak elle bakınca fark ediliyordu. */}
+      {ki.shopify_yazilamadi && (
+        <div className="mt-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-200 leading-relaxed">
+          <b>⚠ Shopify'a yazılamadı.</b> Sipariş Shopify'da hâlâ "gönderilmemiş"
+          görünüyor; Shopify kendi kargo e-postasını göndermez. Kargo gerçekte
+          verildi — Shopify tarafını elle işaretlemen gerekebilir.
+          {ki.shopify_hata && (
+            <div className="mt-1 text-red-300/80 break-words font-mono text-[10px]">{ki.shopify_hata}</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

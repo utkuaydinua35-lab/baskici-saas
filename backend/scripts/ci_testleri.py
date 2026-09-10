@@ -33,6 +33,9 @@ ATLA: dict[str, str] = {
     # DB açık olduğu için geçiyor, CI'da düşerdi.
     # CI'a Postgres servisi eklenince bu satır SİLİNMELİ.
     "native_kabuk_test.py": "TestClient ile giriş yapıyor → DB gerekiyor",
+    # pg_dump/psql ile GERÇEK yedek alıp geçici bir veritabanı açıp kapatıyor.
+    # CI'da ne veri var ne de anlamı; elle/ayda bir koşulur.
+    "yedek_provasi_test.py": "gerçek veritabanı + pg_dump gerektiriyor (elle koşulur)",
 }
 
 

@@ -65,8 +65,11 @@
   input[type=search]{width:100%;padding:12px 13px;font-size:15px;border-radius:12px;
     background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:12px}
   input[type=search]:focus{outline:none;border-color:var(--accent)}
-  .izgara{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
-  @media(max-width:420px){.izgara{grid-template-columns:repeat(2,1fr)}}
+  /* Yüzlerce ürün 3 sütunda çok uzun bir liste oluyordu. auto-fill ile ekran
+     genişledikçe sütun artar: dar telefonda 4, geniş telefonda 5, masaüstünde
+     daha fazla. Sabit sütun sayısı vermiyoruz — 375px'te 4 sütun okunur
+     kalırken masaüstünde boşluk israfı olurdu. */
+  .izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px}
   .urun{border:1px solid var(--border);background:var(--card2);border-radius:12px;
     overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s}
   .urun:active{transform:scale(.98)}
@@ -75,10 +78,24 @@
     justify-content:center;overflow:hidden}
   .urun .gr img{width:100%;height:100%;object-fit:cover}
   .urun .gr .yok{font-size:10px;color:var(--muted)}
-  .urun .ad{padding:7px 8px;font-size:11.5px;line-height:1.35;color:#d7dbe6;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-    height:calc(2 * 1.35em + 14px)}
+  /* İki satırda sabit yükseklik. NOT: `overflow:hidden` içeriği PADDING
+     kutusundan kırpıyor, content kutusundan değil — alt boşluk bırakılırsa
+     üçüncü satır oraya sızıp yarım görünüyordu. Bu yüzden alt padding yok,
+     yükseklik tam iki satır. */
+  .urun .ad{padding:5px 6px 0;font-size:10.5px;line-height:1.3;color:#d7dbe6;
+    height:calc(2.6em + 5px);overflow:hidden}
   .bos{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+  .ortu{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:50;
+    display:flex;align-items:center;justify-content:center;padding:20px}
+  .tanitim{background:var(--card);border:1px solid var(--border);border-radius:18px;
+    padding:20px;max-width:380px;width:100%}
+  .tanitim h2{font-size:17px;margin:0 0 4px}
+  .tanitim .alt{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+  .adim{display:flex;gap:11px;align-items:flex-start;margin-bottom:12px}
+  .adim .no{flex:0 0 24px;height:24px;border-radius:999px;background:var(--accent);
+    color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;
+    justify-content:center}
+  .adim .mt{font-size:13px;color:#d7dbe6;line-height:1.45}
 </style>
 </head>
 <body>
@@ -144,6 +161,11 @@ async function yukle() {
   const sip = v.siparis || {};
   const kalemler = sip.kalemler || [];
   const katalog = v.katalog || [];
+  // Ürün değişikliği yalnız mesajında bunu VAAT ETTİĞİMİZ kalıplarda sunulur:
+  // parlak (şeffaf/baskılıya geçiş) ve şeffaf (baskılıya geçiş). "Diğer"
+  // kalıpta mesaj yalnız model değişikliği söylüyor — orada ürün göstermek
+  // vaat etmediğimiz bir seçenek açardı.
+  const urunSecilebilir = katalog.length > 0 && v.kalip_turu !== 'diger';
 
   const rozetSinif = (d) => d === 'Hazır' ? 'r-hazir'
     : d === 'Stok bekleniyor' ? 'r-bekl' : 'r-uret';
@@ -173,9 +195,11 @@ async function yukle() {
         <option value="">Önce marka seçiniz</option>
       </select>
 
-      ${(v.ozel_seri && (v.markalar_tum || []).length) ? `
+      ${urunSecilebilir ? `
         <button class="cikis" id="tumModeller">
-          Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum
+          ${v.ozel_seri
+            ? 'Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum'
+            : 'Farklı bir ürünle devam etmek istiyorum'}
         </button>` : ''}
 
       <button class="btn" id="gonder" disabled>Değişikliği onayla</button>
@@ -186,7 +210,8 @@ async function yukle() {
     </div>
 
     ${katalog.length ? `
-      <div class="baslik">Ürün değişikliği (isteğe bağlı)</div>
+      <div id="katalogBolum" hidden>
+      <div class="baslik">Ürün değişikliği</div>
       <div class="aciklama">
         Aşağıdaki bölümde değişiklik yapmak istediğiniz ürünü seçebilirsiniz,
         dilerseniz bu linki kapatıp, bernzcompany.com'a dönerek ürün seçebilir ve
@@ -198,6 +223,7 @@ async function yukle() {
                autocomplete="off" />
         <div class="cipler" id="cipler"></div>
         <div class="izgara" id="izgara"></div>
+      </div>
       </div>` : ''}
 
     ${kalemler.length ? `
@@ -227,6 +253,39 @@ async function yukle() {
           bize bildirebilirsiniz.</div>
       </div>` : ''}`;
 
+  // ── İlk açılışta kısa tanıtım ────────────────────────────────────────
+  // Müşteri bu sayfayı beklemiyordu; ne yapması gerektiğini bir bakışta
+  // görmezse çoğu kişi hiçbir şey yapmadan kapatıyor. Bir kez gösterilir.
+  const TANITIM_ANAHTARI = 'model_degisim_tanitim';
+  let gosterildi = false;
+  try { gosterildi = localStorage.getItem(TANITIM_ANAHTARI) === '1'; } catch { gosterildi = false; }
+  if (!gosterildi) {
+    const ortu = document.createElement('div');
+    ortu.className = 'ortu';
+    const urunAdimi = urunSecilebilir
+      ? `<div class="adim"><span class="no">2</span><span class="mt">Aradığınız model
+           listede yoksa <b>farklı bir ürünle devam</b> seçeneğinden başka bir tasarım
+           seçebilirsiniz.</span></div>` : '';
+    ortu.innerHTML = `
+      <div class="tanitim">
+        <h2>Siparişiniz için bir seçim yapın</h2>
+        <div class="alt">Bir ürününüz stokta olmadığı için sizden onay alıyoruz.</div>
+        <div class="adim"><span class="no">1</span><span class="mt">Önce <b>marka</b>,
+          sonra <b>telefon modeli</b> seçin.</span></div>
+        ${urunAdimi}
+        <div class="adim"><span class="no">${urunSecilebilir ? 3 : 2}</span><span class="mt">
+          <b>Değişikliği onayla</b> deyin — siparişiniz hemen güncellenir.</span></div>
+        <div class="adim"><span class="no">✓</span><span class="mt">Beklemeyi tercih
+          ederseniz hiçbir şey yapmanıza gerek yok, bu sayfayı kapatabilirsiniz.</span></div>
+        <button class="btn" id="tanitimKapat">Anladım, başlayalım</button>
+      </div>`;
+    document.body.appendChild(ortu);
+    document.getElementById('tanitimKapat').onclick = () => {
+      try { localStorage.setItem(TANITIM_ANAHTARI, '1'); } catch { /* özel mod */ }
+      ortu.remove();
+    };
+  }
+
   const marka = document.getElementById('marka');
   const model = document.getElementById('model');
   const gonder = document.getElementById('gonder');
@@ -254,8 +313,12 @@ async function yukle() {
   let aktifKategori = null;   // null = tümü
 
   const guncelleGonder = () => {
-    // Tam model modunda Special'dan çıkılıyor demektir; ürün seçimi zorunlu.
-    if (tumModelModu) { gonder.disabled = !(model.value && secilenUrun); return; }
+    // BERNZ Special'da tam model listesine geçildiyse Special'dan çıkılıyor
+    // demektir; o modelde üretim ancak başka bir üründe mümkün, ürün seçimi
+    // ZORUNLU. Şeffafta böyle bir kısıt yok.
+    if (tumModelModu && v.ozel_seri) {
+      gonder.disabled = !(model.value && secilenUrun); return;
+    }
     gonder.disabled = !(model.value || secilenUrun);
   };
   model.onchange = guncelleGonder;
@@ -268,15 +331,24 @@ async function yukle() {
   if (tumBtn) {
     tumBtn.onclick = () => {
       tumModelModu = !tumModelModu;
-      markalar.length = 0;
-      (tumModelModu ? (v.markalar_tum || []) : (v.markalar || [])).forEach(g => markalar.push(g));
-      marka.innerHTML = '<option value="">Seçiniz…</option>' +
-        markalar.map((g, i) => `<option value="${i}">${kacir(g.marka)}</option>`).join('');
-      model.innerHTML = '<option value="">Önce marka seçiniz</option>';
-      model.disabled = true;
+      // Model listesi yalnız BERNZ Special'da değişir; şeffaf/diğerde zaten
+      // tam liste gösteriliyor.
+      if (v.ozel_seri && (v.markalar_tum || []).length) {
+        markalar.length = 0;
+        (tumModelModu ? v.markalar_tum : (v.markalar || [])).forEach(g => markalar.push(g));
+        marka.innerHTML = '<option value="">Seçiniz…</option>' +
+          markalar.map((g, i) => `<option value="${i}">${kacir(g.marka)}</option>`).join('');
+        model.innerHTML = '<option value="">Önce marka seçiniz</option>';
+        model.disabled = true;
+      }
+      const bolum = document.getElementById('katalogBolum');
+      if (bolum) bolum.hidden = !tumModelModu;
       tumBtn.textContent = tumModelModu
-        ? '← BERNZ Special model listesine dön'
-        : 'Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum';
+        ? (v.ozel_seri ? '← BERNZ Special model listesine dön' : '← Ürün değişikliğinden vazgeç')
+        : (v.ozel_seri
+            ? 'Telefon modelim listede yok — farklı bir ürünle devam etmek istiyorum'
+            : 'Farklı bir ürünle devam etmek istiyorum');
+      if (!tumModelModu) { secilenUrun = null; ciz(); }
       guncelleGonder();
     };
   }

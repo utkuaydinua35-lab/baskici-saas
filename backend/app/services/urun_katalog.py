@@ -96,6 +96,69 @@ def kisa_ad(baslik: str) -> str:
     return (baslik or "").strip()
 
 
+# Aile adının başındaki anlamsız kelimeler ("The Serenity Collection" → serenity)
+_ATLA = {"the", "bernz", "a", "an"}
+
+
+def _aile(seri: str) -> str:
+    """Serinin ait olduğu AİLE anahtarı — ilk anlamlı kelime.
+
+    "Vintage Pembe", "Vintage Kolaj", "Vintage Aşk" hepsi tek başlık altında
+    toplansın diye. Yüzlerce ürün için 143 ayrı kategori, müşteriye seçmek
+    değil aramak gibi geliyordu.
+    """
+    kelimeler = [k for k in (seri or "").replace("&", " ").split()
+                 if _katla(k) and _katla(k) not in _ATLA]
+    return _katla(kelimeler[0]) if kelimeler else _katla(seri)
+
+
+def _tr_baslik(s: str) -> str:
+    """TÜMÜ BÜYÜK yazılmış adı okunur hale getirir; karışık yazımı bozmaz.
+
+    "SCARFACE" → "Scarface", "BREAKING BAD" → "Breaking Bad", ama zaten düzgün
+    yazılmış "Red Dead Redemption" aynen kalır. Türkçe'de I/İ ayrımı olduğu
+    için `.title()` doğrudan kullanılamaz.
+    """
+    if not s or s != s.upper():
+        return s
+    # NOT: I → ı (Türkçe kuralı) DEĞİL, I → i uygulanıyor. Sahadaki tümü-büyük
+    # seri adlarında I geçen örnekler İngilizce ("BREAKING BAD"); Türkçe kuralı
+    # uygulayınca "Breakıng Bad" çıkıyordu. Türkçe adlar zaten noktalı İ ile
+    # yazılmış (ANİME, FİLM / DİZİ) ve o doğru dönüşüyor.
+    cikti = []
+    for kelime in s.split(" "):
+        if not kelime:
+            continue
+        kucuk = kelime.replace("İ", "i").lower()
+        ilk = "İ" if kucuk[0] == "i" else kucuk[0].upper()
+        cikti.append(ilk + kucuk[1:])
+    return " ".join(cikti)
+
+
+def _aile_etiketi(uyeler: dict[str, int]) -> str:
+    """Aileye ortak etiket: üyelerin PAYLAŞTIĞI kelime öneki.
+
+    {"Vintage", "Vintage Pembe", "Vintage Kolaj"} → "Vintage"
+    {"Doğa & Botanik", "Doğa & Manzara"}          → "Doğa"
+    {"Ozel Tasarim", "Özel Tasarım"}              → "Özel Tasarım"
+    Yazım, ürünü en çok olan üyeden alınır (Türkçe karakterli hâli kazansın).
+    """
+    en_cok = max(uyeler.items(), key=lambda kv: kv[1])[0]
+    listeler = [[_katla(k) for k in ad.replace("&", " ").split() if _katla(k)]
+                for ad in uyeler]
+    ortak = 0
+    if listeler:
+        for i in range(min(len(x) for x in listeler)):
+            if len({x[i] for x in listeler}) == 1:
+                ortak += 1
+            else:
+                break
+    if ortak:
+        kelimeler = [k for k in en_cok.replace("&", " ").split() if k.strip()]
+        return _tr_baslik(" ".join(kelimeler[:ortak]))
+    return _tr_baslik(en_cok)
+
+
 def _urun_gorseli(p: CatalogProduct) -> str | None:
     gorseller = sorted(p.images or [], key=lambda i: (getattr(i, "position", 0) or 0))
     return f"/storage/{gorseller[0].file_path}" if gorseller else None
@@ -184,15 +247,16 @@ def katalog(db: Session, tenant_id, store=None) -> list[dict]:
     if not urunler:
         return []
 
-    # Gruplama anahtarı katlanmış ad; gösterilen etiket ise o grupta EN SIK
-    # geçen özgün yazım (ÖZEL TASARIM ile OZEL TASARIM tek grup, etiket düzgün).
+    # AİLE bazlı gruplama: "Vintage Pembe" / "Vintage Kolaj" tek "Vintage"
+    # başlığı altında. Seri adları çok parçalı; ham hâliyle 143 kategori
+    # çıkıyor ve çip şeridi kullanılamaz hâle geliyor.
     gruplar: dict[str, dict] = {}
     for p in urunler:
         baslik = p["baslik"]
-        ad = seri_adi(baslik) or "Diğer"
-        k = _katla(ad)
-        g = gruplar.setdefault(k, {"etiketler": {}, "urunler": []})
-        g["etiketler"][ad] = g["etiketler"].get(ad, 0) + 1
+        seri = seri_adi(baslik) or "Diğer"
+        k = "" if seri == "Diğer" else _aile(seri)
+        g = gruplar.setdefault(k, {"uyeler": {}, "urunler": []})
+        g["uyeler"][seri] = g["uyeler"].get(seri, 0) + 1
         g["urunler"].append({
             "id": p["id"],
             "ad": kisa_ad(baslik),
@@ -201,10 +265,22 @@ def katalog(db: Session, tenant_id, store=None) -> list[dict]:
             "ara": _katla(baslik),
         })
 
-    cikti = []
+    cikti, artan = [], []
     for k, g in gruplar.items():
-        etiket = max(g["etiketler"].items(), key=lambda kv: kv[1])[0]
+        etiket = "Diğer" if k == "" else _aile_etiketi(g["uyeler"])
+        # Tek ürünlü kategoriler çip şeridini şişiriyor ve seçim kolaylığı
+        # sağlamıyor — "Diğer"e katılır, aramadan yine bulunur.
+        if etiket != "Diğer" and len(g["urunler"]) < 2:
+            artan.extend(g["urunler"])
+            continue
         cikti.append({"kategori": etiket, "urunler": g["urunler"]})
+
+    if artan:
+        diger = next((g for g in cikti if g["kategori"] == "Diğer"), None)
+        if diger:
+            diger["urunler"].extend(artan)
+        else:
+            cikti.append({"kategori": "Diğer", "urunler": artan})
 
     # Çok ürünlü kategoriler önde; "Diğer" her zaman en sonda.
     cikti.sort(key=lambda g: (g["kategori"] == "Diğer", -len(g["urunler"]),

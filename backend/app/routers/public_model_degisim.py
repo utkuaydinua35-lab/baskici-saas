@@ -272,6 +272,7 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         "urun": t.urun_adi,
         "mevcut_model": t.mevcut_model,
         "ozel_seri": ozel,
+        "kalip_turu": t.kalip_turu,
         "markalar": markalar,
         "markalar_tum": tum,
         "siparis": _siparis_ozeti(db, t),

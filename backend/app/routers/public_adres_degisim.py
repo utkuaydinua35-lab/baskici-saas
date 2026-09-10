@@ -215,8 +215,9 @@ def uygula(token: str, istek: AdresIstegi,
     t.uygulandi_at = datetime.now(UTC)
 
     _no = order.name or (f"#{order.order_number}" if order.order_number else "")
-    _not = (f"Müşteri teslimat adresini değiştirdi.\nESKİ: {ad.ozet(eski)}\n"
-            f"YENİ: {ad.ozet(yeni)}")
+    # Başlık ("🏠 Müşteri teslimat adresini değiştirdi") panelde zaten
+    # yazıyor; not yalnız ESKİ/YENİ karşılaştırmasını taşır.
+    _not = f"ESKİ: {ad.ozet(eski)}\nYENİ: {ad.ozet(yeni)}"
     db.add(OrderStatusHistory(
         tenant_id=t.tenant_id, order_id=t.order_id,
         action="musteri_adres_degisikligi", note=_not, created_by="Müşteri",

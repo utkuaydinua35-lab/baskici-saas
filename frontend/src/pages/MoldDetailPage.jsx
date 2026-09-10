@@ -881,7 +881,10 @@ function actionLabel(h) {
     hatali_geri: 'Hatalı işareti kaldırıldı',
     item_replan: '↩ Slot kalıptan çıkarıldı (geri planlandı)',
     item_cancel: '✕ Slot kalıptan çıkarıldı (iptal edildi)',
+    item_undo: '↩ Slot geri alındı',
     slot_assigned: '➕ Slot atandı',
+    slot_kilit: '🔒 Slot kilidi değişti',
+    rename: '✎ Kalıp kodu değiştirildi',
     deleted: '🗑 Kalıp silindi',
   }
   const base = map[h.action] || h.action

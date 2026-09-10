@@ -272,6 +272,19 @@ else:
     es("kılıf sayısı azaldı", 0, _mo2.kilif_sayisi)
     es("stok bekliyor bayrağı temizlendi", False, "stok_bekliyor" in (_li2.raw or {}))
 
+    # ── Durum geçmişi: ÖNCEKİ → SONRAKİ okunabilir olmalı ──
+    # Panelde yalnız "musteri_model_degisikligi" yazıyordu; operatör neyin neye
+    # dönüştüğünü göremiyordu.
+    _gn = db.execute(text("select note from order_status_history where order_id=:o "
+                          "and action='musteri_model_degisikligi' "
+                          "order by created_at desc limit 1"), {"o": _ord_id}).scalar() or ""
+    es("geçmiş notu yazıldı", True, bool(_gn))
+    es("notta ok işareti var (önceki → sonraki)", True, "→" in _gn)
+    # `_li` expunge_all sonrası kopuk; not zaten "model: ESKİ → YENİ" biçiminde.
+    es("notta ÖNCEKİ model var", True, "model: " in _gn and " → " in _gn)
+    es("notta SONRAKİ model var", True, _hedef in _gn)
+    es("kalıptan çekildiği notta yazıyor", True, "kalıp slotundan çıkarıldı" in _gn)
+
     es("aynı bağlantı İKİNCİ kez kullanılamaz", 409,
        C.post(f"/api/public/model-degisim/{TOKEN}",
               json={"model": _hedef}).status_code)

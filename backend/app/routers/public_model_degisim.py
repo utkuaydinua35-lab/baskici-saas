@@ -478,7 +478,10 @@ def uygula(token: str, istek: SecimIstegi,
         # katalog ürün id'siyle eşleşmiyor); tahminle tasarım atamak YANLIŞ
         # kılıf bastırır. Müşterinin seçimi kayda geçer, kalem kalıptan çekilir
         # ve panele bildirim düşer; tasarımı operatör bağlar.
-        _parcalar.append(f"ürün: {urun_adi}")
+        # ÖNCEKİ → SONRAKİ: operatör geçmişe bakınca neyin neye dönüştüğünü
+        # görmeli. Yalnız yeni adı yazmak "ne değişti?" sorusunu bıraktı.
+        _onceki = (li.title or "").strip() or "—"
+        _parcalar.append(f"ürün: {_onceki} → {urun_adi}")
     _not = ("Müşteri değişiklik yaptı — " + " · ".join(_parcalar)
             + (f" · {cekilen} kalıp slotundan çıkarıldı" if cekilen else "")
             + (" · ÜRÜN DEĞİŞİKLİĞİ: tasarımı elle bağlayın" if urun_adi is not None else ""))

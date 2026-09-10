@@ -1206,16 +1206,22 @@ function DigerTab({ detail }) {
       <PanelCard title="Durum Geçmişi" icon="🕐">
         {detail.status_history && detail.status_history.length > 0 ? (
           <div className="space-y-1.5">
-            {detail.status_history.map(h => (
-              <div key={h.id} className="text-xs border-l-2 border-brand-border pl-2">
-                <div className="text-gray-300">
-                  {actionLabel(h)}
+            {detail.status_history.map(h => {
+              const { etiket, not: notMetni } = gecmisSatiri(h)
+              return (
+                <div key={h.id} className="text-xs border-l-2 border-brand-border pl-2">
+                  <div className="text-gray-300">{etiket}</div>
+                  {notMetni && (
+                    <div className="text-[11px] text-gray-400 whitespace-pre-line break-words mt-0.5">
+                      {notMetni}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-gray-500">
+                    {h.created_by} · {formatDate(h.created_at)}
+                  </div>
                 </div>
-                <div className="text-[10px] text-gray-500">
-                  {h.created_by} · {formatDate(h.created_at)}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <p className="text-xs text-gray-500 italic">Henüz durum değişikliği yok.</p>
@@ -1225,26 +1231,57 @@ function DigerTab({ detail }) {
   )
 }
 
-function actionLabel(h) {
-  if (h.action === 'stage_change') return `${h.from_label || '?'} → ${h.to_label || '?'}`
-  const map = {
-    acil: '⚠ Acil olarak işaretlendi',
-    acil_kaldir: 'Acil işareti kaldırıldı',
-    iptal: '⊘ İptal edildi',
-    iptal_geri: 'İptal geri alındı',
-    hatali_gonderildi: 'Hatalı gönderildi olarak işaretlendi',
-    tedarik_bekle: '⏸ Tedarik bekleme açıldı',
-    tedarik_devam: 'Tedarik bekleme kapatıldı',
-    list_add: `Listeye eklendi: ${h.note || ''}`,
-    list_remove: `Listeden çıkarıldı: ${h.note || ''}`,
-    onay_gonderildi: `📤 Müşteri onayına gönderildi ${h.note ? '(' + h.note + ')' : ''}`,
-    musteri_onay: '✅ Müşteri tasarımı onayladı',
-    musteri_revizyon: `✏️ Müşteri revizyon istedi${h.note ? ': ' + h.note : ''}`,
-    kalem_model_degisti: `✎ Cihaz modeli değiştirildi${h.note ? ' — ' + h.note : ''}`,
-    kargo_iptal: `✕ Kargo iptal edildi${h.note ? ' · ' + h.note : ''}`,
-    kargoya_verildi: `🚚 Kargoya verildi${h.note ? ' · ' + h.note : ''}`,
+// Geçmiş satırı: başlık + notu AYRI döner.
+// ⚠ Eskiden not yalnız haritada yeri olan işlemlerde gösteriliyordu; haritada
+// olmayan her işlem ham anahtarıyla ("musteri_model_degisikligi" gibi) ve
+// NOTU DÜŞÜRÜLEREK basılıyordu — yani "eski model → yeni model" bilgisi
+// veritabanında dururken panelde hiç görünmüyordu.
+const GECMIS_ETIKET = {
+  acil: '⚠ Acil olarak işaretlendi',
+  acil_kaldir: 'Acil işareti kaldırıldı',
+  iptal: '⊘ İptal edildi',
+  iptal_geri: 'İptal geri alındı',
+  iptal_edildi: '⊘ Sipariş iptal edildi',
+  silindi: '🗑 Silindi',
+  hatali_gonderildi: 'Hatalı gönderildi olarak işaretlendi',
+  tedarik_bekle: '⏸ Tedarik bekleme açıldı',
+  tedarik_devam: 'Tedarik bekleme kapatıldı',
+  list_add: 'Listeye eklendi',
+  list_remove: 'Listeden çıkarıldı',
+  onay_gonderildi: '📤 Müşteri onayına gönderildi',
+  musteri_onay: '✅ Müşteri tasarımı onayladı',
+  musteri_revizyon: '✏️ Müşteri revizyon istedi',
+  kalem_model_degisti: '✎ Cihaz modeli değiştirildi',
+  kargo_iptal: '✕ Kargo iptal edildi',
+  kargoya_verildi: '🚚 Kargoya verildi',
+  kargo_durumu: '🚚 Kargo durumu güncellendi',
+  kismi_kargo_geri: '↩ Gönderi geri alındı',
+  address_update: '🏠 Kargo adresi güncellendi',
+  iade: '💸 İade işlendi',
+  // Müşterinin kendi yaptığı değişiklikler (tokenli bağlantı)
+  musteri_model_degisikligi: '📱 Müşteri telefon modelini/ürününü değiştirdi',
+  musteri_adres_degisikligi: '🏠 Müşteri teslimat adresini değiştirdi',
+  adres_baglantisi: '🔗 Adres değişikliği bağlantısı üretildi',
+  // E-posta / davet
+  stok_eksik_email: '📧 Eksik stok bildirimi gönderildi',
+  musteri_email: '📧 Müşteriye e-posta gönderildi',
+  yorum_daveti: '📧 Yorum daveti gönderildi',
+  // Bayi portalı
+  bayii_siparis: '🏬 Bayi portalinden açıldı',
+  bayii_onay: '🏬 Bayi siparişi onaylandı',
+  bayii_tasarim_degisti: '🏬 Bayi tasarımı değiştirdi',
+  bayii_kalem_duzeltildi: '🏬 Bayi kalemi düzeltildi',
+}
+
+function gecmisSatiri(h) {
+  if (h.action === 'stage_change') {
+    // Notu GÖSTERME: "Kalıp durumundan otomatik (Baskı Tamam)" başlığın aynısını
+    // tekrarlıyor ve 6000 satırlık geçmişi okunmaz hale getirir.
+    return { etiket: `${h.from_label || '?'} → ${h.to_label || '?'}`, not: null }
   }
-  return map[h.action] || h.action
+  // Etiketi bilinmeyen işlemde bile NOT gösterilir: bilgi kaybetmektense
+  // ham anahtarı göstermek yeğdir.
+  return { etiket: GECMIS_ETIKET[h.action] || h.action, not: h.note }
 }
 
 const ONAY_STATUS = {

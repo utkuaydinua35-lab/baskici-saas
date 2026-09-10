@@ -224,6 +224,15 @@ else:
     es("pazarlama izni kaydedildi", True,
        db.execute(text("select pazarlama_izni from adres_degisim_talepleri where id=:i"),
                   {"i": str(_t2.id)}).scalar())
+    # Geçmiş notu panelde ESKİ/YENİ olarak okunmalı (başlık ayrı satırda).
+    _an = db.execute(text("select note from order_status_history where order_id=:o "
+                          "and action='musteri_adres_degisikligi' "
+                          "order by created_at desc limit 1"), {"o": str(_ord.id)}).scalar() or ""
+    es("notta ESKİ adres var", True, _an.startswith("ESKİ: "))
+    es("notta YENİ adres var", True, "\nYENİ: " in _an)
+    es("notta yeni sokak yazıyor", True, "Y sok 1" in _an)
+    es("başlık notta TEKRARLANMIYOR", False, "Müşteri teslimat adresini" in _an)
+
     es("sipariş geçmişine düştü", True,
        db.execute(text("select count(*) from order_status_history where order_id=:o "
                        "and action='musteri_adres_degisikligi'"),

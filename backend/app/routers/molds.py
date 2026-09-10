@@ -340,7 +340,10 @@ def _slot_urun_adi(db, mi) -> str:
     except Exception:  # noqa: BLE001
         _var = ""
     _model = pm.canonical_model_name(mi.model or "") or (mi.model or "")
-    _var_okunur = _var.capitalize() if _var else ""
+    # ⚠ .capitalize() DEĞİL: "SİYAH".capitalize() → "Si̇yah" (birleşen üst
+    # nokta). Müşteriye giden eksik-stok e-postasında tam olarak bu görüldü.
+    from app.services.tr_metin import baslik as _tr
+    _var_okunur = _tr(_var) if _var else ""
     return f"{_var_okunur} {_model}".strip() or (_model or "ürün")
 
 

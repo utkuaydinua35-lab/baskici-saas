@@ -154,26 +154,13 @@ def _aile(seri: str) -> str:
 
 
 def _tr_baslik(s: str) -> str:
-    """TÜMÜ BÜYÜK yazılmış adı okunur hale getirir; karışık yazımı bozmaz.
+    """Türkçe başlık — gövde services/tr_metin.baslik'te (tek kaynak).
 
-    "SCARFACE" → "Scarface", "BREAKING BAD" → "Breaking Bad", ama zaten düzgün
-    yazılmış "Red Dead Redemption" aynen kalır. Türkçe'de I/İ ayrımı olduğu
-    için `.title()` doğrudan kullanılamaz.
+    ⚠ `.title()`/`.capitalize()` KULLANILAMAZ: Python "SİYAH".capitalize()
+    çağrısında "Si̇yah" üretiyor (birleşen üst nokta).
     """
-    if not s or s != s.upper():
-        return s
-    # NOT: I → ı (Türkçe kuralı) DEĞİL, I → i uygulanıyor. Sahadaki tümü-büyük
-    # seri adlarında I geçen örnekler İngilizce ("BREAKING BAD"); Türkçe kuralı
-    # uygulayınca "Breakıng Bad" çıkıyordu. Türkçe adlar zaten noktalı İ ile
-    # yazılmış (ANİME, FİLM / DİZİ) ve o doğru dönüşüyor.
-    cikti = []
-    for kelime in s.split(" "):
-        if not kelime:
-            continue
-        kucuk = kelime.replace("İ", "i").lower()
-        ilk = "İ" if kucuk[0] == "i" else kucuk[0].upper()
-        cikti.append(ilk + kucuk[1:])
-    return " ".join(cikti)
+    from app.services.tr_metin import baslik
+    return baslik(s)
 
 
 def _aile_etiketi(uyeler: dict[str, int]) -> str:

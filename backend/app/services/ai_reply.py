@@ -171,7 +171,9 @@ def _analyze_order(db: Session, tenant_id, thread: SupportThread) -> str | None:
         if not is_unknown:
             tags.append("iPhone modeli" if is_iphone else "Android modeli")
         if special:
-            tags.append(f"{var.capitalize()} kılıf")
+            # ⚠ .capitalize() Türkçe'de bozuk ("SİYAH" → "Si̇yah")
+            from app.services.tr_metin import baslik as _tr
+            tags.append(f"{_tr(var)} kılıf")
         if ko:
             tags.append("kişiye özel tasarım")
         lines.append(f"- {model}" + (f" ({', '.join(tags)})" if tags else ""))

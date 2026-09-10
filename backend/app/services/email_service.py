@@ -10,6 +10,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
+from html import escape
 
 from app.config import get_settings
 
@@ -239,6 +240,15 @@ def render_email(
             'text-align:center;background:rgba(255,255,255,.20);border-radius:10px;color:#ffffff;'
             f'font-weight:700;font-size:19px;vertical-align:middle;">{initial}</span>'
         )
+    # ⚠ DÜZ METİN ALANLARI KAÇIRILIR. Buraya ürün/müşteri/kampanya adı geliyor
+    # ve bunlar müşteri girdisi olabiliyor: eksik stok mailinde ürün adındaki
+    # `<b>` etiketi ham basılıyordu. `footer` BİLEREK kaçırılmıyor — pazarlama
+    # maili oraya "Abonelikten çık" bağlantısını koyuyor; `body_html` zaten HTML.
+    title = escape(title or "")
+    preheader = escape(preheader or "")
+    button_text = escape(button_text or "")
+    button_url = escape(button_url or "", quote=True)
+
     pre = (
         f'<div style="display:none;max-height:0;overflow:hidden;opacity:0;'
         f'mso-hide:all">{preheader}</div>'

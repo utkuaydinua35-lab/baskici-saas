@@ -128,8 +128,12 @@ class _SipEtiket(_Sip):
 o = _SipEtiket()
 ki = {"provider": "surat", "takip_no": "40105913453122", "barkod_no": None,
       "etiket_var": False}
-pdf = pkg._surat_etiket_pdf(_SahteDb(), o, ki)
+# (pdf, barkod_yerlesim) doner: yerlesim ZPL yolunda yaziciya kendi Code128
+# komutunu bastirmak icin kullaniliyor (bkz. zpl_label._barkod_zpl).
+pdf, _yer = pkg._surat_etiket_pdf(_SahteDb(), o, ki)
 es("PDF uretildi", True, pdf.startswith(b"%PDF"))
+es("barkod yerlesimi dondu", True, bool(_yer and _yer.get("kod")))
+es("yerlesimdeki kod SURAT takip nosu", "40105913453122", (_yer or {}).get("kod"))
 _metin = "".join(pg.get_text() for pg in fitz.open(stream=pdf, filetype="pdf"))
 es("SURAT takip nosu etikette", True, "40105913453122" in _metin)
 es("kendi kodumuz BASILMADI", False, "KENDI-KODUMUZ" in _metin)
@@ -137,15 +141,18 @@ es("kendi kodumuz BASILMADI", False, "KENDI-KODUMUZ" in _metin)
 # barkod_no varsa O tercih edilir
 ki2 = dict(ki, barkod_no="9998887776665")
 _m2 = "".join(pg.get_text() for pg in fitz.open(
-    stream=pkg._surat_etiket_pdf(_SahteDb(), o, ki2), filetype="pdf"))
+    stream=pkg._surat_etiket_pdf(_SahteDb(), o, ki2)[0], filetype="pdf"))
 es("barkod_no takip_no'ya TERCIH edilir", True, "9998887776665" in _m2)
 es("barkod_no varken takip_no basilmaz", False, "40105913453122" in _m2)
 
 # Surat GERCEKTEN PDF verirse o kullanilir (kendi etiketimiz degil)
 yol = pkg._surat_etiket_yolu(o.id)
 yol.write_bytes(b"%PDF-1.4\n% surat etiketi\n")
-es("Surat PDF'i varsa O kullanilir", True,
-   pkg._surat_etiket_pdf(_SahteDb(), o, ki).endswith(b"% surat etiketi\n"))
+_hazir_pdf, _hazir_yer = pkg._surat_etiket_pdf(_SahteDb(), o, ki)
+es("Surat PDF'i varsa O kullanilir", True, _hazir_pdf.endswith(b"% surat etiketi\n"))
+# Dis kaynakli PDF kendi barkodunu tasiyor: ZPL'e ayrica ^BC EKLENMEMELI,
+# yoksa iki barkod ust uste biner.
+es("hazir PDF'te barkod yerlesimi YOK", None, _hazir_yer)
 yol.unlink()
 
 print("\n── 7. YENIDEN DENEME: barkodsuz basarida TEKRAR CAGIRMA ──")

@@ -324,6 +324,12 @@ def _bos_slot_index(mo, tercih: int, kapasite: int = 27) -> int:
     raise HTTPException(400, "Kalıpta boş slot kalmadı.")
 
 
+def _ilk_bos_slot(mo, kapasite: int = 27) -> int | None:
+    """Kalıptaki ilk boş slot index'i; hiç yoksa None."""
+    dolu = {it.slot_index for it in mo.items if it.slot_index is not None}
+    return next((i for i in range(kapasite) if i not in dolu), None)
+
+
 def _slot_urun_adi(db, mi) -> str:
     """Slotun müşteriye gösterilecek tanımı — örn 'Beyaz iPhone 14 Pro'.
 
@@ -646,8 +652,14 @@ def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
 
     Güvenlik kontrolleri (yanlışlıkla çift baskı üretmemek için):
       - Kalem şu an BAŞKA bir kalıptaysa geri alınmaz (aynı ürün 2 kalıba giremez).
-      - Hedef slot doluysa geri alınmaz (üstüne yazmak sessiz kayıp olurdu).
       - Aynı kayıt iki kez geri alınamaz.
+
+    Slot doluysa geri alma REDDEDİLMEZ: kalem çıkarıldıktan sonra planlayıcının
+    o slota başka bir ürün koyması normaldir ve eski davranışta operatörün tek
+    çıkışı kalıbı silip yeniden kurmaktı. Artık eski yer boşaltılır (oradaki
+    ürün ilk boş slota taşınır) — basılmış/kilitli kalıplarda ise kimse
+    oynatılmaz, geri alınan kalem boş slota iner. Kalıp tamamen doluysa
+    gerçekten yer yoktur ve o zaman reddedilir.
     """
     mo = _get_mold(db, mold_id, user.tenant_id)
     h = db.scalar(select(MoldStatusHistory).where(
@@ -681,10 +693,28 @@ def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
                 "girer ve çift basılır. Önce diğer kalıptan çıkar.",
             )
 
+    # ── Slot çakışması: geri almayı REDDETMEK yerine yer aç ──────────────
+    # Eskiden hedef slot doluysa 400 dönüyordu ve operatörün tek çıkışı kalıbı
+    # silip yeniden kurmaktı. Kalem çıkarıldıktan sonra planlayıcı o slota
+    # başka bir ürün koymuş olabiliyor; bu tamamen normal bir durum.
     _slot = itd.get("slot_index")
-    if any((x.slot_index == _slot) for x in mo.items):
-        raise HTTPException(
-            400, f"#{_slot} numaralı slot şu an dolu — geri almak için önce o slotu boşalt.")
+    _tasindi = None
+    _isgalci = next((x for x in mo.items if x.slot_index == _slot), None)
+    if _isgalci is not None:
+        _bos = _ilk_bos_slot(mo)
+        if _bos is None:
+            raise HTTPException(
+                400, "Kalıpta boş slot kalmadı — geri almak için önce bir slot boşalt.")
+        # ⚠ BASILMIŞ ya da slotu KİLİTLİ kalıpta kimseyi YERİNDEN OYNATMA:
+        # kılıflar fiziksel olarak o pozisyona göre dizildi, birkaç mm'lik
+        # kayma ince tasarımlarda göze batıyor. O durumda geri alınan kalem
+        # eski yerine değil, boş slota iner.
+        if mo.slot_kilitli or (mo.print_status or "") == "basildi" or mo.status == "basildi":
+            _tasindi = ("kendisi", _slot, _bos)
+            _slot = _bos
+        else:
+            _tasindi = ("isgalci", _isgalci.slot_index, _bos)
+            _isgalci.slot_index = _bos
 
     db.add(MoldItem(
         tenant_id=user.tenant_id, mold_id=mo.id,
@@ -711,8 +741,14 @@ def undo_mold_history(mold_id: uuid.UUID, hist_id: uuid.UUID,
     pl["undone"] = True
     h.payload = pl
     flag_modified(h, "payload")
+    _ek = ""
+    if _tasindi and _tasindi[0] == "isgalci":
+        _ek = f" (slot #{_tasindi[1]} doluydu, oradaki ürün #{_tasindi[2]}'e taşındı)"
+    elif _tasindi:
+        _ek = f" (eski yeri #{_tasindi[1]} doluydu, boş slota kondu)"
     _log_mold(db, mo, user, action="item_undo",
-              note=f"Geri alındı — slot #{_slot} · {itd.get('kalip_kodu') or ''} · {itd.get('design_code') or ''}")
+              note=f"Geri alındı — slot #{_slot} · {itd.get('kalip_kodu') or ''} · "
+                   f"{itd.get('design_code') or ''}{_ek}")
     _pdf_gecersiz(mold_id)   # icerik degisti -> hazir PDF silinir
     db.commit()
     mo = _get_mold(db, mold_id, user.tenant_id)

@@ -50,13 +50,32 @@ jobs:
         run: |
           python -c "import app.main; from sqlalchemy.orm import configure_mappers; configure_mappers(); print('backend import + mappers OK')"
 
-  # 44 test paketi elle kosuluyordu ve her seferinde bir ALT KUMESI seciliyordu.
-  # 2026-09-11'de tam bu yuzden surat_dogrudan_test gunlerce KIRIK kaldi
-  # (bir fonksiyon iki deger donmeye basladi, test guncellenmedi, o gun o paket
-  # hic kosulmadi). Artik DB istemeyen her paket her push'ta kosuyor.
-  # DB isteyen paketler icin Postgres servisi eklenmeli — ayri is.
+  # ⚠ 47 test paketi elle kosuluyordu ve her seferinde bir ALT KUMESI
+  # seciliyordu. 2026-09-11'de tam bu yuzden surat_dogrudan_test gunlerce KIRIK
+  # kaldi (bir fonksiyon iki deger donmeye basladi, test guncellenmedi, o gun o
+  # paket hic kosulmadi). Artik hepsi her push'ta kosuyor.
+  #
+  # TOHUM SART: paketlerin cogu veri bulamayinca "atlandi" deyip CIKIS KODU 0
+  # ile biter — bos veritabaninda CI yemyesil olur ama hicbir sey sinanmamis
+  # olur. ci_tohum.py asgari veriyi yaziyor.
   testler:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: "postgresql+psycopg://ci:ci@localhost:5432/ci"
+      JWT_SECRET: "ci-dummy-secret"
+      SESSION_SECRET: "ci-dummy-session"
+      ENV: "ci"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,16 +88,17 @@ jobs:
           pip install -e .
       # Etiket/barkod testleri PDF uretiyor. Sistemde gercek bir TTF yoksa
       # PyMuPDF base14'e duser ve Turkce karakterler ASCII'ye cevrilir —
-      # etiket testi bunu yakalar. DejaVu, VPS'tekiyle ayni font.
-      - name: Turkce font (etiket testleri icin)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core
-      - name: Test paketleri (DB gerektirmeyenler)
+      # etiket testi bunu (haklı olarak) yakalar. DejaVu, VPS'tekiyle ayni font.
+      - name: Turkce font + pg_dump
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core postgresql-client
+      - name: Gocler (alembic)
         working-directory: backend
-        env:
-          DATABASE_URL: "postgresql+psycopg://ci:ci@localhost:5432/ci"
-          JWT_SECRET: "ci-dummy-secret"
-          SESSION_SECRET: "ci-dummy-session"
-          ENV: "ci"
+        run: alembic upgrade head
+      - name: Tohum veri
+        working-directory: backend
+        run: python scripts/ci_tohum.py
+      - name: Test paketleri
+        working-directory: backend
         run: python scripts/ci_testleri.py
 
   frontend:

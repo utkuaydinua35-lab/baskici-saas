@@ -1,22 +1,21 @@
-"""CI'da koşan test paketleri — VERİTABANI GEREKTİRMEYENLER.
+"""CI'da koşan test paketleri — HEPSİ (veritabanı CI'da kuruluyor).
 
 NE İŞE YARAR: her `git push` sonrası GitHub bu dosyayı çalıştırır. Bir şey
-kırıldıysa e-posta gelir ve commit'in yanında kırmızı bir işaret çıkar. Yani
+kırıldıysa commit'in yanında kırmızı bir işaret çıkar ve e-posta gelir. Yani
 "bozdum ama fark etmedim" durumu ortadan kalkar.
 
-⚠ NEDEN BU DOSYA VAR: 44 test paketi elle çalıştırılıyordu ve her seferinde
-bir alt kümesi seçiliyordu. 2026-09-11'de tam olarak bu yüzden bir paket
-(surat_dogrudan_test) günlerce KIRIK kaldı: barkod düzeltmesinde bir fonksiyon
-iki değer dönmeye başladı, uygulama kodundaki çağıranlar güncellendi ama test
-scriptleri taranmadı ve o paket o gün hiç koşulmadı.
+⚠ NEDEN VAR: 47 test paketi elle çalıştırılıyordu ve her seferinde bir alt
+kümesi seçiliyordu. 2026-09-11'de tam bu yüzden surat_dogrudan_test günlerce
+KIRIK kaldı: barkod düzeltmesinde bir fonksiyon iki değer dönmeye başladı,
+uygulama kodundaki çağıranlar güncellendi ama test scriptleri taranmadı ve o
+paket o gün hiç koşulmadı.
 
-SEÇİM OTOMATİK: `SessionLocal` geçmeyen her paket alınır. Yeni bir test yazınca
-listeye eklemek GEREKMEZ.
+CI'da boş bir Postgres kurulup göçler çalıştırılıyor ve `ci_tohum.py` asgari
+veriyi yazıyor. Tohum ŞART: paketlerin çoğu veri bulamayınca "atlandı" deyip
+ÇIKIŞ KODU 0 ile biter — CI yemyeşil olur ama hiçbir şey sınanmamış olur.
 
-⚠ Ölçüt kusursuz değil: `SessionLocal` kullanmadan TestClient ile uca istek
-atan bir test de veritabanına gider (uygulama üzerinden). Bu tür paketler ATLA
-sözlüğüne sebebiyle yazılır. CI'a Postgres servisi eklenince o satırlar silinir
-ve paketler kendiliğinden geri döner.
+Yeni bir test yazınca listeye eklemek GEREKMEZ; `scripts/*_test.py` deseni
+otomatik toplanır.
 """
 from __future__ import annotations
 
@@ -26,25 +25,19 @@ from pathlib import Path
 
 KOK = Path(__file__).resolve().parent
 
-# Otomatik seçime rağmen ATLANANLAR — her satır SEBEP yazmalı.
+# CI'da KOŞULMAYANLAR — her satır SEBEP yazmalı.
 ATLA: dict[str, str] = {
-    # `SessionLocal` içermiyor ama TestClient ile /api/auth/login çağırıyor,
-    # yani uygulama üzerinden veritabanına gidiyor. Geliştirici makinesinde
-    # DB açık olduğu için geçiyor, CI'da düşerdi.
-    # CI'a Postgres servisi eklenince bu satır SİLİNMELİ.
-    "native_kabuk_test.py": "TestClient ile giriş yapıyor → DB gerekiyor",
-    # pg_dump/psql ile GERÇEK yedek alıp geçici bir veritabanı açıp kapatıyor.
-    # CI'da ne veri var ne de anlamı; elle/ayda bir koşulur.
-    "yedek_provasi_test.py": "gerçek veritabanı + pg_dump gerektiriyor (elle koşulur)",
+    # pg_dump/psql ile gerçek yedek alıp geçici veritabanı açıp kapatıyor;
+    # CI'da anlamı yok. Ayda bir ELLE koşulur (yedek provası).
+    "yedek_provasi_test.py": "gerçek yedek + geçici veritabanı — elle koşulur",
+    # Vitrin sepet/kupon akışı mağaza ayarları (kargo, ödeme) istiyor;
+    # tohumda henüz yok. 22/26 geçiyor, kalan 4'ü ayar bekliyor.
+    "smoke_test.py": "vitrin mağaza ayarları tohumda yok (bkz. ci_tohum.py)",
 }
 
 
-def _db_gerekir(yol: Path) -> bool:
-    return "SessionLocal" in yol.read_text(encoding="utf-8")
-
-
 def main() -> int:
-    paketler = sorted(p for p in KOK.glob("*_test.py") if not _db_gerekir(p))
+    paketler = sorted(KOK.glob("*_test.py"))
     kosulan, dusen, atlanan = [], [], []
 
     for p in paketler:

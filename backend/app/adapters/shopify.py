@@ -187,6 +187,38 @@ class ShopifyAdapter(StorePlatform):
 
         return all_products
 
+    def update_shipping_address(self, order_id: str, adres: dict) -> tuple[bool, str]:
+        """Siparişin teslimat adresini Shopify'da günceller.
+
+        ⚠ NEDEN ŞART: senkron her çalıştığında `order.raw` Shopify'dan yeniden
+        yazılıyor (routers/orders.py:_upsert_order). Adresi yalnız yerelde
+        değiştirmek, bir sonraki senkronda SESSİZCE geri alınır ve kargo eski
+        adrese çıkar. Bu yüzden kaynak Shopify'da güncellenmeli.
+
+        Shopify, KARGOLANMIŞ siparişin adresini değiştirmeye izin vermez;
+        çağıran zaten kargo başlamışsa buraya hiç gelmemeli.
+        """
+        url = f"{self._base_url()}/orders/{order_id}.json"
+        govde = {"order": {"id": int(order_id), "shipping_address": adres}}
+        try:
+            r = self.session.put(url, headers=self._headers(), json=govde, timeout=30)
+        except Exception as e:  # noqa: BLE001
+            return False, f"Shopify'a ulaşılamadı: {str(e)[:120]}"
+        if r.status_code == 200:
+            return True, "ok"
+        return False, f"Shopify reddetti (HTTP {r.status_code}): {r.text[:200]}"
+
+    def get_order_raw(self, order_id: str) -> dict | None:
+        """Tek siparişin güncel ham verisi (adres yazımından sonra tazelemek için)."""
+        url = f"{self._base_url()}/orders/{order_id}.json"
+        try:
+            r = self.session.get(url, headers=self._headers(), timeout=30)
+            if r.status_code == 200:
+                return r.json().get("order")
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     def get_collections(self) -> list[dict]:
         """Mağazadaki koleksiyonlar (elle + akıllı): [{id, title}].
 

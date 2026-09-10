@@ -1122,6 +1122,42 @@ def create_design_approval(
     return data
 
 
+@router.post("/{order_ref}/adres-degisim", response_model=dict)
+def adres_degisim_baglantisi(
+    order_ref: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşteriye gönderilecek adres değişikliği bağlantısı + hazır WhatsApp mesajı.
+
+    ⚠ Bağlantı yalnız kargo BAŞLAMADAN üretilir; barkod/kargo kaydı varsa
+    müşteriye "değiştirebilirsin" demek yanlış olur (uygulama anında
+    reddedilirdi ve müşteri boşa uğraşırdı).
+    """
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    from app.services import adres_degisim as ad_svc
+    from app.services import model_degisim as md_svc
+
+    izin, sebep = ad_svc.degistirilebilir_mi(order)
+    if not izin:
+        raise HTTPException(status_code=409, detail=sebep)
+
+    tel = md_svc.siparis_telefonu(order)
+    if not tel:
+        raise HTTPException(status_code=422,
+                            detail="Siparişte geçerli bir cep telefonu yok.")
+
+    talep = ad_svc.talep_olustur(db, order)
+    baglanti = ad_svc.link(talep.token)
+    metin = ad_svc.mesaj(order, baglanti)
+    _log_history(db, order, user, action="adres_baglantisi",
+                 note=f"Adres değişikliği bağlantısı üretildi ({ad_svc.GECERLILIK_DAKIKA} dk)")
+    db.commit()
+    return {"link": baglanti, "message": metin, "phone": tel,
+            "wa_url": md_svc.wa_url(tel, metin),
+            "gecerlilik_dk": ad_svc.GECERLILIK_DAKIKA}
+
+
 @router.get("/{order_ref}/approvals", response_model=dict)
 def list_design_approvals(
     order_ref: str,

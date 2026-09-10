@@ -137,6 +137,7 @@ _BIRLESTIR = {
     "aura": "Estetik",
     "celestial": "Estetik",
     "meyve": "Estetik",
+    "mistik": "Estetik",   # Mistik Evren/Kolaj/Koruma/Tarot…
 }
 
 

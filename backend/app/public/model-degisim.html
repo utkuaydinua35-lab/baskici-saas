@@ -221,6 +221,10 @@ async function yukle() {
 
     ${katalog.length ? `
       <div id="katalogBolum" hidden>
+      <label class="onaykutu" id="modelKutu">
+        <input type="checkbox" id="modelDeAc" />
+        <span class="mt">Telefon modelimi de değiştirmek istiyorum.</span>
+      </label>
       <div class="baslik">Ürün değişikliği</div>
       <div class="aciklama">
         Aşağıdaki bölümde değişiklik yapmak istediğiniz ürünü seçebilirsiniz,
@@ -236,12 +240,6 @@ async function yukle() {
         <button class="dahafazla" id="dahaFazla" hidden>Daha fazla göster</button>
       </div>
       </div>` : ''}
-
-    ${urunSecilebilir ? `
-      <label class="onaykutu" id="modelKutu" hidden>
-        <input type="checkbox" id="modelDeAc" />
-        <span class="mt">Telefon modelimi de değiştirmek istiyorum.</span>
-      </label>` : ''}
 
     ${kalemler.length ? `
       <div class="baslik">Siparişinizdeki ürünler</div>
@@ -371,8 +369,6 @@ async function yukle() {
       }
       const bolum = document.getElementById('katalogBolum');
       if (bolum) bolum.hidden = !tumModelModu;
-      const kutu = document.getElementById('modelKutu');
-      if (kutu) kutu.hidden = !tumModelModu;
       // Ürün moduna geçince model alanları onay kutusuna bağlanır.
       modelAlaniniAyarla();
       tumBtn.textContent = tumModelModu

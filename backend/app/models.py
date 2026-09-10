@@ -2253,6 +2253,40 @@ class ModelDegisimTalebi(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AdresDegisimTalebi(Base):
+    """Müşteriye gönderilen tek kullanımlık "teslimat adresini değiştir" bağlantısı.
+
+    ⚠ MODEL DEĞİŞİKLİĞİNDEN DAHA RİSKLİ: yanlış kişi adresi değiştirirse paket
+    ona gider. Bu yüzden bağlantı KISA ÖMÜRLÜ ve tek kullanımlık; operatör
+    tarafından, siparişteki telefona WhatsApp'tan gönderiliyor — yani numaranın
+    sahibi olmak erişimin şartı.
+
+    Adres yalnız kargo BAŞLAMADAN değiştirilebilir (barkod/kargo kaydı yoksa).
+    """
+    __tablename__ = "adres_degisim_talepleri"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    durum: Mapped[str] = mapped_column(String(20), default="bekliyor")  # bekliyor | uygulandi
+    # Değişiklikten ÖNCEKİ adres — geri almak ve denetim için.
+    eski_adres: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    yeni_adres: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    pazarlama_izni: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uygulandi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class OzelSeriStok(Base):
     """BERNZ Special (PARLAK) için stok bulundurulan telefon modelleri.
 

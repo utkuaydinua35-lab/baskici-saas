@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>BERNZ - Teslimat adresimi güncellemek istiyorum.</title>
+<link rel="icon" href="/api/public/model-degisim-favicon" />
+<style>
+  :root{
+    --bg:#0f1117; --card:#171a23; --card2:#1e2230; --border:#2a2f3e;
+    --text:#e7e9ee; --muted:#9aa3b2; --accent:#863bff; --accent2:#6d28d9;
+    --green:#22c55e; --green-bg:rgba(34,197,94,.12);
+    --amber:#f59e0b; --amber-bg:rgba(245,158,11,.12);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:540px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:21px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:16px;margin-bottom:14px}
+  .baslik{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.03em;
+    text-transform:uppercase;margin:22px 0 8px}
+  label.alan{display:block;font-size:12.5px;color:var(--muted);margin:12px 0 5px}
+  label.alan:first-child{margin-top:0}
+  .zorunlu{color:#f87171}
+  input[type=text],input[type=email],input[type=tel]{width:100%;padding:12px 13px;
+    font-size:16px;border-radius:12px;background:var(--card2);color:var(--text);
+    border:1px solid var(--border)}
+  input:focus{outline:none;border-color:var(--accent)}
+  .ikili{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:380px){.ikili{grid-template-columns:1fr}}
+  .btn{display:block;width:100%;border:0;border-radius:13px;padding:15px;font-size:16px;
+    font-weight:700;cursor:pointer;margin-top:20px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+  .btn:disabled{opacity:.5;cursor:default}
+  .kutu{border-radius:12px;padding:13px 15px;font-size:14px;margin-bottom:14px}
+  .ok{background:var(--green-bg);border:1px solid var(--green);color:#bbf7d0}
+  .uyari{background:var(--amber-bg);border:1px solid var(--amber);color:#fde68a}
+  .hata{background:rgba(239,68,68,.12);border:1px solid #ef4444;color:#fecaca}
+  .kucuk{font-size:12.5px;color:var(--muted);margin-top:14px}
+  .onaykutu{display:flex;gap:10px;align-items:flex-start;background:var(--card2);
+    border:1px solid var(--border);border-radius:12px;padding:12px 14px;
+    margin-top:12px;cursor:pointer}
+  .onaykutu input{width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;margin-top:1px}
+  .onaykutu .mt{font-size:13px;color:#d7dbe6;line-height:1.45}
+  .soru{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;
+    border-radius:999px;border:1px solid var(--border);background:var(--card2);
+    color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;
+    vertical-align:middle}
+  .ipucu{display:none;margin-top:6px;font-size:12px;color:#c2c8d6;background:var(--card2);
+    border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+  .ipucu.acik{display:block}
+  .alanHata{border-color:#ef4444 !important}
+</style>
+</head>
+<body>
+<div class="wrap" id="kok">
+  <div class="sub">Yükleniyor…</div>
+</div>
+
+<script>
+const TOKEN = location.pathname.split('/').filter(Boolean).pop();
+const kok = document.getElementById('kok');
+
+const kacir = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function ekranBasit(sinif, baslik, metin) {
+  kok.innerHTML = `<h1>${kacir(baslik)}</h1>
+    <div class="kutu ${sinif}">${kacir(metin)}</div>`;
+}
+
+function dakikaKaldi(iso) {
+  if (!iso) return '';
+  const fark = new Date(iso) - new Date();
+  if (fark <= 0) return '';
+  const d = Math.ceil(fark / 60000);
+  return d >= 60 ? `${Math.floor(d / 60)} saat ${d % 60} dakika` : `${d} dakika`;
+}
+
+async function yukle() {
+  let v;
+  try {
+    const r = await fetch(`/api/public/adres-degisim/${encodeURIComponent(TOKEN)}`);
+    if (r.status === 404) return ekranBasit('hata', 'Bağlantı bulunamadı',
+      'Bu bağlantı geçersiz. Lütfen bizimle iletişime geçin.');
+    v = await r.json();
+  } catch {
+    return ekranBasit('hata', 'Bağlantı kurulamadı',
+      'İnternet bağlantını kontrol edip sayfayı yenile.');
+  }
+
+  if (v.durum === 'suresi_doldu') {
+    return ekranBasit('uyari', 'Bağlantının süresi doldu',
+      'Güvenliğiniz için bu bağlantı kısa süre geçerlidir. Yeni bir bağlantı ' +
+      'için bize yazmanız yeterli.');
+  }
+  if (v.durum === 'uygulandi') {
+    return ekranBasit('ok', 'Adresiniz güncellendi',
+      'Siparişiniz yeni adrese gönderilecek. Teşekkür ederiz!');
+  }
+  if (v.durum === 'kapali') {
+    return ekranBasit('uyari', 'Adres değişikliği yapılamıyor',
+      v.sebep || 'Siparişiniz kargo sürecine girmiş.');
+  }
+
+  const a = v.adres || {};
+  const kalan = dakikaKaldi(v.son_gecerlilik);
+
+  kok.innerHTML = `
+    <h1>Teslimat adresini güncelle</h1>
+    <div class="sub">${v.siparis_no ? kacir(v.siparis_no) + ' numaralı siparişiniz. ' : ''}
+      Bilgileriniz aşağıda hazır; değiştirmek istediğiniz alanları düzenleyip
+      kaydedin.</div>
+
+    <div class="baslik">İletişim bilgileri</div>
+    <div class="card">
+      <label class="alan" for="eposta">
+        E-posta <span style="color:var(--muted)">(isteğe bağlı)</span>
+        <span class="soru" id="epostaSoru" role="button" tabindex="0"
+              aria-label="E-posta neden isteniyor?">?</span>
+      </label>
+      <input type="email" id="eposta" autocomplete="email" value="${kacir(a.eposta)}" />
+      <div class="ipucu" id="epostaIpucu">
+        Sipariş detay ve gönderim güncellemeleri bu adrese gönderilecektir.
+      </div>
+
+      <label class="onaykutu">
+        <input type="checkbox" id="pazarlama" />
+        <span class="mt">Haber ve özel tekliflerden haberdar olmak istiyorum.</span>
+      </label>
+    </div>
+
+    <div class="baslik">Teslimat adresi</div>
+    <div class="card">
+      <div class="ikili">
+        <div>
+          <label class="alan" for="ad">İsim <span class="zorunlu">*</span></label>
+          <input type="text" id="ad" autocomplete="given-name" value="${kacir(a.ad)}" />
+        </div>
+        <div>
+          <label class="alan" for="soyad">Soyisim <span class="zorunlu">*</span></label>
+          <input type="text" id="soyad" autocomplete="family-name" value="${kacir(a.soyad)}" />
+        </div>
+      </div>
+
+      <label class="alan" for="adres">Adres <span class="zorunlu">*</span></label>
+      <input type="text" id="adres" autocomplete="address-line1" value="${kacir(a.adres)}" />
+
+      <label class="alan" for="adres2">
+        Apartman, daire, vb. <span style="color:var(--muted)">(isteğe bağlı)</span>
+      </label>
+      <input type="text" id="adres2" autocomplete="address-line2" value="${kacir(a.adres2)}" />
+
+      <div class="ikili">
+        <div>
+          <label class="alan" for="il">İl <span class="zorunlu">*</span></label>
+          <input type="text" id="il" autocomplete="address-level1" value="${kacir(a.il)}" />
+        </div>
+        <div>
+          <label class="alan" for="ilce">İlçe <span class="zorunlu">*</span></label>
+          <input type="text" id="ilce" autocomplete="address-level2" value="${kacir(a.ilce)}" />
+        </div>
+      </div>
+
+      <label class="alan" for="telefon">Telefon numarası <span class="zorunlu">*</span></label>
+      <input type="tel" id="telefon" autocomplete="tel" inputmode="numeric"
+             placeholder="5XX XXX XX XX" value="${kacir(a.telefon)}" />
+
+      <div class="kutu hata" id="hataKutu" style="display:none;margin-top:14px"></div>
+      <button class="btn" id="kaydet">Adresi güncelle</button>
+      <div class="kucuk">
+        ${kalan ? `Bu bağlantı ${kacir(kalan)} sonra geçersiz olacak. ` : ''}
+        Güvenliğiniz için bağlantı yalnız bir kez kullanılabilir; bu bağlantıyı
+        kimseyle paylaşmayın.
+      </div>
+    </div>`;
+
+  const soru = document.getElementById('epostaSoru');
+  const ipucu = document.getElementById('epostaIpucu');
+  const ac = () => ipucu.classList.toggle('acik');
+  soru.onclick = ac;
+  soru.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ac(); } };
+
+  const al = (id) => document.getElementById(id);
+  const hataKutu = document.getElementById('hataKutu');
+  const kaydet = document.getElementById('kaydet');
+
+  const hataGoster = (metin) => {
+    hataKutu.textContent = metin;
+    hataKutu.style.display = 'block';
+    hataKutu.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  kaydet.onclick = async () => {
+    // Zorunlu alanlar sunucuda da denetleniyor; burada amaç boşuna istek atıp
+    // kullanıcıyı beklettikten sonra hata göstermemek.
+    const zorunlu = [['ad', 'İsim'], ['soyad', 'Soyisim'], ['adres', 'Adres'],
+                     ['il', 'İl'], ['ilce', 'İlçe'], ['telefon', 'Telefon numarası']];
+    let eksik = null;
+    for (const [id, etiket] of zorunlu) {
+      const el = al(id);
+      const bos = !el.value.trim();
+      el.classList.toggle('alanHata', bos);
+      if (bos && !eksik) eksik = { el, etiket };
+    }
+    if (eksik) {
+      hataGoster(`${eksik.etiket} zorunlu.`);
+      eksik.el.focus();
+      return;
+    }
+
+    hataKutu.style.display = 'none';
+    kaydet.disabled = true;
+    kaydet.textContent = 'Güncelleniyor…';
+    try {
+      const r = await fetch(`/api/public/adres-degisim/${encodeURIComponent(TOKEN)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eposta: al('eposta').value.trim() || null,
+          pazarlama: al('pazarlama').checked,
+          ad: al('ad').value, soyad: al('soyad').value,
+          adres: al('adres').value, adres2: al('adres2').value,
+          il: al('il').value, ilce: al('ilce').value,
+          telefon: al('telefon').value,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        kaydet.disabled = false;
+        kaydet.textContent = 'Adresi güncelle';
+        hataGoster(d.detail || 'Bir sorun oluştu. Lütfen bizimle iletişime geçin.');
+        return;
+      }
+      ekranBasit('ok', 'Adresiniz güncellendi',
+        'Siparişiniz yeni adrese gönderilecek. Teşekkür ederiz!');
+    } catch {
+      kaydet.disabled = false;
+      kaydet.textContent = 'Adresi güncelle';
+      hataGoster('Bağlantı kurulamadı. Lütfen tekrar deneyin.');
+    }
+  };
+}
+
+yukle();
+</script>
+</body>
+</html>

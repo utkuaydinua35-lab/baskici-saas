@@ -32,6 +32,7 @@ from app.routers.public_shop import router as public_shop_router
 from app.routers.public_tracker import router as public_tracker_router
 from app.routers.public_support import router as public_support_router
 from app.routers.ozel_seri import router as ozel_seri_router
+from app.routers.public_adres_degisim import router as public_adres_degisim_router
 from app.routers.public_approval import router as public_approval_router
 from app.routers.public_model_degisim import router as public_model_degisim_router
 from app.routers.public_instagram import router as public_instagram_router
@@ -197,6 +198,7 @@ app.include_router(dashboard_router)
 app.include_router(public_tracker_router)
 app.include_router(public_support_router)
 app.include_router(ozel_seri_router)
+app.include_router(public_adres_degisim_router)
 app.include_router(public_approval_router)
 app.include_router(public_model_degisim_router)
 app.include_router(public_instagram_router)

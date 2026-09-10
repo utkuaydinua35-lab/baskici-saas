@@ -269,6 +269,39 @@ export default function MoldGeneratorPage() {
                 </div>
               )}
 
+              {/* ⚠ Stok eksikliği bugüne kadar ancak BASKI ANINDA fark ediliyordu:
+                  kalem kalıptan çıkarılıyor, müşteriye "ürününüz yok" mesajı
+                  gidiyor. Stok verisi zaten vardı, plan ona bakmıyordu.
+                  UYARIDIR, ENGEL DEĞİL — sayım güncel olmayabilir. */}
+              {plan.stok_uyarilar?.length > 0 && (
+                <div className="card mb-4 border-amber-500/40 bg-amber-500/5">
+                  <h2 className="text-sm font-medium text-amber-300 mb-1">
+                    📦 {plan.stok_eksik_toplam} kılıf için boş kılıf stoğu yetmiyor
+                  </h2>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Bu kalıbı basarsan aşağıdaki kalemler yarıda kalabilir. Stok sayımı
+                    güncel değilse yok sayabilirsin — <a href="/stok" className="text-accent hover:underline">Stok</a>'tan
+                    kontrol et.
+                  </p>
+                  <div className="space-y-1 max-h-60 overflow-y-auto">
+                    {plan.stok_uyarilar.map((u, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-brand-input/40 rounded px-2 py-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0 font-mono">
+                          {u.variation || '—'}
+                        </span>
+                        <span className="text-gray-300 shrink-0">{u.model}</span>
+                        <span className="text-gray-500 truncate flex-1">
+                          {u.siparisler?.length ? `Sipariş: ${u.siparisler.slice(0, 6).join(', ')}${u.siparisler.length > 6 ? '…' : ''}` : ''}
+                        </span>
+                        <span className="text-amber-300 shrink-0" title="gerekli / mevcut">
+                          {u.gerekli} gerekli · {u.mevcut} var
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {plan.aski_uyarilar?.length > 0 && (
                 <div className="card mb-4 border-sky-500/30 bg-sky-500/5">
                   <h2 className="text-sm font-medium text-sky-300 mb-1">

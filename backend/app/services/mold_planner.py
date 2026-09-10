@@ -795,9 +795,57 @@ def plan_molds(
     except Exception:  # noqa: BLE001
         aski_uyarilar = []
 
+    # ── BOŞ KILIF STOĞU: plan basılmadan ÖNCE yetiyor mu? ────────────────
+    # ⚠ NEDEN: stok eksikliği bugüne kadar ancak baskı anında ya da fiziksel
+    # olarak fark ediliyordu — kalem kalıptan çıkarılıyor, müşteriye "ürününüz
+    # yok" mesajı gidiyor. Canlıda ayda ~113 kalem kalıptan çıkarılıyor,
+    # ağustosta 38'i stok yüzündendi. Stok verisi ZATEN var (255 kalem,
+    # baskıda deduct_for_mold ile düşülüyor); planlayıcı ona hiç bakmıyordu.
+    #
+    # UYARIDIR, ENGEL DEĞİL: stok sayımı her zaman güncel olmayabilir ve
+    # operatör "elimde var" diyip basabilmeli. Karar onun.
+    stok_uyarilar = []
+    try:
+        from app.services import stock as _stok
+
+        # (varyasyon, model) başına kaç adet gerekiyor
+        ihtiyac: dict = {}
+        for u in units:
+            anahtar = (u.get("variation") or "", u.get("model") or "")
+            d = ihtiyac.setdefault(anahtar, {"adet": 0, "siparisler": set()})
+            d["adet"] += 1
+            if u.get("order_number"):
+                d["siparisler"].add(str(u["order_number"]))
+
+        for (varyasyon, model), d in ihtiyac.items():
+            if not model:
+                continue
+            si = _stok._find_bos_kilif(db, tenant_id, varyasyon, model)
+            # Stok kaydı HİÇ yoksa uyarı vermiyoruz: her model tanımlı değil ve
+            # "tanımsız" ile "bitmiş" farklı şeyler. Yanlış alarm, gerçek
+            # alarmı da değersizleştirir.
+            if si is None:
+                continue
+            mevcut = si.quantity or 0
+            if mevcut >= d["adet"]:
+                continue
+            stok_uyarilar.append({
+                "model": model,
+                "variation": varyasyon,
+                "gerekli": d["adet"],
+                "mevcut": mevcut,
+                "eksik": d["adet"] - mevcut,
+                "siparisler": sorted(d["siparisler"]),
+            })
+        stok_uyarilar.sort(key=lambda x: -x["eksik"])
+    except Exception:  # noqa: BLE001 — stok bakılamazsa plan YİNE üretilsin
+        stok_uyarilar = []
+
     return {
         "molds": molds,
         "slot_ihtiyac": slot_ihtiyac,
+        "stok_uyarilar": stok_uyarilar,
+        "stok_eksik_toplam": sum(x["eksik"] for x in stok_uyarilar),
         "mold_count": len(molds),
         "total_units": len(units),
         "eksikler": eksikler,

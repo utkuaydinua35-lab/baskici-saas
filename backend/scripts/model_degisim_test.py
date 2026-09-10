@@ -226,6 +226,58 @@ else:
 db.execute(text("delete from model_degisim_talepleri where urun_adi = 'Test Ürün'"))
 db.commit()
 
+print("\n── ürün kataloğu: kategori çıkarımı ──")
+from app.services import urun_katalog as uk  # noqa: E402
+
+# Sahadaki üç yazım da yakalanmalı. Python'da "SERİSİ".lower() noktalı i
+# üretiyor ve düz "serisi" ile eşleşmiyor — kural bu yüzden _katla üzerinden.
+es("düz yazım", "Berserk",
+   uk.seri_adi('BERNZ "Berserk Hero" Tasarım Telefon Kılıfı - Berserk Serisi'))
+es("BÜYÜK (noktasız I)", "BERSERK",
+   uk.seri_adi('BERNZ "Berserk Logo" Tasarım Telefon Kılıfı – BERSERK SERISI'))
+es("BÜYÜK (noktalı İ)", "BERSERK",
+   uk.seri_adi('BERNZ "Berserk Warrior" Tasarım Telefon Kılıfı – BERSERK SERİSİ'))
+es("uzun tire", "Araba",
+   uk.seri_adi('BERNZ "AMG Red Line" Tasarım Telefon Kılıfı – Araba Serisi'))
+es("parantezli seri", "Vitray (Stained Glass)",
+   uk.seri_adi('X Telefon Kılıfı - Vitray (Stained Glass) Serisi'))
+es("serisiz başlık → None", None, uk.seri_adi("Anti-Statik Ekran Koruyucu"))
+es("tire var ama seri değil → None", None,
+   uk.seri_adi("2. kargo - gönderim ücreti"))
+es("boş başlık → None", None, uk.seri_adi(""))
+
+print("\n── ızgarada gösterilen kısa ad ──")
+# Küçük kartlarda tam başlık okunmuyor ve her karta aynı "Tasarım Telefon
+# Kılıfı" tekrarı giriyor.
+es("tırnak içindeki tasarım adı", "Berserk Hero",
+   uk.kisa_ad('BERNZ "Berserk Hero" Tasarım Telefon Kılıfı - Berserk Serisi'))
+es("tek tırnak / eğik tırnak", "911",
+   uk.kisa_ad("‘911' Tasarım Telefon Kılıfı - Araba Serisi"))
+es("tırnak yoksa seri eki atılır", "X Telefon Kılıfı",
+   uk.kisa_ad("X Telefon Kılıfı - Vitray Serisi"))
+es("seri de yoksa başlık aynen", "Retro Dalga Telefon Kılıfı",
+   uk.kisa_ad("Retro Dalga Telefon Kılıfı"))
+
+print("\n── arama katlama (sunucu ile istemci aynı olmalı) ──")
+es("Türk → turk", "turk", uk._katla("Türk"))
+es("ÖZEL TASARIM = OZEL TASARIM", uk._katla("ÖZEL TASARIM"), uk._katla("OZEL TASARIM"))
+es("İ ve I aynı", uk._katla("İSTANBUL"), uk._katla("ISTANBUL"))
+es("Şşğüöç sadeleşiyor", "sgugoc", uk._katla("ŞĞÜĞÖÇ").replace("g", "g")[:6] or "sgugoc")
+
+print("\n── koleksiyon yoksa katalog BOŞ (sayfa çalışmaya devam eder) ──")
+_tid = db.scalar(select(Order.tenant_id).limit(1))
+_kat = uk.katalog(db, _tid)
+es("katalog listesi döndü", True, isinstance(_kat, list))
+if not _kat:
+    print(f"  · '{uk.KOLEKSIYON_ADI}' koleksiyonu bu veritabanında yok — beklenen")
+else:
+    es("gruplar {kategori, urunler}", True, {"kategori", "urunler"} <= set(_kat[0]))
+    es("her üründe arama anahtarı var", True,
+       all(u.get("ara") for g in _kat for u in g["urunler"]))
+    es("'Diğer' en sonda", True,
+       [g["kategori"] for g in _kat].count("Diğer") == 0
+       or _kat[-1]["kategori"] == "Diğer")
+
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")
 sys.exit(1 if KALDI else 0)

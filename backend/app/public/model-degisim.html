@@ -49,6 +49,30 @@
   .adres{font-size:13px;color:#c8cede;line-height:1.6}
   .adres .k{color:var(--muted);font-size:12px}
   option:disabled{color:#6b7280}
+  .aciklama{background:var(--card2);border:1px solid var(--border);border-radius:12px;
+    padding:12px 14px;font-size:12.5px;color:#c2c8d6;line-height:1.6;margin-bottom:12px}
+  .cipler{display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;
+    -webkit-overflow-scrolling:touch}
+  .cip{flex:0 0 auto;border:1px solid var(--border);background:var(--card2);color:var(--muted);
+    border-radius:999px;padding:7px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .cip.aktif{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  input[type=search]{width:100%;padding:12px 13px;font-size:15px;border-radius:12px;
+    background:var(--card2);color:var(--text);border:1px solid var(--border);margin-bottom:12px}
+  input[type=search]:focus{outline:none;border-color:var(--accent)}
+  .izgara{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  @media(max-width:420px){.izgara{grid-template-columns:repeat(2,1fr)}}
+  .urun{border:1px solid var(--border);background:var(--card2);border-radius:12px;
+    overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s}
+  .urun:active{transform:scale(.98)}
+  .urun.secili{border-color:var(--accent);box-shadow:0 0 0 2px rgba(134,59,255,.35)}
+  .urun .gr{aspect-ratio:1/1;background:#0c0e14;display:flex;align-items:center;
+    justify-content:center;overflow:hidden}
+  .urun .gr img{width:100%;height:100%;object-fit:cover}
+  .urun .gr .yok{font-size:10px;color:var(--muted)}
+  .urun .ad{padding:7px 8px;font-size:11.5px;line-height:1.35;color:#d7dbe6;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    height:calc(2 * 1.35em + 14px)}
+  .bos{padding:22px;text-align:center;color:var(--muted);font-size:13px}
 </style>
 </head>
 <body>
@@ -60,6 +84,15 @@
 // Token adresin son parçasında: /model-degisim/<token>
 const TOKEN = location.pathname.split('/').filter(Boolean).pop();
 const kok = document.getElementById('kok');
+
+// Arama anahtarı — sunucudaki urun_katalog._katla ile AYNI kural olmalı,
+// yoksa "türk" yazan ürünü bulamaz.
+const katla = (s) => (s || '')
+  .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+  .replace(/[Şş]/g, 's').replace(/[Ğğ]/g, 'g').replace(/[Üü]/g, 'u')
+  .replace(/[Öö]/g, 'o').replace(/[Çç]/g, 'c')
+  .toLowerCase()
+  .normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
 
 const kacir = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -104,6 +137,7 @@ async function yukle() {
   const markalar = v.markalar || [];
   const sip = v.siparis || {};
   const kalemler = sip.kalemler || [];
+  const katalog = v.katalog || [];
 
   const rozetSinif = (d) => d === 'Hazır' ? 'r-hazir'
     : d === 'Stok bekleniyor' ? 'r-bekl' : 'r-uret';
@@ -139,6 +173,21 @@ async function yukle() {
         Onayladıktan sonra değişiklik hemen üretim planına işlenir ve bu bağlantı kapanır.
       </div>
     </div>
+
+    ${katalog.length ? `
+      <div class="baslik">Ürün değişikliği (isteğe bağlı)</div>
+      <div class="aciklama">
+        Aşağıdaki bölümde değişiklik yapmak istediğiniz ürünü seçebilirsiniz,
+        dilerseniz bu linki kapatıp, bernzcompany.com'a dönerek ürün seçebilir ve
+        ismini bu linke tekrar girip aşağıdaki arama bölümünden aratarak da
+        değişiklik yapabilirsiniz.
+      </div>
+      <div class="card">
+        <input type="search" id="ara" placeholder="Ürün adıyla ara — örn. Berserk, Atatürk, BMW"
+               autocomplete="off" />
+        <div class="cipler" id="cipler"></div>
+        <div class="izgara" id="izgara"></div>
+      </div>` : ''}
 
     ${kalemler.length ? `
       <div class="baslik">Siparişinizdeki ürünler</div>
@@ -185,7 +234,70 @@ async function yukle() {
     model.disabled = false;
     gonder.disabled = true;
   };
-  model.onchange = () => { gonder.disabled = !model.value; };
+  // ── Ürün kataloğu: kategori + arama ──────────────────────────────────
+  let secilenUrun = null;
+  let aktifKategori = null;   // null = tümü
+
+  const guncelleGonder = () => {
+    gonder.disabled = !(model.value || secilenUrun);
+  };
+  model.onchange = guncelleGonder;
+
+  const cipler = document.getElementById('cipler');
+  const izgara = document.getElementById('izgara');
+  const ara = document.getElementById('ara');
+
+  if (katalog.length) {
+    const ciz = () => {
+      // Arama TÜM kategorilerde çalışır: müşteri ürünün hangi seride
+      // olduğunu bilmek zorunda değil.
+      const q = (ara.value || '').trim();
+      const qk = katla(q);
+      let liste = [];
+      for (const g of katalog) {
+        if (!qk && aktifKategori && g.kategori !== aktifKategori) continue;
+        for (const u of g.urunler) {
+          if (qk && !u.ara.includes(qk)) continue;
+          liste.push(u);
+        }
+      }
+      liste = liste.slice(0, 120);   // uzun listede telefon yorulmasın
+
+      izgara.innerHTML = liste.length ? liste.map(u => `
+        <div class="urun${secilenUrun === u.id ? ' secili' : ''}" data-id="${kacir(u.id)}">
+          <div class="gr">${u.gorsel
+            ? `<img src="${kacir(u.gorsel)}" alt="" loading="lazy">`
+            : '<span class="yok">görsel yok</span>'}</div>
+          <div class="ad" title="${kacir(u.tam_ad || u.ad)}">${kacir(u.ad)}</div>
+        </div>`).join('')
+        : '<div class="bos">Aramanıza uygun ürün bulunamadı.</div>';
+
+      izgara.querySelectorAll('.urun').forEach(el => {
+        el.onclick = () => {
+          const id = el.getAttribute('data-id');
+          secilenUrun = (secilenUrun === id) ? null : id;   // tekrar tıkla → seçimi kaldır
+          ciz(); guncelleGonder();
+        };
+      });
+    };
+
+    const cipCiz = () => {
+      cipler.innerHTML =
+        `<button class="cip${aktifKategori === null ? ' aktif' : ''}" data-k="">Tümü</button>` +
+        katalog.map(g => `<button class="cip${aktifKategori === g.kategori ? ' aktif' : ''}"
+          data-k="${kacir(g.kategori)}">${kacir(g.kategori)} (${g.urunler.length})</button>`).join('');
+      cipler.querySelectorAll('.cip').forEach(el => {
+        el.onclick = () => {
+          aktifKategori = el.getAttribute('data-k') || null;
+          ara.value = '';
+          cipCiz(); ciz();
+        };
+      });
+    };
+
+    ara.oninput = ciz;
+    cipCiz(); ciz();
+  }
 
   gonder.onclick = async () => {
     gonder.disabled = true;
@@ -194,7 +306,7 @@ async function yukle() {
       const r = await fetch(`/api/public/model-degisim/${encodeURIComponent(TOKEN)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model.value }),
+        body: JSON.stringify({ model: model.value || null, urun_id: secilenUrun }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
@@ -202,8 +314,9 @@ async function yukle() {
           d.detail || 'Bir sorun oluştu. Lütfen bizimle iletişime geçin.');
         return;
       }
+      const nele = [d.model, d.urun].filter(Boolean).join(' · ');
       ekranBasit('ok', 'Değişikliğiniz alındı',
-        `Siparişiniz ${d.model} olarak güncellendi. Üretime bu şekilde ` +
+        `Siparişiniz ${nele} olarak güncellendi. Üretime bu şekilde ` +
         'alınacak. Teşekkür ederiz!');
     } catch {
       gonder.disabled = false;

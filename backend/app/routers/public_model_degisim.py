@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.routers.public_tracker import rate_limit
 from app.services import model_degisim as md
+from app.services import urun_katalog
 
 router = APIRouter(tags=["public-model-degisim"])
 
@@ -233,13 +234,14 @@ def veri(token: str, db: Session = Depends(get_db), _rl: None = Depends(rate_lim
         "ozel_seri": ozel,
         "markalar": markalar,
         "siparis": _siparis_ozeti(db, t),
+        "katalog": urun_katalog.katalog(db, t.tenant_id),
         "son_gecerlilik": t.expires_at.isoformat() if t.expires_at else None,
     }
 
 
 class SecimIstegi(BaseModel):
-    model: str
-    varyasyon: str | None = None
+    model: str | None = None
+    urun_id: str | None = None
 
 
 def _kaliptan_cek(db: Session, li: LineItem) -> int:
@@ -302,28 +304,38 @@ def uygula(token: str, istek: SecimIstegi,
                             detail="Sipariş kalemi bulunamadı. Lütfen bizimle iletişime geçin.")
 
     model = (istek.model or "").strip()
-    markalar, ozel = _model_secenekleri(db, t)
-    # ⚠ Yalnız STOKTA olan seçilebilir. Listede görünen ama stokta olmayan bir
-    # modelin sunucuda da reddedilmesi şart: sayfadaki `disabled` yalnız
-    # görsel bir engel, istek elle de atılabilir.
-    _secilebilir = {m["deger"] for g in markalar for m in g["modeller"] if m.get("stokta")}
-    if model not in _secilebilir:
-        raise HTTPException(status_code=400,
-                            detail="Bu model şu an seçilemiyor. Lütfen listeden birini seçin.")
-    if ozel:
-        from app.services import ozel_seri
-        if not ozel_seri.stokta_mi(db, t.tenant_id, model):
-            raise HTTPException(status_code=400, detail="Bu model şu an stokta değil.")
+    urun = None
+    if istek.urun_id:
+        # ⚠ Seçilen ürün GERÇEKTEN koleksiyonda mı — istek elle de atılabilir.
+        urun = urun_katalog.urun_dogrula(db, t.tenant_id, istek.urun_id)
+        if urun is None:
+            raise HTTPException(status_code=400, detail="Seçilen ürün listede yok.")
 
-    varyasyon = None   # "ürün seçeneği" kaldırıldı; yerine tasarım kataloğu gelecek
+    if not model and urun is None:
+        raise HTTPException(status_code=400,
+                            detail="Telefon modeli ya da ürün seçmelisiniz.")
+
+    if model:
+        markalar, ozel = _model_secenekleri(db, t)
+        # ⚠ Yalnız STOKTA olan seçilebilir. Listede görünen ama stokta olmayan
+        # bir modelin sunucuda da reddedilmesi şart: sayfadaki `disabled`
+        # yalnız görsel bir engel.
+        _secilebilir = {m["deger"] for g in markalar for m in g["modeller"] if m.get("stokta")}
+        if model not in _secilebilir:
+            raise HTTPException(status_code=400,
+                                detail="Bu model şu an seçilemiyor. Lütfen listeden birini seçin.")
+        if ozel:
+            from app.services import ozel_seri
+            if not ozel_seri.stokta_mi(db, t.tenant_id, model):
+                raise HTTPException(status_code=400, detail="Bu model şu an stokta değil.")
+
 
     # ⚠ ÖNCE kalıptan çek: aşağıdaki alan değişiklikleri sırasında hata çıksa
     # bile yanlış modelli kılıfın basılması ihtimali kalmasın.
     cekilen = _kaliptan_cek(db, li)
 
-    li.device_model_override = model[:100]
-    if varyasyon:
-        li.kilif_varyasyon = varyasyon[:20]
+    if model:
+        li.device_model_override = model[:100]
 
     # "Stok bekliyor" bayrağı kalkmalı: müşteri beklemeyi seçmedi, değiştirdi.
     # Kalırsa bayi portalinde ve panelde hâlâ "Stokta mevcut değil" görünürdü.
@@ -332,17 +344,26 @@ def uygula(token: str, istek: SecimIstegi,
         li.raw = ham
 
     t.durum = "uygulandi"
-    t.secilen_model = model[:100]
-    t.secilen_varyasyon = varyasyon
+    t.secilen_model = model[:100] if model else None
+    t.secilen_varyasyon = (urun.title[:20] if urun is not None else None)
     t.uygulandi_at = datetime.now(UTC)
 
     order = db.scalar(select(Order).where(Order.id == t.order_id)
                       .execution_options(include_deleted=True))
     _no = (order.name or f"#{order.order_number or ''}") if order else ""
-    _ek = f" · {varyasyon}" if varyasyon else ""
-    _not = (f"Müşteri telefon modelini değiştirdi: "
-            f"{t.mevcut_model or '—'} → {model}{_ek}"
-            + (f" · {cekilen} kalıp slotundan çıkarıldı" if cekilen else ""))
+    _parcalar = []
+    if model:
+        _parcalar.append(f"model: {t.mevcut_model or '—'} → {model}")
+    if urun is not None:
+        # ⚠ TASARIM OTOMATİK DEĞİŞTİRİLMİYOR — bilinçli. Vitrin katalog ürünleri
+        # ile üretimdeki tasarımlar AYRI kimlik uzayında (Design.product_id
+        # katalog ürün id'siyle eşleşmiyor); tahminle tasarım atamak YANLIŞ
+        # kılıf bastırır. Müşterinin seçimi kayda geçer, kalem kalıptan çekilir
+        # ve panele bildirim düşer; tasarımı operatör bağlar.
+        _parcalar.append(f"ürün: {urun.title}")
+    _not = ("Müşteri değişiklik yaptı — " + " · ".join(_parcalar)
+            + (f" · {cekilen} kalıp slotundan çıkarıldı" if cekilen else "")
+            + (" · ÜRÜN DEĞİŞİKLİĞİ: tasarımı elle bağlayın" if urun is not None else ""))
 
     db.add(OrderStatusHistory(
         tenant_id=t.tenant_id, order_id=t.order_id,
@@ -351,7 +372,8 @@ def uygula(token: str, istek: SecimIstegi,
     db.add(Notification(
         tenant_id=t.tenant_id, store_id=(order.store_id if order else None),
         kind="warn" if cekilen else "info",
-        title=f"{_no} · müşteri model değiştirdi",
+        title=(f"{_no} · müşteri ÜRÜN değiştirdi" if urun is not None
+               else f"{_no} · müşteri model değiştirdi"),
         body=_not,
         link=f"/orders/{t.order_id}",
     ))
@@ -362,10 +384,12 @@ def uygula(token: str, istek: SecimIstegi,
         from app.services import push
         push.send_to_tenant(
             db, t.tenant_id,
-            f"{_no} · müşteri model değiştirdi", _not,
+            (f"{_no} · müşteri ÜRÜN değiştirdi" if urun is not None
+             else f"{_no} · müşteri model değiştirdi"), _not,
             url=f"/orders/{t.order_id}", tag=f"model-degisim-{t.order_id}",
         )
     except Exception:  # noqa: BLE001 — bildirim akışı bozmasın
         pass
 
-    return {"ok": True, "model": model, "varyasyon": varyasyon}
+    return {"ok": True, "model": model or None,
+            "urun": urun.title if urun is not None else None}

@@ -194,6 +194,39 @@ db.execute(text("delete from dealers where id=:d"), {"d": str(dealer.id)})
 db.execute(text("delete from stores where id=:s"), {"s": str(store.id)})
 db.commit()
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# Revizyon sonrası mesaj: "tekrar hazırladık"
+# ─────────────────────────────────────────────────────────────────────────
+print("\n── hazır mesaj: ilk gönderim / revizyon ayrımı ──")
+# Müşteri zaten bir tasarım görüp revizyon istediyse "hazırladık" demek onu
+# yeni bir tasarım bekliyormuş gibi karşılıyor.
+from app.services import approvals as _ap  # noqa: E402
+
+
+class _OnaySip:
+    customer_name = "Kerim Yıldız"; name = "#11718"; order_number = "11718"; raw = {}
+
+
+_L = "https://siparistakip.bernzcompany.com/onay/TOKEN123"
+_v1 = _ap.build_message(_OnaySip(), _L)
+_v2 = _ap.build_message(_OnaySip(), _L, revizyon=True)
+es("v1 'hazırladık'", True, "tasarımını hazırladık." in _v1)
+es("v1'de 'tekrar' YOK", False, "tekrar" in _v1)
+es("v2 'tekrar hazırladık'", True, "tasarımını tekrar hazırladık." in _v2)
+es("ikisinde de isim var", True, _v1.startswith("Merhaba Kerim,") and _v2.startswith("Merhaba Kerim,"))
+es("ikisinde de link var", True, _L in _v1 and _L in _v2)
+_kapanis = "Onayınızın ardından baskıya alıyoruz. Teşekkürler!"
+es("kapanış aynı", True, _v1.endswith(_kapanis) and _v2.endswith(_kapanis))
+
+
+class _Adsiz(_OnaySip):
+    customer_name = None
+
+
+es("isim yoksa sade 'Merhaba,'", True,
+   _ap.build_message(_Adsiz(), _L, revizyon=True).startswith("Merhaba,\n"))
+
 print("\n" + "=" * 46)
 print(f"GECTI: {GECTI}   KALDI: {KALDI}")
 sys.exit(1 if KALDI else 0)

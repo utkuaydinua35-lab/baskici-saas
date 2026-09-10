@@ -1116,7 +1116,8 @@ def create_design_approval(
     db.commit()
     db.refresh(ap)
     data = ap_svc.serialize(ap, with_secrets=True)
-    data["message"] = ap_svc.build_message(order, data["link"])
+    data["message"] = ap_svc.build_message(order, data["link"],
+                                           revizyon=(ap.version or 1) > 1)
     data["phone"] = ap_svc.resolve_phone(order)
     data["customer_name"] = order.customer_name
     return data
@@ -1260,7 +1261,9 @@ def list_design_approvals(
     items = []
     for a in (order.approvals or []):
         d = ap_svc.serialize(a, with_secrets=True)
-        d["message"] = ap_svc.build_message(order, d["link"])
+        # v1 ilk gönderim; v2+ müşteri revizyon istedikten sonraki tasarım.
+        d["message"] = ap_svc.build_message(order, d["link"],
+                                            revizyon=(a.version or 1) > 1)
         items.append(d)
     return {
         "items": items,

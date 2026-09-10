@@ -58,7 +58,8 @@ def create_order_approval(
     db.commit()
     db.refresh(ap)
     data = ap_svc.serialize(ap, with_secrets=True)
-    data["message"] = ap_svc.build_message(order, data["link"])
+    data["message"] = ap_svc.build_message(order, data["link"],
+                                           revizyon=(ap.version or 1) > 1)
     data["phone"] = ap_svc.resolve_phone(order)
     data["customer_name"] = order.customer_name
     return data

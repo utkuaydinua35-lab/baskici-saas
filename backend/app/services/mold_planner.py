@@ -365,20 +365,27 @@ def plan_molds(
             design_by_id[d.id] = d
 
     # Bekleyen siparişler
+    #
+    # ⚠ "AÇIK SİPARİŞ" TANIMI TEK KAYNAKTAN (services/order_scope). Burada
+    # elle yazılmış bir kopya vardı ve `current_stage >= 8` ile `closed_at`
+    # KONTROLLERİ EKSİKTİ. Sonuç 09.09.2026'da görüldü: #11677 kargoya
+    # verilmişti ama Shopify'a fulfillment YAZILAMADIĞI için (HTTP 422,
+    # "fulfillment order ... closed") `fulfillment_status` NULL kalmıştı.
+    # Sipariş yerelde 8. aşamadaydı, plana göre ise hâlâ "açık". Kalem
+    # 04.09'da elle kalıptan çıkarılıp plana döndürülünce (item_replan)
+    # tek koruma olan `is_kaliba_eklendi` de sıfırlandı ve planlayıcı kalemi
+    # yeni bir kalıba koydu — kılıf İKİNCİ KEZ basılıp çöpe gitti.
+    # Kopya çıkarmayın: filtre değişecekse order_scope'ta değişir.
+    from app.services.order_scope import acik_siparis_filtresi
+
     orders_q = (
         select(Order)
         .where(
-            Order.tenant_id == tenant_id,
-            Order.is_iptal == False,  # noqa: E712
+            acik_siparis_filtresi(tenant_id),
             Order.kalip_haric == False,  # noqa: E712  kullanici kaliptan haric tuttu
             # Bayi portalinden gelen ama YONETICI ONAYLAMAMIS siparis kaliba
             # girmez: varyasyonu daha secilmedi ve cari borcu islenmedi.
             Order.bayii_onay_bekliyor == False,  # noqa: E712
-            # Sadece ACIK siparisler: kargoya verilmis (fulfilled) olanlar plana girmez
-            (Order.fulfillment_status != "fulfilled") | (Order.fulfillment_status.is_(None)),
-            # Iptal/iade edilenler plana girmez
-            Order.cancelled_at.is_(None),
-            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
         )
         .options(
             selectinload(Order.line_items).selectinload(LineItem.assigned_design),

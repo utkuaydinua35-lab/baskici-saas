@@ -208,13 +208,20 @@ def approval_link(token: str) -> str:
     return f"{base}/onay/{token}"
 
 
-def build_message(order: Order, link: str) -> str:
-    """Müşteriye gönderilmeye hazır mesaj (operatör elle WhatsApp/Instagram'dan yollar)."""
+def build_message(order: Order, link: str, *, revizyon: bool = False) -> str:
+    """Müşteriye gönderilmeye hazır mesaj (operatör elle WhatsApp/Instagram'dan yollar).
+
+    `revizyon=True` (2. ve sonraki versiyonlar): müşteri zaten bir tasarım
+    görmüş ve revizyon istemiş. "hazırladık" demek onu yeni bir tasarım
+    bekliyormuş gibi karşılar; "TEKRAR hazırladık" isteğinin karşılandığını
+    söyler.
+    """
     ad = (order.customer_name or "").split()[0] if order.customer_name else ""
     no = order.name or f"#{order.order_number}"
     merhaba = f"Merhaba {ad}," if ad else "Merhaba,"
+    hazir = "tekrar hazırladık" if revizyon else "hazırladık"
     return (
-        f"{merhaba}\n\n{no} numaralı siparişinizin tasarımını hazırladık. "
+        f"{merhaba}\n\n{no} numaralı siparişinizin tasarımını {hazir}. "
         f"Lütfen aşağıdaki linkten inceleyip onaylar mısınız?\n\n{link}\n\n"
         f"Onayınızın ardından baskıya alıyoruz. Teşekkürler!"
     )

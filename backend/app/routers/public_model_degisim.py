@@ -453,7 +453,8 @@ def uygula(token: str, istek: SecimIstegi,
     cekilen = _kaliptan_cek(db, li)
 
     if model:
-        li.device_model_override = model[:100]
+        from app.services.phone_models import gorunen_ad as _ad
+        li.device_model_override = (_ad(db, t.tenant_id, model) or model)[:100]
 
     # "Stok bekliyor" bayrağı kalkmalı: müşteri beklemeyi seçmedi, değiştirdi.
     # Kalırsa bayi portalinde ve panelde hâlâ "Stokta mevcut değil" görünürdü.

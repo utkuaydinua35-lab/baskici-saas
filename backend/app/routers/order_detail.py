@@ -1354,7 +1354,8 @@ def update_line_item_workflow(
     if "is_kaliba_eklendi" in fields and payload.is_kaliba_eklendi is not None:
         li.is_kaliba_eklendi = payload.is_kaliba_eklendi
     if "device_model_override" in fields:
-        _new = (payload.device_model_override or "").strip() or None
+        from app.services.phone_models import gorunen_ad as _ad
+        _new = _ad(db, order.tenant_id, (payload.device_model_override or "").strip()) or None
         if _new != li.device_model_override:
             _log_history(
                 db, order, user, action="kalem_model_degisti",
@@ -1362,7 +1363,8 @@ def update_line_item_workflow(
             )
         li.device_model_override = _new
     if "device_model_override_2" in fields:
-        _new2 = (payload.device_model_override_2 or "").strip() or None
+        from app.services.phone_models import gorunen_ad as _ad
+        _new2 = _ad(db, order.tenant_id, (payload.device_model_override_2 or "").strip()) or None
         if _new2 != li.device_model_override_2:
             _log_history(
                 db, order, user, action="kalem_model_degisti",

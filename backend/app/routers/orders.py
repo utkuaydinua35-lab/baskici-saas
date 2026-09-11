@@ -1806,7 +1806,8 @@ def create_manual_order(
             properties=properties,
             raw={"manual": True, "notes": li.notes},
             assigned_design_id=design.id if design else None,
-            device_model_override=li.device_model,
+            # Okunur ad — ölçü aynı kalmak şartıyla (phone_models.gorunen_ad)
+            device_model_override=_pm_gorunen_ad(db, user.tenant_id, li.device_model),
             birincil_renk=li.color,
         ))
 
@@ -2026,3 +2027,9 @@ def create_refund(
         "financial_status": order.financial_status,
         "refunded_total": str(refunded + amount),
     }
+
+
+def _pm_gorunen_ad(db, tenant_id, model):
+    """Siparişe yazılan model adı okunur olsun — ölçü aynı kalmak şartıyla."""
+    from app.services.phone_models import gorunen_ad
+    return gorunen_ad(db, tenant_id, model)

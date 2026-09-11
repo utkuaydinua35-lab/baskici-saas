@@ -485,9 +485,11 @@ def update_line_item(
     if "assigned_design_id_2" in fields:
         li.assigned_design_id_2 = _resolve_design(payload.assigned_design_id_2) if payload.assigned_design_id_2 else None
     if "device_model_override" in fields:
-        li.device_model_override = (payload.device_model_override or "").strip() or None
+        from app.services.phone_models import gorunen_ad as _ad
+        li.device_model_override = _ad(db, li.tenant_id, (payload.device_model_override or "").strip()) or None
     if "device_model_override_2" in fields:
-        li.device_model_override_2 = (payload.device_model_override_2 or "").strip() or None
+        from app.services.phone_models import gorunen_ad as _ad
+        li.device_model_override_2 = _ad(db, li.tenant_id, (payload.device_model_override_2 or "").strip()) or None
     if "kilif_varyasyon" in fields:
         li.kilif_varyasyon = (payload.kilif_varyasyon or "").strip() or None
     if "kilif_varyasyon_2" in fields:

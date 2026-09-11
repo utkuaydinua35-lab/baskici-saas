@@ -642,7 +642,8 @@ def create_dealer_order(
             quantity=it.quantity,
             position=pos,
             assigned_design_id=design_uuid,
-            device_model_override=it.model,
+            # Okunur ad — ölçü aynı kalmak şartıyla (phone_models.gorunen_ad)
+            device_model_override=_pm_gorunen_ad(db, user.tenant_id, it.model),
             properties=[],
             raw={"source": "bayii"},
         )
@@ -798,7 +799,8 @@ def add_dealer_order_items(
         db.add(LineItem(
             tenant_id=user.tenant_id, order_id=order.id, title=title,
             quantity=it.quantity, position=pos,
-            assigned_design_id=design_uuid, device_model_override=it.model,
+            assigned_design_id=design_uuid,
+            device_model_override=_pm_gorunen_ad(db, user.tenant_id, it.model),
             properties=[], raw={"source": "bayii", "sonradan_eklendi": True},
         ))
         pos += 1
@@ -1436,3 +1438,9 @@ def bayi_hesap_sil(dealer_id: uuid.UUID, user_id: uuid.UUID,
     db.delete(u)
     db.commit()
     return {"ok": True}
+
+
+def _pm_gorunen_ad(db, tenant_id, model):
+    """Siparişe yazılan model adı okunur olsun — ölçü aynı kalmak şartıyla."""
+    from app.services.phone_models import gorunen_ad
+    return gorunen_ad(db, tenant_id, model)

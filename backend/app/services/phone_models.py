@@ -285,3 +285,32 @@ def canonical_model_name(model: str) -> str:
     if key.upper().startswith("IPHONE"):
         return _prettify_iphone(key)
     return model.strip()
+
+
+def gorunen_ad(db: Session, tenant_id, model: str | None) -> str | None:
+    """Siparişe yazılacak model adını OKUNUR hale getir — ölçüyü ASLA değiştirmeden.
+
+    ⚠ NEDEN: aynı alanda hem "iPhone 16 Pro Max" hem ham katalog anahtarı
+    "16-PROMAX" / "13-PROMAX" / "11" yazıyordu (canlıda 49 farklı değerin 12'si
+    ham anahtar). Kalıp eşleşmesi normalize ettiği için baskı bozulmuyordu, ama
+    raporlar aynı telefonu ikiye bölüyor, panelde "11" gibi anlamsız adlar
+    görünüyordu.
+
+    GÜVENLİK KURALI: yeni ad YALNIZ eskisiyle BİREBİR AYNI kalıp ölçüsüne
+    çözülüyorsa kullanılır. Ölçüsü bulunamayan, farklı ölçüye çözülen ya da
+    zaten okunur olan değer OLDUĞU GİBİ döner — yanlış model yazmaktansa
+    çirkin ad kalsın. (Ör. "A57" tenant'a özel tanımlıysa dokunulmaz.)
+    """
+    m = (model or "").strip()
+    if not m:
+        return model
+    olcu = get_spec(db, tenant_id, m)
+    if olcu is None:
+        return m
+    anahtar = canonical_key(normalize_key(m))
+    if not anahtar:
+        return m
+    aday = (baseline_display_name(anahtar) or "").strip()
+    if aday and aday != m and get_spec(db, tenant_id, aday) == olcu:
+        return aday
+    return m

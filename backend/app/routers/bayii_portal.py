@@ -391,6 +391,11 @@ def tasarimlar(d: Dealer = Depends(_bayi), db: Session = Depends(get_db),
     ]}
 
 
+def _pm_ad(db: Session, tenant_id, model: str) -> str:
+    from app.services.phone_models import gorunen_ad
+    return gorunen_ad(db, tenant_id, model)
+
+
 def _cozulen_deger(db: Session, tenant_id, *adaylar: str) -> str | None:
     """Kalıp planlayıcının TANIYACAĞI ilk aday.
 
@@ -763,7 +768,9 @@ def siparis_olustur(
         db.add(LineItem(
             tenant_id=d.tenant_id, order_id=o.id,
             title=f"{m} — {ds.code}", quantity=a, position=i,
-            assigned_design_id=ds.id, device_model_override=m,
+            assigned_design_id=ds.id,
+            # Okunur ad — ölçü aynı kalmak şartıyla (phone_models.gorunen_ad)
+            device_model_override=_pm_ad(db, d.tenant_id, m),
             properties=[], raw={"source": "bayii", "kanal": kanal},
         ))
         ozet.append(f"{m} × {a}")
@@ -815,6 +822,8 @@ def urun_guncelle(order_id: uuid.UUID, kalem_id: uuid.UUID, req: UrunIn,
     degisiklikler = []
     if req.model is not None:
         yeni_m = req.model.strip()
+        if yeni_m:
+            yeni_m = _pm_ad(db, d.tenant_id, yeni_m)
         if not yeni_m:
             raise HTTPException(400, "Telefon modeli boş olamaz")
         if not _cozulen_deger(db, d.tenant_id, yeni_m):

@@ -68,17 +68,46 @@ export default function Layout() {
   // Sayfa değişince mobil menü kapansın
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
+  // Mobil çekmece: Escape ve telefonun GERİ tuşu menüyü kapatır (sayfadan
+  // çıkarmaz) — açılışta geçmişe bir kayıt eklenir, menüden gidilen sayfa
+  // `replace` ile o kaydın yerine yazılır. Açıkken arkadaki sayfa kaymaz.
+  const menuKapat = () => {
+    if (window.history.state?.mobilMenu) window.history.back()
+    else setMenuOpen(false)
+  }
+  useEffect(() => {
+    if (!menuOpen) return
+    if (!window.history.state?.mobilMenu) {
+      window.history.pushState({ ...window.history.state, mobilMenu: true }, '')
+    }
+    const geri = () => setMenuOpen(false)
+    const tus = (e) => { if (e.key === 'Escape') menuKapat() }
+    const kok = document.documentElement
+    const eskiTasma = kok.style.overflow
+    kok.style.overflow = 'hidden'
+    window.addEventListener('popstate', geri)
+    document.addEventListener('keydown', tus)
+    return () => {
+      kok.style.overflow = eskiTasma
+      window.removeEventListener('popstate', geri)
+      document.removeEventListener('keydown', tus)
+    }
+  }, [menuOpen])  // eslint-disable-line
+
   const storefrontUrl = store?.config?.storefront_url
     || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : null)
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Üst bar — cam; arkasındaki aurora süzülerek görünür */}
-      <header className="h-12 shrink-0 flex items-center gap-3 px-3 text-white sticky top-0 z-40
-        bg-[#060b28]/70 backdrop-blur-2xl border-b border-panel-border">
+      {/* Üst bar. Cam (bulanıklık) YALNIZ geniş ekranda: telefonda sayfa
+          kaydıkça arkası her karede 40px yeniden bulanıklaştırılıyordu —
+          kaydırmadaki takılmanın bir kaynağı. Telefonda zemin neredeyse opak.
+          box-content: çentik dolgusu 48px'lik yüksekliğin İÇİNDEN yemesin. */}
+      <header className="box-content h-12 pt-[env(safe-area-inset-top)] shrink-0 flex items-center gap-3 px-3 text-white sticky top-0 z-40
+        bg-[#070c2b]/95 lg:bg-[#060b28]/75 lg:backdrop-blur-xl border-b border-panel-border">
         {/* Mobil menü düğmesi */}
-        <button onClick={() => setMenuOpen(o => !o)} aria-label="Menü"
-          className="lg:hidden w-8 h-8 rounded-lg border border-panel-border flex items-center justify-center text-panel-muted">
+        <button onClick={() => (menuOpen ? menuKapat() : setMenuOpen(true))} aria-label="Menü" aria-expanded={menuOpen}
+          className="lg:hidden w-10 h-10 rounded-lg border border-panel-border flex items-center justify-center text-panel-muted active:bg-white/10">
           {menuOpen ? '✕' : '☰'}
         </button>
         <div className="flex items-center gap-2 pr-2">
@@ -132,21 +161,26 @@ export default function Layout() {
       <div className="flex-1 flex min-h-0">
         {/* Mobil çekmece örtüsü */}
         {menuOpen && (
-          <div className="fixed inset-0 top-12 bg-black/40 z-20 lg:hidden"
-            onClick={() => setMenuOpen(false)} />
+          <div className="fixed inset-0 top-[calc(3rem_+_1px_+_env(safe-area-inset-top))] bg-black/40 z-20 lg:hidden"
+            onClick={menuKapat} />
         )}
-        {/* Sol menü — gruplu; mobilde soldan kayan çekmece */}
-        <aside className={`w-56 shrink-0 border-r border-panel-border flex flex-col
-          bg-[#060b28]/55 backdrop-blur-2xl
-          fixed lg:sticky top-12 h-[calc(100vh-3rem)] z-30
+        {/* Sol menü — gruplu; mobilde soldan kayan çekmece.
+            Bulanıklık kaldırıldı: arkası sürekli hareket eden aurora olduğu
+            için 224px × tam boy, 40px'lik filtre HER KAREDE yeniden hesaplanıyordu.
+            Mobilde yükseklik 100vh DEĞİL top+bottom: iOS Safari'de 100vh alt
+            araç çubuğunun arkasına uzanıp en alttaki "Ayarlar"ı gizliyordu. */}
+        <aside aria-label="Menü" className={`w-56 shrink-0 border-r border-panel-border flex flex-col
+          bg-[#070c2b]/[0.97] lg:bg-[#060b28]/55
+          fixed lg:sticky top-[calc(3rem_+_1px_+_env(safe-area-inset-top))] bottom-0 lg:bottom-auto
+          lg:h-[calc(100vh_-_3rem_-_1px_-_env(safe-area-inset-top))] z-30
           transition-transform duration-200 lg:translate-x-0
           ${menuOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}`}>
-          <nav className="flex-1 px-2 py-2 overflow-y-auto">
+          <nav className="flex-1 px-2 py-2 overflow-y-auto overscroll-contain">
             {NAV_GROUPS.map((g, gi) => (
               <div key={gi}>
                 {g.label && <div className="nav-group-label">{g.label}</div>}
                 {g.items.map(item => (
-                  <NavLink key={item.to} to={item.to} end={item.end}
+                  <NavLink key={item.to} to={item.to} end={item.end} replace={menuOpen}
                     className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                     <span className="nav-icon">{item.icon}</span>
                     {item.label}
@@ -156,8 +190,8 @@ export default function Layout() {
             ))}
           </nav>
           {/* Ayarlar — Shopify gibi en altta sabit */}
-          <div className="p-2 border-t border-panel-border">
-            <NavLink to="/ayarlar"
+          <div className="p-2 pb-[calc(0.5rem_+_env(safe-area-inset-bottom))] lg:pb-2 border-t border-panel-border">
+            <NavLink to="/ayarlar" replace={menuOpen}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
               <span className="nav-icon">⚙️</span>
               Ayarlar
@@ -166,7 +200,7 @@ export default function Layout() {
         </aside>
 
         {/* İçerik */}
-        <main className="flex-1 min-w-0 p-5 overflow-y-auto">
+        <main className="flex-1 min-w-0 p-5 pb-[calc(1.25rem_+_env(safe-area-inset-bottom))] overflow-y-auto">
           <div key={location.pathname} className="page-in">
             <Outlet />
           </div>
@@ -198,11 +232,19 @@ function ProfileMenu({ user, logout, refresh }) {
   const [modal, setModal] = useState(null)   // null | 'hesap' | 'sifre' | 'guvenlik'
   const ref = useRef(null)
 
+  // Yalnız AÇIKKEN dinle (eskiden her tıklamada kapalı menü için de çalışıyordu);
+  // Escape kapatır, pointerdown dokunmatikte gecikmesiz.
   useEffect(() => {
+    if (!open) return
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [])
+    const tus = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', onDoc)
+    document.addEventListener('keydown', tus)
+    return () => {
+      document.removeEventListener('pointerdown', onDoc)
+      document.removeEventListener('keydown', tus)
+    }
+  }, [open])
 
   const item = (icon, label, onClick, cls = '') => (
     <button onClick={onClick}
@@ -213,7 +255,7 @@ function ProfileMenu({ user, logout, refresh }) {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(o => !o)}
+      <button onClick={() => setOpen(o => !o)} aria-label="Profil menüsü" aria-expanded={open}
         className="flex items-center gap-2 pl-2 py-1.5 border-l border-panel-border group">
         <Avatar user={user} />
         <span className="hidden sm:block text-[11px] font-medium truncate max-w-32 text-white/80 group-hover:text-white transition-colors">

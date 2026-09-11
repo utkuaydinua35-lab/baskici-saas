@@ -30,7 +30,15 @@ body {
 }
 
 /* Aurora: zeminde ağır ağır dolaşan renk bulutları. Yalnızca transform
-   animasyonu — düzen (layout) hesabı tetiklemez, GPU'da kalır. */
+   animasyonu — düzen (layout) hesabı tetiklemez, GPU'da kalır.
+
+   PERFORMANS: eskiden üstünde `filter: blur(28px)` vardı ve sayfadaki her
+   .card `backdrop-filter: blur(120px)` taşıyordu. Zemin SÜREKLİ hareket
+   ettiği için bu kartların hepsi (anasayfada 12 tane) boşta dururken bile
+   her karede yeniden bulanıklaştırılıyordu — telefonda kaydırma takılması
+   ve pil tüketimi. Radyal gradyanlar zaten yumuşak; filtre görünümü
+   değiştirmiyordu. Dokunmatik/dar ekranda aurora durur (hareket 26 sn'de
+   %2 — fark edilmiyor, pil ediliyor). */
 body::before {
   content: '';
   position: fixed;
@@ -42,8 +50,10 @@ body::before {
     radial-gradient(34% 38% at 82% 18%, rgba(0, 117, 255, 0.34), transparent 60%),
     radial-gradient(42% 46% at 68% 88%, rgba(33, 212, 253, 0.20), transparent 64%),
     radial-gradient(36% 40% at 12% 82%, rgba(159, 122, 234, 0.22), transparent 60%);
-  filter: blur(28px);
   animation: aurora 26s ease-in-out infinite alternate;
+}
+@media (pointer: coarse), (max-width: 1023px) {
+  body::before { animation: none; }
 }
 @keyframes aurora {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
@@ -72,10 +82,14 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   opacity: 0.7;
   pointer-events: none;
 }
-.card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 14px 40px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(255 255 255 / 0.04);
+/* Yalnız fareli cihazda: telefonda dokunulan kart "hover"da takılı kalıp
+   2px yukarıda asılı duruyordu. */
+@media (hover: hover) {
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 14px 40px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(255 255 255 / 0.04);
+  }
 }
 
 /* ── Üste binen katmanlar: modal, komut paleti, çekmece örtüsü ──
@@ -110,14 +124,16 @@ h1, h2, h3 { letter-spacing: -0.02em; }
    → panelde cam efekti hiçbir zaman bulanıklaştırmadı, yalnız saydamdı.
    Bu da modal arkasındaki yazının okunmasının asıl sebebiydi.
    Koşulu derleme zamanında çözemediği için @supports blokları olduğu
-   gibi kalıyor; iki tarayıcı ailesi de doğru özelliği alıyor. */
+   gibi kalıyor; iki tarayıcı ailesi de doğru özelliği alıyor.
+
+   Sayfa kartında (.card) bulanıklık YOK — bkz. body::before notu. Arkası
+   yalnız yumuşak aurora olduğu için görünümde fark yok; maliyeti büyüktü.
+   Bulanıklık yalnız üste binen, kısa ömürlü katmanlarda (modal, palet). */
 @supports (backdrop-filter: blur(1px)) {
-  .card { backdrop-filter: blur(120px); }
   .fixed.inset-0 { backdrop-filter: blur(7px); }
   .fixed.inset-0 .card, .katman { backdrop-filter: blur(28px) saturate(140%); }
 }
 @supports (-webkit-backdrop-filter: blur(1px)) and (not (backdrop-filter: blur(1px))) {
-  .card { -webkit-backdrop-filter: blur(120px); }
   .fixed.inset-0 { -webkit-backdrop-filter: blur(7px); }
   .fixed.inset-0 .card, .katman { -webkit-backdrop-filter: blur(28px) saturate(140%); }
 }
@@ -213,7 +229,13 @@ select.input option, .input option { background: #0f1535; @apply text-panel-ink;
   @apply rounded-[10px] w-7 h-7 flex items-center justify-center text-[14px];
 }
 .nav-item .nav-icon { @apply text-[15px] leading-none transition-transform duration-200; }
-.nav-item:hover .nav-icon { transform: scale(1.18); }
+@media (hover: hover) {
+  .nav-item:hover .nav-icon { transform: scale(1.18); }
+}
+/* Parmakla kullanımda menü satırı 37px'ti — 44'e çıkar (Apple HIG). */
+@media (pointer: coarse) {
+  .nav-item { min-height: 44px; }
+}
 
 .nav-group-label {
   @apply px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-panel-muted/60 select-none;

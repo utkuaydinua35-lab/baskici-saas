@@ -14,6 +14,20 @@ from app.adapters import get_adapter
 from app.models import Notification, Store
 
 
+def _yakin_bildirim_var(db: Session, store: Store, baslik: str) -> bool:
+    """Son 24 saatte bu mağaza için aynı başlıklı hata bildirimi açılmış mı?"""
+    from datetime import timedelta
+    try:
+        return db.scalar(select(Notification.id).where(
+            Notification.store_id == store.id,
+            Notification.kind == "error",
+            Notification.title == baslik,
+            Notification.created_at >= datetime.now(UTC) - timedelta(hours=24),
+        ).limit(1)) is not None
+    except Exception:  # noqa: BLE001 — sorgu patlarsa bildirimi kaçırmaktansa aç
+        return False
+
+
 def sync_store(db: Session, store: Store, *, create_notification: bool = True) -> dict:
     """
     Bir mağazayı senkronize et. orders.py'deki _upsert_order'ı kullanır.
@@ -39,10 +53,15 @@ def sync_store(db: Session, store: Store, *, create_notification: bool = True) -
         orders_raw = adapter.get_all_active_orders(limit=250)
     except Exception as e:
         result["message"] = f"Veri alınamadı: {str(e)[:200]}"
-        if create_notification:
+        baslik = f"{store.name}: senkronizasyon hatası"
+        # ⚠ AYNI HATA HER SAAT YENİ BİLDİRİM AÇMAZ. Senkron saatte bir koşuyor;
+        # yanlış yapılandırılmış tek bir mağaza ("Bernz", 404) 7 günde 192 hata
+        # bildirimi üretip gerçek bildirimleri gömüyordu. Aynı mağaza + aynı
+        # başlık için 24 saatte bir bildirim yeter; hata sürdükçe günde bir hatırlatır.
+        if create_notification and not _yakin_bildirim_var(db, store, baslik):
             db.add(Notification(
                 tenant_id=store.tenant_id, store_id=store.id, kind="error",
-                title=f"{store.name}: senkronizasyon hatası",
+                title=baslik,
                 body=result["message"],
             ))
             db.commit()

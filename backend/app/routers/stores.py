@@ -561,6 +561,11 @@ def oauth_callback(
         access_token = token_data.get("access_token")
         granted_scopes = token_data.get("scope", "")
     except Exception as e:
+        # Sebep eskiden YUTULUYORDU: panel yalnız "reason=exception" görüyor,
+        # log'da iz yoktu — Shopify bağlantısı neden kurulamadı bilinemiyordu.
+        import logging
+        logging.getLogger("stores").warning(
+            "[shopify-oauth] token değişiminde hata: %s: %s", type(e).__name__, str(e)[:300])
         return RedirectResponse(
             f"{settings.frontend_url}/stores?oauth=error&reason=exception",
             status_code=302,

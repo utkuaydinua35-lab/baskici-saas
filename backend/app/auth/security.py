@@ -3,6 +3,7 @@ Güvenlik primitive'leri:
 - bcrypt password hash/verify
 - JWT encode/decode
 """
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -12,6 +13,14 @@ from passlib.context import CryptContext
 from app.config import get_settings
 
 settings = get_settings()
+
+# ⚠ GÜRÜLTÜ SUSTURMA: passlib 1.7.4, bcrypt 4.1+ sürümünde kaldırılan
+# `bcrypt.__about__`'u okumaya çalışıp her süreç açılışında "(trapped) error
+# reading bcrypt version" + tam yığın izi basıyor. Hash/doğrulama ETKİLENMİYOR,
+# ama canlı log'da haftada ~35 sahte "Traceback" üretip gerçek hataları
+# arıyormuş gibi görünen her taramayı yanıltıyordu. Yalnız passlib'in
+# uyarı seviyesi kapatılıyor; gerçek hatalar (ERROR) görünmeye devam eder.
+logging.getLogger("passlib").setLevel(logging.ERROR)
 
 # bcrypt context — rounds=12 default, güvenli ve makul hızlı
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

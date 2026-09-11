@@ -162,9 +162,9 @@ export default function DashboardPage() {
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <CiroCard label="BUGÜN" value={data?.ciro?.bugun} show={showCiro} />
-              <CiroCard label="BU HAFTA" value={data?.ciro?.hafta} show={showCiro} />
-              <CiroCard label="BU AY" value={data?.ciro?.ay} show={showCiro} accent />
+              <CiroCard label="BUGÜN" value={data?.ciro?.bugun} usd={data?.ciro?.usd?.bugun} show={showCiro} />
+              <CiroCard label="BU HAFTA" value={data?.ciro?.hafta} usd={data?.ciro?.usd?.hafta} show={showCiro} />
+              <CiroCard label="BU AY" value={data?.ciro?.ay} usd={data?.ciro?.usd?.ay} show={showCiro} accent />
             </div>
             <CiroChart data={data?.ciro?.gunluk} show={showCiro} />
           </div>
@@ -344,7 +344,9 @@ function CiroChart({ data, show }) {
   )
 }
 
-function CiroCard({ label, value, show, accent }) {
+// `usd`: USD bayilerinin ürün bedeli. TL'ye ÇEVRİLMEZ (sistemde kur kaynağı yok,
+// uydurma kur yanlış toplamdan daha tehlikeli) — ayrı satırda gösterilir.
+function CiroCard({ label, value, usd, show, accent }) {
   const animated = useCountUp(value, show)
   const fmt = (n) => {
     if (n == null) return '—'
@@ -356,6 +358,11 @@ function CiroCard({ label, value, show, accent }) {
       <div className={`text-xl font-bold mt-1 tabular-nums ${accent ? 'text-accent' : 'text-gray-100'} ${!show ? 'blur-sm select-none' : ''}`}>
         {show ? fmt(animated) : '₺ ••••••'}
       </div>
+      {show && usd > 0 && (
+        <div className="text-[11px] text-gray-400 mt-0.5 tabular-nums" title="USD bayi siparişleri — TL'ye çevrilmez">
+          + {new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'USD' }).format(usd)} bayi
+        </div>
+      )}
     </div>
   )
 }

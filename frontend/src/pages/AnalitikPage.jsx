@@ -94,7 +94,8 @@ export default function AnalitikPage() {
       {data && (
         <div className={`space-y-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi label="Ciro" value={fmtTl(data.revenue)} />
+            {/* USD bayi siparişleri TL'ye ÇEVRİLMEZ (kur kaynağı yok) — yanında ayrı */}
+            <Kpi label="Ciro" value={fmtTl(data.revenue) + (data.revenue_usd > 0 ? ` + ${fmtUsd(data.revenue_usd)}` : '')} />
             <Kpi label="Sipariş" value={fmtNum(data.orders_count)} />
             <Kpi label="Ortalama Sepet" value={fmtTl(data.aov)} />
             <Kpi label="Dönüşüm (Vitrin)" value={data.funnel.created > 0 ? `%${data.funnel.conversion}` : '—'}
@@ -113,7 +114,7 @@ export default function AnalitikPage() {
           <div className="grid lg:grid-cols-2 gap-4">
             <BarCard title="Kanal Bazında Ciro" money rows={data.by_store.map(s => ({
               label: `${s.store} (${platformLabel(s.platform)})`, value: s.revenue,
-              hint: `${s.orders} sipariş` }))} />
+              hint: `${s.orders} sipariş${s.revenue_usd > 0 ? ` · + ${fmtUsd(s.revenue_usd)}` : ''}` }))} />
             <FunnelCard funnel={data.funnel} />
           </div>
         </div>
@@ -124,6 +125,7 @@ export default function AnalitikPage() {
 
 const fmtTl = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
 const fmtNum = (n) => new Intl.NumberFormat('tr-TR').format(n || 0)
+const fmtUsd = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n || 0)
 const platformLabel = (p) => ({ shopify: 'Shopify', ikas: 'İkas', bayii: 'Bayii', storefront: 'Vitrin' }[p] || p)
 
 function Kpi({ label, value, hint }) {

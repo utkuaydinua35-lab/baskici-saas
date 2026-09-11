@@ -101,28 +101,41 @@ def summary(
         Order.cancelled_at.is_(None),
         (Order.financial_status != "refunded") | (Order.financial_status.is_(None)),
     )
-    def _ciro(*conds) -> float:
-        q = select(sql_func.coalesce(sql_func.sum(
-            cast(Order.raw["total_price"].astext, Numeric)
-        ), 0)).where(Order.tenant_id == tid, _not_telafi, *conds)
+    # ⚠ PARA BİRİMİNE DUYARLI (services/ciro). Eskiden raw.total_price düz
+    # toplanıyordu: USD bayilerinin kılıf başı 2,50 $'ı TL diye ekleniyor, bayi
+    # kargosu (TL) ise hiç girmiyordu. TL ve USD AYRI toplanır; kur çevrilmez.
+    from app.services import ciro as _ciro_svc
+
+    def _toplam(ifade, *conds) -> float:
+        q = select(sql_func.coalesce(sql_func.sum(ifade), 0)).where(
+            Order.tenant_id == tid, _not_telafi, *conds)
         if store_id:
             q = q.where(Order.store_id == store_id)
         try:
             return float(db.scalar(q) or 0)
         except Exception:
             return 0.0
+
+    def _ciro(*conds) -> float:
+        return _toplam(_ciro_svc.tl_tutar(), *conds)
+
+    def _ciro_usd(*conds) -> float:
+        return _toplam(_ciro_svc.usd_tutar(), *conds)
     _today = date.today()
     _start_week = datetime.combine(_today - timedelta(days=_today.weekday()), time.min, tzinfo=timezone.utc)
     _start_month = datetime.combine(_today.replace(day=1), time.min, tzinfo=timezone.utc)
     ciro_bugun = _ciro(*_ciro_kosul, Order.created_at_platform >= start_today)
     ciro_hafta = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_week)
     ciro_ay = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_month)
+    ciro_usd_bugun = _ciro_usd(*_ciro_kosul, Order.created_at_platform >= start_today)
+    ciro_usd_hafta = _ciro_usd(*_ciro_kosul, Order.created_at_platform >= _start_week)
+    ciro_usd_ay = _ciro_usd(*_ciro_kosul, Order.created_at_platform >= _start_month)
 
     # Son 30 gun gunluk ciro serisi (grafik icin)
     _start_30 = datetime.combine(_today - timedelta(days=29), time.min, tzinfo=timezone.utc)
     _gun_col = sql_func.date_trunc("day", Order.created_at_platform)
     _gq = (
-        select(_gun_col.label("gun"), sql_func.coalesce(sql_func.sum(cast(Order.raw["total_price"].astext, Numeric)), 0).label("tutar"))
+        select(_gun_col.label("gun"), sql_func.coalesce(sql_func.sum(_ciro_svc.tl_tutar()), 0).label("tutar"))
         .where(Order.tenant_id == tid, _not_telafi, *_ciro_kosul, Order.created_at_platform >= _start_30)
         .group_by(_gun_col)
     )
@@ -231,6 +244,12 @@ def summary(
             "ay": round(ciro_ay, 2),
             "gunluk": ciro_gunluk,
             "currency": "TRY",
+            # USD bayi siparişlerinin ürün bedeli — TL'ye ÇEVRİLMEDEN ayrı.
+            "usd": {
+                "bugun": round(ciro_usd_bugun, 2),
+                "hafta": round(ciro_usd_hafta, 2),
+                "ay": round(ciro_usd_ay, 2),
+            },
         },
         "funnel": funnel,
         "low_stock": low_stock,

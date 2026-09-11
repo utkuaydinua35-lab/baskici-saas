@@ -52,6 +52,11 @@ def upsert_from_order(db: Session, order: Order) -> None:
     recompute_stats(db, order.tenant_id, email)
 
 
+def _ciro_tl_tutar():
+    from app.services.ciro import tl_tutar
+    return tl_tutar()
+
+
 def recompute_stats(db: Session, tenant_id, email: str) -> None:
     """Müşteri agregalarını sipariş tablosundan yeniden hesapla.
 
@@ -60,7 +65,8 @@ def recompute_stats(db: Session, tenant_id, email: str) -> None:
     row = db.execute(
         select(
             func.count(Order.id),
-            func.coalesce(func.sum(cast(Order.raw["total_price"].astext, Numeric)), 0),
+            # TL harcama (services/ciro): USD bayi siparişi TL'ye eklenmez.
+            func.coalesce(func.sum(_ciro_tl_tutar()), 0),
             func.min(Order.created_at_platform),
             func.max(Order.created_at_platform),
         ).where(

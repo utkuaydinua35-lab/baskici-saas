@@ -103,7 +103,9 @@ def canli_gorunum(db: Session, store) -> dict:
     oturum_seri_dun = _oturum_seri(dun, bugun)
 
     # ── Siparişler / ciro (Order kanonik) ──
-    tutar = cast(Order.raw["total_price"].astext, Numeric)
+    # Para birimine duyarlı TL tutarı (services/ciro) — dashboard ile aynı kural.
+    from app.services import ciro as _ciro_svc
+    tutar = _ciro_svc.tl_tutar()
     sip = (Order.store_id == store.id, Order.is_telafi.is_(False),
            Order.cancelled_at.is_(None),
            (Order.financial_status != "refunded") | (Order.financial_status.is_(None)))

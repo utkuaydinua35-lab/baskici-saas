@@ -54,18 +54,28 @@ def analytics_summary(
     if store_id:
         base_conds.append(Order.store_id == store_id)
 
-    total_price = cast(Order.raw["total_price"].astext, Numeric)
+    # ⚠ PARA BİRİMİNE DUYARLI (services/ciro): USD bayi siparişi TL'ye EKLENMEZ,
+    # bayi kargosu (TL) eklenir. Kur çevrilmez; USD ayrı döner.
+    from app.services import ciro as _ciro_svc
+    total_price = _ciro_svc.tl_tutar()
+    usd_price = _ciro_svc.usd_tutar()
 
     # ── Özet: ciro + sipariş sayısı + AOV ──
     row = db.execute(
         select(
             sql_func.coalesce(sql_func.sum(total_price), 0),
             sql_func.count(Order.id),
+            sql_func.coalesce(sql_func.sum(usd_price), 0),
+            sql_func.count(Order.id).filter(_ciro_svc.tl_siparis_mi()),
         ).where(*base_conds)
     ).one()
     revenue = float(row[0] or 0)
     orders_count = int(row[1] or 0)
-    aov = round(revenue / orders_count, 2) if orders_count else 0.0
+    revenue_usd = float(row[2] or 0)
+    # AOV paydası yalnız TL siparişleri: USD siparişlerini adede katıp TL
+    # ciroya bölmek ortalama sepeti yapay olarak düşürürdü.
+    _tl_adet = int(row[3] or 0)
+    aov = round(revenue / _tl_adet, 2) if _tl_adet else 0.0
 
     # ── Günlük ciro serisi (eksik günler 0) ──
     day_col = sql_func.date_trunc("day", Order.created_at_platform)
@@ -117,11 +127,13 @@ def analytics_summary(
     # ── Kanal/mağaza bazında ciro ──
     sq = select(Store.name, Store.platform,
                 sql_func.coalesce(sql_func.sum(total_price), 0),
-                sql_func.count(Order.id)) \
+                sql_func.count(Order.id),
+                sql_func.coalesce(sql_func.sum(usd_price), 0)) \
         .join(Order, Order.store_id == Store.id).where(*base_conds) \
         .group_by(Store.id).order_by(sql_func.sum(total_price).desc())
     by_store = [
-        {"store": r[0], "platform": r[1], "revenue": float(r[2] or 0), "orders": int(r[3] or 0)}
+        {"store": r[0], "platform": r[1], "revenue": float(r[2] or 0), "orders": int(r[3] or 0),
+         "revenue_usd": float(r[4] or 0)}
         for r in db.execute(sq).all()
     ]
 
@@ -156,6 +168,7 @@ def analytics_summary(
         "start": start.isoformat(),
         "end": end.isoformat(),
         "revenue": round(revenue, 2),
+        "revenue_usd": round(revenue_usd, 2),   # USD bayi siparişleri — TL'ye çevrilmez
         "orders_count": orders_count,
         "aov": aov,
         "daily": daily,
@@ -236,7 +249,14 @@ def profit_report(
     if store_id:
         base_conds.append(Order.store_id == store_id)
 
-    total_price = cast(Order.raw["total_price"].astext, Numeric)
+    # ⚠ Kâr hesabı YALNIZ TL siparişleri: maliyetler TL, USD bayi siparişini
+    # katmak ya ciroyu (kur yok) ya maliyeti çarpıtırdı. Dışarıda kalan USD
+    # siparişi sayısı yanıtta açıkça söylenir.
+    from app.services import ciro as _ciro_svc
+    _usd_disarida = int(db.scalar(select(sql_func.count(Order.id)).where(
+        *base_conds, ~_ciro_svc.tl_siparis_mi())) or 0)
+    base_conds.append(_ciro_svc.tl_siparis_mi())
+    total_price = _ciro_svc.tl_tutar()
     row = db.execute(
         select(sql_func.coalesce(sql_func.sum(total_price), 0), sql_func.count(Order.id))
         .where(*base_conds)
@@ -300,6 +320,7 @@ def profit_report(
         "profit": round(profit, 2),
         "margin_pct": round(100 * profit / revenue, 1) if revenue else 0.0,
         "profit_per_order": round(profit / orders_count, 2) if orders_count else 0.0,
+        "haric_usd_siparis": _usd_disarida,
         "settings": ayar,
         # Maliyeti girilmemiş kalemler varsayılana düştü — panelde uyarı çıkar
         "fallback_units": varsayilana_dusen,
@@ -353,7 +374,9 @@ def analytics_live(
     now = datetime.now(timezone.utc)
     start_today = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
     m15 = now - timedelta(minutes=15)
-    total_price = cast(Order.raw["total_price"].astext, Numeric)
+    from app.services import ciro as _ciro_svc
+    total_price = _ciro_svc.tl_tutar()
+    usd_price = _ciro_svc.usd_tutar()
 
     ciro_conds = [
         Order.tenant_id == tid, Order.is_telafi.is_(False),
@@ -366,10 +389,12 @@ def analytics_live(
     def _agg(since):
         row = db.execute(
             select(sql_func.count(Order.id),
-                   sql_func.coalesce(sql_func.sum(total_price), 0))
+                   sql_func.coalesce(sql_func.sum(total_price), 0),
+                   sql_func.coalesce(sql_func.sum(usd_price), 0))
             .where(*ciro_conds, Order.created_at_platform >= since)
         ).one()
-        return {"orders": int(row[0] or 0), "revenue": float(row[1] or 0)}
+        return {"orders": int(row[0] or 0), "revenue": float(row[1] or 0),
+                "revenue_usd": float(row[2] or 0)}
 
     cs_conds = [CheckoutSession.tenant_id == tid]
     if store_id:

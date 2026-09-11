@@ -307,3 +307,76 @@ def tam_yedek_yasi_gun() -> float | None:
         return None
     son = datetime.fromisoformat(kayitlar[0]["created_at"])
     return (datetime.now(_TR) - son).total_seconds() / 86400
+
+
+# ─── DIŞARI KOPYA TAKİBİ ──────────────────────────────────────────────────
+# Tam yedeği ALMAK yetmez; sunucu diski ölürse sunucudaki arşiv de gider.
+# Önemli olan kendi diskine İNDİRİLMİŞ olması. İndirme ucu başarılı her
+# istekte buraya iz bırakır; hatırlatma bu ize bakar.
+_INDIRME_IZI = ".son-tam-yedek-indirme"
+_HATIRLATMA_IZI = ".son-yedek-hatirlatma"
+HATIRLATMA_ESIK_GUN = 30      # "aylık" — Utku'nun seçtiği sıklık
+HATIRLATMA_ARALIK_GUN = 7     # eşik aşıldıktan sonra haftada bir, her gün değil
+
+
+def indirme_kaydet(name: str) -> None:
+    """Tam yedek indirildi — zamanı ve dosya adını yaz. Hata akışı bozmaz."""
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        (BACKUP_DIR / _INDIRME_IZI).write_text(
+            json.dumps({"ad": name, "zaman": datetime.now(_TR).isoformat()},
+                       ensure_ascii=False), encoding="utf-8")
+    except OSError as e:
+        logger.warning(f"[backup] indirme izi yazılamadı: {e}")
+
+
+def son_indirme() -> dict | None:
+    try:
+        veri = json.loads((BACKUP_DIR / _INDIRME_IZI).read_text(encoding="utf-8"))
+        veri["zaman"] = datetime.fromisoformat(veri["zaman"])
+        return veri
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def disari_kopya_yasi_gun(simdi: datetime | None = None) -> float | None:
+    """Son tam yedek İNDİRMESİNİN kaç gün önce yapıldığı; hiç yoksa None."""
+    s = son_indirme()
+    if not s:
+        return None
+    return ((simdi or datetime.now(_TR)) - s["zaman"]).total_seconds() / 86400
+
+
+def hatirlatma_mesaji(simdi: datetime | None = None) -> str | None:
+    """Gönderilmesi gereken hatırlatma metni; gerekmiyorsa None.
+
+    Eşik (30 gün) aşılınca HER GÜN değil haftada bir hatırlatır — her sabah
+    gelen aynı mesaj bir süre sonra okunmadan geçilir, uyarı işlevini yitirir.
+    """
+    simdi = simdi or datetime.now(_TR)
+    yas = disari_kopya_yasi_gun(simdi)
+    if yas is not None and yas < HATIRLATMA_ESIK_GUN:
+        return None
+    try:
+        son_h = datetime.fromisoformat(
+            (BACKUP_DIR / _HATIRLATMA_IZI).read_text(encoding="utf-8").strip())
+        if (simdi - son_h).total_seconds() / 86400 < HATIRLATMA_ARALIK_GUN:
+            return None
+    except (OSError, ValueError):
+        pass
+    if yas is None:
+        return ("💾 <b>Tam yedek hiç indirilmedi.</b>\n"
+                "Sunucu diski ölürse tasarım dosyaları kalıcı olarak kaybolur. "
+                "Panel → Platform → Tam Yedek → al ve kendi diskine indir.")
+    return (f"💾 <b>Son tam yedek {int(yas)} gün önce indirildi.</b>\n"
+            "Kendi diskindeki kopya eskidi. Panel → Platform → Tam Yedek → "
+            "yeni yedek al ve indir.")
+
+
+def hatirlatma_gonderildi(simdi: datetime | None = None) -> None:
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        (BACKUP_DIR / _HATIRLATMA_IZI).write_text(
+            (simdi or datetime.now(_TR)).isoformat(), encoding="utf-8")
+    except OSError as e:
+        logger.warning(f"[backup] hatırlatma izi yazılamadı: {e}")

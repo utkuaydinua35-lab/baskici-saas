@@ -378,13 +378,19 @@ def download_backup(name: str, user: User = Depends(require_platform_admin)):
 def list_full_backups(user: User = Depends(require_platform_admin)):
     from app.services import backup
     _yas = backup.tam_yedek_yasi_gun()
+    _disari = backup.disari_kopya_yasi_gun()
+    _son = backup.son_indirme()
     return {
         "items": backup.list_full_backups(),
         "keep": backup.TAM_KEEP,
         "yas_gun": _yas,
-        # Panel uyarıyı buna göre gösteriyor: dışarı indirilmemiş bir yedek,
-        # olmayan yedektir — bayatladığı GÖRÜNMELİ.
-        "bayat": (_yas is None or _yas > 7),
+        # ⚠ Bayatlık İNDİRMEYE göre: sunucuda duran arşiv disk ölünce onunla
+        # gider. Dışarı indirilmemiş yedek, olmayan yedektir.
+        "disari_yas_gun": _disari,
+        "son_indirme": ({"ad": _son["ad"], "zaman": _son["zaman"].isoformat()}
+                        if _son else None),
+        "bayat": (_disari is None or _disari > backup.HATIRLATMA_ESIK_GUN),
+        "esik_gun": backup.HATIRLATMA_ESIK_GUN,
         "haric": list(backup.TAM_HARIC),
     }
 
@@ -439,4 +445,6 @@ def download_full_backup(name: str, jeton: str = ""):
     path = backup.full_backup_path(name)
     if not path:
         raise HTTPException(404, "Yedek bulunamadı")
+    # Dışarı kopya takibi: hatırlatma "alındı mı" değil "İNDİRİLDİ mi"ye bakar.
+    backup.indirme_kaydet(name)
     return FileResponse(str(path), media_type="application/x-tar", filename=name)

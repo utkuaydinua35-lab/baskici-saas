@@ -160,7 +160,8 @@ function TamYedek() {
 
   if (!d) return null
   const items = d.items || []
-  const yas = d.yas_gun
+  // Bayatlık İNDİRMEYE göre: sunucudaki arşiv disk ölünce onunla gider.
+  const yas = d.disari_yas_gun
 
   return (
     <div className="mt-8">
@@ -179,12 +180,13 @@ function TamYedek() {
 
       {d.bayat && (
         <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <b>⚠ Dışarıda güncel bir kopyan yok.</b>{' '}
+          <b>⚠ Kendi diskinde güncel bir kopyan yok.</b>{' '}
           {yas == null
-            ? 'Hiç tam yedek alınmamış.'
-            : `En son tam yedek ${Math.floor(yas)} gün önce alındı.`}{' '}
-          Sunucu diski ölürse gecelik yedekler de onunla gider — tasarım dosyaları
+            ? 'Tam yedek hiç indirilmemiş.'
+            : `En son tam yedek ${Math.floor(yas)} gün önce indirildi.`}{' '}
+          Sunucu diski ölürse sunucudaki arşiv de onunla gider — tasarım dosyaları
           kalıcı olarak kaybolur. Tam yedek alıp kendi diskine indir.
+          {d.esik_gun ? ` (${d.esik_gun} günü geçince Telegram'dan da hatırlatılır.)` : ''}
         </div>
       )}
 

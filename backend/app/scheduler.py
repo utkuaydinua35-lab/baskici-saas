@@ -86,6 +86,22 @@ def _daily_summary_catchup_job():
         db.close()
 
 
+def _tam_yedek_hatirlatma_job():
+    """Tam yedek 30 gündür kendi diske indirilmediyse Telegram'a hatırlat.
+
+    Panel uyarısı yalnız Platform sayfası açılınca görünüyordu; oraya girmeyen
+    biri için uyarı yoktu.
+    """
+    try:
+        from app.services import backup, telegram
+        mesaj = backup.hatirlatma_mesaji()
+        if mesaj and telegram.send_message(mesaj):
+            backup.hatirlatma_gonderildi()
+            logger.info("[scheduler] tam yedek hatırlatması gönderildi")
+    except Exception as e:  # noqa: BLE001 — hatırlatma zamanlayıcıyı bozmasın
+        logger.warning(f"[scheduler] tam yedek hatırlatması hata: {e}")
+
+
 def _backup_job():
     logger.info("[scheduler] gunluk yedek aliniyor")
     try:
@@ -300,6 +316,10 @@ def start_scheduler():
     # Gunluk veritabani yedegi — her gece 03:30 (Europe/Istanbul)
     _scheduler.add_job(_backup_job, "cron", hour=3, minute=30,
                        id="daily_backup", max_instances=1, coalesce=True)
+    # Tam yedek kendi diske İNDİRİLMEDİYSE hatırlat — her sabah 10:00 bakar,
+    # eşik aşılmışsa haftada bir Telegram'a yazar.
+    _scheduler.add_job(_tam_yedek_hatirlatma_job, "cron", hour=10, minute=0,
+                       id="tam_yedek_hatirlatma", max_instances=1, coalesce=True)
     # Vitrin: suresi dolan odeme oturumlari + KVKK PII temizligi — her gece 04:00
     _scheduler.add_job(_publish_due_job, "interval", minutes=10,
                        id="publish_due", max_instances=1, coalesce=True)

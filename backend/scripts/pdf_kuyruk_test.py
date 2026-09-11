@@ -137,6 +137,75 @@ try:
        kayit is None or kayit.get("durum") == "hata" or kayit.get("basladi") is True)
     es("hata kaydı durum()'da görünüyor", "hata", job.durum(mid, anahtar2)["durum"])
 
+    print("\n── Zombi süreç 'yaşıyor' sayılmaz ──")
+    # Bitmiş ama toplanmamış süreç kill(0)'a "yaşıyor" der; iş 20 dk
+    # "hazırlanıyor" görünür, PDF hiç tekrar denenemezdi.
+    zombi = subprocess.Popen([sys.executable, "-c", "pass"])
+    time.sleep(1.0)                      # bitsin ama wait() ÇAĞRILMASIN
+    es("bitmiş çocuk süreç ölü sayılır", False, job._surec_yasiyor(zombi.pid))
+    es("yaşayan süreç (kendimiz) yaşıyor sayılır", True, job._surec_yasiyor(os.getpid()))
+
+    print("\n── ÜRETİMDEKİ HATA: çizim sırasında worker ÖLDÜRÜLÜR ──")
+    # uvicorn --workers 2: ebeveyn süreç 5 sn'de bir worker'a "yaşıyor musun"
+    # diye soruyor; PyMuPDF kilidi (GIL) bırakmadığı için cevap gelmiyor ve
+    # worker öldürülüyordu. Çizim worker'ın İÇİNDEYSE PDF ölür, durum "yok"a
+    # döner ve her tıklama baştan başlar. Çizim AYRI süreçteyse worker'ın
+    # ölümü üretimi durdurmamalı.
+    anahtar3 = f"test{uuid.uuid4().hex[:8]}"
+    job.baslat(SahteArkaPlan(), mid, anahtar3, [], {})
+    ortam = {**os.environ, "KALIP_PDF_TEST_GECIKME_SN": "4"}
+    worker = subprocess.Popen(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {str(KOK)!r}); import uuid; "
+         f"from app.services import mold_pdf_job as job; "
+         f"job._uret(uuid.UUID({str(mid)!r}), {anahtar3!r}, [], {{}})"],
+        cwd=str(KOK), env=ortam)
+    cocuk_pid = None
+    son = time.time() + 15
+    while time.time() < son:
+        k = job._is_oku(job._is_yolu(mid, anahtar3)) or {}
+        if k.get("basladi") and k.get("pid") not in (None, worker.pid):
+            cocuk_pid = k["pid"]
+            break
+        time.sleep(0.1)
+    es("çizimi worker DEĞİL ayrı bir süreç yapıyor", True, cocuk_pid is not None)
+    es("çocuk worker'ın oturumunda değil (sinyali ona geçmez)", True,
+       cocuk_pid is not None and os.getsid(cocuk_pid) != os.getsid(worker.pid))
+    worker.kill()                        # sağlık kontrolünün yaptığı
+    worker.wait()
+    es("worker ölünce iş HÂLÂ sürüyor", "hazirlaniyor", job.durum(mid, anahtar3)["durum"])
+    son = time.time() + 30
+    while time.time() < son and job.durum(mid, anahtar3)["durum"] == "hazirlaniyor":
+        time.sleep(0.3)
+    # Şablon boş olduğu için çizim hata ile biter — önemli olan, worker öldükten
+    # SONRA çocuğun işi bitirip sonucu yazması ("yok"a düşmemesi).
+    es("çocuk işi bitirip sonucu yazdı ('yok' değil)", "hata", job.durum(mid, anahtar3)["durum"])
+    es("girdi dosyası temizlendi", False, job._girdi_yolu(mid, anahtar3).exists())
+
+    print("\n── Çocuk hata YAZAMADAN ölürse sebep görünür ──")
+    anahtar4 = f"test{uuid.uuid4().hex[:8]}"
+    job.baslat(SahteArkaPlan(), mid, anahtar4, [], {})
+    ortam = {**os.environ, "KALIP_PDF_TEST_GECIKME_SN": "30"}
+    worker = subprocess.Popen(
+        [sys.executable, "-c",
+         f"import sys; sys.path.insert(0, {str(KOK)!r}); import uuid; "
+         f"from app.services import mold_pdf_job as job; "
+         f"job._uret(uuid.UUID({str(mid)!r}), {anahtar4!r}, [], {{}})"],
+        cwd=str(KOK), env=ortam)
+    cocuk_pid = None
+    son = time.time() + 15
+    while time.time() < son:
+        k = job._is_oku(job._is_yolu(mid, anahtar4)) or {}
+        if k.get("basladi") and k.get("pid") not in (None, worker.pid):
+            cocuk_pid = k["pid"]
+            break
+        time.sleep(0.1)
+    os.kill(cocuk_pid, 9)                # bellek yetmedi / dışarıdan öldürüldü
+    worker.wait(timeout=15)
+    d = job.durum(mid, anahtar4)
+    es("sessizce 'yok'a düşmek yerine hata", "hata", d["durum"])
+    es("mesaj yeniden denemeyi söylüyor", True, "tekrar deneyin" in (d.get("mesaj") or ""))
+
     print("\n── Kalıp değişince iş kayıtları da silinir ──")
     job.gecersiz_kil(mid)
     es(".is dosyaları silindi", [], sorted(p.name for p in job._dizin().glob(f"{mid}_*")))

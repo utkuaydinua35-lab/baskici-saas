@@ -14,6 +14,17 @@ Akış:
 Önbellek anahtarı kalıbın İÇERİĞİNDEN türetilir (kalem + tasarım dosyası
 kimliği + şablon). Kalıp ya da tasarım değişirse anahtar değişir, bayat PDF
 verilmez.
+
+⚠ ÜRETİM AYRI BİR SÜREÇTE (2026-09-11). Eskiden uvicorn worker'ının içinde
+(thread havuzunda) çalışıyordu. `--workers 2` açılınca uvicorn'un ebeveyn
+süreci her worker'a 5 sn'de bir "yaşıyor musun" diye soruyor; PyMuPDF uzun
+vektör çizimlerinde Python kilidini (GIL) bırakmadığı için worker cevap
+veremiyor, ebeveyn onu "askıda" sayıp ÖLDÜRÜYORDU — üretim başladıktan ~20 sn
+sonra, her seferinde. İş kaydının sahibi öldüğü için durum "yok"a dönüyor,
+panelde her tıklama üretimi baştan başlatıyor ve PDF hiç inmiyordu.
+Artık worker yalnız bir çocuk süreç başlatıp bekliyor; çizimi çocuk yapıyor.
+Worker'ın kilidi hep boş, sağlık kontrolüne cevap veriyor; worker yine de
+ölürse çocuk kendi oturumunda olduğu için işini bitirip PDF'i yazıyor.
 """
 from __future__ import annotations
 
@@ -23,6 +34,9 @@ import hashlib
 import json
 import logging
 import os
+import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -39,9 +53,14 @@ logger = logging.getLogger("kalip-pdf")
 #
 # İçerik: {"durum": hazirlaniyor|hata, "baslangic", "kuyruga_alindi",
 #          "basladi", "mold_id", "pid", "mesaj"}
+# `pid`: kuyruktayken işi sıraya alan worker; üretim başlayınca ÇİZİMİ YAPAN
+# çocuk süreç.
 
 # Üretim bu süreyi aşarsa iş ölmüş sayılır (yeniden denenebilsin)
 ZAMAN_ASIMI = 20 * 60
+
+# backend/ kökü — çocuk süreç `python -m app.services...` ile buradan başlar.
+_BACKEND_KOK = Path(__file__).resolve().parents[2]
 
 
 def _dizin() -> Path:
@@ -77,6 +96,11 @@ def _is_yolu(mold_id, anahtar: str) -> Path:
     return _dizin() / f"{mold_id}_{anahtar}.is"
 
 
+def _girdi_yolu(mold_id, anahtar: str) -> Path:
+    """Çocuk sürece verilen üretim girdisi (slot'lar + şablon)."""
+    return _dizin() / f"{mold_id}_{anahtar}.girdi"
+
+
 @contextlib.contextmanager
 def _surecler_arasi_kilit():
     """Oku-karar-yaz bölümü: aynı anda yalnız BİR süreç (worker) girer."""
@@ -104,10 +128,27 @@ def _is_yaz(yol: Path, kayit: dict) -> None:
 
 def _surec_yasiyor(pid) -> bool:
     try:
-        os.kill(int(pid), 0)
-        return True
+        pid = int(pid)
+        os.kill(pid, 0)
     except (OSError, TypeError, ValueError):
         return False
+    # Bitmiş ama ebeveyni henüz toplamamış süreç (zombi) kill(0)'a "yaşıyor"
+    # der — iş 20 dk boyunca "hazırlanıyor" görünürdü. Kendi çocuğumuzsa topla;
+    # Linux'ta /proc'tan durumuna bak.
+    try:
+        bitti, _ = os.waitpid(pid, os.WNOHANG)
+        if bitti == pid:
+            return False
+    except OSError:
+        pass                                  # bizim çocuğumuz değil
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            # "pid (ad) DURUM ..." — ad boşluk/parantez içerebilir; son ')' sonrası
+            if f.read().rsplit(b")", 1)[1].split()[0] == b"Z":
+                return False
+    except (OSError, IndexError):
+        pass
+    return True
 
 
 def _canli_mi(i: dict | None, simdi: float) -> bool:
@@ -127,6 +168,26 @@ def _canli_mi(i: dict | None, simdi: float) -> bool:
     return simdi - i.get("kuyruga_alindi", i.get("baslangic", 0)) < 2 * ZAMAN_ASIMI
 
 
+def _takilan_cocugu_durdur(i: dict | None) -> None:
+    """Zaman aşımına uğramış ama süreci hâlâ yaşayan üretimi durdur — yeniden
+    başlatılan iş, takılı kalanla aynı anda bir CPU çekirdeğini daha yemesin.
+    Yalnız GERÇEKTEN bizim üretim sürecimizse (pid başka bir sürece geçmiş
+    olabilir): Linux'ta komut satırından doğrulanır, doğrulanamazsa dokunulmaz."""
+    if not i or not i.get("basladi") or not i.get("pid"):
+        return
+    pid = int(i["pid"])
+    if pid == os.getpid() or not _surec_yasiyor(pid):
+        return
+    try:
+        komut = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return
+    if b"mold_pdf_job" in komut:
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
+            logger.warning("[kalip-pdf] takılan üretim süreci durduruldu: pid=%s", pid)
+
+
 def yollar(mold_id, anahtar: str) -> tuple[Path, Path]:
     """Dosya adı kalıp kimliğiyle başlar — bir kalıbın TÜM hazır PDF'leri
     (eski anahtarlar dahil) tek desenle bulunup silinebilsin."""
@@ -141,7 +202,7 @@ def gecersiz_kil(mold_id) -> int:
     diski temiz tutmak ve panelde "PDF yok" durumunun görünmesi için.
     """
     n = 0
-    # `.is` iş kayıtları da aynı desene uyar — ayrıca temizlemek gerekmez.
+    # `.is` iş kayıtları ve `.girdi` dosyaları da aynı desene uyar.
     for p in _dizin().glob(f"{mold_id}_*"):
         try:
             p.unlink()
@@ -172,20 +233,91 @@ def durum(mold_id, anahtar: str) -> dict:
     return {"durum": "yok"}
 
 
-def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None:
-    from app.services import mold_pdf
-    pdf, meta = yollar(mold_id, anahtar)
-    _t0 = time.time()
+def _hata_yaz(mold_id, anahtar: str, mesaj: str, yalniz_suruyorsa: bool = False) -> None:
     is_yolu = _is_yolu(mold_id, anahtar)
     with _surecler_arasi_kilit():
-        i = _is_oku(is_yolu)
-        if i is not None:
-            i["baslangic"] = _t0        # kuyrukta bekleme suresi sayilmasin
-            i["basladi"] = True
-            i["pid"] = os.getpid()      # üretimi GERÇEKTEN yapan süreç
-            _is_yaz(is_yolu, i)
-    logger.info("[kalip-pdf] uretim BASLADI: kalip=%s slot=%s", mold_id, len(slot_items))
+        if yalniz_suruyorsa:
+            i = _is_oku(is_yolu)
+            if not i or i.get("durum") != "hazirlaniyor":
+                return
+        _is_yaz(is_yolu, {"durum": "hata", "baslangic": time.time(),
+                          "mold_id": str(mold_id), "mesaj": mesaj[:200]})
+
+
+def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None:
+    """Worker tarafı: üretimi AYRI SÜREÇTE başlat ve bitmesini bekle.
+
+    Beklemek kuyruğu SIRALI tutar (toplu hazırlamada kalıplar aynı anda değil
+    art arda üretilir — bellek). Bekleyen worker ölürse çocuk etkilenmez.
+    """
+    is_yolu = _is_yolu(mold_id, anahtar)
     try:
+        _girdi_yolu(mold_id, anahtar).write_text(
+            json.dumps({"slot_items": slot_items, "template": template}, default=str),
+            encoding="utf-8")
+        cocuk = subprocess.Popen(
+            [sys.executable, "-m", "app.services.mold_pdf_job", str(mold_id), anahtar],
+            cwd=str(_BACKEND_KOK),
+            stdin=subprocess.DEVNULL,
+            # Kendi oturumu: worker'a gelen sinyal (sağlık kontrolü öldürmesi)
+            # çocuğa geçmez. Servis durdurulunca systemd yine hepsini kapatır.
+            start_new_session=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("[kalip-pdf] üretim süreci başlatılamadı: kalip=%s", mold_id)
+        _hata_yaz(mold_id, anahtar, f"Üretim başlatılamadı: {e}")
+        return
+
+    # pid'i HEMEN yaz: çocuk açılırken (import ~1 sn) worker ölürse iş sahipsiz
+    # görünmesin. Çocuk başlayınca kendi de yazar.
+    with _surecler_arasi_kilit():
+        i = _is_oku(is_yolu)
+        if i is not None and i.get("durum") == "hazirlaniyor":
+            i.update(baslangic=time.time(), basladi=True, pid=cocuk.pid)
+            _is_yaz(is_yolu, i)
+    logger.info("[kalip-pdf] ayrı süreçte başlatıldı: kalip=%s pid=%s", mold_id, cocuk.pid)
+
+    kod = cocuk.wait()
+    pdf, _ = yollar(mold_id, anahtar)
+    if not pdf.exists():
+        # Çocuk hata YAZAMADAN öldüyse (bellek yetmedi, dışarıdan öldürüldü)
+        # kayıt "hazırlanıyor"da kalır; sessizce yeniden başlamak yerine sebebi göster.
+        _hata_yaz(mold_id, anahtar,
+                  f"PDF üretimi yarıda kesildi (çıkış kodu {kod}). "
+                  "'PDF Hazırla' ile tekrar deneyin.",
+                  yalniz_suruyorsa=True)
+
+
+def _cocuk_calis(mold_id: str, anahtar: str) -> int:
+    """Çocuk süreç: PDF'i çiz, yaz, kaydı kapat."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+    # API worker'larından CPU çalmasın — üretim 3-4 dk bir çekirdeği dolduruyor.
+    with contextlib.suppress(OSError):
+        os.nice(10)
+    is_yolu = _is_yolu(mold_id, anahtar)
+    girdi = _girdi_yolu(mold_id, anahtar)
+    pdf, meta = yollar(mold_id, anahtar)
+    _t0 = time.time()
+    with _surecler_arasi_kilit():
+        i = _is_oku(is_yolu)
+        if i is not None and i.get("durum") == "hazirlaniyor":
+            i.update(baslangic=_t0, basladi=True, pid=os.getpid())
+            _is_yaz(is_yolu, i)
+    try:
+        # Tasarım yavaşlığını taklit etmek için (yalnız test): üretimde çizim
+        # 200 sn sürüyor, testte worker'ı çizim SIRASINDA öldürebilmek gerekiyor.
+        gecikme = float(os.environ.get("KALIP_PDF_TEST_GECIKME_SN") or 0)
+        if gecikme > 0:
+            time.sleep(gecikme)
+        g = json.loads(girdi.read_text(encoding="utf-8"))
+        slot_items, template = g["slot_items"], g["template"]
+        for it in slot_items:
+            # JSON demeti listeye çeviriyor; ölçü (en, boy, köşe) demet bekleniyor.
+            if isinstance(it.get("spec"), list):
+                it["spec"] = tuple(it["spec"])
+        from app.services import mold_pdf
+        logger.info("[kalip-pdf] uretim BASLADI: kalip=%s slot=%s pid=%s",
+                    mold_id, len(slot_items), os.getpid())
         veri, rapor = mold_pdf.render_mold_pdf(slot_items, template=template)
         # Atomik yazım: yarım dosya indirilmesin
         gecici = pdf.with_suffix(".pdf.tmp")
@@ -195,12 +327,14 @@ def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None
         logger.info("[kalip-pdf] HAZIR: kalip=%s %.1f MB %.0f sn",
                     mold_id, len(veri) / 1024 / 1024, time.time() - _t0)
         is_yolu.unlink(missing_ok=True)
+        return 0
     except Exception as e:  # noqa: BLE001
         logger.exception("[kalip-pdf] HATA: kalip=%s (%.0f sn) %s",
                          mold_id, time.time() - _t0, e)
-        with _surecler_arasi_kilit():
-            _is_yaz(is_yolu, {"durum": "hata", "baslangic": time.time(),
-                              "mold_id": str(mold_id), "mesaj": str(e)[:200]})
+        _hata_yaz(mold_id, anahtar, str(e))
+        return 1
+    finally:
+        girdi.unlink(missing_ok=True)
 
 
 def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
@@ -209,8 +343,10 @@ def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
     is_yolu = _is_yolu(mold_id, anahtar)
     with _surecler_arasi_kilit():
         simdi = time.time()
-        if _canli_mi(_is_oku(is_yolu), simdi):
+        eski = _is_oku(is_yolu)
+        if _canli_mi(eski, simdi):
             return False
+        _takilan_cocugu_durdur(eski)
         _is_yaz(is_yolu, {"durum": "hazirlaniyor", "baslangic": simdi,
                           "kuyruga_alindi": simdi, "basladi": False,
                           "mold_id": str(mold_id), "pid": os.getpid()})
@@ -248,3 +384,8 @@ def temizle(gun: int = 7) -> int:
         except OSError:
             pass
     return n
+
+
+if __name__ == "__main__":
+    # `python -m app.services.mold_pdf_job <kalıp_id> <anahtar>` — _uret başlatır.
+    sys.exit(_cocuk_calis(sys.argv[1], sys.argv[2]))

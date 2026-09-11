@@ -46,15 +46,26 @@ def _unauthorized(detail: str = "Authentication required") -> HTTPException:
 # olur. Router basina Depends eklemek bu garantiyi vermezdi.
 BAYI_IZINLI_ONEKLER = (
     "/api/bayii/",        # portalin kendi uclari
-    "/api/auth/",         # /me, /logout, profil, sifre
     "/api/push/",         # kendi cihazina bildirim aboneligi
 )
+# ⚠ /api/auth/ ARTIK ONEKLE ACIK DEGIL. Eskiden "/api/auth/" tumuyle bayiye
+# aciktı ve yalnız iki uç yasak listesindeydi: yarın /api/auth altina eklenen
+# herhangi bir personel ucu (ör. baska kullanici adina islem) bayiye OTOMATIK
+# acilacakti. Artik varsayilan RED; bayinin gercekten kullandigi uclar tek tek
+# yaziliyor. Token GEREKTIRMEYEN uclar (login, logout, 2fa/verify-login,
+# passkey girisi, sifre sifirlama) bu kapiya hic ugramaz.
+# Yeni bir /api/auth ucu eklenince scripts/bayii_portal_test.py onu
+# SINIFLANDIRMADAN gecmez.
 BAYI_IZINLI_TAM = (
     "/api/health",
     "/api/version",
+    "/api/auth/me",               # kendi profili (GET/PATCH)
+    "/api/auth/verify-password",  # bayi ayarlarinda sifre dogrulama
+    "/api/auth/change-password",  # kendi sifresi
 )
-# /api/auth/* genel olarak acik (kendi profili, cikis, sifre). Ama profil
-# DEGISTIRME personel ozelligi: bayi buradan personel token'i alabilirdi.
+# Varsayilan RED zaten kapatiyor; burada acikca durmalari, biri onegi geri
+# acarsa bu ikisinin YINE kapali kalmasi icin. Profil degistirme personel
+# ozelligi: bayi buradan personel token'i alabilirdi.
 BAYI_YASAK_TAM = (
     "/api/auth/profiles",
     "/api/auth/select-profile",

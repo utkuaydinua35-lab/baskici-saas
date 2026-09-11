@@ -215,9 +215,10 @@ es("model degisir", 200, ISTEMCI.patch(
     f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}",
     headers=H_A, json={"model": "IPHONE-14 PRO"}).status_code)
 d1 = ISTEMCI.get(f"/api/bayii/siparis/{tr_id}", headers=H_A).json()
-es("model yazildi", "IPHONE-14 PRO", d1["kalemler"][0]["model"])
+# Model adı OKUNUR biçimde kaydedilir (phone_models.gorunen_ad) — ölçü aynı kalır.
+es("model yazildi", "iPhone 14 Pro", d1["kalemler"][0]["model"])
 es("degisiklik gecmise dustu", True,
-   any("IPHONE-14 PRO" in (h["not"] or "") for h in d1["gecmis"]))
+   any("iPhone 14 Pro" in (h["not"] or "") for h in d1["gecmis"]))
 es("tasarim degisir", 200, ISTEMCI.post(
     f"/api/bayii/siparis/{tr_id}/kalem/{tr_kalem}/tasarim", headers=H_A,
     files={"tasarim": ("y.jpg", jpg(), "image/jpeg")}).status_code)
@@ -344,7 +345,7 @@ es("toplam adet 6", 6, r.json().get("toplam_adet"))
 
 dc = ISTEMCI.get(f"/api/bayii/siparis/{cok_id}", headers=H_A).json()
 es("detayda 3 kalem", 3, len(dc["kalemler"]))
-es("modeller sirasiyla", ["IPHONE-15", "IPHONE-14 PRO", "SAMSUNG-S23"],
+es("modeller sirasiyla", ["iPhone 15", "iPhone 14 Pro", "Samsung S23"],
    [k["model"] for k in dc["kalemler"]])
 es("adetler sirasiyla", [2, 1, 3], [k["adet"] for k in dc["kalemler"]])
 # Her kalemin KENDI tasarimi olmali — hepsi ayni tasarima baglanirsa
@@ -362,7 +363,7 @@ es("2. kalemin modeli degisir", 200, ISTEMCI.patch(
     f"/api/bayii/siparis/{cok_id}/kalem/{k2}", headers=H_A,
     json={"model": "IPHONE-16"}).status_code)
 dc2 = ISTEMCI.get(f"/api/bayii/siparis/{cok_id}", headers=H_A).json()
-es("sadece 2. kalem degisti", ["IPHONE-15", "IPHONE-16", "SAMSUNG-S23"],
+es("sadece 2. kalem degisti", ["iPhone 15", "iPhone 16", "Samsung S23"],
    [k["model"] for k in dc2["kalemler"]])
 es("adet degisir", 200, ISTEMCI.patch(
     f"/api/bayii/siparis/{cok_id}/kalem/{k2}", headers=H_A, json={"adet": 5}).status_code)
@@ -442,6 +443,59 @@ for yol in SIZAN:
 # Kapi portali ve oturum uclarini ENGELLEMEMELI
 es("portal acik", 200, ISTEMCI.get("/api/bayii/ozet", headers=H_A).status_code)
 es("kendi profili acik", 200, ISTEMCI.get("/api/auth/me", headers=H_A).status_code)
+
+# ── /api/auth/ VARSAYILAN RED ──
+# Eskiden "/api/auth/" önekle bayiye tümüyle açıktı; yalnız iki uç yasaklıydı.
+# /api/auth altına yarın eklenen herhangi bir personel ucu bayiye OTOMATİK
+# açılacaktı. Artık bayinin kullandığı uçlar tek tek açık, gerisi kapalı.
+#
+# Bu tablo BİLEREK elle yazılı: token isteyen yeni bir /api/auth ucu eklenince
+# aşağıdaki sınama "sınıflandırılmamış" diye DÜŞER — kimse karar vermeden
+# bayiye açık mı kapalı mı olduğu belirsiz kalamaz.
+_AUTH_SINIF = {
+    ("GET", "/api/auth/me"): "acik",
+    ("PATCH", "/api/auth/me"): "acik",
+    ("POST", "/api/auth/verify-password"): "acik",
+    ("POST", "/api/auth/change-password"): "acik",
+    ("POST", "/api/auth/2fa/setup"): "kapali",
+    ("POST", "/api/auth/2fa/enable"): "kapali",
+    ("POST", "/api/auth/2fa/disable"): "kapali",
+    ("GET", "/api/auth/profiles"): "kapali",
+    ("POST", "/api/auth/select-profile"): "kapali",
+    ("GET", "/api/auth/passkey"): "kapali",
+    ("GET", "/api/auth/passkey/only"): "kapali",
+    ("POST", "/api/auth/passkey/only"): "kapali",
+    ("POST", "/api/auth/passkey/register/begin"): "kapali",
+    ("POST", "/api/auth/passkey/register/finish"): "kapali",
+    ("DELETE", "/api/auth/passkey/{cred_id}"): "kapali",
+}
+from app.auth.dependencies import get_current_user as _gcu  # noqa: E402
+from app.main import app as _app  # noqa: E402
+
+
+def _bagimliliklar(d, acc):
+    for x in d.dependencies:
+        acc.add(x.call)
+        _bagimliliklar(x, acc)
+    return acc
+
+
+_token_uclari = []
+for _r in _app.routes:
+    _p = getattr(_r, "path", "")
+    if _p.startswith("/api/auth") and _gcu in _bagimliliklar(_r.dependant, set()):
+        for _m in sorted(_r.methods or []):
+            _token_uclari.append((_m, _p))
+_sinifsiz = [u for u in _token_uclari if u not in _AUTH_SINIF]
+es("token isteyen HER /api/auth ucu sınıflandırılmış", [], _sinifsiz)
+for (_m, _p), _sinif in _AUTH_SINIF.items():
+    _yol = _p.replace("{cred_id}", "00000000-0000-0000-0000-000000000000")
+    _kod = ISTEMCI.request(_m, _yol, headers=H_A, json={}).status_code
+    if _sinif == "kapali":
+        es(f"bayiye kapali: {_m} {_p}", 403, _kod)
+    else:
+        # Açık uçta boş gövde 422 ya da iş hatası dönebilir; önemli olan KAPIYA takılmaması.
+        es(f"bayiye acik: {_m} {_p}", True, _kod != 403)
 # Yonetici ayni uclarda serbest kalmali
 es("yonetici /api/dealers 200", 200, ISTEMCI.get("/api/dealers", headers=H_ADMIN).status_code)
 es("yonetici /api/notifications 200", 200,

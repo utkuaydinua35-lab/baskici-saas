@@ -17,10 +17,12 @@ verilmez.
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import logging
-import threading
+import os
 import time
 from pathlib import Path
 
@@ -28,9 +30,15 @@ from app.services.storage import STORAGE_ROOT
 
 logger = logging.getLogger("kalip-pdf")
 
-# {anahtar: {"durum": hazirlaniyor|hata, "baslangic": ts, "mesaj": str}}
-_isler: dict[str, dict] = {}
-_kilit = threading.Lock()
+# ⚠ İŞ KAYDI DOSYADA, SÜREÇ BELLEĞİNDE DEĞİL. Eskiden `_isler` bir sözlüktü:
+# tek uvicorn worker'ında doğru, ama ikinci worker açıldığı gün A worker'ının
+# başlattığı üretimi B worker'ı "yok" görüyor, panelin tekrar isteğiyle AYNI
+# 3-4 dakikalık CPU işini ikinci kez başlatıyor ve kuyruk listesi hangi
+# worker'a düştüğüne göre boş/dolu görünüyordu. Kayıt `<kalıp>_<anahtar>.is`
+# dosyası; oku-karar-yaz bölümü süreçler arası dosya kilidiyle korunur.
+#
+# İçerik: {"durum": hazirlaniyor|hata, "baslangic", "kuyruga_alindi",
+#          "basladi", "mold_id", "pid", "mesaj"}
 
 # Üretim bu süreyi aşarsa iş ölmüş sayılır (yeniden denenebilsin)
 ZAMAN_ASIMI = 20 * 60
@@ -65,6 +73,60 @@ def anahtar_uret(mold, slot_items: list[dict], template: dict) -> str:
     return h.hexdigest()[:32]
 
 
+def _is_yolu(mold_id, anahtar: str) -> Path:
+    return _dizin() / f"{mold_id}_{anahtar}.is"
+
+
+@contextlib.contextmanager
+def _surecler_arasi_kilit():
+    """Oku-karar-yaz bölümü: aynı anda yalnız BİR süreç (worker) girer."""
+    with open(_dizin() / ".is-kilidi", "w") as fd:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _is_oku(yol: Path) -> dict | None:
+    try:
+        return json.loads(yol.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _is_yaz(yol: Path, kayit: dict) -> None:
+    """Atomik yazım — yarım okunan JSON olmasın."""
+    gecici = yol.with_suffix(".is.tmp")
+    gecici.write_text(json.dumps(kayit), encoding="utf-8")
+    gecici.replace(yol)
+
+
+def _surec_yasiyor(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _canli_mi(i: dict | None, simdi: float) -> bool:
+    """İş hâlâ gerçekten sürüyor mu?
+
+    ⚠ Bellekteki kayıt süreçle birlikte ölüyordu; dosyadaki kayıt ÖLMEZ. Worker
+    yeniden başlatılınca (deploy) sırada bekleyen iş sonsuza dek "hazırlanıyor"
+    görünüp PDF hiç üretilmezdi. Sahibi süreç ölmüşse iş ölü sayılır.
+    """
+    if not i or i.get("durum") != "hazirlaniyor":
+        return False
+    if i.get("pid") is not None and not _surec_yasiyor(i["pid"]):
+        return False
+    if i.get("basladi"):
+        return simdi - i.get("baslangic", 0) < ZAMAN_ASIMI
+    # Sırada bekleyen iş, önündeki uzun işler yüzünden bekleyebilir — ama sınırsız değil.
+    return simdi - i.get("kuyruga_alindi", i.get("baslangic", 0)) < 2 * ZAMAN_ASIMI
+
+
 def yollar(mold_id, anahtar: str) -> tuple[Path, Path]:
     """Dosya adı kalıp kimliğiyle başlar — bir kalıbın TÜM hazır PDF'leri
     (eski anahtarlar dahil) tek desenle bulunup silinebilsin."""
@@ -79,15 +141,13 @@ def gecersiz_kil(mold_id) -> int:
     diski temiz tutmak ve panelde "PDF yok" durumunun görünmesi için.
     """
     n = 0
+    # `.is` iş kayıtları da aynı desene uyar — ayrıca temizlemek gerekmez.
     for p in _dizin().glob(f"{mold_id}_*"):
         try:
             p.unlink()
             n += 1
         except OSError:
             pass
-    with _kilit:
-        for k in [k for k, v in _isler.items() if v.get("mold_id") == str(mold_id)]:
-            _isler.pop(k, None)
     return n
 
 
@@ -100,17 +160,15 @@ def durum(mold_id, anahtar: str) -> dict:
         except Exception:  # noqa: BLE001
             rapor = {}
         return {"durum": "hazir", "boyut": pdf.stat().st_size, "rapor": rapor}
-    with _kilit:
-        i = _isler.get(anahtar)
+    i = _is_oku(_is_yolu(mold_id, anahtar))
     if i:
-        if i["durum"] == "hata":
+        if i.get("durum") == "hata":
             return {"durum": "hata", "mesaj": i.get("mesaj") or "Üretim başarısız"}
-        # Henuz sirada bekleyen is (basladi=False) zaman asimina ugramaz —
-        # onunde uzun isler olabilir.
-        if not i.get("basladi") or time.time() - i["baslangic"] < ZAMAN_ASIMI:
+        simdi = time.time()
+        if _canli_mi(i, simdi):
             return {"durum": "hazirlaniyor",
                     "basladi": bool(i.get("basladi")),
-                    "gecen_sn": int(time.time() - i["baslangic"])}
+                    "gecen_sn": int(simdi - i.get("baslangic", simdi))}
     return {"durum": "yok"}
 
 
@@ -118,11 +176,14 @@ def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None
     from app.services import mold_pdf
     pdf, meta = yollar(mold_id, anahtar)
     _t0 = time.time()
-    with _kilit:
-        i = _isler.get(anahtar)
+    is_yolu = _is_yolu(mold_id, anahtar)
+    with _surecler_arasi_kilit():
+        i = _is_oku(is_yolu)
         if i is not None:
             i["baslangic"] = _t0        # kuyrukta bekleme suresi sayilmasin
             i["basladi"] = True
+            i["pid"] = os.getpid()      # üretimi GERÇEKTEN yapan süreç
+            _is_yaz(is_yolu, i)
     logger.info("[kalip-pdf] uretim BASLADI: kalip=%s slot=%s", mold_id, len(slot_items))
     try:
         veri, rapor = mold_pdf.render_mold_pdf(slot_items, template=template)
@@ -133,27 +194,26 @@ def _uret(mold_id, anahtar: str, slot_items: list[dict], template: dict) -> None
         gecici.replace(pdf)
         logger.info("[kalip-pdf] HAZIR: kalip=%s %.1f MB %.0f sn",
                     mold_id, len(veri) / 1024 / 1024, time.time() - _t0)
-        with _kilit:
-            _isler.pop(anahtar, None)
+        is_yolu.unlink(missing_ok=True)
     except Exception as e:  # noqa: BLE001
         logger.exception("[kalip-pdf] HATA: kalip=%s (%.0f sn) %s",
                          mold_id, time.time() - _t0, e)
-        with _kilit:
-            _isler[anahtar] = {"durum": "hata", "baslangic": time.time(),
-                               "mesaj": str(e)[:200]}
+        with _surecler_arasi_kilit():
+            _is_yaz(is_yolu, {"durum": "hata", "baslangic": time.time(),
+                              "mold_id": str(mold_id), "mesaj": str(e)[:200]})
 
 
 def baslat(arka_plan, mold_id, anahtar: str, slot_items: list[dict],
            template: dict) -> bool:
-    """Üretimi arka planda başlat. Zaten çalışıyorsa False."""
-    with _kilit:
-        i = _isler.get(anahtar)
-        if i and i["durum"] == "hazirlaniyor" and (
-                not i.get("basladi") or time.time() - i["baslangic"] < ZAMAN_ASIMI):
+    """Üretimi arka planda başlat. Zaten (herhangi bir worker'da) çalışıyorsa False."""
+    is_yolu = _is_yolu(mold_id, anahtar)
+    with _surecler_arasi_kilit():
+        simdi = time.time()
+        if _canli_mi(_is_oku(is_yolu), simdi):
             return False
-        _isler[anahtar] = {"durum": "hazirlaniyor", "baslangic": time.time(),
-                           "kuyruga_alindi": time.time(), "basladi": False,
-                           "mold_id": str(mold_id)}
+        _is_yaz(is_yolu, {"durum": "hazirlaniyor", "baslangic": simdi,
+                          "kuyruga_alindi": simdi, "basladi": False,
+                          "mold_id": str(mold_id), "pid": os.getpid()})
     arka_plan.add_task(_uret, mold_id, anahtar, slot_items, template)
     return True
 
@@ -163,14 +223,14 @@ def kuyruk() -> list[dict]:
     bilmesi gerekmez, sunucu ne çalışıyorsa onu söyler."""
     simdi = time.time()
     out = []
-    with _kilit:
-        for anahtar, i in list(_isler.items()):
-            if i.get("durum") != "hazirlaniyor":
-                continue
-            if i.get("basladi") and simdi - i["baslangic"] >= ZAMAN_ASIMI:
-                continue
-            out.append({"mold_id": i.get("mold_id"), "anahtar": anahtar,
-                        "gecen_sn": int(simdi - i["baslangic"])})
+    for yol in _dizin().glob("*.is"):
+        i = _is_oku(yol)
+        if not _canli_mi(i, simdi):
+            continue
+        # Dosya adı "<kalıp>_<anahtar>.is" — anahtar alt çizgi içermez.
+        anahtar = yol.stem.rsplit("_", 1)[-1]
+        out.append({"mold_id": i.get("mold_id"), "anahtar": anahtar,
+                    "gecen_sn": int(simdi - i.get("baslangic", simdi))})
     out.sort(key=lambda x: -x["gecen_sn"])
     return out
 

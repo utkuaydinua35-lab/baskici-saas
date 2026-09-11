@@ -58,6 +58,15 @@ def es(ad, beklenen, gercek):
 C = TestClient(app)
 db = SessionLocal()
 
+# Hız sınırı sayacı artık VERİTABANINDA (services/rate_limit): önceki koşunun
+# vuruşları pencere içinde kalırsa bu koşu kendi sınırına takılırdı. Yalnız test
+# IP'leri (10.x) temizlenir — gerçek trafiğe dokunulmaz.
+try:
+    db.execute(text("delete from hiz_siniri_vuruslari where anahtar like '%|10.%'"))
+    db.commit()
+except Exception:  # noqa: BLE001 — tablo yoksa (eski şema) sayaç zaten bellekte
+    db.rollback()
+
 
 # Hız sınırı IP başına (services/rate_limit.py, CF-Connecting-IP önceliği).
 # Her BÖLÜM için ayrı IP kullanıyoruz: aksi halde testin kendi trafiği

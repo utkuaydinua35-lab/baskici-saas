@@ -1936,8 +1936,42 @@ def import_csv(
 # ── Shopify görselleri — CDN'den arka planda indirip ürünlere bağlar ──
 # (Ürün import'unun eksik yarısı: Image Src sütunları CDN URL'idir.)
 
-_IMG_JOBS: dict[str, dict] = {}   # store_id -> ilerleme
 MAX_IMAGES_PER_PRODUCT = 5
+# ⚠ İLERLEME DOSYADA, SÜREÇ BELLEĞİNDE DEĞİL. Eskiden `_IMG_JOBS` sözlüğüydü:
+# ikinci worker açıldığında durum sorgusu diğer worker'a düşünce "çalışmıyor"
+# görünüyor ve "zaten sürüyor" kontrolü atlanıp aynı aktarım İKİ KEZ
+# başlatılabiliyordu. Aktarımı yürüten iş parçacığı ürün başına dosyayı günceller.
+_GORSEL_IS_BAYAT_SN = 600   # 10 dk güncellenmeyen "sürüyor" kaydı ölü sayılır
+
+
+def _gorsel_is_yolu(store_key: str):
+    d = storage_svc.STORAGE_ROOT / "cache" / "gorsel_aktarim"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{store_key}.json"
+
+
+def _gorsel_is_oku(store_key: str) -> dict | None:
+    import json
+    try:
+        return json.loads(_gorsel_is_yolu(store_key).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _gorsel_is_yaz(store_key: str, job: dict) -> None:
+    import json
+    import time
+    job["guncellendi"] = time.time()
+    yol = _gorsel_is_yolu(store_key)
+    gecici = yol.with_suffix(".json.tmp")
+    gecici.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    gecici.replace(yol)
+
+
+def _gorsel_is_suruyor(job: dict | None) -> bool:
+    import time
+    return bool(job and job.get("running")
+                and time.time() - job.get("guncellendi", 0) < _GORSEL_IS_BAYAT_SN)
 
 
 @router.post("/import/shopify-images", response_model=dict)
@@ -1958,7 +1992,7 @@ def import_shopify_images(
 
     _get_storefront_store(db, user.tenant_id, store_id)
     key = str(store_id)
-    if _IMG_JOBS.get(key, {}).get("running"):
+    if _gorsel_is_suruyor(_gorsel_is_oku(key)):
         raise HTTPException(409, "Görsel aktarımı zaten sürüyor — durumunu bekleyin")
 
     raw = file.file.read().decode("utf-8-sig", errors="replace")
@@ -1983,8 +2017,8 @@ def import_shopify_images(
     if not images:
         raise HTTPException(422, "CSV'de indirilecek görsel bulunamadı")
 
-    _IMG_JOBS[key] = {"running": True, "total": len(images), "done": 0,
-                      "added": 0, "skipped": 0, "errors": []}
+    _gorsel_is_yaz(key, {"running": True, "total": len(images), "done": 0,
+                         "added": 0, "skipped": 0, "errors": []})
     threading.Thread(
         target=_run_image_import,
         args=(key, str(user.tenant_id), images),
@@ -1999,7 +2033,8 @@ def _run_image_import(store_key: str, tenant_id: str, images: dict[str, list]) -
 
     from app.database import SessionLocal
 
-    job = _IMG_JOBS[store_key]
+    job = _gorsel_is_oku(store_key) or {"running": True, "total": len(images), "done": 0,
+                                       "added": 0, "skipped": 0, "errors": []}
     db = SessionLocal()
     client = httpx.Client(timeout=25, follow_redirects=True)
     try:
@@ -2046,10 +2081,12 @@ def _run_image_import(store_key: str, tenant_id: str, images: dict[str, list]) -
                     job["errors"].append({"urun": slug, "mesaj": str(e)[:200]})
             finally:
                 job["done"] += 1
+                _gorsel_is_yaz(store_key, job)   # ilerleme her worker'dan görünsün
     finally:
         client.close()
         db.close()
         job["running"] = False
+        _gorsel_is_yaz(store_key, job)
 
 
 @router.get("/import/shopify-images/status", response_model=dict)
@@ -2057,8 +2094,11 @@ def shopify_images_status(
     store_id: uuid.UUID,
     user: User = Depends(require_permission("vitrin")),
 ):
-    return _IMG_JOBS.get(str(store_id)) or {"running": False, "total": 0, "done": 0,
-                                            "added": 0, "skipped": 0, "errors": []}
+    job = _gorsel_is_oku(str(store_id))
+    if job and job.get("running") and not _gorsel_is_suruyor(job):
+        job["running"] = False   # süreç ölmüş (deploy) — sonsuza dek "sürüyor" görünmesin
+    return job or {"running": False, "total": 0, "done": 0,
+                   "added": 0, "skipped": 0, "errors": []}
 
 
 # ─── Yorum moderasyonu ───────────────────────────────────────

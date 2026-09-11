@@ -64,6 +64,14 @@ def _istek(method, url, **kw):
 
 
 C.request = _istek
+
+# Hız sınırı sayacı VERİTABANINDA — önceki koşunun test IP'lerini (10.x) temizle.
+try:
+    with SessionLocal() as _s:
+        _s.execute(text("delete from hiz_siniri_vuruslari where anahtar like '%|10.%'"))
+        _s.commit()
+except Exception:  # noqa: BLE001
+    pass
 db = SessionLocal()
 
 print("\n── telefon normalleştirme ──")

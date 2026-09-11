@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { api, setToken } from '../lib/api'
 import { nativeMi, platformSifirla, uygulamaYolu, kabugaDon } from '../lib/taban'
+import { worklistGetir } from '../lib/worklist'
 
 export default function Layout() {
   const { user, tenant, logout } = useAuth()
@@ -51,7 +52,9 @@ export default function Layout() {
       {/* ÜST MENÜ — yatay, bölüm dropdown'lı */}
       <header className="sticky top-0 z-[60] border-b border-brand-border/70 bg-brand-bg/95 pt-[env(safe-area-inset-top)]">
         <div className="px-3 md:px-5 h-14 flex items-center gap-2 md:gap-3">
-          <button onClick={() => setMobileMenu(true)} className="md:hidden text-gray-300 hover:text-white p-1 -ml-1" aria-label="Menü">
+          {/* 30×30'du — telefonda menüyü açmanın TEK yolu, 44×44 olmalı */}
+          <button onClick={() => setMobileMenu(true)} aria-label="Menü" aria-expanded={mobileMenu}
+            className="md:hidden -ml-2 w-11 h-11 flex items-center justify-center rounded-xl text-gray-300 hover:text-white active:bg-brand-input/70">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
 
@@ -71,8 +74,9 @@ export default function Layout() {
           <DesktopNav />
 
           <div className="ml-auto flex items-center gap-1 shrink-0">
-            <button onClick={() => setCmdOpen(true)} title="Ara (⌘K)"
-              className="hidden md:flex items-center gap-2 px-2.5 h-9 rounded-full bg-brand-input/60 border border-brand-border text-gray-400 hover:text-gray-200 text-xs transition-colors">
+            {/* Telefonda arama HİÇ yoktu (⌘K klavye ister) — dar ekranda yalnız ikon */}
+            <button onClick={() => setCmdOpen(true)} title="Ara (⌘K)" aria-label="Ara"
+              className="flex items-center justify-center gap-2 w-10 h-11 rounded-lg active:bg-brand-input/70 md:w-auto md:h-9 md:px-2.5 md:rounded-full md:bg-brand-input/60 md:border md:border-brand-border text-gray-400 hover:text-gray-200 text-xs transition-colors">
               <span>🔍</span><span className="hidden lg:inline">Ara</span>
               <kbd className="hidden lg:inline text-[10px] px-1.5 py-0.5 rounded bg-brand-bg/70 border border-brand-border text-gray-500">⌘K</kbd>
             </button>
@@ -83,9 +87,9 @@ export default function Layout() {
         </div>
       </header>
 
-      {mobileMenu && <MobileNav onClose={() => setMobileMenu(false)} />}
+      {mobileMenu && <MobileNav onClose={() => setMobileMenu(false)} onSearch={() => setCmdOpen(true)} />}
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-6">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-[calc(1rem_+_env(safe-area-inset-bottom))] md:pb-[calc(1.5rem_+_env(safe-area-inset-bottom))]">
         <div key={location.pathname} className="mx-auto w-full max-w-[1400px] page-enter">
           <Outlet />
         </div>
@@ -137,7 +141,7 @@ function InstallPrompt() {
   if (!deferred && !showIos) return null
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] w-[92%] max-w-md animate-fadein">
+    <div className="fixed bottom-[calc(1rem_+_env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] w-[92%] max-w-md animate-fadein">
       <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl p-3 flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-accent/55 flex items-center justify-center text-white text-lg shrink-0">⚡</div>
         <div className="min-w-0 flex-1">
@@ -156,18 +160,33 @@ function InstallPrompt() {
         {deferred && (
           <button onClick={install} className="btn-primary !text-xs px-3 shrink-0">Kur</button>
         )}
-        <button onClick={dismiss} className="text-gray-500 hover:text-gray-300 text-sm leading-none shrink-0 px-1">✕</button>
+        <button onClick={dismiss} aria-label="Kapat" className="w-9 h-9 -mr-1 flex items-center justify-center text-gray-500 hover:text-gray-300 text-sm leading-none shrink-0">✕</button>
       </div>
     </div>
   )
 }
 
-function SectionLabel({ children }) {
-  return (
-    <div className="text-[9px] uppercase tracking-wider text-gray-600 mt-4 mb-1 px-2">
-      {children}
-    </div>
-  )
+// Üst çubuktaki açılır paneller (bildirim, senkron sonucu).
+// Sağa hizalı 320px'lik panel telefonda ekranın SOLUNDAN taşıyordu (-24px);
+// dar ekranda başlığın altına tam genişlik yayılır, sm ve üstünde düğmeye hizalı.
+const ACILIR_PANEL = 'fixed inset-x-2 top-[calc(env(safe-area-inset-top)_+_3.75rem)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-1'
+
+// Açılır panel: dışarı dokununca, Escape'e basınca ve sayfa değişince kapanır.
+// mousedown yerine pointerdown — dokunmatikte gecikmesiz.
+function useAcilirKapat(ref, open, setOpen) {
+  const loc = useLocation()
+  useEffect(() => { setOpen(false) }, [loc.pathname, loc.search])  // eslint-disable-line
+  useEffect(() => {
+    if (!open) return
+    const disari = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const tus = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', disari)
+    document.addEventListener('keydown', tus)
+    return () => {
+      document.removeEventListener('pointerdown', disari)
+      document.removeEventListener('keydown', tus)
+    }
+  }, [open])  // eslint-disable-line
 }
 
 function SyncButton() {
@@ -189,13 +208,13 @@ function SyncButton() {
   }
   return (
     <div className="relative">
-      <button onClick={run} disabled={busy} title="Tüm mağazaları senkronize et"
-        className="p-2 rounded-lg hover:bg-brand-input text-gray-400 hover:text-gray-200 disabled:opacity-50">
+      <button onClick={run} disabled={busy} title="Tüm mağazaları senkronize et" aria-label="Senkronize et"
+        className="w-10 h-11 flex items-center justify-center rounded-lg hover:bg-brand-input active:bg-brand-input text-gray-400 hover:text-gray-200 disabled:opacity-50">
         <span className={`inline-block text-lg ${busy ? 'animate-spin' : ''}`}>🔄</span>
       </button>
       {msg && (
-        <div className={`absolute right-0 mt-1 w-64 text-xs rounded-lg px-3 py-2 shadow-2xl z-[70] border ${
-          msg.ok ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-200' : 'bg-red-500/15 border-red-500/30 text-red-300'
+        <div className={`${ACILIR_PANEL} sm:w-64 text-xs rounded-lg px-3 py-2 shadow-2xl z-[70] border bg-brand-card ${
+          msg.ok ? 'border-emerald-500/30 text-emerald-200' : 'border-red-500/30 text-red-300'
         }`}>
           {msg.ok ? '✓ Senkronizasyon tamamlandı' : '✗ Hata'}
           <div className="opacity-80 mt-0.5">{msg.text}</div>
@@ -239,12 +258,22 @@ function NotificationBell() {
     } catch {}
   }
 
+  const imza = useRef('')
+  const istekte = useRef(false)
   const load = async () => {
+    if (istekte.current) return          // önceki istek dönmeden yenisini atma
+    istekte.current = true
     try {
       const r = await api.get('/api/notifications?limit=30')
       const list = r.items || []
-      setItems(list)
-      setUnread(r.unread_count || 0)
+      // Her turda yeni dizi = zil ve açık panel boşuna yeniden çiziliyordu.
+      // Liste aynıysa (id + okundu + sayaç) durum hiç ellenmez.
+      const yeniImza = `${r.unread_count || 0}|${list.map(n => `${n.id}:${n.is_read ? 1 : 0}`).join(',')}`
+      if (yeniImza !== imza.current) {
+        imza.current = yeniImza
+        setItems(list)
+        setUnread(r.unread_count || 0)
+      }
       const supportIds = list
         .filter(n => (n.title || '').toLowerCase().includes('destek mesaj'))
         .map(n => n.id)
@@ -255,7 +284,7 @@ function NotificationBell() {
         seenSupportIds.current = new Set(supportIds)
         if (fresh) playBeep()
       }
-    } catch {}
+    } catch {} finally { istekte.current = false }
   }
 
   useEffect(() => { load() }, [])
@@ -267,32 +296,37 @@ function NotificationBell() {
     try { st = JSON.parse(localStorage.getItem(WL_BELL_KEY) || '{}') } catch {}
     if (st.date === today && st.dismissed) return        // bugun kullanici kapatti
     if (st.date === today && st.shown) { setWlBadge(true); return }  // bugun zaten gosterildi
-    api.get('/api/dashboard/worklist').then(wl => {
+    worklistGetir().then(wl => {
       if (((wl && wl.items) || []).length > 0) {
         setWlBadge(true)
         localStorage.setItem(WL_BELL_KEY, JSON.stringify({ date: today, shown: true, dismissed: false }))
       }
     }).catch(() => {})
   }, [])
-  // 60 sn'de bir + senk sonrası tazele
+  // Görünür sekmede 30 sn'de bir, arka plandaki sekmede 2 dk'da bir tazele —
+  // eskiden gizli sekmede de 20 sn'de bir istek atıyordu. Sekmeye dönünce
+  // hemen tazeler; destek mesajı sesi bu sayede gecikmez. + senk sonrası.
   useEffect(() => {
-    const t = setInterval(load, 20000)
+    let t = null
+    const kur = () => {
+      clearInterval(t)
+      t = setInterval(load, document.hidden ? 120000 : 30000)
+    }
+    const gorunurluk = () => { if (!document.hidden) load(); kur() }
+    kur()
     const onRefresh = () => load()
     const onWl = () => setWlBadge(true)
+    document.addEventListener('visibilitychange', gorunurluk)
     window.addEventListener('notifications:refresh', onRefresh)
     window.addEventListener('worklist:ready', onWl)
     return () => {
       clearInterval(t)
+      document.removeEventListener('visibilitychange', gorunurluk)
       window.removeEventListener('notifications:refresh', onRefresh)
       window.removeEventListener('worklist:ready', onWl)
     }
   }, [])
-  useEffect(() => {
-    if (!open) return
-    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
+  useAcilirKapat(ref, open, setOpen)
 
   const openPanel = () => { setOpen(o => !o); if (!open) load() }
 
@@ -323,24 +357,24 @@ function NotificationBell() {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={openPanel} title="Bildirimler"
-        className="relative p-2 rounded-lg hover:bg-brand-input text-gray-400 hover:text-gray-200">
+      <button onClick={openPanel} title="Bildirimler" aria-label="Bildirimler" aria-expanded={open}
+        className="relative w-10 h-11 flex items-center justify-center rounded-lg hover:bg-brand-input active:bg-brand-input text-gray-400 hover:text-gray-200">
         <span className="text-lg">🔔</span>
         {totalUnread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-semibold flex items-center justify-center">
+          <span className="absolute top-1 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-semibold flex items-center justify-center">
             {totalUnread > 9 ? '9+' : totalUnread}
           </span>
         )}
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-80 bg-brand-card border border-brand-border rounded-lg shadow-2xl z-[70] overflow-hidden">
+        <div className={`${ACILIR_PANEL} sm:w-80 bg-brand-card border border-brand-border rounded-lg shadow-2xl z-[70] overflow-hidden menu-pop`}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-brand-border">
             <span className="text-sm font-medium text-gray-200">Bildirimler</span>
             {unread > 0 && (
-              <button onClick={markAll} className="text-[11px] text-accent hover:underline">Tümünü okundu işaretle</button>
+              <button onClick={markAll} className="text-[11px] text-accent hover:underline py-1.5">Tümünü okundu işaretle</button>
             )}
           </div>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[min(24rem,calc(100dvh_-_9rem))] overflow-y-auto overscroll-contain">
             {wlBadge && (
               <button onClick={() => { dismissWlBadge(); window.location.href = uygulamaYolu('/?worklist=1') }}
                 className="w-full text-left px-3 py-2.5 border-b border-brand-border/50 hover:bg-brand-input flex gap-2 bg-accent/5">
@@ -393,26 +427,23 @@ function ProfileDropdown({ user, onLogout }) {
   const [open, setOpen] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const ref = useRef(null)
-  useEffect(() => {
-    if (!open) return
-    const onClick = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
+  useAcilirKapat(ref, open, setOpen)
   const initial = (user?.full_name || user?.email || '?').charAt(0).toUpperCase()
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-brand-input transition-colors">
+      <button onClick={() => setOpen(o => !o)} aria-label="Profil menüsü" aria-expanded={open}
+        className="flex items-center gap-2 px-1.5 sm:px-2 h-11 rounded-lg hover:bg-brand-input active:bg-brand-input transition-colors">
         {user?.avatar_url ? (
           <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
         ) : (
           <span className="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-accent/55 flex items-center justify-center text-white text-sm font-semibold">{initial}</span>
         )}
-        <span className="text-xs text-gray-300 hidden sm:block">{user?.full_name || user?.email}</span>
+        {/* Tablette (768-1024) isim menüyü sıkıştırıp öğeleri ekran dışına itiyordu */}
+        <span className="text-xs text-gray-300 hidden lg:block max-w-[10rem] truncate">{user?.full_name || user?.email}</span>
         <span className="text-gray-500 text-xs">⌄</span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-56 bg-brand-card border border-brand-border rounded-lg shadow-2xl z-[70] py-1">
+        <div className="absolute right-0 mt-1 w-56 bg-brand-card border border-brand-border rounded-lg shadow-2xl z-[70] py-1 menu-pop">
           <div className="px-3 py-2 border-b border-brand-border">
             <div className="text-sm text-gray-200">{user?.full_name || '—'}</div>
             <div className="text-[11px] text-gray-500">{user?.email}</div>
@@ -706,8 +737,33 @@ function CommandPalette({ onClose }) {
 function DesktopNav() {
   const can = usePerm()
   const items = visibleNav(can)
+  const ref = useRef(null)
+  const [kenar, setKenar] = useState('')
+  // Tablet genişliğinde menü sığmıyor ve kaydırma çubuğu gizli — sağda öğe
+  // olduğu hiç anlaşılmıyordu. Taşan kenar yumuşakça solar. Değer aynıysa
+  // React yeniden çizmez; ölçüm kaydırma başına ucuz.
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const olc = () => {
+      const sol = el.scrollLeft > 2
+      const sag = el.scrollLeft + el.clientWidth < el.scrollWidth - 2
+      setKenar(sol && sag ? 'iki' : sol ? 'sol' : sag ? 'sag' : '')
+    }
+    olc()
+    const ro = new ResizeObserver(olc)
+    ro.observe(el)
+    el.addEventListener('scroll', olc, { passive: true })
+    return () => { ro.disconnect(); el.removeEventListener('scroll', olc) }
+  }, [])
+  // Fare tekerleği dikey döner; taşan menüde yatay kaydırmaya çevrilir.
+  const tekerlek = (e) => {
+    const el = ref.current
+    if (el && e.deltaY && el.scrollWidth > el.clientWidth) el.scrollLeft += e.deltaY
+  }
   return (
-    <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1">
+    <nav ref={ref} onWheel={tekerlek}
+      className={`hidden md:flex items-center gap-0.5 overflow-x-auto no-scrollbar flex-1 min-w-0 px-1 ${kenar ? `ust-menu-solgun-${kenar}` : ''}`}>
       {items.map(e => e.items
         ? <NavDropdown key={e.label} entry={e} />
         : <TopLink key={e.to} to={e.to} label={e.label} icon={e.icon} end={e.end} />)}
@@ -718,7 +774,7 @@ function DesktopNav() {
 function TopLink({ to, label, icon, end }) {
   return (
     <NavLink to={to} end={end}
-      className={({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+      className={({ isActive }) => `flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
         isActive ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
       }`}>
       <span className="text-[13px]">{icon}</span>{label}
@@ -731,41 +787,80 @@ function NavDropdown({ entry }) {
   const [pos, setPos] = useState(null)
   const btnRef = useRef(null)
   const menuRef = useRef(null)
+  const closeTimer = useRef(null)
+  const fareIleAcildi = useRef(false)
   const loc = useLocation()
   const active = entry.items.some(it => loc.pathname === it.to.split('?')[0])
 
-  // Menü, üst menünün overflow'una takılmasın diye portal + sabit konum (button rect'ten)
-  const closeTimer = useRef(null)
+  // Menü, üst menünün overflow'una takılmasın diye portal + sabit konum (button rect'ten).
+  // Konum değişmediyse durum ellenmez: sayfa kaydırıldıkça her olayda yeniden
+  // çizim yapılıyordu (dinleyici capture modunda TÜM kaydırmaları duyuyor).
   const place = () => {
     const b = btnRef.current?.getBoundingClientRect()
-    if (b) setPos({ left: Math.max(8, Math.min(b.left, window.innerWidth - 232)), top: b.bottom + 8 })
+    if (!b) return
+    const left = Math.round(Math.max(8, Math.min(b.left, window.innerWidth - 232)))
+    const top = Math.round(b.bottom + 8)
+    setPos(p => (p && p.left === left && p.top === top) ? p : { left, top })
   }
-  const toggle = () => { if (!open) place(); setOpen(o => !o) }
-  const hoverOpen = () => { clearTimeout(closeTimer.current); place(); setOpen(true) }
-  const hoverClose = () => { closeTimer.current = setTimeout(() => setOpen(false), 130) }
+  // Aynı anda tek menü: fare bir bölümden ötekine geçerken eskisi beklemeden
+  // kapanır, iki menü üst üste binmez.
+  const ac = () => {
+    clearTimeout(closeTimer.current)
+    place()
+    if (!open) window.dispatchEvent(new CustomEvent('ustmenu:acildi', { detail: entry.label }))
+    setOpen(true)
+  }
+  // Üzerine gelince açılma YALNIZ FAREDE. Dokunmatikte parmak önce "enter"
+  // (aç) sonra "click" (kapat) üretiyordu — menü açılıp anında kapanıyordu.
+  const hoverOpen = (e) => {
+    if (e.pointerType !== 'mouse') return
+    if (!open) fareIleAcildi.current = true
+    ac()
+  }
+  const hoverClose = (e) => {
+    if (e.pointerType !== 'mouse') return
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setOpen(false), 150)
+  }
+  const toggle = () => {
+    // Fareyle üzerine gelip açılmış menüye tıklamak onu KAPATMASIN.
+    if (open && fareIleAcildi.current) { fareIleAcildi.current = false; return }
+    fareIleAcildi.current = false
+    if (open) setOpen(false)
+    else ac()
+  }
 
   useEffect(() => {
-    if (!open) return
+    const baskasiAcildi = e => { if (e.detail !== entry.label) { clearTimeout(closeTimer.current); setOpen(false) } }
+    window.addEventListener('ustmenu:acildi', baskasiAcildi)
+    return () => { window.removeEventListener('ustmenu:acildi', baskasiAcildi); clearTimeout(closeTimer.current) }
+  }, [entry.label])
+
+  useEffect(() => {
+    if (!open) { fareIleAcildi.current = false; return }
     const onDoc = e => {
       if (btnRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
       setOpen(false)
     }
-    const onReposition = () => place()
-    document.addEventListener('mousedown', onDoc)
-    window.addEventListener('resize', onReposition)
-    window.addEventListener('scroll', onReposition, true)
+    const onKey = e => { if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus() } }
+    document.addEventListener('pointerdown', onDoc)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
-      window.removeEventListener('resize', onReposition)
-      window.removeEventListener('scroll', onReposition, true)
+      document.removeEventListener('pointerdown', onDoc)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
     }
   }, [open])
   useEffect(() => { setOpen(false) }, [loc.pathname, loc.search])
 
   return (
     <>
-      <button ref={btnRef} onClick={toggle} onMouseEnter={hoverOpen} onMouseLeave={hoverClose}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+      <button ref={btnRef} onClick={toggle} onPointerEnter={hoverOpen} onPointerLeave={hoverClose}
+        aria-haspopup="menu" aria-expanded={open}
+        className={`flex items-center gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-full text-[13px] whitespace-nowrap shrink-0 transition-colors ${
           active || open ? 'bg-accent/15 text-accent font-medium' : 'text-gray-400 hover:text-gray-100 hover:bg-brand-input/60'
         }`}>
         <span className="text-[13px]">{entry.icon}</span>{entry.label}
@@ -773,17 +868,17 @@ function NavDropdown({ entry }) {
       </button>
       {open && pos && createPortal(
         <div ref={menuRef} style={{ position: 'fixed', left: pos.left, top: pos.top }}
-          onMouseEnter={() => clearTimeout(closeTimer.current)} onMouseLeave={hoverClose}
-          className="w-56 bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[200] menu-pop">
+          onPointerEnter={() => clearTimeout(closeTimer.current)} onPointerLeave={hoverClose}
+          className="w-56 max-h-[calc(100dvh_-_5rem)] overflow-y-auto overscroll-contain bg-brand-card border border-brand-border rounded-2xl shadow-2xl p-1.5 z-[200] menu-pop">
           {entry.items.map(it => <DropItem key={it.to} {...it} onClick={() => setOpen(false)} />)}
         </div>, document.body)}
     </>
   )
 }
 
-function DropItem({ to, label, icon, end, legacy, onClick }) {
+function DropItem({ to, label, icon, end, legacy, replace, onClick }) {
   return (
-    <NavLink to={to} end={end} onClick={onClick}
+    <NavLink to={to} end={end} replace={replace} onClick={onClick}
       className={({ isActive }) => `group flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] transition-colors ${
         isActive ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-brand-input/70 hover:text-gray-100'
       }`}>
@@ -799,26 +894,95 @@ function DropItem({ to, label, icon, end, legacy, onClick }) {
   )
 }
 
+const MOBIL_BOLUM_KEY = 'mobil_menu_bolumler'
+
 // Mobil çekmece (dikey, bölümlü)
-function MobileNav({ onClose }) {
+function MobileNav({ onClose, onSearch }) {
   const can = usePerm()
   const items = visibleNav(can)
+  const loc = useLocation()
+  const [kapaniyor, setKapaniyor] = useState(false)
+  const bitti = useRef(false)
+
+  // Bölümler katlanabilir; kullanıcının açık bıraktıkları hatırlanır. İlk
+  // kullanımda hepsi açık (bugünkü görünüm). Bulunulan sayfanın bölümü hep açık.
+  const aktifBolum = items.find(e => e.items?.some(it => it.to.split('?')[0] === loc.pathname))?.label
+  const [acik, setAcik] = useState(() => {
+    let kayitli = null
+    try { kayitli = JSON.parse(localStorage.getItem(MOBIL_BOLUM_KEY) || 'null') } catch {}
+    const s = new Set(Array.isArray(kayitli) ? kayitli : items.filter(e => e.items).map(e => e.label))
+    if (aktifBolum) s.add(aktifBolum)
+    return s
+  })
+  const bolumDegistir = (ad) => setAcik(prev => {
+    const s = new Set(prev)
+    s.has(ad) ? s.delete(ad) : s.add(ad)
+    try { localStorage.setItem(MOBIL_BOLUM_KEY, JSON.stringify([...s])) } catch {}
+    return s
+  })
+
+  // Kapanış kısa bir kayma animasyonuyla — anında kaybolmak "takıldı" hissi veriyordu.
+  const bitir = () => {
+    if (bitti.current) return
+    bitti.current = true
+    setKapaniyor(true)
+    setTimeout(onClose, 180)
+  }
+  // Telefonun GERİ tuşu menüyü kapatsın, sayfadan çıkarmasın: açılışta geçmişe
+  // bir kayıt eklenir; ×/örtü/Escape o kaydı geri alır. Menüden bir sayfaya
+  // gidilince bağlantı `replace` ile o kaydın YERİNE yazılır — geri tuşu yine
+  // menüyü açtığın sayfaya döner.
+  const kapatIste = () => {
+    if (window.history.state?.mobilMenu) window.history.back()
+    else bitir()
+  }
+  useEffect(() => {
+    // Kayıt zaten varsa ikinci kez ekleme (geliştirmede efekt iki kez çalışır;
+    // fazladan kayıt geri tuşunu bir kez "boşa" bastırırdı).
+    if (!window.history.state?.mobilMenu) {
+      window.history.pushState({ ...window.history.state, mobilMenu: true }, '')
+    }
+    const geri = () => bitir()
+    const tus = e => { if (e.key === 'Escape') kapatIste() }
+    window.addEventListener('popstate', geri)
+    document.addEventListener('keydown', tus)
+    return () => {
+      window.removeEventListener('popstate', geri)
+      document.removeEventListener('keydown', tus)
+    }
+  }, [])  // eslint-disable-line
+
+  const ara = () => { kapatIste(); onSearch?.() }
+
   return (
-    <div className="fixed inset-0 z-[80] md:hidden">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <aside className="absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] bg-brand-card border-r border-brand-border px-3 pb-3 pt-[calc(0.75rem_+_env(safe-area-inset-top))] overflow-y-auto animate-slidein">
-        <div className="flex items-center justify-between mb-3 px-1">
+    <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-label="Menü">
+      <div className={`absolute inset-0 bg-black/60 ${kapaniyor ? 'cekmece-ortu-cik' : 'cekmece-ortu-gir'}`} onClick={kapatIste} />
+      <aside className={`absolute left-0 top-0 bottom-0 w-72 max-w-[82vw] flex flex-col bg-brand-card border-r border-brand-border shadow-2xl ${kapaniyor ? 'cekmece-cik' : 'cekmece-gir'}`}>
+        <div className="flex items-center justify-between gap-2 pl-4 pr-2 pt-[calc(0.25rem_+_env(safe-area-inset-top))] pb-1 border-b border-brand-border/60">
           <span className="text-sm font-semibold text-gray-100">Menü</span>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+          <button onClick={kapatIste} aria-label="Menüyü kapat"
+            className="w-11 h-11 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-200 active:bg-brand-input/70 text-2xl leading-none">×</button>
         </div>
-        <nav className="space-y-1">
+        <button onClick={ara}
+          className="mx-3 mt-3 flex items-center gap-2 h-11 px-3 rounded-xl bg-brand-input/60 border border-brand-border text-sm text-gray-500 text-left">
+          <span>🔍</span><span className="truncate">Sayfa, sipariş no veya kalıp ara…</span>
+        </button>
+        <nav className="flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))]">
           {items.map(e => e.items ? (
-            <div key={e.label} className="mb-1">
-              <SectionLabel>{e.label}</SectionLabel>
-              {e.items.map(it => <DropItem key={it.to} {...it} onClick={onClose} />)}
+            <div key={e.label} className="mt-1">
+              <button onClick={() => bolumDegistir(e.label)} aria-expanded={acik.has(e.label)}
+                className="w-full h-10 flex items-center justify-between px-2 rounded-lg text-[10px] font-medium uppercase tracking-wider text-gray-500 active:bg-brand-input/50">
+                <span>{e.label}</span>
+                <span className={`text-[8px] transition-transform duration-200 ${acik.has(e.label) ? 'rotate-180' : ''}`}>▼</span>
+              </button>
+              {acik.has(e.label) && (
+                <div className="space-y-0.5 pb-1">
+                  {e.items.map(it => <DropItem key={it.to} {...it} replace onClick={onClose} />)}
+                </div>
+              )}
             </div>
           ) : (
-            <DropItem key={e.to} {...e} onClick={onClose} />
+            <DropItem key={e.to} {...e} replace onClick={onClose} />
           ))}
         </nav>
       </aside>

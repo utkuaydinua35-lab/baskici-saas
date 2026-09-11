@@ -34,15 +34,30 @@ export default function BayiLayout() {
   const [serit, setSerit] = useState({ sol: 0, en: 0, gorunur: false })
 
   // Aktif sekmenin altindaki kayan serit — sekme degisince yumusak gecer.
+  // Yazi tipi gec yuklenince ya da pencere boyu degisince sekme genislikleri
+  // degisiyor; serit eski olcude kaliyordu. Olcu ayniysa durum ellenmez.
   useEffect(() => {
-    const kap = seritRef.current
-    if (!kap) return
-    const aktif = kap.querySelector('[data-aktif="1"]')
-    if (!aktif) { setSerit((s) => ({ ...s, gorunur: false })); return }
-    setSerit({ sol: aktif.offsetLeft, en: aktif.offsetWidth, gorunur: true })
+    const olc = () => {
+      const kap = seritRef.current
+      if (!kap) return
+      const aktif = kap.querySelector('[data-aktif="1"]')
+      if (!aktif) { setSerit((s) => (s.gorunur ? { ...s, gorunur: false } : s)); return }
+      const sol = aktif.offsetLeft, en = aktif.offsetWidth
+      setSerit((s) => (s.gorunur && s.sol === sol && s.en === en) ? s : { sol, en, gorunur: true })
+    }
+    olc()
+    document.fonts?.ready?.then(olc).catch(() => {})
+    window.addEventListener('resize', olc)
+    return () => window.removeEventListener('resize', olc)
   }, [konum.pathname])
 
   useEffect(() => { setMenuAcik(false) }, [konum.pathname])
+  useEffect(() => {
+    if (!menuAcik) return
+    const tus = (e) => { if (e.key === 'Escape') setMenuAcik(false) }
+    document.addEventListener('keydown', tus)
+    return () => document.removeEventListener('keydown', tus)
+  }, [menuAcik])
 
   const cikis = async () => {
     await logout()
@@ -51,7 +66,7 @@ export default function BayiLayout() {
 
   return (
     <div className="min-h-full flex flex-col">
-      <header className="sticky top-0 z-30 bayi-ustbar">
+      <header className="sticky top-0 z-30 bayi-ustbar pt-[env(safe-area-inset-top)]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="h-16 flex items-center gap-3">
             <div className="flex items-center gap-2.5 shrink-0">
@@ -90,14 +105,18 @@ export default function BayiLayout() {
                 <div className="text-[13px] text-gray-200">{user?.full_name || 'Bayi'}</div>
                 <div className="text-[11px] text-gray-500">{user?.email}</div>
               </div>
-              <button onClick={cikis} className="bayi-cikis" title="Çıkış yap">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
-                     strokeLinecap="round" className="w-[18px] h-[18px]">
-                  <path d="M15 17l5-5-5-5M20 12H9M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
-                </svg>
-              </button>
+              {/* Telefonda çıkış menünün İÇİNDE: ☰'nin hemen yanındaydı,
+                  menüyü açmak isterken yanlışlıkla oturum kapanıyordu. */}
+              <div className="hidden md:block">
+                <button onClick={cikis} className="bayi-cikis" title="Çıkış yap" aria-label="Çıkış yap">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+                       strokeLinecap="round" className="w-[18px] h-[18px]">
+                    <path d="M15 17l5-5-5-5M20 12H9M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
+                  </svg>
+                </button>
+              </div>
               <button onClick={() => setMenuAcik((v) => !v)}
-                      className="md:hidden bayi-cikis" aria-label="Menü">
+                      className="md:hidden bayi-cikis" aria-label="Menü" aria-expanded={menuAcik}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                      strokeLinecap="round" className="w-[18px] h-[18px]">
                   <path d={menuAcik ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16'} />
@@ -111,11 +130,18 @@ export default function BayiLayout() {
               {MENU.map((m) => (
                 <NavLink key={m.yol} to={m.yol} end={m.tam}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+                    `flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm transition-colors ${
                       isActive ? 'bg-accent/15 text-white' : 'text-gray-400 hover:bg-white/5'}`}>
                   <Ikon d={m.ikon} />{m.ad}
                 </NavLink>
               ))}
+              <div className="border-t border-white/5 mt-1 pt-1">
+                <div className="px-3 py-2 text-[11px] text-gray-500 truncate">{user?.full_name || 'Bayi'} · {user?.email}</div>
+                <button onClick={cikis}
+                  className="w-full flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm text-red-300 hover:bg-red-500/10 active:bg-red-500/10">
+                  <Ikon d="M15 17l5-5-5-5M20 12H9M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />Çıkış yap
+                </button>
+              </div>
             </nav>
           )}
         </div>

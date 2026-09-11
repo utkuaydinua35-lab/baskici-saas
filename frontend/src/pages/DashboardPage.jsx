@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { worklistGetir } from '../lib/worklist'
 
 // ── Worklist yardımcıları ─────────────────────────────────────────────────────
 const WL_KEY = 'wl_state'
@@ -84,13 +85,14 @@ export default function DashboardPage() {
     // Zil bildiriminden gelindiyse (?worklist=1) sayaçtan bağımsız zorla göster
     const forced = new URLSearchParams(window.location.search).get('worklist') === '1'
     if (forced) {
-      api.get('/api/dashboard/worklist').then(wl => { setWorklist(wl); setShowWorklist(true) }).catch(() => {})
+      worklistGetir().then(wl => { setWorklist(wl); setShowWorklist(true) }).catch(() => {})
       window.history.replaceState({}, '', '/')
       return
     }
     const state = wlGetState()
     if (!state.dismissed && state.count < 5) {
-      api.get('/api/dashboard/worklist').then(wl => {
+      // Zil de aynı açılışta istiyor — ortak söz, tek istek (lib/worklist)
+      worklistGetir().then(wl => {
         setWorklist(wl)
         setShowWorklist(true)
         const newState = { ...state, count: state.count + 1 }

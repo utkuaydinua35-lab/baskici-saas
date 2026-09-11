@@ -391,6 +391,34 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   .menu-pop, .page-enter { animation: none; }
 }
 
+/* Taşan üst menünün kenarı solar — tablette sağda öğe olduğu görünsün. */
+.ust-menu-solgun-sag {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+.ust-menu-solgun-sol {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+          mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+.ust-menu-solgun-iki {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+
+/* Mobil çekmece: soldan tam kayar, kapanırken geri kayar. Yalnız
+   transform/opacity — iş GPU'da kalır, telefonda takılmaz. */
+@keyframes cekmece-gir { from { transform: translate3d(-100%, 0, 0); } to { transform: none; } }
+@keyframes cekmece-cik { from { transform: none; } to { transform: translate3d(-100%, 0, 0); } }
+@keyframes cekmece-ortu-gir { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cekmece-ortu-cik { from { opacity: 1; } to { opacity: 0; } }
+.cekmece-gir      { animation: cekmece-gir .22s cubic-bezier(.2,.8,.3,1) both; }
+.cekmece-cik      { animation: cekmece-cik .18s ease-in both; }
+.cekmece-ortu-gir { animation: cekmece-ortu-gir .22s ease-out both; }
+.cekmece-ortu-cik { animation: cekmece-ortu-cik .18s ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .cekmece-gir, .cekmece-cik, .cekmece-ortu-gir, .cekmece-ortu-cik { animation-duration: 1ms; }
+}
+
 /* Kademeli kart girisi — ardisik gecikmelerle (stagger) */
 .stagger > * { animation: fade-in-up 0.4s ease-out both; }
 .stagger > *:nth-child(1) { animation-delay: 0.02s; }
@@ -643,11 +671,19 @@ select.input option, select option { background: #17102b; color: #f3f4f6; }
 /* ─── Bayi portali ────────────────────────────────────────────
    Yonetim panelinden AYRI bir kabuk: ust bar + kayan sekme seridi.
    Renkler accent degiskeninden turer, tenant markasi degisince uyar. */
+/* Telefonda bulanıklık YOK: sayfa kaydıkça üst çubuğun arkası her karede
+   yeniden bulanıklaştırılıyordu. Zemin neredeyse opak, görünüm aynı.
+   Fareli geniş ekranda cam etkisi kalır. */
 .bayi-ustbar {
-  background: rgb(10 6 19 / 0.72);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: rgb(10 6 19 / 0.94);
   border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+@media (hover: hover) and (min-width: 768px) {
+  .bayi-ustbar {
+    background: rgb(10 6 19 / 0.72);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+  }
 }
 .bayi-marka-nokta {
   width: 26px; height: 26px; border-radius: 9px; display: block;
@@ -679,6 +715,10 @@ select.input option, select option { background: #17102b; color: #f3f4f6; }
   background: rgb(255 255 255 / 0.03); transition: all .18s ease;
 }
 .bayi-cikis:hover { color: #fff; background: rgb(255 255 255 / 0.08); }
+/* Parmakla kullanımda 36px küçük — Apple HIG en az 44 ister. */
+@media (pointer: coarse) {
+  .bayi-cikis { width: 44px; height: 44px; }
+}
 
 /* Sayfa gecisi — route degisince icerik yumusak biner */
 .bayi-sayfa { animation: bayi-sayfa-gir .38s cubic-bezier(.22,.8,.28,1) both; }

@@ -457,6 +457,12 @@ def plan_molds(
         order_store_id = order.store_id
         for li in (order.line_items or []):
             pid = str(li.product_id) if li.product_id else None
+            # ★ ÜRÜN DEĞİŞİKLİĞİ BEKLİYOR ★ Müşteri başka ürün seçti ama tasarımı
+            # henüz bağlanmadı: kalem ESKİ tasarımla basılmamalı.
+            _ud = getattr(li, "urun_degisikligi", None) or {}
+            if _ud.get("durum") == "bekliyor":
+                add_eksik("urun_degisikligi_bekliyor", li, order, extract_phone_model(li))
+                continue
             if pid and (order_store_id, pid) in acc_keys:
                 continue  # aksesuar — kalipa da eksik listesine de girmez
             # Couple (cift kilif): 2 ayri tasarim, 2 birim — YARI BAZINDA ele alinir
@@ -576,7 +582,9 @@ def plan_molds(
                         })
                 continue
 
-            is_ko = (order_store_id, pid) in kop_keys if pid else False
+            # Ürün değişikliği uygulandıysa kalem artık kişiye özel DEĞİL — Shopify
+            # senkronu product_id'yi eski (kişiye özel) ürüne geri yazsa bile.
+            is_ko = ((order_store_id, pid) in kop_keys if pid else False) and _ud.get("durum") != "uygulandi"
 
             design = None
             # 1) Manuel/bayii/kisiye ozel: tasarim dogrudan atanmissa onu kullan

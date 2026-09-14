@@ -462,6 +462,18 @@ def uygula(token: str, istek: SecimIstegi,
     if ham.pop("stok_bekliyor", None) is not None:
         li.raw = ham
 
+    # ÜRÜN değişikliği: tasarım kesinse bağlanır, değilse kalem "tasarım
+    # bekliyor" olur ve KALIBA GİRMEZ (services/urun_degisikligi). Eskiden
+    # hiçbir şey yapılmıyordu; kalem eski tasarımla yeniden planlanıyordu.
+    _ud = None
+    if urun_adi is not None:
+        from app.services import urun_degisikligi as _uds
+        _st = _siparis_magazasi(db, t)
+        _gorsel = next((p.get("gorsel") for p in urun_katalog.ham_urunler(db, t.tenant_id, _st)
+                        if str(p["id"]) == str(istek.urun_id)), None)
+        _ud = _uds.kaydet(db, li, _st, urun_id=str(istek.urun_id), baslik=urun_adi,
+                          gorsel=_gorsel, kim="Müşteri")
+
     t.durum = "uygulandi"
     t.secilen_model = model[:100] if model else None
     t.secilen_varyasyon = (urun_adi[:20] if urun_adi is not None else None)
@@ -485,7 +497,10 @@ def uygula(token: str, istek: SecimIstegi,
         _parcalar.append(f"ürün: {_onceki} → {urun_adi}")
     _not = ("Müşteri değişiklik yaptı — " + " · ".join(_parcalar)
             + (f" · {cekilen} kalıp slotundan çıkarıldı" if cekilen else "")
-            + (" · ÜRÜN DEĞİŞİKLİĞİ: tasarımı elle bağlayın" if urun_adi is not None else ""))
+            + ((f" · tasarım otomatik bağlandı: {_ud.get('tasarim_kodu')}"
+                if _ud.get("durum") == "uygulandi" else
+                f" · ÜRÜN DEĞİŞİKLİĞİ: tasarım bekliyor ({_ud.get('sebep')}) — kalem kalıba girmez, "
+                "sipariş detayından tasarımı bağlayın") if _ud else ""))
 
     db.add(OrderStatusHistory(
         tenant_id=t.tenant_id, order_id=t.order_id,
@@ -493,7 +508,7 @@ def uygula(token: str, istek: SecimIstegi,
     ))
     db.add(Notification(
         tenant_id=t.tenant_id, store_id=(order.store_id if order else None),
-        kind="warn" if cekilen else "info",
+        kind="warn" if (cekilen or (_ud and _ud.get("durum") == "bekliyor")) else "info",
         title=(f"{_no} · müşteri ÜRÜN değiştirdi" if urun_adi is not None
                else f"{_no} · müşteri model değiştirdi"),
         body=_not,

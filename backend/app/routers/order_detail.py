@@ -418,9 +418,14 @@ def _serialize_line_item(li: LineItem, db: Session | None = None, adapter=None,
     # Aksesuar / işleme girmeyen ürün: kalıp gerektirmez.
     _is_aksesuar = bool(li.product_id) and str(li.product_id) in (aksesuar_pids or set())
 
+    _ud = li.urun_degisikligi or None
+    if _ud and _ud.get("durum") == "uygulandi" and _ud.get("gorsel"):
+        image_url = _ud["gorsel"]
     return {
         "id": str(li.id),
         "title": li.title,
+        # Müşterinin ürün değişikliği: bekliyor/uygulandi/yoksayildi + önceki hal
+        "urun_degisikligi": _ud,
         "variant_title": li.variant_title,
         "device_model_override": li.device_model_override,
         # Couple (çift kılıf): 2 ayrı telefon modeli — 2. slot ayrı override alır.
@@ -1523,3 +1528,66 @@ def kalem_model_degisim_baglantisi(
     return {"link": baglanti, "message": metin, "phone": tel,
             "wa_url": md_svc.wa_url(tel, metin), "kalip_turu": talep.kalip_turu,
             "urun_adi": urun_adi, "gecerlilik_saat": md_svc.GECERLILIK_SAAT}
+
+
+class UrunDegisikligiIn(BaseModel):
+    islem: str = Field(..., pattern="^(tekrar|kod|yoksay)$")
+    tasarim_kodu: str | None = Field(None, max_length=50)
+
+
+@router.post("/{order_ref}/line-items/{line_item_id}/urun-degisikligi", response_model=None)
+def urun_degisikligi_karar(
+    order_ref: str,
+    line_item_id: uuid.UUID,
+    body: UrunDegisikligiIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşterinin ürün değişikliği için operatör kararı.
+
+    tekrar  → tasarımı yeniden ara (ör. yeni tasarım sisteme yüklendikten sonra)
+    kod     → verilen tasarım kodunu bağla (aynı mağazanın tasarımı)
+    yoksay  → değişikliği uygulama; kalem eski ürünüyle üretime döner
+    """
+    from app.models import Store
+    from app.services import urun_degisikligi as uds
+
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    li = next((x for x in (order.line_items or []) if x.id == line_item_id), None)
+    if li is None:
+        raise HTTPException(status_code=404, detail="Kalem bulunamadı")
+    ud = li.urun_degisikligi or {}
+    if not ud:
+        raise HTTPException(status_code=409, detail="Bu kalemde müşteri ürün değişikliği yok")
+    kim = user.full_name or user.email
+
+    if body.islem == "yoksay":
+        if ud.get("durum") != uds.BEKLIYOR:
+            raise HTTPException(status_code=409, detail="Bekleyen bir ürün değişikliği yok")
+        uds.yoksay(li, kim)
+        not_ = f"Ürün değişikliği yok sayıldı ({ud.get('baslik')}) — kalem eski ürünüyle üretime döner"
+    elif body.islem == "tekrar":
+        store = db.get(Store, order.store_id) if order.store_id else None
+        design, neden = uds.tasarim_bul(db, store, ud.get("urun_id") or "", li)
+        if design is None:
+            raise HTTPException(status_code=409, detail=neden or "Tasarım bulunamadı")
+        uds.tasarimi_bagla(li, design, kim)
+        not_ = f"Ürün değişikliği uygulandı: {ud.get('baslik')} → tasarım {design.code}"
+    else:
+        kod = (body.tasarim_kodu or "").strip()
+        if not kod:
+            raise HTTPException(status_code=400, detail="Tasarım kodu gir")
+        design = db.scalar(select(Design).where(
+            Design.tenant_id == user.tenant_id, Design.store_id == order.store_id,
+            Design.code == kod))
+        if design is None:
+            raise HTTPException(status_code=404, detail=f"Bu mağazada {kod} kodlu tasarım yok")
+        if getattr(design, "baski_dosyasi_yok", False):
+            raise HTTPException(status_code=409, detail=f"{kod} tasarımının baskı dosyası yok")
+        uds.tasarimi_bagla(li, design, kim)
+        not_ = f"Ürün değişikliği uygulandı: {ud.get('baslik')} → tasarım {design.code} (elle)"
+
+    _log_history(db, order, user, action="urun_degisikligi_karar", note=not_)
+    db.commit()
+    db.expire_all()
+    return _serialize_detail(_resolve_order(db, order_ref, user.tenant_id), db)

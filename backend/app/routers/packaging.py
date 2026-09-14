@@ -841,7 +841,10 @@ def _order_payload(db, order) -> dict:
     for li in (order.line_items or []):
         kod_label, mi = _kalip_kodu_for(db, li)
         before = li.product_image_url
-        thumb = _design_for_line_item(db, order, li, mi, adapter, kisiye_ids)
+        # Ürün değişikliği uygulanmış kalem artık kişiye özel değil: müşterinin
+        # eski numune fotoğrafı gösterilmesin, yeni tasarım gösterilsin.
+        _ud_uyg = (getattr(li, "urun_degisikligi", None) or {}).get("durum") == "uygulandi"
+        thumb = _design_for_line_item(db, order, li, mi, adapter, set() if _ud_uyg else kisiye_ids)
         if li.product_image_url and li.product_image_url != before:
             _img_filled = True
         _is_couple = bool(li.product_id) and str(li.product_id) in _couple_pids

@@ -159,7 +159,7 @@ _LI_APP_FIELDS = (
     "kilif_varyasyon", "kilif_varyasyon_2",
     "birincil_renk", "ikincil_renk", "ucuncu_renk",
     "tedarik_status", "is_hazir", "is_hazir_2", "is_kaliba_eklendi",
-    "is_kisiye_ozel", "product_image_url",
+    "is_kisiye_ozel", "product_image_url", "urun_degisikligi",
 )
 
 

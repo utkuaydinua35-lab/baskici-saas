@@ -385,6 +385,14 @@ export default function OrderDetailPage() {
                   onTelafi={() => setTelafiDiyalog([li])}
                   telafiler={(detail.telafiler || []).filter(t => (t.kaynak_kalemler || []).includes(li.id))}
                   onOpenOrder={id => navigate(`/orders/${id}`, { state: { from: location.pathname } })}
+                  onUrunKarar={async (islem, kod) => {
+                    try {
+                      setDetail(await api.post(`/api/orders/${orderId}/line-items/${li.id}/urun-degisikligi`,
+                        { islem, tasarim_kodu: kod || null }))
+                      toast.success(islem === 'yoksay' ? 'Değişiklik yok sayıldı' : 'Tasarım bağlandı')
+                      return true
+                    } catch (e) { toast.error(errMsg(e, 'İşlem yapılamadı')); return false }
+                  }}
                   onPatch={body => patchLineItem(li.id, body)}
                   onZoom={setLightbox}
                   onOpenMold={(mid) => navigate(`/kalip/${mid}`, { state: { from: location.pathname } })}
@@ -692,7 +700,7 @@ function KalipOzeti({ lineItems }) {
 
 
 function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMolds,
-                      telafiAcik, secili, onSec, onTelafi, telafiler = [], onOpenOrder }) {
+                      telafiAcik, secili, onSec, onTelafi, telafiler = [], onOpenOrder, onUrunKarar }) {
   const phoneModels = usePhoneModels()
   const toast = useToast()
   const [editModel, setEditModel] = useState(false)
@@ -850,6 +858,8 @@ function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMo
           )}
         </div>
       </div>
+
+      {item.urun_degisikligi && <UrunDegisikligiBandi ud={item.urun_degisikligi} onKarar={onUrunKarar} />}
 
       {/* Çift kılıf: 2 ALT ÜRÜN — her kılıfın kendi tasarımı/modeli/kalıbı ve baskı durumu */}
       {Array.isArray(item.parcalar) && item.parcalar.length > 0 && (
@@ -1377,6 +1387,7 @@ const GECMIS_ETIKET = {
   musteri_adres_degisikligi: '🏠 Müşteri teslimat adresini değiştirdi',
   adres_baglantisi: '🔗 Adres değişikliği bağlantısı üretildi',
   telafi_olusturuldu: '♻️ Telafi oluşturuldu',
+  urun_degisikligi_karar: '🔁 Ürün değişikliği kararı',
   model_baglantisi: '💬 Telefon modeli değişikliği bağlantısı üretildi',
   // E-posta / davet
   stok_eksik_email: '📧 Eksik stok bildirimi gönderildi',
@@ -1617,6 +1628,61 @@ const BAGLANTI_DURUM = {
 // görünüyordu. WhatsApp sekmesi kapanırsa operatörün tek çıkışı kalemi tekrar
 // kalıptan çıkarmaktı — yani üretimi bozmak. Bağlantı zaten geçerli; burada
 // tekrar açılabiliyor.
+// Müşterinin değişiklik bağlantısından ÜRÜN değiştirmesi. Bekliyorsa kalem
+// kalıba GİRMEZ (eski tasarımla basılmasın); operatör tasarımı bağlar.
+function UrunDegisikligiBandi({ ud, onKarar }) {
+  const [kod, setKod] = useState('')
+  const [busy, setBusy] = useState(false)
+  const calis = async (islem, k) => { setBusy(true); const ok = await onKarar?.(islem, k); setBusy(false); if (ok) setKod('') }
+  const tarih = ud.at ? new Date(ud.at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+
+  if (ud.durum === 'yoksayildi') {
+    return (
+      <div className="mt-2 rounded-lg border border-brand-border bg-brand-input/30 px-3 py-2 text-[11px] text-gray-500">
+        Müşterinin ürün değişikliği yok sayıldı: <span className="text-gray-400">{ud.baslik}</span>
+        {ud.karar_veren && <> · {ud.karar_veren}</>}
+      </div>
+    )
+  }
+  const bekliyor = ud.durum === 'bekliyor'
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 ${bekliyor
+      ? 'border-amber-500/40 bg-amber-500/10' : 'border-emerald-500/30 bg-emerald-500/[0.07]'}`}>
+      <div className="flex items-start gap-2.5">
+        {ud.gorsel
+          ? <img src={ud.gorsel} alt="" className="w-11 h-11 rounded object-cover border border-white/10 shrink-0" />
+          : <span className="w-11 h-11 rounded bg-brand-card grid place-items-center shrink-0">🔁</span>}
+        <div className="min-w-0 flex-1 text-[11.5px] leading-snug">
+          <div className={bekliyor ? 'text-amber-200 font-medium' : 'text-emerald-200 font-medium'}>
+            {bekliyor ? '⚠ Müşteri ürün değiştirdi — tasarım bekliyor' : '✓ Müşteri ürün değiştirdi — tasarım bağlandı'}
+          </div>
+          <div className="text-gray-200 mt-0.5">{ud.baslik}</div>
+          <div className="text-gray-500 mt-0.5">
+            Önceki: {ud.onceki?.title || '—'} · {tarih}
+            {!bekliyor && ud.tasarim_kodu && <> · tasarım <span className="font-mono text-emerald-300">{ud.tasarim_kodu}</span> ({ud.karar_veren})</>}
+          </div>
+          {bekliyor && (
+            <div className="text-amber-300/90 mt-1">{ud.sebep ? `${ud.sebep}. ` : ''}Tasarım bağlanana kadar bu ürün kalıba girmez.</div>
+          )}
+        </div>
+      </div>
+      {bekliyor && (
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <input value={kod} onChange={e => setKod(e.target.value)} placeholder="Tasarım kodu (örn. b952)"
+            onKeyDown={e => { if (e.key === 'Enter' && kod.trim()) calis('kod', kod.trim()) }}
+            className="input !text-xs !py-1 w-40 font-mono" />
+          <button onClick={() => calis('kod', kod.trim())} disabled={busy || !kod.trim()}
+            className="text-[11px] px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40">Bağla</button>
+          <button onClick={() => calis('tekrar')} disabled={busy} title="Tasarım sisteme yüklendiyse otomatik bul"
+            className="text-[11px] px-2.5 py-1 rounded bg-brand-input text-gray-300 hover:text-white disabled:opacity-40">🔄 Tekrar ara</button>
+          <button onClick={() => { if (confirm('Değişiklik yok sayılsın mı? Ürün ESKİ tasarımıyla üretime döner.')) calis('yoksay') }}
+            disabled={busy} className="ml-auto text-[11px] text-gray-500 hover:text-red-300 disabled:opacity-40">Yok say</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const TELAFI_SEBEPLERI = ['Hatalı model', 'Yanlış hazırlandı', 'Hasarlı geldi', 'Kargo kaybı', 'Yanlış tasarım']
 
 // Sipariş detayından telafi — Telafiler sayfasındaki "Siparişten Klonla" ile

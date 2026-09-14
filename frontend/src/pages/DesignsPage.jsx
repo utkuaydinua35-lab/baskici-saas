@@ -35,6 +35,7 @@ const RENK_SECENEKLERI = [
 
 const REASON_LABELS = {
   urun_tasarima_baglanmamis: 'Ürün tasarıma bağlanmamış',
+  urun_degisikligi_bekliyor: 'Müşteri ürün değiştirdi — tasarım bekliyor',
   kisiye_ozel_tasarim_eksik: 'Kişiye özel tasarımı eksik',
   model_belirsiz: 'Telefon modeli belirsiz',
   model_taninmadi: 'Model tanınmadı',

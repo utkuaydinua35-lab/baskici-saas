@@ -282,17 +282,34 @@ def get_telafi(
 # ───────────────────────── Olusturma ─────────────────────────
 
 def _yeni_telafi_kodu(db: Session, tenant_id) -> str:
-    """T-1, T-2 ... benzersiz telafi siparis kodu uret."""
-    n = db.scalar(
-        select(sql_func.count(Order.id))
+    """T-1, T-2 ... benzersiz telafi siparis kodu uret.
+
+    ⚠ Eskiden telafi SAYISI + 1'di. Sayım global soft-delete süzgecinden
+    geçtiği için çöpe atılan telafi sayıdan düşüyor ve AYNI kod yeniden
+    veriliyordu (canlıda T-1 iki, T-8 üç kez). İki kişi aynı anda telafi
+    açınca da çakışıyordu. Artık silinenler dahil EN BÜYÜK kod + 1, işlem
+    boyunca kiracı başına kilitli.
+    """
+    import re
+    from sqlalchemy import text as _text
+    db.execute(_text("select pg_advisory_xact_lock(hashtext(:k))"),
+               {"k": f"telafi-kodu:{tenant_id}"})
+    numaralar = db.scalars(
+        select(Order.order_number)
         .where(Order.tenant_id == tenant_id, Order.is_telafi == True)  # noqa: E712
-    )
-    return f"T-{(n or 0) + 1}"
+        .execution_options(include_deleted=True)
+    ).all()
+    en_buyuk = max((int(m.group(1)) for n in numaralar
+                    if (m := re.search(r"T-(\d+)$", n or ""))), default=0)
+    return f"T-{en_buyuk + 1}"
 
 
 class CloneIn(BaseModel):
     line_item_ids: list[uuid.UUID]
     telafi_sebep: str | None = None
+    # Kalem başına telafi adedi (verilmezse kalemin kendi adedi). Örn. 2 adetlik
+    # kalemden yalnız 1'i hatalıysa 1 yazılır; kaynaktakinden fazla olamaz.
+    adetler: dict[uuid.UUID, int] | None = None
 
 
 @router.post("/from-order/{order_id}", response_model=None)
@@ -318,6 +335,12 @@ def create_from_order(
     src_lis = [li for li in (src.line_items or []) if str(li.id) in sec]
     if not src_lis:
         raise HTTPException(status_code=400, detail="Secilen urunler kaynak sipariste bulunamadi")
+    adetler = {str(k): v for k, v in (body.adetler or {}).items()}
+    for li in src_lis:
+        a = adetler.get(str(li.id))
+        if a is not None and not 1 <= a <= max(1, int(li.quantity or 1)):
+            raise HTTPException(status_code=400,
+                                detail=f"{(li.title or '')[:40]}: telafi adedi 1 ile {li.quantity or 1} arasında olmalı")
 
     kod = _yeni_telafi_kodu(db, user.tenant_id)
     telafi = Order(
@@ -353,18 +376,33 @@ def create_from_order(
             title=li.title,
             variant_title=li.variant_title,
             sku=li.sku,
-            quantity=li.quantity,
+            quantity=adetler.get(str(li.id)) or li.quantity,
             position=pos,
             properties=list(li.properties or []),
-            raw={"telafi": True},
+            raw={"telafi": True, "kaynak_line_item_id": str(li.id)},
             assigned_design_id=li.assigned_design_id,
             device_model_override=li.device_model_override,
+            # ⚠ Çift kılıfın 2. yarısı ve elle seçilmiş varyasyon da kopyalanmalı:
+            # eksik kalınca telafi kalıba yanlış renkte / tek kılıf olarak giriyordu.
+            assigned_design_id_2=li.assigned_design_id_2,
+            device_model_override_2=li.device_model_override_2,
+            kilif_varyasyon=li.kilif_varyasyon,
+            kilif_varyasyon_2=li.kilif_varyasyon_2,
             birincil_renk=li.birincil_renk,
             ikincil_renk=li.ikincil_renk,
             ucuncu_renk=li.ucuncu_renk,
             product_image_url=li.product_image_url,
         ))
 
+    # Kaynak siparişin geçmişine iz: telafi ne zaman, neden açıldı görülsün.
+    db.add(OrderStatusHistory(
+        tenant_id=user.tenant_id, order_id=src.id,
+        from_stage=src.current_stage, to_stage=src.current_stage,
+        action="telafi_olusturuldu",
+        note=f"Telafi {telafi.order_number} · {len(src_lis)} ürün"
+             + (f" · {telafi.telafi_sebep}" if telafi.telafi_sebep else ""),
+        created_by=user.full_name or user.email,
+    ))
     db.commit()
     db.refresh(telafi)
     return _ser_telafi(telafi, detay=True, db=db)

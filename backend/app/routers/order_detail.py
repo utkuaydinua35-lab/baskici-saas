@@ -517,8 +517,15 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
                 "current_stage_label": stage_info(t.current_stage)["label"],
                 "progress_percent": progress_percent(t.current_stage),
                 "item_count": len(t.line_items or []),
+                # Hangi kalemlerin telafisi — ürün satırında rozet için
+                # (yalnız sipariş detayından/klonla açılanlarda kayıtlı).
+                "kaynak_kalemler": sorted({
+                    str((li.raw or {}).get("kaynak_line_item_id"))
+                    for li in (t.line_items or [])
+                    if (li.raw or {}).get("kaynak_line_item_id")}),
             }
             for t in (getattr(order, "telafiler", None) or [])
+            if t.deleted_at is None
         ],
         "is_acil": order.is_acil,
         "is_tedarik_bekleme": order.is_tedarik_bekleme,

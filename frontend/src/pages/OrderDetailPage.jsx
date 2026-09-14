@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { AddOrderItemsDialog } from './DealersPage'
@@ -102,6 +103,11 @@ export default function OrderDetailPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [neighbors, navigate, location.state])
+
+  // Telafi: ürün seçimi (toplu) + oluşturma penceresi
+  const [telafiSecim, setTelafiSecim] = useState({})     // line_item_id -> true
+  const [telafiDiyalog, setTelafiDiyalog] = useState(null) // [line_item] | null
+  useEffect(() => { setTelafiSecim({}); setTelafiDiyalog(null) }, [orderId])
 
   const load = async () => {
     try {
@@ -317,7 +323,8 @@ export default function OrderDetailPage() {
           <div className="text-sm font-medium text-gray-200 mb-2">♻️ Bu siparişin telafileri</div>
           <div className="space-y-2">
             {detail.telafiler.map(t => (
-              <a key={t.id} href={`/telafiler`}
+              <a key={t.id} href={`/orders/${t.id}`}
+                onClick={e => { e.preventDefault(); navigate(`/orders/${t.id}`, { state: { from: location.pathname } }) }}
                 className="flex items-center justify-between gap-3 px-2 py-1.5 rounded bg-brand-input/50 hover:bg-brand-input text-sm">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">TELAFİ</span>
@@ -338,15 +345,46 @@ export default function OrderDetailPage() {
           <KalipOzeti lineItems={detail.line_items} />
 
           <div className="card">
-            <h2 className="text-sm font-medium text-gray-200 mb-3 flex items-center gap-2">
-              <span>📦</span> Ürünler <span className="text-gray-500">({detail.line_items.length})</span>
-            </h2>
+            {(() => {
+              const telafiAcik = !detail.is_telafi
+              const secili = detail.line_items.filter(li => telafiSecim[li.id])
+              const hepsi = detail.line_items.length > 0 && secili.length === detail.line_items.length
+              return (
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  {telafiAcik && (
+                    <input type="checkbox" checked={hepsi} aria-label="Tüm ürünleri seç" title="Tümünü seç"
+                      ref={el => { if (el) el.indeterminate = secili.length > 0 && !hepsi }}
+                      onChange={() => setTelafiSecim(hepsi ? {} : Object.fromEntries(detail.line_items.map(li => [li.id, true])))}
+                      className="w-4 h-4 cursor-pointer" style={{ accentColor: 'rgb(var(--accent-rgb))' }} />
+                  )}
+                  <h2 className="text-sm font-medium text-gray-200 flex items-center gap-2">
+                    <span>📦</span> Ürünler <span className="text-gray-500">({detail.line_items.length})</span>
+                  </h2>
+                  {telafiAcik && secili.length > 0 && (
+                    <div className="ml-auto flex items-center gap-2 animate-fadein">
+                      <span className="text-[11px] text-gray-400">{secili.length} ürün seçili</span>
+                      <button onClick={() => setTelafiSecim({})} className="text-[11px] text-gray-500 hover:text-gray-300">Temizle</button>
+                      <button onClick={() => setTelafiDiyalog(secili)}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 font-medium">
+                        ♻️ Seçilenlerden telafi oluştur
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
             <div className="space-y-2">
               {detail.line_items.map(li => (
                 <ProductRow
                   key={li.id}
                   item={li}
                   orderId={orderId}
+                  telafiAcik={!detail.is_telafi}
+                  secili={!!telafiSecim[li.id]}
+                  onSec={c => setTelafiSecim(s => ({ ...s, [li.id]: c }))}
+                  onTelafi={() => setTelafiDiyalog([li])}
+                  telafiler={(detail.telafiler || []).filter(t => (t.kaynak_kalemler || []).includes(li.id))}
+                  onOpenOrder={id => navigate(`/orders/${id}`, { state: { from: location.pathname } })}
                   onPatch={body => patchLineItem(li.id, body)}
                   onZoom={setLightbox}
                   onOpenMold={(mid) => navigate(`/kalip/${mid}`, { state: { from: location.pathname } })}
@@ -376,6 +414,14 @@ export default function OrderDetailPage() {
       </div>
 
       {lightbox && <Lightbox url={lightbox} onClose={() => setLightbox(null)} />}
+      {telafiDiyalog && (
+        <TelafiOlusturDialog orderId={orderId} kalemler={telafiDiyalog}
+          onClose={() => setTelafiDiyalog(null)}
+          onDone={(t) => {
+            setTelafiDiyalog(null); setTelafiSecim({}); load()
+            toast.success(`Telafi ${t.order_number} oluşturuldu — Telafiler'de listelendi`)
+          }} />
+      )}
       {emailOpen && (
         <EmailModal orderRef={detail.id || detail.order_number} orderNo={detail.order_number}
           customer={detail.customer_name} email={detail.customer_email || ''} onClose={() => setEmailOpen(false)} />
@@ -645,7 +691,8 @@ function KalipOzeti({ lineItems }) {
 }
 
 
-function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
+function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMolds,
+                      telafiAcik, secili, onSec, onTelafi, telafiler = [], onOpenOrder }) {
   const phoneModels = usePhoneModels()
   const toast = useToast()
   const [editModel, setEditModel] = useState(false)
@@ -712,8 +759,16 @@ function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMo
   }
 
   return (
-    <div className="bg-brand-input/40 border border-brand-border/60 rounded-lg p-3">
+    <div className={`border rounded-lg p-3 transition-colors ${secili
+      ? 'bg-amber-500/[0.06] border-amber-500/40' : 'bg-brand-input/40 border-brand-border/60'}`}>
       <div className="flex gap-3">
+        {telafiAcik && (
+          <label className="shrink-0 -ml-1 -my-1 px-1 py-1 flex items-start cursor-pointer" title="Telafi için seç">
+            <input type="checkbox" checked={!!secili} onChange={e => onSec?.(e.target.checked)}
+              aria-label={`${item.title} — telafi için seç`}
+              className="w-4 h-4 mt-0.5 cursor-pointer" style={{ accentColor: 'rgb(var(--accent-rgb))' }} />
+          </label>
+        )}
         {item.image_url ? (
           <button
             type="button"
@@ -888,6 +943,20 @@ function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMo
           className="text-[10px] text-purple-400/80 hover:text-purple-300 hover:bg-purple-500/10 rounded px-2 py-0.5 border border-purple-500/20 hover:border-purple-500/40 flex items-center gap-1"
           title="Bu ürünü askıya at (hatalı üretildi, stokta hazır bekliyor olarak işaretle)"
         >🎁 Askıya At</button>
+        {telafiAcik && (
+          <button onClick={onTelafi}
+            className="text-[10px] text-amber-300/90 hover:text-amber-200 hover:bg-amber-500/10 rounded px-2 py-0.5 border border-amber-500/25 hover:border-amber-500/45 flex items-center gap-1"
+            title="Bu ürün için telafi siparişi oluştur (Telafiler'de listelenir, kalıp ve paketlemeye girer)">
+            ♻️ Telafi oluştur
+          </button>
+        )}
+        {telafiler.map(t => (
+          <a key={t.id} href={`/orders/${t.id}`} onClick={e => { e.preventDefault(); onOpenOrder?.(t.id) }}
+            title={`${t.order_number} · ${t.current_stage_label}`}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 hover:bg-amber-500/25">
+            ♻️ {(t.order_number.match(/T-\d+$/) || [t.order_number])[0]} · {t.current_stage_label}
+          </a>
+        ))}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[10px] uppercase text-gray-600">Kalıp:</span>
           {(item.molds && item.molds.length > 0) ? (
@@ -1307,6 +1376,7 @@ const GECMIS_ETIKET = {
   musteri_model_degisikligi: '📱 Müşteri telefon modelini/ürününü değiştirdi',
   musteri_adres_degisikligi: '🏠 Müşteri teslimat adresini değiştirdi',
   adres_baglantisi: '🔗 Adres değişikliği bağlantısı üretildi',
+  telafi_olusturuldu: '♻️ Telafi oluşturuldu',
   model_baglantisi: '💬 Telefon modeli değişikliği bağlantısı üretildi',
   // E-posta / davet
   stok_eksik_email: '📧 Eksik stok bildirimi gönderildi',
@@ -1547,6 +1617,103 @@ const BAGLANTI_DURUM = {
 // görünüyordu. WhatsApp sekmesi kapanırsa operatörün tek çıkışı kalemi tekrar
 // kalıptan çıkarmaktı — yani üretimi bozmak. Bağlantı zaten geçerli; burada
 // tekrar açılabiliyor.
+const TELAFI_SEBEPLERI = ['Hatalı model', 'Yanlış hazırlandı', 'Hasarlı geldi', 'Kargo kaybı', 'Yanlış tasarım']
+
+// Sipariş detayından telafi — Telafiler sayfasındaki "Siparişten Klonla" ile
+// AYNI uç (/api/telafiler/from-order). Oluşan telafi Telafiler listesine,
+// kalıp oluşturucuya ve paketlemeye normal telafi olarak girer.
+function TelafiOlusturDialog({ orderId, kalemler, onClose, onDone }) {
+  const toast = useToast()
+  const [sebep, setSebep] = useState('')
+  const [adet, setAdet] = useState(() => Object.fromEntries(kalemler.map(k => [k.id, k.quantity || 1])))
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const tus = e => { if (e.key === 'Escape' && !busy) onClose() }
+    document.addEventListener('keydown', tus)
+    return () => document.removeEventListener('keydown', tus)
+  }, [busy, onClose])
+
+  const olustur = async () => {
+    setBusy(true)
+    try {
+      const t = await api.post(`/api/telafiler/from-order/${orderId}`, {
+        line_item_ids: kalemler.map(k => k.id),
+        telafi_sebep: sebep.trim() || null,
+        adetler: adet,
+      })
+      onDone(t)
+    } catch (e) {
+      toast.error(errMsg(e, 'Telafi oluşturulamadı'))
+      setBusy(false)
+    }
+  }
+
+  const toplam = kalemler.reduce((n, k) => n + (adet[k.id] || 1), 0)
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/60 sm:p-4 animate-fadein"
+      onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label="Telafi oluştur"
+        className="w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto bg-brand-card border border-brand-border rounded-t-2xl sm:rounded-2xl p-4 shadow-2xl animate-popin pb-[calc(1rem_+_env(safe-area-inset-bottom))] sm:pb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-gray-100">♻️ Telafi oluştur</h2>
+          <button onClick={onClose} disabled={busy} aria-label="Kapat"
+            className="w-9 h-9 grid place-items-center rounded-lg text-gray-500 hover:text-gray-200">✕</button>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {kalemler.map(k => {
+            const max = Math.max(1, k.quantity || 1)
+            const n = adet[k.id] || 1
+            return (
+              <div key={k.id} className="flex items-center gap-3 rounded-lg border border-brand-border bg-brand-input/40 p-2">
+                {k.image_url
+                  ? <img src={k.image_url} alt="" className="w-11 h-11 rounded object-cover shrink-0" />
+                  : <div className="w-11 h-11 rounded bg-brand-card border border-brand-border grid place-items-center text-gray-600 shrink-0">📱</div>}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-gray-200 truncate">{k.title}</div>
+                  <div className="text-[11px] text-accent truncate">📱 {resolveDeviceModel(k) || '—'}
+                    {k.assigned_design?.code && <span className="text-emerald-300 font-mono ml-1.5">{k.assigned_design.code}</span>}</div>
+                </div>
+                {max > 1 ? (
+                  <div className="flex items-center gap-1 shrink-0" title="Telafi adedi">
+                    <button onClick={() => setAdet(a => ({ ...a, [k.id]: Math.max(1, n - 1) }))} disabled={n <= 1}
+                      className="w-7 h-7 rounded bg-brand-input text-gray-300 disabled:opacity-30">−</button>
+                    <span className="w-8 text-center text-sm text-gray-100">{n}<span className="text-gray-500 text-[10px]">/{max}</span></span>
+                    <button onClick={() => setAdet(a => ({ ...a, [k.id]: Math.min(max, n + 1) }))} disabled={n >= max}
+                      className="w-7 h-7 rounded bg-brand-input text-gray-300 disabled:opacity-30">+</button>
+                  </div>
+                ) : <span className="text-xs text-gray-400 shrink-0">×1</span>}
+              </div>
+            )
+          })}
+        </div>
+
+        <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">Telafi sebebi</label>
+        <input value={sebep} onChange={e => setSebep(e.target.value)} placeholder="Örn. Hatalı model"
+          className="input !text-sm w-full" maxLength={200} />
+        <div className="flex gap-1.5 flex-wrap mt-2">
+          {TELAFI_SEBEPLERI.map(x => (
+            <button key={x} onClick={() => setSebep(x)}
+              className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${sebep === x
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40' : 'bg-brand-input text-gray-400 border-brand-border hover:text-gray-200'}`}>{x}</button>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-gray-500 mt-4 leading-relaxed">
+          Telafi siparişi müşterinin adres bilgileriyle açılır; Telafiler’de listelenir,
+          kalıp oluşturucuya ve paketlemeye normal sipariş gibi girer.
+        </p>
+        <div className="flex items-center justify-end gap-2 mt-3">
+          <button onClick={onClose} disabled={busy} className="btn-secondary !text-sm">Vazgeç</button>
+          <button onClick={olustur} disabled={busy} className="btn-primary !text-sm">
+            {busy ? 'Oluşturuluyor…' : `Telafi oluştur · ${toplam} adet`}
+          </button>
+        </div>
+      </div>
+    </div>, document.body)
+}
+
 function MusteriBaglantilari({ orderId }) {
   const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)

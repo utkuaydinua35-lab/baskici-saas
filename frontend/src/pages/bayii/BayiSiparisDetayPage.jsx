@@ -9,7 +9,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../lib/api'
 import GorselBuyutec from '../../components/GorselBuyutec'
-import { ADRES_ZORUNLU, kanalAdi, paraYaz, tarihYaz } from '../../lib/bayii'
+import {
+  ADRES_ZORUNLU, HB_KARGO_FIRMALARI, kanalAdi, kargoFirmaAdi, kargoKoduHatasi, kargoKoduTemizle,
+  paraYaz, tarihYaz,
+} from '../../lib/bayii'
 import { Bildirim, DurumRozet, Hata, Iskelet } from '../../components/BayiParcalar'
 import IlIlceSecici from '../../components/IlIlceSecici'
 
@@ -279,11 +282,18 @@ export default function BayiSiparisDetayPage() {
   const y = o?.yetkiler || {}
 
   const adresKaydet = async () => {
+    const hb = o?.kanal === 'hepsiburada'
+    if (hb) {
+      const kh = kargoKoduHatasi(adresForm.kargo_kodu)
+      if (kh) { setHata(kh); return }
+    }
     setBekle('adres'); setHata('')
     try {
       await api.patch(`/api/bayii/siparis/${id}/adres`, {
         ad_soyad: adresForm.ad || '', telefon: adresForm.telefon || '',
         adres: adresForm.adres || '', il: adresForm.il || '', ilce: adresForm.ilce || '',
+        ...(hb ? { kargo_kodu: kargoKoduTemizle(adresForm.kargo_kodu),
+                   kargo_firma: adresForm.kargo_firma || HB_KARGO_FIRMALARI[0].id } : {}),
       })
       setAdresDuzenle(false)
       setBildirim('Adres güncellendi')
@@ -442,7 +452,10 @@ export default function BayiSiparisDetayPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[13px] uppercase tracking-[0.12em] text-gray-500">Alıcı</h2>
           {y.adres_degistir && !adresDuzenle && (
-            <button onClick={() => { setAdresForm({ ...o.adres }); setAdresDuzenle(true) }}
+            <button onClick={() => {
+              setAdresForm({ ...o.adres, kargo_kodu: o.kargo_kodu || '', kargo_firma: o.kargo_firma || HB_KARGO_FIRMALARI[0].id })
+              setAdresDuzenle(true)
+            }}
                     className="text-[12.5px] text-accent hover:brightness-125 transition">
               Düzenle
             </button>
@@ -453,6 +466,17 @@ export default function BayiSiparisDetayPage() {
           <div className="space-y-3.5 animate-popin">
             <input value={adresForm.ad || ''} placeholder="Ad Soyad" className="input w-full"
                    onChange={(e) => setAdresForm((f) => ({ ...f, ad: e.target.value }))} />
+            {o.kanal === 'hepsiburada' && (
+              <div className="grid sm:grid-cols-[1fr_11rem] gap-3">
+                <input value={adresForm.kargo_kodu || ''} placeholder="Kargo entegrasyon kodu"
+                       autoComplete="off" spellCheck={false} className="input w-full font-mono"
+                       onChange={(e) => setAdresForm((f) => ({ ...f, kargo_kodu: e.target.value }))} />
+                <select value={adresForm.kargo_firma} className="input w-full"
+                        onChange={(e) => setAdresForm((f) => ({ ...f, kargo_firma: e.target.value }))}>
+                  {HB_KARGO_FIRMALARI.map((f) => <option key={f.id} value={f.id}>{f.ad}</option>)}
+                </select>
+              </div>
+            )}
             {adresGerek && (
               <>
                 <input value={adresForm.telefon || ''} placeholder="Telefon" className="input w-full"
@@ -483,9 +507,15 @@ export default function BayiSiparisDetayPage() {
                 {[o.adres.ilce, o.adres.il].filter(Boolean).join(' / ')}
               </div>
             )}
+            {o.kanal === 'hepsiburada' && (
+              <div className="text-[13px] text-gray-400">
+                Kargo kodu: <span className="font-mono text-gray-200">{o.kargo_kodu || '—'}</span>
+                <span className="text-gray-500"> · {kargoFirmaAdi(o.kargo_firma)}</span>
+              </div>
+            )}
             {!adresGerek && (
               <div className="text-[12px] text-gray-600 pt-1">
-                Trendyol siparişi — adres Trendyol tarafından iletilir.
+                {kanalAdi(o.kanal) || 'Trendyol'} siparişi — adres {kanalAdi(o.kanal) || 'Trendyol'} tarafından iletilir.
               </div>
             )}
             {!y.adres_degistir && (

@@ -39,16 +39,17 @@ from app.models import (
     Dealer, DealerTransaction, Design, LineItem, MoldItem, Notification,
     Order, OrderStatusHistory, User,
 )
-from app.services import storage
+from app.services import hepsiburada as hb, storage
 
 logger = logging.getLogger("bayii-portal")
 
 router = APIRouter(prefix="/api/bayii", tags=["bayii_portal"])
 _izin = Depends(require_permission("bayii_portal"))
 
-# Siparişin geldiği kanal. Trendyol adresi kendi tarafında tutuyor; bizden
-# yalnızca alıcı adı isteniyor. Diğerlerinde kargo için tam adres şart.
-KANALLAR = ("trendyol", "shopier", "instagram")
+# Siparişin geldiği kanal. Trendyol ve Hepsiburada adresi kendi tarafında
+# tutuyor; bizden yalnızca alıcı adı isteniyor. Diğerlerinde kargo için tam
+# adres şart. Hepsiburada ayrıca kargo ENTEGRASYON KODU ister (services/hepsiburada).
+KANALLAR = ("trendyol", "shopier", "instagram", hb.KANAL)
 ADRES_ZORUNLU = ("shopier", "instagram")
 # Bayi tasarımı JPG yükler (kullanıcıya söylenen kural); PNG/PDF de kabul.
 IZINLI_UZANTI = ("jpg", "jpeg", "png", "pdf")
@@ -215,6 +216,8 @@ def _ser(db: Session, o: Order, detay: bool = False) -> dict:
         "kargo_ucreti": raw.get("shipping_fee"),
         "para_birimi": raw.get("currency", "TRY"),
         "kargo_takip": (o.kargo_info or {}).get("tracking_number"),
+        "kargo_kodu": raw.get("kargo_entegrasyon_kodu"),
+        "kargo_firma": raw.get("kargo_firma"),
         "kalemler": [_ser_kalem(li, _kaliptaki()) for li in sorted(
             o.line_items or [], key=lambda x: x.position or 0)],
     }
@@ -621,6 +624,18 @@ def _adres_dogrula(kanal: str, ad: str, telefon: str, adres: str, il: str, ilce:
     }
 
 
+def _hepsiburada_dogrula(kanal: str, kod: str | None, firma: str | None) -> dict:
+    """Hepsiburada: entegrasyon kodu ZORUNLU, firma varsayılan Sürat.
+    Diğer kanallarda boş sözlük — raw'a hiçbir şey yazılmaz."""
+    if kanal != hb.KANAL:
+        return {}
+    try:
+        return {"kargo_entegrasyon_kodu": hb.kod_dogrula(kod),
+                "kargo_firma": hb.firma_dogrula(firma)}
+    except hb.KodHatasi as e:
+        raise HTTPException(400, str(e)) from e
+
+
 def _benzersiz_no(db: Session, d: Dealer, simdi: datetime) -> tuple[str, str]:
     """Benzersiz (external_id, order_number) uret.
 
@@ -669,6 +684,9 @@ def siparis_olustur(
     adres: str = Form(""),
     il: str = Form(""),
     ilce: str = Form(""),
+    # Yalnız Hepsiburada: kargo entegrasyon kodu (zorunlu) + firma (vars. Sürat)
+    kargo_kodu: str = Form(""),
+    kargo_firma: str = Form(""),
     aciklama: str = Form(""),
     d: Dealer = Depends(_bayi),
     db: Session = Depends(get_db),
@@ -725,6 +743,7 @@ def siparis_olustur(
             raise HTTPException(400, f"{i}. üründe adet 1 ile 99 arasında olmalı")
 
     sa = _adres_dogrula(kanal, ad_soyad, telefon, adres, il, ilce)
+    hb_alan = _hepsiburada_dogrula(kanal, kargo_kodu, kargo_firma)
     toplam_adet = sum(adet)
 
     simdi = datetime.now(UTC)
@@ -737,6 +756,7 @@ def siparis_olustur(
         "shipping_fee": str(Decimal(str(d.shipping_fee or 0))) if kanal in ADRES_ZORUNLU else "0",
         "shipping_address": sa,
         "customer_phone": sa.get("phone", ""),
+        **hb_alan,
     }
     o = Order(
         tenant_id=d.tenant_id, store_id=d.store_id,
@@ -778,6 +798,8 @@ def siparis_olustur(
     metin = " · ".join(ozet)
     _gecmise_yaz(db, o, d, "bayii_siparis",
                  f"Bayi portalinden açıldı · {metin} · kanal: {kanal}"
+                 + (f" · kargo kodu: {hb_alan['kargo_entegrasyon_kodu']} "
+                    f"({hb.firma_adi(hb_alan['kargo_firma'])})" if hb_alan else "")
                  + (f" · aynı tasarım yeniden kullanıldı: {', '.join(yeniden_kullanilan)}"
                     if yeniden_kullanilan else ""))
     _bildir(db, d, o, "Yeni bayi siparişi",
@@ -875,6 +897,9 @@ class AdresIn(BaseModel):
     adres: str = ""
     il: str = ""
     ilce: str = ""
+    # Hepsiburada: kod yanlış girildiyse barkod oluşmadan düzeltilebilsin
+    kargo_kodu: str | None = None
+    kargo_firma: str | None = None
 
 
 @router.patch("/siparis/{order_id}/adres", response_model=dict, dependencies=[_izin])
@@ -892,9 +917,17 @@ def adres_guncelle(order_id: uuid.UUID, req: AdresIn, d: Dealer = Depends(_bayi)
     kanal = raw.get("kanal") or "trendyol"
     yeni = _adres_dogrula(kanal, req.ad_soyad, req.telefon, req.adres, req.il, req.ilce)
     eski = raw.get("shipping_address") or {}
-    if eski == yeni:
+    hb_yeni = {}
+    if kanal == hb.KANAL:
+        hb_yeni = _hepsiburada_dogrula(
+            kanal,
+            raw.get("kargo_entegrasyon_kodu") if req.kargo_kodu is None else req.kargo_kodu,
+            raw.get("kargo_firma") if req.kargo_firma is None else req.kargo_firma)
+    hb_eski = {k: raw.get(k) for k in hb_yeni}
+    if eski == yeni and hb_eski == hb_yeni:
         return {"ok": True, "degisiklik": False}
 
+    raw.update(hb_yeni)
     raw["shipping_address"] = yeni
     raw["customer_phone"] = yeni.get("phone", "")
     o.raw = raw            # JSONB: yeni sözlük atanmalı, yerinde değişiklik yazılmaz
@@ -902,7 +935,10 @@ def adres_guncelle(order_id: uuid.UUID, req: AdresIn, d: Dealer = Depends(_bayi)
     _gecmise_yaz(db, o, d, "bayii_guncelleme",
                  "Adres güncellendi: " + " · ".join(filter(None, [
                      yeni.get("name"), yeni.get("phone"), yeni.get("city"),
-                     yeni.get("province")])))
+                     yeni.get("province")]))
+                 + (f" · kargo kodu: {hb_eski.get('kargo_entegrasyon_kodu')} → "
+                    f"{hb_yeni['kargo_entegrasyon_kodu']}"
+                    if hb_yeni and hb_eski != hb_yeni else ""))
     _bildir(db, d, o, "Bayi adresi güncelledi",
             f"{d.name} — #{o.order_number} · alıcı: {yeni['name']}")
     db.commit()

@@ -40,7 +40,37 @@ export const KANALLAR = [
   { id: 'trendyol',  ad: 'Trendyol',  renk: '#f27a1a', ipucu: 'Adres Trendyol’dan gelir — sadece alıcı adı yeterli' },
   { id: 'shopier',   ad: 'Shopier',   renk: '#8b5cf6', ipucu: 'Kargo için tam adres gerekli' },
   { id: 'instagram', ad: 'Instagram', renk: '#e1306c', ipucu: 'Kargo için tam adres gerekli' },
+  { id: 'hepsiburada', ad: 'Hepsiburada', renk: '#ff6000', ipucu: 'Adres Hepsiburada’dan gelir — alıcı adı ve kargo entegrasyon kodu gerekli' },
 ]
+
+/** Hepsiburada gönderisinin kargo firması. İlki varsayılan (Sürat).
+ *  Sunucudaki services/hepsiburada.KARGO_FIRMALARI ile AYNI anahtarlar. */
+export const HB_KARGO_FIRMALARI = [
+  { id: 'surat', ad: 'Sürat Kargo' },
+  { id: 'hepsijet', ad: 'HepsiJET' },
+  { id: 'aras', ad: 'Aras Kargo' },
+  { id: 'yurtici', ad: 'Yurtiçi Kargo' },
+  { id: 'mng', ad: 'MNG Kargo' },
+  { id: 'ptt', ad: 'PTT Kargo' },
+]
+
+export function kargoFirmaAdi(id) {
+  return HB_KARGO_FIRMALARI.find((f) => f.id === id)?.ad || HB_KARGO_FIRMALARI[0].ad
+}
+
+/** Kodu barkoda basılacak biçime getir — sunucuyla aynı kural: tüm boşluklar atılır. */
+export function kargoKoduTemizle(kod) {
+  return String(kod || '').replace(/\s+/g, '')
+}
+
+/** Geçerliyse null, değilse hata metni. */
+export function kargoKoduHatasi(kod) {
+  const k = kargoKoduTemizle(kod)
+  if (!k) return 'Kargo entegrasyon kodu zorunlu'
+  if (k.length < 6 || k.length > 40) return 'Kod 6-40 karakter olmalı'
+  if (!/^[A-Za-z0-9-]+$/.test(k)) return 'Kodda yalnız harf, rakam ve tire olabilir'
+  return null
+}
 
 export const ADRES_ZORUNLU = ['shopier', 'instagram']
 

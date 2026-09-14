@@ -443,8 +443,17 @@ export default function PackagingPage() {
     // opts.onaysiz: "p" kısayolu — onay penceresi atlanır (paketleme sırasında
     // her sipariş için tıklamak akışı bozuyor). Kısayol yalnızca bu ekranda ve
     // yazı alanına yazarken DEĞİL çalışıyor; ayrıca çift basmaya karşı busy var.
-    if (!opts.il && !opts.onaysiz &&
-        !confirm(`#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`)) return
+    // Hepsiburada: gönderi Hepsiburada'da zaten açık; yeni gönderi açılmaz,
+    // entegrasyon kodunun barkodu basılır.
+    const hb = order.hepsiburada
+    if (hb && !hb.kod) {
+      setMsg({ ok: false, text: '⚠ Hepsiburada siparişinde kargo entegrasyon kodu yok — bayiden kodu girmesini iste.' })
+      return
+    }
+    const onayMetni = hb
+      ? `#${order.order_number} Hepsiburada siparişi kargoya verilecek (${hb.firma_adi} · kod ${hb.kod}). Yeni gönderi AÇILMAZ, kodun barkodu basılır. Onaylıyor musun?`
+      : `#${order.order_number} siparişi kargoya verilecek (mağaza kargo firması). Onaylıyor musun?`
+    if (!opts.il && !opts.onaysiz && !confirm(onayMetni)) return
     setBusy(true); setMsg(null)
     try {
       const r = await api.post(`/api/packaging/order/${encodeURIComponent(order.id)}/kargo-gonder`,
@@ -669,6 +678,15 @@ export default function PackagingPage() {
 
             {/* Butonlar */}
             <div className="space-y-2 py-4">
+              {order.hepsiburada && (
+                <div className={`rounded-lg border px-3 py-2 text-xs ${order.hepsiburada.kod
+                  ? 'border-orange-500/30 bg-orange-500/10 text-orange-200'
+                  : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>
+                  <b>Hepsiburada</b> · {order.hepsiburada.firma_adi} · kod{' '}
+                  <span className="font-mono">{order.hepsiburada.kod || 'YOK'}</span>
+                  <div className="opacity-80 mt-0.5">Etikete Hepsiburada barkodu basılır, yeni gönderi açılmaz.</div>
+                </div>
+              )}
               <button onClick={downloadLabel} className="w-full btn-secondary !text-sm flex items-center justify-center gap-2">
                 🖨 KARGO ETİKETİ YAZDIR
               </button>

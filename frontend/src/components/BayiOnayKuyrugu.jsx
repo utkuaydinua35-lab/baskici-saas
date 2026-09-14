@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from './Toast'
-import { kanalAdi } from '../lib/bayii'
+import { kanalAdi, kargoFirmaAdi } from '../lib/bayii'
 import GorselBuyutec from './GorselBuyutec'
 
 // placement_rules.normalize_variation'in urettigi degerler
@@ -145,6 +145,12 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
                   {o.adres?.city && ` · ${o.adres.province || ''} ${o.adres.city}`}
                   {o.adres?.phone && ` · ${o.adres.phone}`}
                 </div>
+                {o.kanal === 'hepsiburada' && (
+                  <div className="text-[12px] text-gray-400 mt-1">
+                    Kargo kodu: <span className={`font-mono ${o.kargo_kodu ? 'text-gray-200' : 'text-red-400'}`}>
+                      {o.kargo_kodu || 'YOK'}</span> · {kargoFirmaAdi(o.kargo_firma)}
+                  </div>
+                )}
                 {o.not && <div className="text-[12px] text-gray-400 mt-1.5 italic">“{o.not}”</div>}
               </div>
               <button onClick={() => navigate(`/orders/${o.id}`)}

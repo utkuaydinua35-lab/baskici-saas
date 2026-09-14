@@ -332,3 +332,90 @@ def render_label_pdf(order, store_name: str | None = None,
     doc.save(buf)
     doc.close()
     return buf.getvalue()
+
+
+def render_hepsiburada_label_pdf(alici_maskeli: str, kargo_firma: str, kod: str,
+                                 barkod_yerlesim: dict | None = None) -> bytes:
+    """Hepsiburada gönderi etiketi — 10x15 cm, BARKOD ETİKETİ KAPLAR.
+
+    Üstte maskeli alıcı adı ("AYŞ* YIL***") ve kargo firması, kalan TÜM alan
+    entegrasyon kodunun Code128 barkodu, en altta kodun rakamları.
+    Adres/mağaza/sipariş no YOK: gönderi Hepsiburada'nın sisteminde kayıtlı,
+    şube paketi yalnız bu kodla tanır.
+
+    barkod_yerlesim: render_label_pdf'teki gibi — verilirse çubuklar çizilmez,
+    yer bilgisi yazılır ve ZPL yolu yazıcının ^BC komutuyla basar.
+    """
+    W, H = 10 * CM, 15 * CM
+    m = 0.4 * CM
+    ic = W - 2 * m
+
+    doc = fitz.open()
+    pg = doc.new_page(width=W, height=H)
+    yollar = _font_yollari()
+    if yollar:
+        pg.insert_font(fontname="F", fontfile=yollar[0])
+        pg.insert_font(fontname="FB", fontfile=yollar[1])
+        FN, FK = "F", "FB"
+        f_n, f_k = fitz.Font(fontfile=yollar[0]), fitz.Font(fontfile=yollar[1])
+        d = lambda t: t or ""                     # noqa: E731
+    else:
+        FN, FK = "helv", "hebo"
+        f_n, f_k = fitz.Font("helv"), fitz.Font("hebo")
+        d = _a
+
+    def ortala(metin, boyut, y, kalin=True, renk=(0, 0, 0)):
+        """Tek satır ortalı; SIĞMAZSA punto küçülür (sessizce taşmasın)."""
+        f = f_k if kalin else f_n
+        t = d(metin)
+        while boyut > 7 and f.text_length(t, fontsize=boyut) > ic:
+            boyut -= 0.5
+        x = m + (ic - f.text_length(t, fontsize=boyut)) / 2
+        pg.insert_text((x, y + boyut), t, fontsize=boyut,
+                       fontname=(FK if kalin else FN), color=renk)
+        return y + boyut * 1.3
+
+    y = m
+    y = ortala("ALICI", 9, y, kalin=False, renk=(.4, .4, .4))
+    y = ortala(alici_maskeli or "***", 24, y)
+    y += 4
+    y = ortala(_buyut(kargo_firma or ""), 22, y)
+    y += 8
+    pg.draw_line(fitz.Point(m, y), fitz.Point(W - m, y), width=1.2)
+    y += 10
+
+    kod = "".join(str(kod or "").split())
+    rakam_punto = 26
+    alt = H - m - rakam_punto * 1.3 - 4       # rakamların üst sınırı
+    bar_h = alt - y
+    if kod:
+        try:
+            genislikler = barcode128.pattern_widths(kod)
+            sessiz = 10
+            modul = ic / (sum(genislikler) + 2 * sessiz)
+            x = m + sessiz * modul
+            if barkod_yerlesim is not None:
+                barkod_yerlesim.update({
+                    "kod": kod, "x_pt": x, "y_pt": y,
+                    "w_pt": ic - 2 * sessiz * modul, "h_pt": bar_h,
+                    "modul_pt": modul, "sessiz_pt": sessiz * modul,
+                })
+            else:
+                bar = True
+                for g in genislikler:
+                    gen = g * modul
+                    if bar:
+                        pg.draw_rect(fitz.Rect(x, y, x + gen, y + bar_h),
+                                     color=None, fill=(0, 0, 0), width=0)
+                    x += gen
+                    bar = not bar
+            ortala(kod, rakam_punto, alt + 4)
+        except barcode128.BarcodeError:
+            ortala("BARKOD URETILEMEDI", 16, y + bar_h / 2)
+    else:
+        ortala("KARGO KODU YOK", 16, y + bar_h / 2)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+    return buf.getvalue()

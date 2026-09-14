@@ -13,7 +13,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
-import { ADRES_ZORUNLU, KANALLAR, paraYaz } from '../../lib/bayii'
+import {
+  ADRES_ZORUNLU, HB_KARGO_FIRMALARI, KANALLAR, kargoKoduHatasi, kargoKoduTemizle, paraYaz,
+} from '../../lib/bayii'
 import { Hata } from '../../components/BayiParcalar'
 import IlIlceSecici from '../../components/IlIlceSecici'
 import UrunSecici from '../../components/UrunSecici'
@@ -46,6 +48,9 @@ export default function BayiYeniSiparisPage() {
   const [il, setIl] = useState('')
   const [ilce, setIlce] = useState('')
   const [aciklama, setAciklama] = useState('')
+  // Yalnız Hepsiburada: entegrasyon kodu zorunlu, firma varsayılan Sürat
+  const [kargoKodu, setKargoKodu] = useState('')
+  const [kargoFirma, setKargoFirma] = useState(HB_KARGO_FIRMALARI[0].id)
 
   useEffect(() => {
     api.get('/api/bayii/modeller').then((d) => setModeller(d.items || [])).catch(() => {})
@@ -69,7 +74,9 @@ export default function BayiYeniSiparisPage() {
     () => urunler.reduce((t, u) => t + (u.adet || 0), 0), [urunler])
   const urunlerTamam = urunler.length > 0 && urunler.every((u) => (u.dosya || u.tasarim) && u.model)
   const adresGerek = ADRES_ZORUNLU.includes(kanal)
-  const aliciTamam = ad.trim() &&
+  const hbMi = kanal === 'hepsiburada'
+  const kodHatasi = hbMi ? kargoKoduHatasi(kargoKodu) : null
+  const aliciTamam = ad.trim() && !kodHatasi &&
     (!adresGerek || (telefon.trim() && adres.trim() && il.trim() && ilce.trim()))
   const adimTamam = [urunlerTamam, aliciTamam]
 
@@ -96,6 +103,10 @@ export default function BayiYeniSiparisPage() {
       fd.append('adres', adres.trim())
       fd.append('il', il.trim())
       fd.append('ilce', ilce.trim())
+      if (hbMi) {
+        fd.append('kargo_kodu', kargoKoduTemizle(kargoKodu))
+        fd.append('kargo_firma', kargoFirma)
+      }
       fd.append('aciklama', aciklama.trim())
       setBasarili(await api.postForm('/api/bayii/siparis', fd))
     } catch (e) {
@@ -214,7 +225,7 @@ export default function BayiYeniSiparisPage() {
             <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-2">
               Sipariş nereden geldi?
             </label>
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {KANALLAR.map((k) => (
                 <button key={k.id} type="button" onClick={() => setKanal(k.id)}
                         className={`rounded-xl border px-3 py-3 text-[13px] transition-all ${
@@ -239,6 +250,35 @@ export default function BayiYeniSiparisPage() {
             <input value={ad} onChange={(e) => setAd(e.target.value)}
                    placeholder="Ad Soyad" className="input w-full" />
           </div>
+
+          {/* Hepsiburada: kargo entegrasyon kodu (zorunlu) + firma */}
+          {hbMi && (
+            <div className="grid sm:grid-cols-[1fr_11rem] gap-3 animate-fadein">
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
+                  Kargo entegrasyon kodu <span className="text-red-400">*</span>
+                </label>
+                <input value={kargoKodu} onChange={(e) => setKargoKodu(e.target.value)}
+                       placeholder="Hepsiburada’daki kargo entegrasyon kodu"
+                       autoComplete="off" spellCheck={false}
+                       className="input w-full font-mono tracking-wide" />
+                <p className={`text-[12px] mt-1.5 ${kargoKodu && kodHatasi ? 'text-red-400' : 'text-gray-500'}`}>
+                  {kargoKodu && kodHatasi
+                    ? kodHatasi
+                    : 'Paketin barkodu bu kodla basılır — Hepsiburada sipariş detayından kopyala.'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5">
+                  Kargo firması
+                </label>
+                <select value={kargoFirma} onChange={(e) => setKargoFirma(e.target.value)}
+                        className="input w-full">
+                  {HB_KARGO_FIRMALARI.map((f) => <option key={f.id} value={f.id}>{f.ad}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Adres alanları yalnızca gerektiğinde açılır — akordeon */}
           <div className="grid transition-[grid-template-rows,opacity] duration-300 ease-out"

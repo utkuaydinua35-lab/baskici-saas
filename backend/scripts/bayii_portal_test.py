@@ -163,7 +163,7 @@ es("bayi siparis paneline giremez", 403,
    ISTEMCI.get("/api/orders", headers=H_A).status_code)
 
 print("\n── 2. Kanal kurallari ──")
-es("gecersiz kanal 400", 400, siparis_ac(H_A, kanal="hepsiburada").status_code)
+es("gecersiz kanal 400", 400, siparis_ac(H_A, kanal="ciceksepeti").status_code)
 es("ad soyad bos 400", 400, siparis_ac(H_A, ad_soyad="  ").status_code)
 es("shopier: adres eksik 400", 400, siparis_ac(H_A, kanal="shopier").status_code)
 r = siparis_ac(H_A, kanal="shopier", telefon="5551112233", adres="Test sk 1",

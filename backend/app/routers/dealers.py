@@ -873,6 +873,9 @@ def portal_onay_bekleyen(
             "para_birimi": (d.currency or "TRY").upper() if d else "TRY",
             "birim_fiyat": float(d.unit_price or 0) if d else 0.0,
             "kanal": raw.get("kanal"),
+            # Hepsiburada: onaylayan kodu görsün (paketlemede barkod bu kodla basılır)
+            "kargo_kodu": raw.get("kargo_entegrasyon_kodu"),
+            "kargo_firma": raw.get("kargo_firma"),
             "musteri": o.customer_name,
             "adres": raw.get("shipping_address") or {},
             "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,

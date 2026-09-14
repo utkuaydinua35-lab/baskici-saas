@@ -23,7 +23,7 @@ from app.models import (
     AccessoryProduct, CoupleProduct, Dealer, Design, LineItem, Mold, MoldItem, Order,
     Notification, OrderStatusHistory, Store, User,
 )
-from app.services import basit_kargo, label_pdf, packaging as pkg, storage, surat
+from app.services import basit_kargo, hepsiburada as hb, label_pdf, packaging as pkg, storage, surat
 from app import stages as stage_defs
 
 router = APIRouter(prefix="/api/packaging", tags=["packaging"],
@@ -316,6 +316,20 @@ def _surat_etiket_pdf(db: Session, order, ki: dict) -> bytes:
     return pdf, (yer or None)
 
 
+def _hepsiburada_etiket_pdf(order, barkod_yerlesim: dict | None = None) -> bytes | None:
+    """Hepsiburada kanalı siparişinin özel etiketi; kanal değilse None.
+
+    Kod yoksa 400: kodsuz basılan etiket şubede tanınmaz, paket geri döner."""
+    b = hb.bilgi(order)
+    if b is None:
+        return None
+    if not b["kod"]:
+        raise HTTPException(400, "Hepsiburada siparişinde kargo entegrasyon kodu yok — "
+                                 "bayiden kodu girmesini isteyin")
+    return label_pdf.render_hepsiburada_label_pdf(
+        b["alici"], b["firma_adi"], b["kod"], barkod_yerlesim=barkod_yerlesim)
+
+
 class KargoGonderRequest(BaseModel):
     il: str = ""    # manuel il (adres çözülemezse)
     ilce: str = ""  # manuel ilçe
@@ -343,7 +357,21 @@ def kargo_gonder(
 
     # 1) Gönderi + barkod. Mağaza DIRECT_SURAT seçtiyse Sürat'a DOĞRUDAN gidilir,
     #    aksi halde Basit Kargo agregatörü üzerinden.
-    if handler_code == SURAT_DOGRUDAN:
+    # ⚠ HEPSİBURADA: gönderi Hepsiburada'nın sisteminde ZATEN açık, şube paketi
+    # bayinin girdiği entegrasyon koduyla tanır. Burada ikinci bir gönderi
+    # açmak paketi o kayıttan koparırdı (müşteri takip göremez). Yalnız
+    # kayıt tutulur ve kodun barkodu basılır.
+    _hb = hb.bilgi(order)
+    if _hb is not None:
+        if not _hb["kod"]:
+            raise HTTPException(400, "Hepsiburada siparişinde kargo entegrasyon kodu yok — "
+                                     "bayiden kodu girmesini isteyin")
+        handler_code = f"hepsiburada:{_hb['firma']}"
+        res = {"ok": True, "provider": "hepsiburada", "takip_no": _hb["kod"],
+               "barkod_no": _hb["kod"], "handler_code": handler_code,
+               "handler_name": _hb["firma_adi"], "label_svg": None,
+               "id": None, "barcode": None, "status": "Hepsiburada entegrasyon kodu"}
+    elif handler_code == SURAT_DOGRUDAN:
         res = _surat_gonderi(order, body.il.strip() or None, body.ilce.strip() or None)
     else:
         res = basit_kargo.create_shipment(
@@ -412,11 +440,14 @@ def kargo_gonder(
         from_stage=prev_stage,
         to_stage=8,
         action="kargoya_verildi",
-        note=f"{handler_label} · takip {takip_no}" + ("" if shopify_ok else f" · Shopify yazılamadı: {shopify_err}"),
+        note=f"{handler_label} · takip {takip_no}"
+             + ("" if shopify_ok or store.platform != "shopify" else f" · Shopify yazılamadı: {shopify_err}"),
         created_by=user.full_name or user.email,
     ))
 
-    if not shopify_ok:
+    # Yalnız SHOPIFY mağazasında: bayi/vitrin siparişinde yazılacak bir Shopify
+    # siparişi yok — "yazılamadı" uyarısı her kargoda boşuna düşüyordu.
+    if not shopify_ok and store.platform == "shopify":
         # Sessiz kalmıyoruz: operatör kargoyu verdi ama mağaza tarafı eksik.
         _no = order.name or f"#{order.order_number or ''}"
         db.add(Notification(
@@ -578,7 +609,14 @@ def order_zpl(
 
     order = _resolve_order(db, order_ref, user.tenant_id)
     try:
-        if tip == "adres":
+        _hb_yer: dict = {}
+        _hb_pdf = _hepsiburada_etiket_pdf(order, _hb_yer)
+        if _hb_pdf is not None:
+            # Hepsiburada siparişinde adres etiketi de kargo etiketi de AYNI:
+            # entegrasyon kodunun barkodu. Başka etiket basmak kargoda karışır.
+            zpl = pdf_to_zpl(_hb_pdf, dpi=dpi, w_mm=w_mm or None, h_mm=h_mm or None,
+                             doldur=doldur, barkod=_hb_yer or None)
+        elif tip == "adres":
             # ⚠ barkod_yerlesim: çubuklar rasterde DEĞİL, yazıcının ^BC
             # komutuyla basılır. Rasterde çubuk kenarları noktaya yuvarlanıp
             # %26'ya varan genişlik sapması üretiyordu (Code128 toleransı ~%25)
@@ -624,6 +662,9 @@ def kargo_label(
     """
     order = _resolve_order(db, order_ref, user.tenant_id)
     ki = order.kargo_info or {}
+    _hb_pdf = _hepsiburada_etiket_pdf(order)
+    if _hb_pdf is not None:
+        return Response(content=_hb_pdf, media_type="application/pdf")
     if ki.get("provider") == "surat":
         # Tarayıcıdan/PDF olarak bakıldığında çubuklar ÇİZİLİ olmalı — burada
         # barkod_yerlesim İSTEMİYORUZ (o yalnız ZPL yolunda kullanılıyor).
@@ -644,7 +685,7 @@ def label(
     db: Session = Depends(get_db),
 ):
     order = _resolve_order(db, order_ref, user.tenant_id)
-    pdf = label_pdf.render_label_pdf(
+    pdf = _hepsiburada_etiket_pdf(order) or label_pdf.render_label_pdf(
         order, _etiket_magaza_adi(db, order),
         ayarlar=_etiket_ayarlari(db, order.tenant_id),
         site=_magaza_site(db, order),
@@ -842,6 +883,9 @@ def _order_payload(db, order) -> dict:
         "stage": si,                        # {no,key,label,icon}
         "progress_percent": stage_defs.progress_percent(order.current_stage or 1),
         "store_name": _store_name(db, order),
+        # Hepsiburada: ekran "gönderi açılmayacak, kod barkodu basılacak" desin
+        "kanal": raw.get("kanal"),
+        "hepsiburada": hb.bilgi(order),
         "items": items,
         "total_units": sum((li.quantity or 1) for li in (order.line_items or [])),
     }

@@ -150,6 +150,9 @@ class User(Base):
     password_login_disabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    # Bayi portalı: bayinin en son GÖRDÜĞÜ güncelleme notu sürümü (tanıtım bir
+    # kez gösterilsin, cihazdan bağımsız). NULL = hiç görmedi.
+    bayi_guncelleme_goruldu: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

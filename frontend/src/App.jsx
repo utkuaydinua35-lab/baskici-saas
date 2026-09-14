@@ -68,6 +68,7 @@ const BayiSiparislerPage = lazyWithReload(() => import('./pages/bayii/BayiSipari
 const BayiSiparisDetayPage = lazyWithReload(() => import('./pages/bayii/BayiSiparisDetayPage'))
 const BayiYeniSiparisPage = lazyWithReload(() => import('./pages/bayii/BayiYeniSiparisPage'))
 const BayiCariPage = lazyWithReload(() => import('./pages/bayii/BayiCariPage'))
+const BayiYeniliklerPage = lazyWithReload(() => import('./pages/bayii/BayiYeniliklerPage'))
 
 function PageLoader() {
   return (
@@ -96,6 +97,7 @@ export default function App() {
             <Route path="/bayii/siparis/:id" element={<BayiSiparisDetayPage />} />
             <Route path="/bayii/yeni" element={<BayiYeniSiparisPage />} />
             <Route path="/bayii/cari" element={<BayiCariPage />} />
+            <Route path="/bayii/yenilikler" element={<BayiYeniliklerPage />} />
           </Route>
         </Route>
 

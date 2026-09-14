@@ -346,6 +346,7 @@ export default function OrderDetailPage() {
                 <ProductRow
                   key={li.id}
                   item={li}
+                  orderId={orderId}
                   onPatch={body => patchLineItem(li.id, body)}
                   onZoom={setLightbox}
                   onOpenMold={(mid) => navigate(`/kalip/${mid}`, { state: { from: location.pathname } })}
@@ -644,9 +645,11 @@ function KalipOzeti({ lineItems }) {
 }
 
 
-function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
+function ProductRow({ item, orderId, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
   const phoneModels = usePhoneModels()
+  const toast = useToast()
   const [editModel, setEditModel] = useState(false)
+  const [waBusy, setWaBusy] = useState(false)
   // Couple ürün: 2 ayrı telefon modeli (1. ve 2. kılıf) ayrı ayrı değiştirilebilir.
   const isCouple = !!(item.is_couple || item.device_model_override_2 || (item.couple_models || [])[1] || resolveSecondModel(item))
   const _cm = item.couple_models || []
@@ -689,6 +692,25 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
     setEditModel(false)
   }
 
+  // Müşteriye telefon modeli değişikliği bağlantısı — kalıptaki "kalıptan çıkar
+  // → WhatsApp'tan bildir" ile AYNI şablon; kalem kalıptan ÇIKARILMAZ.
+  // Pencere İSTEKTEN ÖNCE açılır: await sonrası window.open'ı tarayıcılar
+  // "kullanıcı eylemi değil" sayıp engelliyor.
+  const modelDegisimGonder = async () => {
+    const w = window.open('about:blank', '_blank')
+    setWaBusy(true)
+    try {
+      const r = await api.post(`/api/orders/${orderId}/line-items/${item.id}/model-degisim`, {})
+      if (w) { w.opener = null; w.location.href = r.wa_url }
+      else toast.error('WhatsApp açılamadı — tarayıcı pencereyi engelledi. Mesaj "Müşteri Değişiklik Bağlantıları"nda.')
+      toast.success(`Bağlantı üretildi · ${r.gecerlilik_saat} saat geçerli`)
+      window.dispatchEvent(new Event('musteri-baglantilari:yenile'))
+    } catch (e) {
+      if (w) w.close()
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Bağlantı üretilemedi')
+    } finally { setWaBusy(false) }
+  }
+
   return (
     <div className="bg-brand-input/40 border border-brand-border/60 rounded-lg p-3">
       <div className="flex gap-3">
@@ -722,9 +744,18 @@ function ProductRow({ item, onPatch, onZoom, onOpenMold, onRemoveFromMolds }) {
             {item.device_model_override_2 && <span className="text-[10px] bg-pink-500/15 text-pink-300 px-1.5 py-0.5 rounded">↳ 2. kılıf: {item.device_model_override_2}</span>}
           </div>
           {!editModel ? (
-            <button onClick={openEdit} className="text-[10px] text-gray-500 hover:text-accent mt-1 flex items-center gap-1">
-              ✎ Cihaz Modelini Değiştir{isCouple ? ' (2 kılıf)' : ''}
-            </button>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <button onClick={openEdit} className="text-[10px] text-gray-500 hover:text-accent flex items-center gap-1">
+                ✎ Cihaz Modelini Değiştir{isCouple ? ' (2 kılıf)' : ''}
+              </button>
+              {!isCouple && !item.is_aksesuar && (
+                <button onClick={modelDegisimGonder} disabled={waBusy}
+                  title="Müşteriye WhatsApp'tan telefon modeli değişikliği bağlantısı gönder (kalıptan çıkarmaz)"
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50 flex items-center gap-1">
+                  {waBusy ? '⏳ Hazırlanıyor…' : '💬 Telefon modeli değiştir'}
+                </button>
+              )}
+            </div>
           ) : (
             <div className="mt-1 space-y-1">
               <datalist id={listId}>
@@ -1276,6 +1307,7 @@ const GECMIS_ETIKET = {
   musteri_model_degisikligi: '📱 Müşteri telefon modelini/ürününü değiştirdi',
   musteri_adres_degisikligi: '🏠 Müşteri teslimat adresini değiştirdi',
   adres_baglantisi: '🔗 Adres değişikliği bağlantısı üretildi',
+  model_baglantisi: '💬 Telefon modeli değişikliği bağlantısı üretildi',
   // E-posta / davet
   stok_eksik_email: '📧 Eksik stok bildirimi gönderildi',
   musteri_email: '📧 Müşteriye e-posta gönderildi',
@@ -1525,6 +1557,12 @@ function MusteriBaglantilari({ orderId }) {
     catch { setD({ model: [], adres: [] }) }
   }
   useEffect(() => { load() }, [orderId])
+  // Ürün satırından yeni bağlantı üretilince liste yenilensin
+  useEffect(() => {
+    const yenile = () => load()
+    window.addEventListener('musteri-baglantilari:yenile', yenile)
+    return () => window.removeEventListener('musteri-baglantilari:yenile', yenile)
+  }, [orderId])
 
   const ac = (url) => {
     if (!url) return toast.error('Siparişte geçerli bir cep telefonu yok')

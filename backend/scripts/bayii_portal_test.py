@@ -748,6 +748,20 @@ _rx = ISTEMCI.post("/api/bayii/siparis", headers=H_B,
                          "model": "IPHONE-15", "adet": "1", "tasarim_id": _secilen})
 es("baska bayinin tasarimi secilemez", 404, _rx.status_code)
 
+print("\n── Güncelleme notları ──")
+_d0 = ISTEMCI.get("/api/bayii/guncellemeler/durum", headers=H_A)
+es("durum: yeni hesap hiç görmedi (null)", (200, None), (_d0.status_code, _d0.json().get("goruldu")))
+es("görüldü 6", 6, ISTEMCI.post("/api/bayii/guncellemeler/goruldu", headers=H_A,
+                               json={"surum": 6}).json().get("goruldu"))
+es("geri sürüm gönderilirse GERİLEMEZ", 6, ISTEMCI.post(
+    "/api/bayii/guncellemeler/goruldu", headers=H_A, json={"surum": 2}).json().get("goruldu"))
+es("B bayisini etkilemez", None,
+   ISTEMCI.get("/api/bayii/guncellemeler/durum", headers=H_B).json().get("goruldu"))
+es("bayi olmayan 403", 403,
+   ISTEMCI.get("/api/bayii/guncellemeler/durum", headers=H_YABANCI).status_code)
+es("negatif sürüm 422", 422, ISTEMCI.post("/api/bayii/guncellemeler/goruldu", headers=H_A,
+                                         json={"surum": -1}).status_code)
+
 # ─── Temizlik ───────────────────────────────────────────────
 print("\n── Temizlik ──")
 ids = [d.id for d in db.scalars(select(Dealer).where(Dealer.name.like(f"{IZ}%"))).all()]

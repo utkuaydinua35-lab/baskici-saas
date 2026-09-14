@@ -5,16 +5,30 @@
  * Layout'a kosul eklemek yerine bagimsiz bir kabuk daha guvenli: yeni bir
  * yonetim menusu eklendiginde bayiye sizma ihtimali yok.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { SON_SURUM, bekleyenTanitimlar, yeniSayisi } from '../lib/bayiGuncellemeler'
+import BayiTanitim from './BayiTanitim'
 
 const MENU = [
   { yol: '/bayii', ad: 'Panel', tam: true, ikon: 'M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z' },
   { yol: '/bayii/siparisler', ad: 'Siparişlerim', ikon: 'M4 6h16M4 12h16M4 18h10' },
   { yol: '/bayii/yeni', ad: 'Yeni Sipariş', ikon: 'M12 5v14M5 12h14' },
   { yol: '/bayii/cari', ad: 'Cari Hesap', ikon: 'M3 7h18v10H3zM3 11h18' },
+  { yol: '/bayii/yenilikler', ad: 'Yenilikler', yenilik: true,
+    ikon: 'M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3ZM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z' },
 ]
+
+/** Menü öğesinin yanındaki "yeni" sayısı. */
+function YeniRozet({ sayi }) {
+  if (!sayi) return null
+  return (
+    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-[10px] font-semibold
+                     leading-[18px] text-center" style={{ color: 'var(--accent-fg)' }}>{sayi}</span>
+  )
+}
 
 function Ikon({ d }) {
   return (
@@ -50,6 +64,29 @@ export default function BayiLayout() {
     window.addEventListener('resize', olc)
     return () => window.removeEventListener('resize', olc)
   }, [konum.pathname])
+
+  // ── Güncelleme notları / tanıtım ──
+  // Sunucu bayinin hangi sürüme kadar gördüğünü tutar. Giriş sonrası ilk
+  // açılışta görülmemiş tanıtım varsa tur KENDİLİĞİNDEN açılır.
+  const [goruldu, setGoruldu] = useState(undefined)   // undefined = henüz bilinmiyor
+  const [tur, setTur] = useState(null)                // { liste, tekrar } — gösterilen güncellemeler
+  useEffect(() => {
+    let iptal = false
+    api.get('/api/bayii/guncellemeler/durum').then((r) => {
+      if (iptal) return
+      setGoruldu(r.goruldu)
+      const bekleyen = bekleyenTanitimlar(r.goruldu)
+      if (bekleyen.length) setTur({ liste: bekleyen, tekrar: false })
+    }).catch(() => {})
+    return () => { iptal = true }
+  }, [])
+  const turKapat = useCallback(() => {
+    setTur(null)
+    // Kapatınca da görüldü: tanıtım zorla izletilmez, Yenilikler'den tekrar açılır.
+    setGoruldu(SON_SURUM)
+    api.post('/api/bayii/guncellemeler/goruldu', { surum: SON_SURUM }).catch(() => {})
+  }, [])
+  const yeni = goruldu === undefined ? 0 : yeniSayisi(goruldu)
 
   useEffect(() => { setMenuAcik(false) }, [konum.pathname])
   useEffect(() => {
@@ -91,6 +128,7 @@ export default function BayiLayout() {
                           className="flex items-center gap-2 px-3.5 py-2">
                       <Ikon d={m.ikon} />
                       {m.ad}
+                      {m.yenilik && <YeniRozet sayi={yeni} />}
                     </span>
                   )}
                 </NavLink>
@@ -116,7 +154,11 @@ export default function BayiLayout() {
                 </button>
               </div>
               <button onClick={() => setMenuAcik((v) => !v)}
-                      className="md:hidden bayi-cikis" aria-label="Menü" aria-expanded={menuAcik}>
+                      className="md:hidden bayi-cikis relative" aria-label="Menü" aria-expanded={menuAcik}>
+                {yeni > 0 && !menuAcik && (
+                  <span aria-hidden className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent
+                                               shadow-[0_0_0_2px_rgb(10_6_19)]" />
+                )}
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
                      strokeLinecap="round" className="w-[18px] h-[18px]">
                   <path d={menuAcik ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16'} />
@@ -133,6 +175,7 @@ export default function BayiLayout() {
                     `flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm transition-colors ${
                       isActive ? 'bg-accent/15 text-white' : 'text-gray-400 hover:bg-white/5'}`}>
                   <Ikon d={m.ikon} />{m.ad}
+                  {m.yenilik && <span className="ml-auto"><YeniRozet sayi={yeni} /></span>}
                 </NavLink>
               ))}
               <div className="border-t border-white/5 mt-1 pt-1">
@@ -148,8 +191,9 @@ export default function BayiLayout() {
       </header>
 
       <main key={konum.pathname} className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-7 bayi-sayfa">
-        <Outlet />
+        <Outlet context={{ goruldu, tanitimAc: (g) => setTur({ liste: g, tekrar: true }) }} />
       </main>
+      {tur && <BayiTanitim guncellemeler={tur.liste} tekrar={tur.tekrar} onKapat={turKapat} />}
 
       <footer className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 text-[11px] text-gray-600">
         {tenant?.app_name || 'BERNZ'} · Bayii Paneli

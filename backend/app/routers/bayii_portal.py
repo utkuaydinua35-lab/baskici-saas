@@ -1022,3 +1022,28 @@ def iptal_talebi_geri_al(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
             f"{d.name} — #{o.order_number}")
     db.commit()
     return {"ok": True}
+
+
+# ─── Güncelleme notları / tanıtım ───────────────────────────
+# Notların İÇERİĞİ kodda (frontend/src/lib/bayiGuncellemeler.js); sunucu yalnız
+# bayinin hangi sürüme kadar gördüğünü tutar — telefondan ve bilgisayardan
+# giren bayi aynı tanıtımı iki kez görmesin.
+class GorulduIn(BaseModel):
+    surum: int = Field(..., ge=0, le=100_000)
+
+
+@router.get("/guncellemeler/durum", response_model=dict, dependencies=[_izin])
+def guncelleme_durumu(user: User = Depends(get_current_user), _d: Dealer = Depends(_bayi)):
+    return {"goruldu": user.bayi_guncelleme_goruldu,
+            "hesap_acildi": user.created_at.isoformat() if user.created_at else None}
+
+
+@router.post("/guncellemeler/goruldu", response_model=dict, dependencies=[_izin])
+def guncelleme_goruldu(req: GorulduIn, user: User = Depends(get_current_user),
+                       _d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    """Tanıtım kapatıldı/bitti. Sürüm yalnız İLERİ gider: eski sekmede kalmış
+    panel geri bir sürüm gönderirse görülmüş tanıtımlar tekrar açılmasın."""
+    u = db.get(User, user.id)
+    u.bayi_guncelleme_goruldu = max(u.bayi_guncelleme_goruldu or 0, req.surum)
+    db.commit()
+    return {"ok": True, "goruldu": u.bayi_guncelleme_goruldu}

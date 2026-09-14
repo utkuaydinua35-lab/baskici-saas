@@ -20,6 +20,13 @@ export default {
         // Opacity modifier'lar (accent/15 vb.) için RGB kanalları kullanılır.
         accent: 'rgb(var(--accent-rgb) / <alpha-value>)',
       },
+      // Kodda "border-white/8", "bg-amber-500/12" gibi ARA opaklıklar kullanılmış
+      // (bayi paneli, ~40 yer) ama Tailwind'in ölçeğinde yalnız 5'in katları var:
+      // bu sınıflar HİÇ ÜRETİLMİYORDU. Kenarlıklar varsayılan açık griye düşüyor
+      // (koyu zeminde parlak çizgi), rozetlerin zemini hiç çıkmıyordu.
+      opacity: {
+        6: '0.06', 8: '0.08', 12: '0.12', 35: '0.35', 45: '0.45', 55: '0.55', 65: '0.65', 85: '0.85',
+      },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },

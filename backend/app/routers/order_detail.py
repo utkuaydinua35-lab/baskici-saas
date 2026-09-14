@@ -1445,3 +1445,74 @@ def duplicate_order(
     db.commit()
     db.refresh(new)
     return {"id": str(new.id), "order_number": new.order_number}
+
+
+@router.post("/{order_ref}/line-items/{line_item_id}/model-degisim", response_model=dict)
+def kalem_model_degisim_baglantisi(
+    order_ref: str,
+    line_item_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kalem için müşteriye telefon modeli değişikliği bağlantısı + WhatsApp mesajı.
+
+    Kalıptaki "Kalıptan çıkar → WhatsApp'tan bildir" ile AYNI şablon ve AYNI
+    tek kullanımlık bağlantı (services/model_degisim). Fark: kalem kalıptan
+    ÇIKARILMAZ — ürün henüz kalıba girmemişse ya da operatör önce müşteriye
+    sormak istiyorsa üretimi bozmadan buradan gönderilir. Müşteri bağlantıdan
+    değiştirirse kalem o an bir kalıptaysa sayfa onu kalıptan kendisi çeker.
+
+    Mesaj türü kalemin VARYASYONUNDAN gelir (şeffaf/parlak/diğer): kalem bir
+    kalıptaysa o kalıbın varyasyonu, değilse kalemin kendi varyasyonu.
+    Ürün adı tasarımın/ürünün adı + varyasyon + model olarak yazılır.
+    """
+    from app.services import model_degisim as md_svc
+    from app.services import phone_models as _pm
+    from app.services.tr_metin import baslik as _tr
+
+    order = _resolve_order(db, order_ref, user.tenant_id)
+    li = next((x for x in (order.line_items or []) if x.id == line_item_id), None)
+    if li is None:
+        raise HTTPException(status_code=404, detail="Kalem bulunamadı")
+    if _is_couple_li(db, li):
+        # Müşteri sayfası yalnız kalemin 1. modelini değiştirebiliyor; çift
+        # kılıfta yanlış yarıyı değiştirmek yerine hiç göndermiyoruz.
+        raise HTTPException(status_code=409,
+                            detail="Çift kılıfta model değişikliği bağlantısı gönderilemez — elle değiştir.")
+
+    tel = md_svc.siparis_telefonu(order)
+    if not tel:
+        raise HTTPException(status_code=422, detail="Siparişte geçerli bir cep telefonu yok.")
+
+    model = (li.device_model_override or mold_planner.extract_phone_model(li) or "").strip()
+    if not model:
+        raise HTTPException(status_code=422, detail="Kalemin telefon modeli bilinmiyor — önce modeli gir.")
+
+    # Varyasyon: kalıptaysa kalıbın varyasyonu (müşteriye sunulan seçenek
+    # kalıba göre değişiyor), değilse kalemin kendi varyasyonu.
+    kalip_var = db.scalar(
+        select(Mold.variation).join(MoldItem, MoldItem.mold_id == Mold.id)
+        .where(MoldItem.line_item_id == li.id).order_by(Mold.created_at.desc()).limit(1))
+    kalem_var, _ = mold_planner.resolve_line_variation_detail(
+        li, li.assigned_design if li.assigned_design_id else None)
+    varyasyon = (kalip_var or kalem_var or "").strip()
+
+    model_adi = _pm.canonical_model_name(model) or model
+    tanim = " ".join(x for x in (_tr(varyasyon) if varyasyon else "", model_adi) if x)
+    baslik = (li.title or "").strip()
+    # Başlık zaten modeli içeriyorsa ("Kelebek - iPhone 15") tekrar yazma.
+    urun_adi = f"{baslik} ({tanim})" if baslik and model_adi.lower() not in baslik.lower() else (baslik or tanim)
+    urun_adi = urun_adi[:200]
+
+    talep = md_svc.talep_olustur(db, order, li, urun_adi=urun_adi, model=model,
+                                 mold_variation=varyasyon)
+    baglanti = md_svc.link(talep.token)
+    metin = md_svc.mesaj(order, urun_adi=urun_adi, model=model_adi,
+                         baglanti=baglanti, tur=talep.kalip_turu)
+    _log_history(db, order, user, action="model_baglantisi",
+                 note=f"Telefon modeli değişikliği bağlantısı üretildi · {urun_adi} "
+                      f"({md_svc.GECERLILIK_SAAT} sa)")
+    db.commit()
+    return {"link": baglanti, "message": metin, "phone": tel,
+            "wa_url": md_svc.wa_url(tel, metin), "kalip_turu": talep.kalip_turu,
+            "urun_adi": urun_adi, "gecerlilik_saat": md_svc.GECERLILIK_SAAT}

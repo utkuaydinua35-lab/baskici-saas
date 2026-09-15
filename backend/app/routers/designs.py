@@ -283,6 +283,35 @@ def get_design(
     return _serialize(d)
 
 
+def baski_pdf_baytlari(db: Session, store_id, raw: bytes, filename: str | None) -> bytes:
+    """Yüklenen baskı dosyasını PDF baytına çevir: PDF olduğu gibi, görsel CMYK
+    PDF'e (mağazanın K ofsetiyle). Onay kuyruğu da aynı çeviriyi kullanır."""
+    import io as _io
+    if not raw:
+        raise HTTPException(400, "Boş dosya")
+    if len(raw) > storage.MAX_FILE_SIZE:
+        raise HTTPException(
+            413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
+    name = (filename or "").lower()
+    if name.endswith(".pdf") or raw[:5] == b"%PDF-":
+        try:
+            import fitz as _fitz
+            if _fitz.open(stream=raw, filetype="pdf").page_count < 1:
+                raise ValueError
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "PDF okunamadı — dosya bozuk olabilir")
+        return raw
+    from app.services import product_studio as ps
+    try:
+        from PIL import Image as _Img
+        img = _Img.open(_io.BytesIO(raw))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Görsel okunamadı")
+    store = db.scalar(select(Store).where(Store.id == store_id))
+    koff = int(((store.config or {}).get("cmyk_k_offset", 5) if store else 5) or 0)
+    return ps.make_print_pdf(img, k_offset_pct=koff)
+
+
 @router.post("/{design_id}/print-file", response_model=None)
 def upload_print_file(
     design_id: uuid.UUID,
@@ -304,19 +333,7 @@ def upload_print_file(
         raise HTTPException(
             413, f"Dosya çok büyük (max {storage.MAX_FILE_SIZE // 1024 // 1024} MB)")
 
-    from app.services import product_studio as ps
-    name = (file.filename or "").lower()
-    if name.endswith(".pdf") or raw[:5] == b"%PDF-":
-        pdf_bytes = raw   # zaten baskıya hazır PDF
-    else:
-        try:
-            from PIL import Image as _Img
-            img = _Img.open(_io.BytesIO(raw))
-        except Exception:  # noqa: BLE001
-            raise HTTPException(400, "Görsel okunamadı")
-        store = db.scalar(select(Store).where(Store.id == design.store_id))
-        koff = int(((store.config or {}).get("cmyk_k_offset", 5) if store else 5) or 0)
-        pdf_bytes = ps.make_print_pdf(img, k_offset_pct=koff)
+    pdf_bytes = baski_pdf_baytlari(db, design.store_id, raw, file.filename)
 
     old = design.file_path
     saved = storage.save_design_file(user.tenant_id, design.id, pdf_bytes, f"{design.id}.pdf")

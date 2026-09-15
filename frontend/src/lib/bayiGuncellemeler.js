@@ -20,6 +20,24 @@ export const BASLANGIC_SURUMU = 5
 // tur: yeni | iyilestirme | duzeltme
 export const GUNCELLEMELER = [
   {
+    surum: 7,
+    tarih: '2026-09-15',
+    baslik: 'Önizleme görselini sonradan değiştir',
+    ozet: 'Önizleme görseli artık sipariş verdikten sonra da eklenebilir, değiştirilebilir ya da kaldırılabilir.',
+    degisiklikler: [
+      { tur: 'yeni', metin: 'Sipariş detayında her ürüne sonradan önizleme görseli ekleyebilirsin.' },
+      { tur: 'iyilestirme', metin: 'Yanlış önizleme görselini “Değiştir” ile yenileyebilir, “Kaldır” ile silebilirsin (sipariş üretime girene kadar).' },
+      { tur: 'iyilestirme', metin: 'Hepsiburada kargo kodunda hata varsa ekibimiz de düzeltebiliyor; değişiklik sana bildirilir.' },
+    ],
+    tanitim: [
+      {
+        baslik: 'Önizlemeyi sonradan ekle ya da değiştir',
+        metin: 'Siparişlerim → sipariş detayı → ürün kartında önizleme görselinin altındaki “Değiştir” veya “Kaldır”. Önizleme yoksa “+ Önizleme görseli ekle”. Baskıya girmez.',
+        gorsel: 'onizleme',
+      },
+    ],
+  },
+  {
     surum: 6,
     tarih: '2026-09-14',
     baslik: 'Hepsiburada siparişleri',

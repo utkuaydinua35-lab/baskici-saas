@@ -880,29 +880,39 @@ def portal_onay_bekleyen(
             "adres": raw.get("shipping_address") or {},
             "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
             "not": o.note,
-            "kalemler": [{
-                "id": str(li.id),
-                "model": li.device_model_override,
-                "adet": li.quantity or 1,
-                "varyasyon": li.kilif_varyasyon,
-                "tasarim_id": str(li.assigned_design_id) if li.assigned_design_id else None,
-                "tasarim_kodu": li.assigned_design.code if li.assigned_design else None,
-                # Bayi JPG yukluyor; baski PDF ister. Panel bunu uyari olarak
-                # gosterip indirme + PDF yukleme sunuyor.
-                "format": (li.assigned_design.file_format or "").lower()
-                if li.assigned_design else None,
-                "dosya": storage.get_design_url(li.assigned_design.file_path)
-                if li.assigned_design else None,
-                "gorsel": storage.get_thumbnail_url(
-                    li.assigned_design.file_path, li.assigned_design.file_format)
-                if li.assigned_design else None,
-                # ÖNİZLEME: bayinin yüklediği "kılıf üzerinde nasıl duracak"
-                # görseli. AYRI alanda — baskı her zaman "dosya"dan gider.
-                "onizleme": storage.onizleme_url(li.assigned_design.onizleme_path)
-                if li.assigned_design else None,
-            } for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
+            "kalemler": [_onay_kalemi(db, li)
+                         for li in sorted(o.line_items or [], key=lambda x: x.position or 0)],
         })
     return out
+
+
+def _onay_kalemi(db: Session, li: LineItem) -> dict:
+    d = li.assigned_design
+    raw = li.raw or {}
+    orijinal_id = raw.get("bayi_tasarim_id")
+    yonetici_dosyasi = bool(orijinal_id and d is not None and str(d.id) != orijinal_id)
+    orijinal = db.get(Design, uuid.UUID(orijinal_id)) if yonetici_dosyasi else None
+    return {
+        "id": str(li.id),
+        "model": li.device_model_override,
+        "adet": li.quantity or 1,
+        "varyasyon": li.kilif_varyasyon,
+        "tasarim_id": str(li.assigned_design_id) if li.assigned_design_id else None,
+        "tasarim_kodu": d.code if d else None,
+        # Bayi JPG yukluyor; baski PDF ister. Panel bunu uyari olarak
+        # gosterip indirme + PDF yukleme sunuyor.
+        "format": (d.file_format or "").lower() if d else None,
+        # Sürüm eki: dosya değişince tarayıcı eskisini göstermesin
+        "dosya": (f"{storage.get_design_url(d.file_path)}?v={d.file_size_bytes or 0}"
+                  if d and d.file_path else None),
+        "gorsel": storage.get_thumbnail_url(d.file_path, d.file_format) if d else None,
+        # ÖNİZLEME: bayinin yüklediği "kılıf üzerinde nasıl duracak"
+        # görseli. AYRI alanda — baskı her zaman "dosya"dan gider.
+        "onizleme": storage.onizleme_url((orijinal or d).onizleme_path) if d else None,
+        # Baskı dosyasını yönetici yüklediyse bayinin orijinaline geri dönülebilir
+        "yonetici_dosyasi": yonetici_dosyasi,
+        "orijinal_kodu": orijinal.code if orijinal else None,
+    }
 
 
 class KalemDuzeltIn(BaseModel):
@@ -1138,25 +1148,8 @@ def portal_duzeltilebilir(
             "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
             "asama": o.current_stage or 1,
             "kismen_kalipta": bool(kaliptaki),
-            "kalemler": [{
-                "id": str(li.id),
-                "model": li.device_model_override,
-                "adet": li.quantity or 1,
-                "varyasyon": li.kilif_varyasyon,
-                "tasarim_id": str(li.assigned_design_id) if li.assigned_design_id else None,
-                "tasarim_kodu": li.assigned_design.code if li.assigned_design else None,
-                "format": (li.assigned_design.file_format or "").lower()
-                if li.assigned_design else None,
-                "dosya": storage.get_design_url(li.assigned_design.file_path)
-                if li.assigned_design else None,
-                "gorsel": storage.get_thumbnail_url(
-                    li.assigned_design.file_path, li.assigned_design.file_format)
-                if li.assigned_design else None,
-                # ÖNİZLEME: bayinin yüklediği "kılıf üzerinde nasıl duracak"
-                # görseli. AYRI alanda — baskı her zaman "dosya"dan gider.
-                "onizleme": storage.onizleme_url(li.assigned_design.onizleme_path)
-                if li.assigned_design else None,
-            } for li in sorted(serbest, key=lambda x: x.position or 0)],
+            "kalemler": [_onay_kalemi(db, li)
+                         for li in sorted(serbest, key=lambda x: x.position or 0)],
         })
     return out
 
@@ -1447,3 +1440,186 @@ def _pm_gorunen_ad(db, tenant_id, model):
     """Siparişe yazılan model adı okunur olsun — ölçü aynı kalmak şartıyla."""
     from app.services.phone_models import gorunen_ad
     return gorunen_ad(db, tenant_id, model)
+
+
+
+# ─── Onay / düzeltme: kalemin BASKI DOSYASINI yükle, değiştir, geri al ─────
+# Eskiden "PDF yükle" tasarımın KENDİ dosyasının üzerine yazıyordu:
+#  • ilk PDF'ten sonra düğme kayboluyordu (format artık pdf) → HATALI yüklenen
+#    PDF değiştirilemiyordu,
+#  • bayi aynı tasarımı başka siparişlerde de kullandıysa O SİPARİŞLERİN baskı
+#    dosyası da sessizce değişiyordu,
+#  • bayinin orijinal dosyası siliniyordu, geri dönüş yoktu.
+# Artık yönetici dosyası AYRI bir tasarım olur ve yalnız bu kaleme bağlanır;
+# tekrar yüklenirse o dosya değişir, "geri al" bayinin orijinaline döner.
+
+def _kalem_getir(db: Session, user: User, order_id: uuid.UUID, line_item_id: uuid.UUID):
+    o = db.scalar(select(Order).where(
+        Order.id == order_id, Order.tenant_id == user.tenant_id,
+    ).options(selectinload(Order.line_items).selectinload(LineItem.assigned_design)))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    if o.is_iptal:
+        raise HTTPException(409, "Siparis iptal edilmis")
+    li = next((x for x in (o.line_items or []) if x.id == line_item_id), None)
+    if li is None:
+        raise HTTPException(404, "Kalem bulunamadi")
+    if _kalem_kalipta_mi(db, li):
+        raise HTTPException(409, "Kalem kalipta — once kaliptan cikar, sonra degistir")
+    return o, li
+
+
+def _baska_yerde_kullaniliyor(db: Session, design_id, li_id) -> bool:
+    from app.models import MoldItem as _MI
+    return bool(db.scalar(select(LineItem.id).where(
+        LineItem.assigned_design_id == design_id, LineItem.id != li_id).limit(1))) or bool(
+        db.scalar(select(_MI.id).where(_MI.design_id == design_id).limit(1)))
+
+
+def _benzersiz_kod(db: Session, store_id, taban: str) -> str:
+    taban = taban[:44]
+    for i in range(1, 200):
+        kod = f"{taban}-PDF" if i == 1 else f"{taban}-PDF{i}"
+        if not db.scalar(select(Design.id).where(Design.store_id == store_id, Design.code == kod)):
+            return kod
+    raise HTTPException(503, "Tasarim kodu uretilemedi")
+
+
+def _gecmis(db: Session, o: Order, user: User, not_: str) -> None:
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id, from_stage=o.current_stage,
+        to_stage=o.current_stage, action="bayii_kalem_duzeltildi",
+        note=not_ + ("" if o.bayii_onay_bekliyor else " · ONAY SONRASI"),
+        created_by=user.full_name or user.email))
+
+
+@router.post("/portal/siparis/{order_id}/kalem/{line_item_id}/baski-dosyasi", response_model=dict)
+def portal_baski_dosyasi_yukle(
+    order_id: uuid.UUID,
+    line_item_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Kalemin baskı dosyasını yükle ya da (hatalıysa) DEĞİŞTİR."""
+    from app.routers.designs import baski_pdf_baytlari
+    o, li = _kalem_getir(db, user, order_id, line_item_id)
+    pdf = baski_pdf_baytlari(db, o.store_id, file.file.read(), file.filename)
+
+    cur = li.assigned_design
+    raw = dict(li.raw or {})
+    orijinal_id = raw.get("bayi_tasarim_id") or (str(cur.id) if cur else None)
+    yerinde = (cur is not None and str(cur.id) != orijinal_id
+               and not _baska_yerde_kullaniliyor(db, cur.id, li.id))
+    if yerinde:
+        hedef = cur                      # daha önce BİZİM yüklediğimiz, yalnız bu kalemin
+        eylem = "baski dosyasi degistirildi"
+    else:
+        hedef = Design(tenant_id=user.tenant_id, store_id=o.store_id,
+                       code=_benzersiz_kod(db, o.store_id, (cur.code if cur else f"B{o.order_number}")),
+                       name=(cur.name if cur else None), file_path="", file_format="pdf",
+                       kalip_tipi=(cur.kalip_tipi if cur else None),
+                       onizleme_path=(cur.onizleme_path if cur else None))
+        db.add(hedef)
+        db.flush()
+        eylem = "baski dosyasi yuklendi"
+    kayit = storage.save_design_file(user.tenant_id, hedef.id, pdf, f"{hedef.id}.pdf")
+    hedef.file_path = kayit["relative_path"]
+    hedef.file_format = "pdf"
+    hedef.file_size_bytes = kayit["size"]
+    hedef.baski_dosyasi_yok = False
+    if not yerinde:
+        li.assigned_design_id = hedef.id
+    if orijinal_id:
+        raw["bayi_tasarim_id"] = orijinal_id
+        li.raw = raw
+    _gecmis(db, o, user, f"Kalem ({li.device_model_override or '—'}) {eylem}: {hedef.code}")
+    if not o.bayii_onay_bekliyor:
+        _bayiye_bildir(db, o, "Siparisinde duzeltme yapildi",
+                       f"#{o.order_number} · {li.device_model_override or ''} baskı dosyası güncellendi")
+    db.commit()
+    db.refresh(li)
+    return {"ok": True, "degistirildi": yerinde, "kalem": _onay_kalemi(db, li)}
+
+
+@router.delete("/portal/siparis/{order_id}/kalem/{line_item_id}/baski-dosyasi", response_model=dict)
+def portal_baski_dosyasi_geri_al(
+    order_id: uuid.UUID,
+    line_item_id: uuid.UUID,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Yöneticinin yüklediği baskı dosyasını KALDIR, bayinin orijinal tasarımına dön.
+    Kaldırılan dosya başka hiçbir yerde kullanılmıyorsa diskten de silinir."""
+    o, li = _kalem_getir(db, user, order_id, line_item_id)
+    raw = dict(li.raw or {})
+    orijinal_id = raw.get("bayi_tasarim_id")
+    cur = li.assigned_design
+    if not orijinal_id or cur is None or str(cur.id) == orijinal_id:
+        raise HTTPException(409, "Bu kalemde kaldırılacak yönetici dosyası yok")
+    orijinal = db.get(Design, uuid.UUID(orijinal_id))
+    if orijinal is None:
+        raise HTTPException(409, "Bayinin orijinal tasarımı artık yok — yeni dosya yükle")
+    li.assigned_design_id = orijinal.id
+    raw.pop("bayi_tasarim_id", None)
+    li.raw = raw
+    db.flush()
+    silindi = False
+    if not _baska_yerde_kullaniliyor(db, cur.id, li.id):
+        yol = cur.file_path
+        db.delete(cur)
+        silindi = True
+    _gecmis(db, o, user, f"Kalem ({li.device_model_override or '—'}) yönetici dosyası kaldırıldı: "
+                         f"{cur.code} → bayinin {orijinal.code}")
+    db.commit()
+    if silindi and yol:
+        storage.delete_design_file(yol)
+    db.refresh(li)
+    return {"ok": True, "silindi": silindi, "kalem": _onay_kalemi(db, li)}
+
+
+class KargoKoduIn(BaseModel):
+    kargo_kodu: str = Field(..., max_length=60)
+    kargo_firma: str | None = None
+
+
+@router.patch("/portal/siparis/{order_id}/kargo-kodu", response_model=dict)
+def portal_kargo_kodu(
+    order_id: uuid.UUID,
+    req: KargoKoduIn,
+    user: User = Depends(require_permission("bayii")),
+    db: Session = Depends(get_db),
+):
+    """Hepsiburada kargo entegrasyon kodunu YÖNETİCİ düzeltsin.
+
+    Eskiden yalnız bayi değiştirebiliyordu; bayi yanlış kodu fark etmeyince
+    onaylayan yönetici hatayı görse de düzeltemiyordu. Kargoya verildikten
+    sonra reddedilir (etiket basılmış olur)."""
+    from app.services import hepsiburada as hb
+    o = db.scalar(select(Order).where(Order.id == order_id, Order.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Siparis bulunamadi")
+    raw = dict(o.raw or {})
+    if raw.get("kanal") != hb.KANAL:
+        raise HTTPException(409, "Bu sipariş Hepsiburada siparişi değil")
+    if (o.kargo_info or {}).get("takip_no") or (o.current_stage or 0) >= 8:
+        raise HTTPException(409, "Sipariş kargoya verildi — kod artık değiştirilemez")
+    try:
+        kod = hb.kod_dogrula(req.kargo_kodu)
+        firma = hb.firma_dogrula(req.kargo_firma or raw.get("kargo_firma"))
+    except hb.KodHatasi as e:
+        raise HTTPException(400, str(e)) from e
+    eski = raw.get("kargo_entegrasyon_kodu")
+    if eski == kod and raw.get("kargo_firma") == firma:
+        return {"ok": True, "degismedi": True, "kargo_kodu": kod, "kargo_firma": firma}
+    raw.update(kargo_entegrasyon_kodu=kod, kargo_firma=firma)
+    o.raw = raw
+    db.add(OrderStatusHistory(
+        tenant_id=o.tenant_id, order_id=o.id, from_stage=o.current_stage, to_stage=o.current_stage,
+        action="bayii_kalem_duzeltildi",
+        note=f"Kargo entegrasyon kodu düzeltildi: {eski or '—'} → {kod} ({hb.firma_adi(firma)})",
+        created_by=user.full_name or user.email))
+    _bayiye_bildir(db, o, "Siparisinde duzeltme yapildi",
+                   f"#{o.order_number} · kargo kodu {kod}")
+    db.commit()
+    return {"ok": True, "kargo_kodu": kod, "kargo_firma": firma}

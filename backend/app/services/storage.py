@@ -270,7 +270,10 @@ def get_thumbnail_url(file_path: str | None, file_format: str | None) -> str | N
         thumb_path = file_path[:-4] + "_thumb.png"
         full = STORAGE_ROOT / thumb_path
         if full.exists():
-            return f"/storage/{thumb_path}"
+            # ⚠ SÜRÜM EKİ: baskı dosyası değiştirilince önizleme AYNI adla yeniden
+            # üretiliyor. Eki olmayan adres tarayıcıda ve Cloudflare'de (png 4 saat)
+            # önbellekte kalıyor, yeni PDF yüklense de ESKİ (hatalı) görsel görünüyordu.
+            return f"/storage/{thumb_path}?v={int(full.stat().st_mtime)}"
     return None
 
 

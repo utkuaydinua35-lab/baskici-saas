@@ -14,6 +14,7 @@ import { api } from '../lib/api'
 import { useToast } from './Toast'
 import { kanalAdi } from '../lib/bayii'
 import GorselBuyutec from './GorselBuyutec'
+import BaskiDosyasiAraclari from './BaskiDosyasiAraclari'
 import { TasarimSecici, VARYASYONLAR } from './BayiOnayKuyrugu'
 
 export default function BayiDuzeltmeKuyrugu({ onDegisti }) {
@@ -134,6 +135,7 @@ export default function BayiDuzeltmeKuyrugu({ onDegisti }) {
                           ⇄ Tasarım değiştir
                         </button>
                       </div>
+                      <BaskiDosyasiAraclari order={o} kalem={k} onDegisti={() => yukle()} />
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {VARYASYONLAR.map((v) => {

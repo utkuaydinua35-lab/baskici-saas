@@ -1047,3 +1047,45 @@ def guncelleme_goruldu(req: GorulduIn, user: User = Depends(get_current_user),
     u.bayi_guncelleme_goruldu = max(u.bayi_guncelleme_goruldu or 0, req.surum)
     db.commit()
     return {"ok": True, "goruldu": u.bayi_guncelleme_goruldu}
+
+
+# ─── Önizleme görseli: sipariş açıldıktan SONRA ekle / değiştir / kaldır ────
+# Eskiden önizleme yalnız sipariş açılırken eklenebiliyordu; unutulan ya da
+# yanlış seçilen görsel sonradan düzeltilemiyordu. BASKIYA GİRMEZ.
+@router.post("/siparis/{order_id}/kalem/{kalem_id}/onizleme", response_model=dict,
+             dependencies=[_izin])
+def onizleme_yukle(order_id: uuid.UUID, kalem_id: uuid.UUID,
+                   onizleme: UploadFile = File(...),
+                   d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    o = _siparis(db, d, order_id)
+    if not _yetkiler(db, o)["urun_degistir"]:
+        raise HTTPException(409, "Bu sipariş üretime girdi, önizleme değiştirilemez")
+    li = _kalem(o, kalem_id)
+    if li.assigned_design is None:
+        raise HTTPException(409, "Önce tasarım yüklenmeli")
+    if not _onizleme_kaydet(db, d, li.assigned_design, onizleme):
+        raise HTTPException(400, "Dosya boş")
+    _gecmise_yaz(db, o, d, "bayii_guncelleme",
+                 f"{li.device_model_override or 'Ürün'} önizleme görseli güncellendi")
+    db.commit()
+    return {"ok": True, "onizleme": storage.onizleme_url(li.assigned_design.onizleme_path)}
+
+
+@router.delete("/siparis/{order_id}/kalem/{kalem_id}/onizleme", response_model=dict,
+               dependencies=[_izin])
+def onizleme_kaldir(order_id: uuid.UUID, kalem_id: uuid.UUID,
+                    d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    o = _siparis(db, d, order_id)
+    if not _yetkiler(db, o)["urun_degistir"]:
+        raise HTTPException(409, "Bu sipariş üretime girdi, önizleme değiştirilemez")
+    li = _kalem(o, kalem_id)
+    ds = li.assigned_design
+    if ds is None or not ds.onizleme_path:
+        raise HTTPException(409, "Kaldırılacak önizleme yok")
+    yol = ds.onizleme_path
+    ds.onizleme_path = None
+    _gecmise_yaz(db, o, d, "bayii_guncelleme",
+                 f"{li.device_model_override or 'Ürün'} önizleme görseli kaldırıldı")
+    db.commit()
+    storage.delete_onizleme(yol)
+    return {"ok": True}

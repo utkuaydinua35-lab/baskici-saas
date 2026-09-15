@@ -5,13 +5,14 @@
  * borc ISLENMEZ. Burada varyasyon secilip onaylandiginda borc yazilir ve
  * siparis uretime akar.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from './Toast'
 import { kanalAdi, kargoFirmaAdi } from '../lib/bayii'
 import GorselBuyutec from './GorselBuyutec'
+import BaskiDosyasiAraclari from './BaskiDosyasiAraclari'
 
 // placement_rules.normalize_variation'in urettigi degerler
 export const VARYASYONLAR = ['SİYAH', 'BEYAZ', 'ŞEFFAF', 'PARLAK', 'MAGSAFE']
@@ -22,9 +23,6 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   const [secim, setSecim] = useState({})     // {line_item_id: varyasyon}
   const [kargo, setKargo] = useState({})     // {order_id: bool}
   const [bekle, setBekle] = useState('')
-  const [yukleniyor, setYukleniyor] = useState('')
-  const pdfRef = useRef(null)
-  const hedefRef = useRef(null)
   // Tasarim secici: bayi ayni gorseli her sipariste yeniden yukluyor ve
   // sunucuda ayni dosyanin kopyalari birikiyor. Onaylarken katalogdaki
   // tasarim secilirse yeni dosya hic olusmaz.
@@ -49,9 +47,6 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
   }, [])
   useEffect(() => { yukle() }, [yukle])
 
-  // JPG olarak yuklenen tasarim baskiya uygun degil. Yonetici disarida PDF
-  // uretip buradan yukler; /print-file gorseli de kabul edip CMYK PDF'e cevirir.
-  const pdfSec = (kalem) => { hedefRef.current = kalem; pdfRef.current?.click() }
 
   const tasarimSec = async (tasarim) => {
     const { order, kalem } = secici || {}
@@ -69,25 +64,27 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
     } catch (e) { toast.error(e.detail || 'Değiştirilemedi') }
   }
 
-  const pdfYukle = async (dosya) => {
-    const kalem = hedefRef.current
-    if (!dosya || !kalem?.tasarim_id) return
-    setYukleniyor(kalem.id)
+  // Kalemi yerinde güncelle — tüm kuyruğu yeniden çekip seçimleri sıfırlamasın
+  const kalemGuncelle = (orderId, yeni) => setListe((l) => l.map((o) => o.id !== orderId ? o
+    : { ...o, kalemler: o.kalemler.map((k) => (k.id === yeni.id ? { ...k, ...yeni } : k)) }))
+
+  const kargoKoduDuzelt = async (o) => {
+    const yeni = window.prompt('Kargo entegrasyon kodu:', o.kargo_kodu || '')
+    if (yeni == null || yeni.trim() === (o.kargo_kodu || '')) return
     try {
-      const fd = new FormData()
-      fd.append('file', dosya)
-      await api.postForm(`/api/designs/${kalem.tasarim_id}/print-file`, fd)
-      toast.success('Baskı dosyası güncellendi')
-      await yukle()
-    } catch (e) { toast.error(e.detail || 'Yüklenemedi') }
-    finally { setYukleniyor(''); hedefRef.current = null; if (pdfRef.current) pdfRef.current.value = '' }
+      const r = await api.patch(`/api/dealers/portal/siparis/${o.id}/kargo-kodu`, { kargo_kodu: yeni })
+      setListe((l) => l.map((x) => (x.id === o.id ? { ...x, kargo_kodu: r.kargo_kodu, kargo_firma: r.kargo_firma } : x)))
+      toast.success('Kargo kodu düzeltildi')
+    } catch (e) { toast.error(e.detail || 'Düzeltilemedi') }
   }
 
   const onayla = async (o) => {
     setBekle(o.id)
     try {
       const varyasyonlar = {}
-      for (const k of o.kalemler) varyasyonlar[k.id] = secim[k.id] || 'SİYAH'
+      // Ekranda işaretli görünenle AYNI değer: eskiden kalemin kendi varyasyonu
+      // (ör. ŞEFFAF) seçili GÖRÜNÜYOR ama onaya SİYAH gidiyordu.
+      for (const k of o.kalemler) varyasyonlar[k.id] = secim[k.id] || k.varyasyon || 'SİYAH'
       const r = await api.post(`/api/dealers/portal/onay-bekleyen/${o.id}`, {
         varyasyonlar, apply_shipping: !!kargo[o.id],
       })
@@ -104,8 +101,6 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
 
   return (
     <div className="card mb-5 animate-fadeinup !border-amber-500/25">
-      <input ref={pdfRef} type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
-             onChange={(e) => pdfYukle(e.target.files?.[0])} />
       <GorselBuyutec key={buyutec?.id || 'yok'}
                      acik={!!buyutec} kapat={() => setBuyutec(null)}
                      kaynak={buyutec?.dosya || buyutec?.gorsel}
@@ -149,6 +144,8 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
                   <div className="text-[12px] text-gray-400 mt-1">
                     Kargo kodu: <span className={`font-mono ${o.kargo_kodu ? 'text-gray-200' : 'text-red-400'}`}>
                       {o.kargo_kodu || 'YOK'}</span> · {kargoFirmaAdi(o.kargo_firma)}
+                    <button type="button" onClick={() => kargoKoduDuzelt(o)}
+                            className="ml-2 text-accent hover:brightness-125">Düzelt</button>
                   </div>
                 )}
                 {o.not && <div className="text-[12px] text-gray-400 mt-1.5 italic">“{o.not}”</div>}
@@ -205,22 +202,8 @@ export default function BayiOnayKuyrugu({ onOnaylandi }) {
                         ⇄ Tasarım değiştir
                       </button>
                     </div>
-                    {k.format && k.format !== 'pdf' && (
-                      <div className="flex items-center gap-2 mt-1.5">
-                        {k.dosya && (
-                          <a href={k.dosya} download
-                             className="text-[11.5px] text-accent hover:brightness-125 transition">
-                            ⬇ {k.format.toUpperCase()} indir
-                          </a>
-                        )}
-                        <span className="text-gray-700">·</span>
-                        <button type="button" onClick={() => pdfSec(k)}
-                                disabled={yukleniyor === k.id}
-                                className="text-[11.5px] text-accent hover:brightness-125 transition">
-                          {yukleniyor === k.id ? 'Yükleniyor…' : '⬆ PDF yükle'}
-                        </button>
-                      </div>
-                    )}
+                    <BaskiDosyasiAraclari order={o} kalem={k}
+                                          onDegisti={(yeni) => kalemGuncelle(o.id, yeni)} />
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {VARYASYONLAR.map((v) => {

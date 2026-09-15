@@ -53,6 +53,7 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
   const [arama, setArama] = useState('')
   const [bekle, setBekle] = useState('')
   const dosyaRef = useRef(null)
+  const onizlemeRef = useRef(null)
   // null | 'tasarim' | 'onizleme' — hangi görselin büyütüleceği
   const [buyut, setBuyut] = useState(null)
   // Tailwind sınıfları KAYNAKTA tam geçmeli; `sm:${...}` derlemeye girmez.
@@ -88,6 +89,30 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
       onBildirim('Adet güncellendi')
       await onGuncellendi()
     } catch (e) { onHata(e.detail || 'Güncellenemedi') }
+    finally { setBekle('') }
+  }
+
+  // Önizleme sipariş açıldıktan SONRA da eklenir/değiştirilir/kaldırılır (baskıya girmez)
+  const onizlemeYukle = async (f) => {
+    if (!f) return
+    setBekle('onizleme'); onHata('')
+    try {
+      const fd = new FormData()
+      fd.append('onizleme', f)
+      await api.postForm(`/api/bayii/siparis/${siparisId}/kalem/${kalem.id}/onizleme`, fd)
+      onBildirim(kalem.onizleme ? 'Önizleme değiştirildi' : 'Önizleme eklendi')
+      await onGuncellendi()
+    } catch (e) { onHata(e.detail || 'Önizleme yüklenemedi') }
+    finally { setBekle(''); if (onizlemeRef.current) onizlemeRef.current.value = '' }
+  }
+  const onizlemeKaldir = async () => {
+    if (!window.confirm('Önizleme görseli kaldırılsın mı?')) return
+    setBekle('onizleme'); onHata('')
+    try {
+      await api.del(`/api/bayii/siparis/${siparisId}/kalem/${kalem.id}/onizleme`)
+      onBildirim('Önizleme kaldırıldı')
+      await onGuncellendi()
+    } catch (e) { onHata(e.detail || 'Kaldırılamadı') }
     finally { setBekle('') }
   }
 
@@ -164,7 +189,27 @@ function KalemKarti({ kalem, sira, siparisId, cokluMu, duzenlenebilir, modeller,
               <div className="text-[10.5px] text-emerald-400/80 text-center mt-1">
                 Önizleme (basılmaz)
               </div>
+              {duzenlenebilir && (
+                <div className="flex items-center justify-center gap-2.5 mt-0.5 text-[11px]">
+                  <button onClick={() => onizlemeRef.current?.click()} disabled={bekle === 'onizleme'}
+                          className="text-accent hover:brightness-125 disabled:opacity-50 py-1">Değiştir</button>
+                  <button onClick={onizlemeKaldir} disabled={bekle === 'onizleme'}
+                          className="text-gray-500 hover:text-red-300 disabled:opacity-50 py-1">Kaldır</button>
+                </div>
+              )}
             </div>
+          )}
+          {duzenlenebilir && (
+            <input ref={onizlemeRef} type="file" accept=".jpg,.jpeg,.png,.webp" hidden
+                   onChange={(e) => onizlemeYukle(e.target.files?.[0])} />
+          )}
+          {duzenlenebilir && !kalem.onizleme && kalem.tasarim_id && (
+            <button onClick={() => onizlemeRef.current?.click()} disabled={bekle === 'onizleme'}
+                    className={`${kutuBoyut} flex-1 min-w-0 sm:flex-none rounded-2xl border border-dashed border-white/15
+                                text-[12px] text-gray-500 hover:text-gray-200 hover:border-emerald-500/40
+                                grid place-items-center text-center px-2 transition-colors disabled:opacity-50`}>
+              {bekle === 'onizleme' ? 'Yükleniyor…' : <span>+ Önizleme görseli ekle<br /><span className="text-[10.5px] text-gray-600">(basılmaz, isteğe bağlı)</span></span>}
+            </button>
           )}
         </div>
 

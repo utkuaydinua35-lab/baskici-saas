@@ -26,7 +26,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import require_permission
@@ -1023,10 +1023,74 @@ class BulkStatusRequest(BaseModel):
     status: str = Field(..., pattern="^(draft|active|archived)$")
 
 
+class StokTakibiRequest(BaseModel):
+    """Seçili ürünlerin TÜM varyantlarında stok takibini aç/kapat.
+
+    `tumu=True` ise seçim yerine mağazanın tamamına uygulanır — Shopify'dan
+    içe aktarılan katalogda binlerce varyant oluşuyor ve tek tek dolaşmak
+    mümkün değil.
+    """
+    ids: list[uuid.UUID] = Field(default_factory=list, max_length=500)
+    tumu: bool = False
+    track_stock: bool
+    # Takip AÇILIRKEN başlangıç adedi; kapatılırken anlamsız olduğu için yok
+    quantity: int | None = Field(None, ge=0, le=100000)
+
+
 class BulkDeleteRequest(BaseModel):
     ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
     # Kazara toplu silmeye karşı: panel bu alanı açıkça göndermek zorunda
     confirm: bool = False
+
+
+@router.post("/products/stok-takibi", response_model=dict)
+def stok_takibi_degistir(
+    body: StokTakibiRequest,
+    store_id: uuid.UUID = Query(...),
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Stok takibini toplu aç/kapat — TEK SQL, varyant sayısından bağımsız.
+
+    NEDEN AYRI UÇ: /inventory/bulk varyant kimliği listesi ister ve 500 ile
+    sınırlıdır. Shopify'dan gelen katalogda 207 ürün × ~36 telefon modeli =
+    ~7.400 varyant var; panelden tek tek işaretlemek imkânsız.
+
+    NEDEN ÖNEMLİ: siparişe göre üretilen ürünlerde varyantlar "stok takipli
+    ve 0" olarak içe aktarılmıştı. Sonuç: ürün sayfasında "Sepete Ekle"
+    kapalı, yapısal veride OutOfStock, Meta/Google katalogunda "out of
+    stock" — yani reklam yayınlanamıyor. Takibi kapatmak bunu düzeltir.
+    """
+    _get_storefront_store(db, user.tenant_id, store_id)
+    if not body.tumu and not body.ids:
+        raise HTTPException(422, "Ürün seçin ya da 'tümü' işaretleyin")
+
+    kosul = [CatalogProduct.store_id == store_id]
+    if not body.tumu:
+        kosul.append(CatalogProduct.id.in_(body.ids))
+    urun_ids = select(CatalogProduct.id).where(*kosul).scalar_subquery()
+
+    degerler: dict = {"track_stock": body.track_stock}
+    if body.track_stock and body.quantity is not None:
+        degerler["quantity"] = body.quantity
+
+    sonuc = db.execute(
+        sa_update(CatalogVariant)
+        .where(CatalogVariant.product_id.in_(urun_ids))
+        .values(**degerler)
+    )
+    db.commit()
+
+    urun_sayisi = db.scalar(
+        select(func.count()).select_from(CatalogProduct).where(*kosul)) or 0
+    activity.record(db, user, "stok_takibi_toplu", store_id=store_id,
+                    entity_type="urun",
+                    entity_label=f"{urun_sayisi} ürün · takip "
+                                 f"{'açık' if body.track_stock else 'kapalı'}",
+                    detail={"varyant": sonuc.rowcount, "tumu": body.tumu})
+    db.commit()
+    return {"urun": urun_sayisi, "varyant": sonuc.rowcount,
+            "track_stock": body.track_stock}
 
 
 @router.post("/products/bulk-delete", response_model=dict)

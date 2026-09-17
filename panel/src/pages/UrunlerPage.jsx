@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, getToken } from '../lib/api'
 import { useStore } from '../lib/store'
+import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
 
 // Ürünler — katalog yönetimi (Faz 4'te tam sayfa editöre genişleyecek).
@@ -18,6 +19,7 @@ export default function UrunlerPage() {
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   const [showTablo, setShowTablo] = useState(false)
   const [showSets, setShowSets] = useState(false)
+  const [showStok, setShowStok] = useState(false)
   const [showBulkSet, setShowBulkSet] = useState(false)
   const [showFixVariants, setShowFixVariants] = useState(false)
   // Arama + filtreler (istemci tarafında — liste zaten tamamı yüklü)
@@ -234,6 +236,9 @@ export default function UrunlerPage() {
             title="Her ürünü tabloda tek tek düzenle">📊 Tablo Düzenleyici</button>
           <button disabled={bulkBusy} onClick={() => setShowBulkSet(true)}
             className="px-3 py-1 rounded-lg text-xs bg-teal-500/10 text-teal-300 disabled:opacity-50">🧩 Varyant Seti Uygula</button>
+          <button disabled={bulkBusy} onClick={() => setShowStok(true)}
+            className="px-3 py-1 rounded-lg text-xs bg-sky-500/10 text-sky-300 disabled:opacity-50"
+            title="Siparişe göre üretilen ürünlerde stok takibi kapalı olmalı">📦 Stok Takibi</button>
           <button disabled={bulkBusy} onClick={bulkDelete}
             className="px-3 py-1 rounded-lg text-xs bg-red-500/10 text-red-300 disabled:opacity-50">🗑️ Sil</button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-xs text-panel-muted">Seçimi bırak</button>
@@ -241,6 +246,12 @@ export default function UrunlerPage() {
       )}
 
       {showSets && <VariantSetsModal storeId={storeId} onClose={() => setShowSets(false)} />}
+
+      {showStok && (
+        <StokTakibiModal storeId={storeId} ids={[...checked]}
+          onClose={() => setShowStok(false)}
+          onDone={() => { setShowStok(false); setChecked(new Set()); load() }} />
+      )}
 
       {showTablo && (
         <TabloDuzenleyici urunler={products.filter(p => checked.has(p.id))}
@@ -1230,5 +1241,111 @@ export function TabloDuzenleyici({ urunler, onClose, onDone }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// Stok takibi — toplu aç/kapat.
+//
+// NEDEN GEREKLİ: Shopify'dan içe aktarılan katalogda varyantlar "stok
+// takipli ve 0 adet" olarak geldi. Sonuç: ürün sayfasında "Sepete Ekle"
+// kapalı, yapısal veride OutOfStock, Meta/Google katalogunda "out of
+// stock" — yani reklam yayınlanamıyor. 207 ürün × ~36 model = ~7.400
+// varyant olduğu için envanter ekranından tek tek işaretlemek imkânsız;
+// bu yüzden sunucuda TEK sorguyla yapılıyor.
+function StokTakibiModal({ storeId, ids, onClose, onDone }) {
+  const toast = useToast()
+  const [kapsam, setKapsam] = useState('secili')   // secili | tumu
+  const [acik, setAcik] = useState(false)          // takip açık mı olsun
+  const [adet, setAdet] = useState('0')
+  const [busy, setBusy] = useState(false)
+
+  const uygula = async () => {
+    setBusy(true)
+    try {
+      const govde = { tumu: kapsam === 'tumu', ids: kapsam === 'tumu' ? [] : ids,
+                      track_stock: acik }
+      if (acik) govde.quantity = Math.max(0, parseInt(adet, 10) || 0)
+      const r = await api.post(
+        `/api/catalog/products/stok-takibi?store_id=${storeId}`, govde)
+      toast.success(`${r.urun} ürün · ${r.varyant} varyant güncellendi`)
+      onDone()
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Modal title="📦 Stok Takibi" onClose={onClose}>
+      <div className="space-y-4 text-sm">
+        <p className="text-xs text-panel-muted">
+          Siparişe göre ürettiğin ürünlerde stok takibi <b>kapalı</b> olmalı.
+          Takip açık ve adet 0 ise ürün vitrinde “tükendi” görünür, sepete
+          eklenemez ve <b>Meta/Google katalogunda reklam yayınlanmaz</b>.
+        </p>
+
+        <div>
+          <div className="text-xs text-panel-muted mb-1.5">Kapsam</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setKapsam('secili')}
+              className={`px-3 py-2 rounded-xl text-xs border transition ${kapsam === 'secili'
+                ? 'border-panel-accent bg-panel-accent/15 text-panel-ink'
+                : 'border-panel-border bg-white/[0.03] text-panel-muted'}`}>
+              Seçili {ids.length} ürün
+            </button>
+            <button onClick={() => setKapsam('tumu')}
+              className={`px-3 py-2 rounded-xl text-xs border transition ${kapsam === 'tumu'
+                ? 'border-panel-accent bg-panel-accent/15 text-panel-ink'
+                : 'border-panel-border bg-white/[0.03] text-panel-muted'}`}>
+              Mağazadaki tüm ürünler
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-panel-muted mb-1.5">Stok takibi</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => setAcik(false)}
+              className={`px-3 py-2 rounded-xl text-xs border transition ${!acik
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                : 'border-panel-border bg-white/[0.03] text-panel-muted'}`}>
+              Kapalı — her zaman satılabilir
+            </button>
+            <button onClick={() => setAcik(true)}
+              className={`px-3 py-2 rounded-xl text-xs border transition ${acik
+                ? 'border-amber-500/50 bg-amber-500/10 text-amber-300'
+                : 'border-panel-border bg-white/[0.03] text-panel-muted'}`}>
+              Açık — adede göre
+            </button>
+          </div>
+        </div>
+
+        {acik && (
+          <label className="block">
+            <span className="text-xs text-panel-muted">Her varyant için başlangıç adedi</span>
+            <input className="input mt-1" type="number" min="0" value={adet}
+              onChange={e => setAdet(e.target.value)} />
+            <span className="text-[11px] text-panel-muted">
+              Bu sayı SEÇİLEN her varyantın mevcut adedinin üzerine yazılır.
+            </span>
+          </label>
+        )}
+
+        <div className={`text-xs rounded-xl px-3 py-2 border ${acik
+          ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+          : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'}`}>
+          {kapsam === 'tumu' ? 'Mağazadaki tüm ürünlerin' : `Seçili ${ids.length} ürünün`}
+          {' '}tüm varyantlarında stok takibi <b>{acik ? 'AÇILACAK' : 'KAPATILACAK'}</b>
+          {acik && ` ve adet ${parseInt(adet, 10) || 0} yapılacak`}.
+        </div>
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="btn-ghost flex-1">Vazgeç</button>
+          <button onClick={uygula} disabled={busy || (kapsam === 'secili' && !ids.length)}
+            className="btn-primary flex-1">
+            {busy ? 'Uygulanıyor…' : 'Uygula'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }

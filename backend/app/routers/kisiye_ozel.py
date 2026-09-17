@@ -61,6 +61,7 @@ def create_order_approval(
     data["message"] = ap_svc.build_message(order, data["link"],
                                            revizyon=(ap.version or 1) > 1)
     data["phone"] = ap_svc.resolve_phone(order)
+    data["wa_url"] = ap_svc.wa_url(order, data["message"])
     data["customer_name"] = order.customer_name
     return data
 

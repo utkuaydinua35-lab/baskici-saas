@@ -1449,13 +1449,18 @@ function OnayTab({ orderId }) {
   }
   useEffect(() => { load() }, [orderId])
 
+  // Link üret + WhatsApp'ı hazır mesajla doğrudan aç (pencere istekten önce açılır,
+  // yoksa tarayıcı engeller). Telefon yoksa kopyalama alanları yedek.
   const create = async () => {
+    const w = window.open('about:blank', '_blank')
     setCreating(true)
     try {
-      await api.post(`/api/orders/${orderId}/approval`, {})
+      const r = await api.post(`/api/orders/${orderId}/approval`, {})
       await load()
-      toast.success('Onay linki oluşturuldu')
+      if (r.wa_url && w) { w.opener = null; w.location.href = r.wa_url; toast.success('Onay linki oluşturuldu — WhatsApp açıldı') }
+      else { if (w) w.close(); toast.success(r.wa_url ? 'Onay linki oluşturuldu' : 'Onay linki oluşturuldu — cep telefonu yok, mesajı kopyala') }
     } catch (e) {
+      if (w) w.close()
       toast.error(errMsg(e, 'Oluşturulamadı'))
     } finally { setCreating(false) }
   }
@@ -1469,12 +1474,12 @@ function OnayTab({ orderId }) {
     <div className="space-y-3">
       <PanelCard title="Müşteri Tasarım Onayı" icon="✅">
         <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
-          Baskı öncesi müşteriye tasarım onay linki. Aşağıdaki <b>telefon</b> ve <b>hazır mesajı</b> kopyalayıp
-          WhatsApp/Instagram'dan elle gönder.
+          Baskı öncesi müşteriye tasarım onay linki. Düğme linki üretir ve <b>WhatsApp'ı hazır mesajla açar</b>;
+          Instagram için mesajı kopyala.
         </p>
         <button onClick={create} disabled={creating}
           className="btn-primary !text-xs w-full disabled:opacity-50">
-          {creating ? 'Oluşturuluyor…' : latest ? '🔄 Yeni Versiyon Gönder' : '📤 Onaya Gönder'}
+          {creating ? 'Oluşturuluyor…' : latest ? '🔄 Yeni Versiyon Gönder (WhatsApp)' : '💬 Onaya Gönder (WhatsApp)'}
         </button>
       </PanelCard>
 
@@ -1491,6 +1496,12 @@ function OnayTab({ orderId }) {
             )}
             {latest.status === 'bekliyor' && (
               <>
+                {latest.wa_url && (
+                  <a href={latest.wa_url} target="_blank" rel="noopener noreferrer"
+                     className="flex items-center justify-center gap-1.5 w-full text-xs py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25">
+                    💬 WhatsApp'tan tekrar gönder
+                  </a>
+                )}
                 <CopyField label="Müşteri telefonu" value={data.phone || ''} mono />
                 {!data.phone && <div className="text-[10px] text-amber-400">⚠ Telefon bulunamadı — siparişten kontrol et</div>}
                 <CopyField label="Hazır mesaj (link dahil)" value={latest.message} />

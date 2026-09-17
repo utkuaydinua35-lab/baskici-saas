@@ -75,9 +75,14 @@ def telefon_normalize(ham: str | None) -> str | None:
 
 def siparis_telefonu(order: Order) -> str | None:
     """Siparişin ham verisinden normalleştirilmiş cep numarası."""
-    from app.services.approvals import resolve_phone
+    # İlk CEP numarası: müşteri kaydında sabit hat, adreste cep olabiliyor.
+    from app.services.approvals import _telefon_adaylari
 
-    return telefon_normalize(resolve_phone(order))
+    for aday in _telefon_adaylari(order):
+        tel = telefon_normalize(aday)
+        if tel:
+            return tel
+    return None
 
 
 # ─── Bağlantı ─────────────────────────────────────────────────────────────

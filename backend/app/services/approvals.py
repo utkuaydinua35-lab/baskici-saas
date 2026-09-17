@@ -34,14 +34,37 @@ def revisions_used(db: Session, order_id) -> int:
     ) or 0
 
 
-def resolve_phone(order: Order) -> str | None:
-    """Sipariş ham verisinden müşteri telefonu (Shopify customer/shipping)."""
+def _telefon_adaylari(order: Order) -> list[str]:
     raw = order.raw or {}
     cust = raw.get("customer") or {}
     ship = raw.get("shipping_address") or {}
-    for c in (cust.get("phone"), ship.get("phone"), raw.get("phone")):
-        if c and str(c).strip():
-            return str(c).strip()
+    bill = raw.get("billing_address") or {}
+    # customer_phone: bayi / telafi / elle açılan siparişler telefonu burada tutuyor
+    return [str(c).strip() for c in (cust.get("phone"), ship.get("phone"), raw.get("phone"),
+                                     raw.get("customer_phone"), bill.get("phone"))
+            if c and str(c).strip()]
+
+
+def resolve_phone(order: Order) -> str | None:
+    """Sipariş ham verisinden müşteri telefonu (Shopify customer/shipping)."""
+    aday = _telefon_adaylari(order)
+    return aday[0] if aday else None
+
+
+def wa_url(order: Order, metin: str | None) -> str | None:
+    """Hazır mesajla WhatsApp (wa.me) adresi — cep numarası yoksa None.
+
+    Adaylardan ilk CEP numarası seçilir: müşteri kaydında sabit hat, teslimat
+    adresinde cep numarası olabiliyor; ilkini körü körüne almak WhatsApp'ı
+    açılmayan bir numaraya yönlendiriyordu.
+    """
+    if not metin:
+        return None
+    from app.services import model_degisim as md
+    for aday in _telefon_adaylari(order):
+        tel = md.telefon_normalize(aday)
+        if tel:
+            return md.wa_url(tel, metin)
     return None
 
 

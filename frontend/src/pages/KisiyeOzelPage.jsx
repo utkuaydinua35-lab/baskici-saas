@@ -391,13 +391,25 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
   const [approval, setApproval] = useState(null)
   const [sending, setSending] = useState(false)
 
+  // Onay linki üretilir ve WhatsApp hazır mesajla DOĞRUDAN açılır (wa.me).
+  // Pencere İSTEKTEN ÖNCE açılır: await sonrası window.open'ı tarayıcılar
+  // "kullanıcı eylemi değil" sayıp engelliyor. Telefon yoksa pencere kapanır,
+  // kopyalama penceresi (telefon/mesaj/link) yedek olarak her zaman açılır.
   const sendApproval = async () => {
+    const w = window.open('about:blank', '_blank')
     setSending(true)
     try {
       const data = await api.post(`/api/kisiye-ozel/orders/${order.id}/approval`, {})
       setApproval(data)
-      toast.success('Onay linki oluşturuldu')
+      if (data.wa_url && w) {
+        w.opener = null; w.location.href = data.wa_url
+        toast.success('Onay linki oluşturuldu — WhatsApp açıldı')
+      } else {
+        if (w) w.close()
+        toast.success(data.wa_url ? 'Onay linki oluşturuldu' : 'Onay linki oluşturuldu — cep telefonu yok, mesajı kopyala')
+      }
     } catch (e) {
+      if (w) w.close()
       toast.error(typeof e?.detail === 'string' ? e.detail : 'Oluşturulamadı')
     } finally { setSending(false) }
   }
@@ -520,7 +532,7 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
                   <button onClick={sendApproval} disabled={sending || !anyReady}
                     className="btn-primary !text-xs w-full disabled:opacity-50"
                     title={anyReady ? 'Müşteriye tasarım onay linki oluştur' : 'Önce tasarım (PDF) yükleyin'}>
-                    {sending ? 'Oluşturuluyor…' : '📤 Müşteri Onayına Gönder'}
+                    {sending ? 'Oluşturuluyor…' : '💬 Müşteri Onayına Gönder (WhatsApp)'}
                   </button>
                   {!anyReady && (
                     <div className="text-[10px] text-gray-500 text-center mt-1">
@@ -566,9 +578,17 @@ function ApprovalModal({ data, onClose }) {
           <h2 className="text-base font-semibold text-gray-100">📤 Onay Linki Hazır</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
         </div>
-        <p className="text-[11px] text-gray-500 mb-4">
-          Telefon ve hazır mesajı kopyalayıp <b>WhatsApp/Instagram'dan elle</b> gönder.
+        <p className="text-[11px] text-gray-500 mb-3">
+          WhatsApp hazır mesajla açıldı. Açılmadıysa aşağıdaki düğmeyi kullan ya da mesajı kopyalayıp Instagram'dan gönder.
         </p>
+        {data.wa_url ? (
+          <a href={data.wa_url} target="_blank" rel="noopener noreferrer"
+             className="mb-4 flex items-center justify-center gap-2 w-full rounded-lg py-2 text-sm font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25">
+            💬 WhatsApp'tan gönder
+          </a>
+        ) : (
+          <div className="mb-4 text-[11px] text-amber-400">⚠ Siparişte geçerli bir cep telefonu yok — WhatsApp açılamaz, mesajı kopyala.</div>
+        )}
         <div className="space-y-3">
           <ApprovalCopyField label="Müşteri telefonu" value={data.phone || ''} mono />
           {!data.phone && <div className="text-[10px] text-amber-400 -mt-1">⚠ Telefon bulunamadı — siparişten kontrol et</div>}

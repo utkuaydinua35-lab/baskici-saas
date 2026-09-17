@@ -25,6 +25,45 @@ interface EventData {
   orderId?: string;
 }
 
+// ── Sunucu tarafı ikiz gönderim (CAPI beacon) ─────────────────
+//
+// Tarayıcı pikseli reklam engelleyici ve iOS izleme kısıtında susuyor.
+// Aynı olayı KENDİ alan adımızdaki bir uca da yolluyoruz; oradan Meta'ya
+// sunucu gönderiyor. İstek birinci taraf olduğu için kesilmiyor, üstelik
+// sunucu gerçek IP/User-Agent ekliyor. AYNI event_id kullanıldığı için
+// Meta iki kaynağı tekilleştirir — çift sayım OLMAZ.
+function olayKimligi(ad: string): string {
+  const r = (globalThis.crypto?.randomUUID?.() || String(Math.random())).slice(0, 18);
+  return `${ad}_${Date.now().toString(36)}_${r}`;
+}
+
+function cerez(ad: string): string | undefined {
+  try {
+    return document.cookie.split("; ").find((c) => c.startsWith(`${ad}=`))?.split("=")[1];
+  } catch { return undefined; }
+}
+
+function beacon(olay: string, eventId: string, veri: {
+  deger?: number; para?: string; icerik?: string[]; adet?: number;
+}) {
+  try {
+    const govde = JSON.stringify({
+      olay, event_id: eventId, url: location.href,
+      deger: veri.deger, para: veri.para || "TRY",
+      icerik: veri.icerik || [], adet: veri.adet,
+      fbp: cerez("_fbp"), fbc: cerez("_fbc"),
+    });
+    // sendBeacon: sayfa kapanırken bile gider ve akışı bloklamaz
+    const blob = new Blob([govde], { type: "application/json" });
+    if (!navigator.sendBeacon?.("/api/piksel", blob)) {
+      fetch("/api/piksel", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: govde, keepalive: true,
+      }).catch(() => {});
+    }
+  } catch { /* izleme asla akışı bozmaz */ }
+}
+
 function contents(items?: Item[]) {
   return (items || []).map((i) => ({
     id: i.id, quantity: i.quantity, item_price: i.price,
@@ -39,10 +78,12 @@ function ga4Items(items?: Item[]) {
 
 export function trackViewContent(item: Item) {
   const currency = "TRY";
+  const eid = olayKimligi("vc");
   window.fbq?.("track", "ViewContent", {
     content_ids: [item.id], content_type: "product",
     value: item.price, currency,
-  });
+  }, { eventID: eid });
+  beacon("ViewContent", eid, { deger: item.price, para: currency, icerik: [item.id] });
   window.gtag?.("event", "view_item", {
     currency, value: item.price, items: ga4Items([item]),
   });
@@ -55,10 +96,13 @@ export function trackViewContent(item: Item) {
 export function trackAddToCart(item: Item) {
   const currency = "TRY";
   const value = item.price * item.quantity;
+  const eid = olayKimligi("atc");
   window.fbq?.("track", "AddToCart", {
     content_ids: [item.id], content_type: "product", value, currency,
     contents: contents([item]),
-  });
+  }, { eventID: eid });
+  beacon("AddToCart", eid, { deger: value, para: currency,
+    icerik: [item.id], adet: item.quantity });
   window.gtag?.("event", "add_to_cart", {
     currency, value, items: ga4Items([item]),
   });
@@ -69,12 +113,15 @@ export function trackAddToCart(item: Item) {
 
 export function trackInitiateCheckout(data: EventData) {
   const currency = data.currency || "TRY";
+  const eid = olayKimligi("ic");
+  const adet = (data.items || []).reduce((s, i) => s + i.quantity, 0);
   window.fbq?.("track", "InitiateCheckout", {
     value: data.value, currency, contents: contents(data.items),
     content_ids: (data.items || []).map((i) => i.id),
-    content_type: "product",
-    num_items: (data.items || []).reduce((s, i) => s + i.quantity, 0),
-  });
+    content_type: "product", num_items: adet,
+  }, { eventID: eid });
+  beacon("InitiateCheckout", eid, { deger: data.value, para: currency,
+    icerik: (data.items || []).map((i) => i.id), adet });
   window.gtag?.("event", "begin_checkout", {
     currency, value: data.value, items: ga4Items(data.items),
   });

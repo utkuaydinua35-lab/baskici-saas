@@ -2295,6 +2295,78 @@ def presence_ping(
     return {"ok": True}
 
 
+# ─── Meta piksel beacon'u ────────────────────────────────────
+#
+# Sepet TARAYICIDA tutulduğu için AddToCart/ViewContent sunucuya hiç
+# uğramıyordu ve yalnız facebook.net üzerinden gidiyordu — reklam
+# engelleyicilerin ve iOS izleme kısıtının kestiği tam olarak o yol.
+# İstek BİZİM alan adımıza geldiğinde kesilmiyor; üstelik sunucu gerçek
+# IP ve User-Agent'ı ekleyebiliyor. Tarayıcı aynı olayı aynı event_id ile
+# gönderdiği için Meta ikisini tekilleştirir, çift sayım olmaz.
+
+class PikselOlayi(BaseModel):
+    olay: str = Field(..., max_length=40)
+    event_id: str = Field(..., min_length=6, max_length=100)
+    url: str | None = Field(None, max_length=500)
+    deger: float | None = Field(None, ge=0, le=1_000_000)
+    para: str | None = Field(None, max_length=8)
+    icerik: list[str] = Field(default_factory=list, max_length=50)
+    adet: int | None = Field(None, ge=1, le=1000)
+    fbp: str | None = Field(None, max_length=120)
+    fbc: str | None = Field(None, max_length=400)
+    eposta: str | None = Field(None, max_length=200)
+
+
+piksel_rate_limit = make_rate_limiter(max_hits=40, window=60.0)
+
+
+@router.post("/{store_slug}/piksel")
+def piksel_olayi(
+    store_slug: str,
+    body: PikselOlayi,
+    request: Request,
+    _rl: None = Depends(piksel_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Tarayıcıdan gelen olayı sunucu tarafından Meta'ya ilet.
+
+    Uç herkese açık olduğu için sıkı tutulur: olay adı BEYAZ LİSTEDEN,
+    tutar ve içerik sayısı sınırlı, IP ve User-Agent GÖVDEDEN DEĞİL
+    istekten alınır (istemci kendi IP'sini uyduramasın).
+    """
+    from app.services import meta_capi
+
+    if body.olay not in meta_capi.BEACON_OLAYLARI:
+        return {"ok": False, "sebep": "bilinmeyen olay"}
+
+    store = _resolve_store(db, store_slug)
+    ip = (request.headers.get("cf-connecting-ip")
+          or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+          or (request.client.host if request.client else None))
+
+    user_data = {
+        "client_ip_address": ip,
+        "client_user_agent": request.headers.get("user-agent"),
+        "fbp": body.fbp,
+        "fbc": body.fbc,
+        "em": meta_capi._h(body.eposta) if body.eposta else None,
+        "external_id": meta_capi._h(body.eposta) if body.eposta else None,
+    }
+    custom: dict = {"content_type": "product"}
+    if body.icerik:
+        custom["content_ids"] = [i[:100] for i in body.icerik[:50]]
+    if body.deger is not None:
+        custom["value"] = body.deger
+        custom["currency"] = (body.para or "TRY")[:8]
+    if body.adet:
+        custom["num_items"] = body.adet
+
+    gonderildi = meta_capi.send_event(
+        store, event_name=body.olay, event_id=body.event_id,
+        user_data=user_data, custom_data=custom, source_url=body.url)
+    return {"ok": gonderildi}
+
+
 # ─── BERNZ Support — kurallı 7/24 asistan uçları ─────────────
 # AI değildir: sistem verisiyle (sipariş, katalog, ayarlar) çalışan kurallı
 # yanıtlar. Vitrindeki sohbet balonu bu uçları çağırır.

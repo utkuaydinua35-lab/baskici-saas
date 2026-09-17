@@ -82,6 +82,19 @@ try:
     es("listede her versiyonda wa_url", [True, True], [bool(x.get("wa_url")) for x in liste])
     es("revizyon (v2) mesajı adreste", True, "tekrar hazırladık" in unquote(liste[0]["wa_url"]))
 
+    print("\n── Müşterinin gördüğü numune (önizleme) ──")
+    es("oluşturma yanıtında önizleme adresi", f"{j['link']}?onizleme=1", j.get("preview_url"))
+    es("listede önizleme adresi", True, all(x.get("preview_url", "").endswith("?onizleme=1") for x in liste))
+    ko = c.get(f"/api/kisiye-ozel/orders?store_id={st.id}", headers=H)
+    if ko.status_code == 200:
+        kayit = next((x for x in (ko.json().get("items") or ko.json().get("orders") or []) if x.get("id") == str(o1.id)), None)
+        es("Kişiye Özel listesinde en güncel versiyonun önizlemesi", (True, 2),
+           (bool(kayit and (kayit.get("approval_preview_url") or "").endswith("?onizleme=1")), kayit and kayit.get("approval_version")))
+    sayfa = c.get(f"/onay/{liste[0]['link'].rsplit('/', 1)[1]}?onizleme=1")
+    es("sayfa açılır + önizleme modu kodda", (200, True), (sayfa.status_code, "ONIZLEME" in sayfa.text))
+    es("önizleme sayfayı AÇMAK kararı değiştirmez", "bekliyor",
+       c.get(f"/approval/{liste[0]['link'].rsplit('/', 1)[1]}").json().get("status"))
+
     print("\n── Telefon durumları ──")
     es("yalnız sabit hat → wa_url yok", None, c.post(f"/api/kisiye-ozel/orders/{o2.id}/approval", headers=H, json={}).json().get("wa_url"))
     es("customer_phone bulunur", True, (c.post(f"/api/kisiye-ozel/orders/{o3.id}/approval", headers=H, json={}).json().get("wa_url") or "").startswith("https://wa.me/905551112233"))

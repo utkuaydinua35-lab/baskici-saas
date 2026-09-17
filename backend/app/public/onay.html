@@ -74,6 +74,9 @@
 
 <script>
 const token = location.pathname.split('/').filter(Boolean).pop();
+// ?onizleme=1 — panelden "müşterinin gördüğü sayfa" açılınca: aynı görünüm,
+// ama karar düğmeleri KAPALI (yanlışlıkla müşteri adına onay/revizyon olmasın).
+const ONIZLEME = new URLSearchParams(location.search).get('onizleme') === '1';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -113,9 +116,20 @@ function itemsHtml(){
   return `<div class="grid">${cells}</div>`;
 }
 
+function onizlemeBandi(){
+  return ONIZLEME ? `<div style="position:sticky;top:0;z-index:5;margin:-4px 0 14px;padding:10px 12px;border-radius:12px;background:#3b2a05;border:1px solid #a16207;color:#fde68a;font-size:12.5px;line-height:1.45">👁 <b>Önizleme</b> — müşterinin gördüğü sayfa (v${esc(DATA.version||1)}). Buradan onay/revizyon verilemez.</div>` : '';
+}
+
 function render(){
   $('loading').classList.add('hidden');
   const app = $('app'); app.classList.remove('hidden');
+  const _render = renderIc();
+  if (ONIZLEME) app.innerHTML = onizlemeBandi() + app.innerHTML;
+  return _render;
+}
+
+function renderIc(){
+  const app = $('app');
   $('foot').textContent = `Bu sayfa ${DATA.atolye||''} tarafından oluşturulmuştur. Onayınız baskı öncesi son kontrol içindir.`;
 
   // Karar verilmişse sonuç ekranı
@@ -140,7 +154,8 @@ function render(){
     <div class="card">${itemsHtml() || '<div class="center sub" style="margin:0">Görsel bulunamadı</div>'}</div>
     <div class="sub center" style="margin:10px 0 2px;font-size:11px">Görseller temsilî numunedir; baskı yüklediğiniz tasarıma göre yapılır.</div>
     <div class="sub center" style="margin:8px 0 8px">Tasarım doğruysa onaylayın; değişiklik gerekiyorsa belirtin.</div>
-    <div class="actions">
+    ${ONIZLEME ? '<div class="sub center" style="margin:8px 0 0;font-size:12px;opacity:.8">Müşteri bu noktada “✓ Onaylıyorum” ve “✏️ Revizyon İstiyorum” düğmelerini görür.</div>' : ''}
+    <div class="actions" ${ONIZLEME ? 'style="display:none"' : ''}>
       <button class="btn btn-approve" onclick="approve(this)">✓ Onaylıyorum</button>
       ${DATA.revision_allowed
         ? '<button class="btn btn-revise" onclick="showRevise(this)">✏️ Revizyon İstiyorum</button>'
@@ -162,6 +177,7 @@ function zoom(u){ $('lbimg').src=u; $('lb').style.display='flex'; }
 function showRevise(btn){ $('reviseBox').classList.remove('hidden'); $('reviseBox').classList.add('fade'); btn.style.display='none'; $('revnote').focus(); }
 
 async function decide(decision, note, btn){
+  if (ONIZLEME) return;   // önizlemede karar verilemez
   btn.disabled = true; const old = btn.textContent; btn.textContent = 'Gönderiliyor…';
   try{
     const r = await fetch('/approval/'+encodeURIComponent(token)+'/decision',{

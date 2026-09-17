@@ -1486,9 +1486,18 @@ function OnayTab({ orderId }) {
       {latest && (
         <PanelCard title={`Güncel Onay (v${latest.version})`} icon="🔗">
           <div className="space-y-2.5">
-            <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full border ${(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).cls}`}>
-              {(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).label}
-            </span>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`inline-block text-[11px] px-2 py-0.5 rounded-full border ${(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).cls}`}>
+                {(ONAY_STATUS[latest.status] || ONAY_STATUS.bekliyor).label}
+              </span>
+              {latest.preview_url && (
+                <a href={latest.preview_url} target="_blank" rel="noopener noreferrer"
+                   title="Müşterinin açtığı onay sayfası — önizleme modunda, buradan karar verilemez"
+                   className="text-[11px] px-2 py-1 rounded-lg bg-sky-500/15 text-sky-300 hover:bg-sky-500/25">
+                  👁 Müşterinin gördüğü numune
+                </a>
+              )}
+            </div>
             {latest.status === 'revizyon' && latest.customer_note && (
               <div className="text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-2 text-red-200">
                 <b>Müşteri notu:</b> {latest.customer_note}
@@ -1525,7 +1534,12 @@ function OnayTab({ orderId }) {
             {items.slice(1).map(a => (
               <div key={a.id} className="text-xs border-l-2 border-brand-border pl-2 py-0.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-400">v{a.version} · {(ONAY_STATUS[a.status] || ONAY_STATUS.bekliyor).label}</span>
+                  <span className="text-gray-400">v{a.version} · {(ONAY_STATUS[a.status] || ONAY_STATUS.bekliyor).label}
+                    {a.preview_url && (
+                      <a href={a.preview_url} target="_blank" rel="noopener noreferrer"
+                         className="ml-1.5 text-sky-300 hover:underline">👁 gör</a>
+                    )}
+                  </span>
                   <span className="text-[10px] text-gray-600">{formatDate(a.created_at)}</span>
                 </div>
                 {a.status === 'revizyon' && a.customer_note && (

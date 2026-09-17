@@ -475,6 +475,11 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
 
       {expanded && (
         <div className="bg-brand-card/40 border-t border-brand-border/50 px-3 py-3 space-y-2">
+          {order.approval_preview_url && (
+            <div className="flex justify-end">
+              <NumuneGorButonu url={order.approval_preview_url} surum={order.approval_version} />
+            </div>
+          )}
           {/* Müşteri revizyon istediyse: gerekçesi burada — yeni tasarımı buna göre hazırla */}
           {order.approval_status === 'revizyon' && (
             <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3">
@@ -550,6 +555,18 @@ function OrderRow({ order, expanded, onToggle, detail, onRefresh, storeId }) {
   )
 }
 
+
+function NumuneGorButonu({ url, surum, className = '' }) {
+  if (!url) return null
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+       title="Müşterinin açtığı onay sayfası — önizleme modunda, buradan karar verilemez"
+       className={`inline-flex items-center justify-center gap-1.5 rounded-lg text-xs py-1.5 px-3 bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 ${className}`}>
+      👁 Müşterinin gördüğü numune{surum ? ` (v${surum})` : ''}
+    </a>
+  )
+}
+
 function ApprovalCopyField({ label, value, mono }) {
   const [copied, setCopied] = useState(false)
   if (!value) return null
@@ -589,6 +606,7 @@ function ApprovalModal({ data, onClose }) {
         ) : (
           <div className="mb-4 text-[11px] text-amber-400">⚠ Siparişte geçerli bir cep telefonu yok — WhatsApp açılamaz, mesajı kopyala.</div>
         )}
+        <NumuneGorButonu url={data.preview_url} surum={data.version} className="w-full mb-4" />
         <div className="space-y-3">
           <ApprovalCopyField label="Müşteri telefonu" value={data.phone || ''} mono />
           {!data.phone && <div className="text-[10px] text-amber-400 -mt-1">⚠ Telefon bulunamadı — siparişten kontrol et</div>}

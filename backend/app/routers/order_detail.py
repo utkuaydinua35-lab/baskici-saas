@@ -1141,6 +1141,7 @@ def create_design_approval(
                                            revizyon=(ap.version or 1) > 1)
     data["phone"] = ap_svc.resolve_phone(order)
     data["wa_url"] = ap_svc.wa_url(order, data["message"])
+    data["preview_url"] = f"{data['link']}?onizleme=1"
     data["customer_name"] = order.customer_name
     return data
 
@@ -1319,6 +1320,7 @@ def list_design_approvals(
         d["message"] = ap_svc.build_message(order, d["link"],
                                             revizyon=(a.version or 1) > 1)
         d["wa_url"] = ap_svc.wa_url(order, d["message"])
+        d["preview_url"] = f"{d['link']}?onizleme=1"
         items.append(d)
     return {
         "items": items,

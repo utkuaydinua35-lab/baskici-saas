@@ -62,11 +62,17 @@ def create_order_approval(
                                            revizyon=(ap.version or 1) > 1)
     data["phone"] = ap_svc.resolve_phone(order)
     data["wa_url"] = ap_svc.wa_url(order, data["message"])
+    data["preview_url"] = f"{data['link']}?onizleme=1"
     data["customer_name"] = order.customer_name
     return data
 
 
 # ─── Helpers ────────────────────────────────────────────────
+
+def _onizleme_linki(token: str) -> str:
+    from app.services import approvals as ap_svc
+    return f"{ap_svc.approval_link(token)}?onizleme=1"
+
 
 def _get_store(db: Session, store_id: uuid.UUID, tenant_id: uuid.UUID) -> Store:
     store = db.scalar(
@@ -258,6 +264,11 @@ def _serialize_order_row(o: Order, product_ids: set[str], couple_ids: set[str] |
         "approval_note": (o.approvals[0].customer_note if getattr(o, "approvals", None) else None),
         "approval_at": (o.approvals[0].decided_at.isoformat()
                         if getattr(o, "approvals", None) and o.approvals[0].decided_at else None),
+        # Müşterinin gördüğü numune sayfası — ÖNİZLEME modunda (karar düğmeleri
+        # kapalı: panelden bakarken yanlışlıkla "Onaylıyorum"a basılmasın)
+        "approval_version": (o.approvals[0].version if getattr(o, "approvals", None) else None),
+        "approval_preview_url": (_onizleme_linki(o.approvals[0].token)
+                                 if getattr(o, "approvals", None) else None),
     }
 
 

@@ -47,12 +47,26 @@ export default function SupportChat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs, open]);
 
+  // Karşılama baloncuğu NE ZAMAN çıkar:
+  //   2,5 saniye çok erkendi — telefonda ürün başlığının üstüne biniyordu ve
+  //   müşteri daha ürünü görmeden iki katmanla karşılaşıyordu (canlı ölçüldü).
+  //   Artık İKİ koşul birden gerekir: 18 saniye geçmiş olmalı VE müşteri
+  //   sayfayı kaydırmış olmalı. Kaydırma "ilgileniyorum" sinyalidir; hiç
+  //   kaydırmadan ayrılan ziyaretçiyi rahatsız etmenin bir karşılığı yok.
   useEffect(() => {
     let kapatildi = false;
     try { kapatildi = sessionStorage.getItem("support-davet") === "kapali"; } catch { /* yok */ }
     if (kapatildi) return;
-    const z = setTimeout(() => setDavet(true), 2500);
-    return () => clearTimeout(z);
+
+    let sureDoldu = false;
+    let kaydirdi = false;
+    const belki = () => { if (sureDoldu && kaydirdi) setDavet(true); };
+    const z = setTimeout(() => { sureDoldu = true; belki(); }, 18000);
+    const kaydirma = () => {
+      if (window.scrollY > 240) { kaydirdi = true; belki(); }
+    };
+    window.addEventListener("scroll", kaydirma, { passive: true });
+    return () => { clearTimeout(z); window.removeEventListener("scroll", kaydirma); };
   }, []);
 
   const davetiKapat = () => {

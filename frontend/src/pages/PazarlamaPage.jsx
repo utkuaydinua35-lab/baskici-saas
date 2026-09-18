@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
 
@@ -76,7 +76,7 @@ function SubscribersTab({ toast }) {
 
   const exportCsv = async () => {
     try {
-      const res = await fetch(mutlak('/api/marketing/subscribers/export.csv'), { headers: { Authorization: `Bearer ${getToken()}` } })
+      const res = await fetchYetkili(mutlak('/api/marketing/subscribers/export.csv'))
       if (!res.ok) { toast.error('İndirilemedi'); return }
       const blob = await res.blob(); const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = 'aboneler.csv'; a.click()

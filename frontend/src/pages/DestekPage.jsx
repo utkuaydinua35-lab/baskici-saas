@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { mutlak } from '../lib/taban'
 
 const STATUS_LABEL = { acik: 'Açık', cevaplandi: 'Cevaplandı', kapali: 'Kapalı' }
@@ -137,10 +137,8 @@ export default function DestekPage() {
   const uploadImage = async (file) => {
     const fd = new FormData()
     fd.append('file', file)
-    const token = localStorage.getItem('baskici_token')
-    const res = await fetch(mutlak('/api/support/upload'), {
+    const res = await fetchYetkili(mutlak('/api/support/upload'), {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: fd,
     })
     const data = await res.json()

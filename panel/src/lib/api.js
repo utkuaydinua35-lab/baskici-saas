@@ -30,6 +30,59 @@ export function setToken(token) {
   } catch { /* özel mod */ }
 }
 
+// Oturum bitti: token'ı at ve giriş ekranına dön. Tek yerden, tek kez.
+// ÖNEMLİ: token null olsa da çalışır — ilk 401 token'ı sildiği için ikinci
+// istek "token yok" durumunda geliyordu ve eskiden çıkış hiç yapılmıyordu.
+let _cikisYapiliyor = false
+export function oturumBitti() {
+  if (_cikisYapiliyor) return
+  _cikisYapiliyor = true
+  setToken(null)
+  // Uygulama kabuğunda panelin kendi login'i değil, kabuğun ortak girişi.
+  if (NATIVE) location.replace('/')
+  else if (!location.pathname.startsWith('/login')) location.href = '/login'
+}
+
+/** JWT'nin bitiş zamanı (saniye) — çözülemezse 0. */
+function _tokenBitis(token) {
+  try {
+    const g = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return Number(g.exp) || 0
+  } catch { return 0 }
+}
+
+// Süresi azalan token'ı sessizce tazele. Panel günlerce açık kalıyor; süre
+// dolunca istekler 401 dönüyor ve kullanıcı bunu ancak bir düğmeye bastığında
+// anlıyordu.
+const TAZELEME_ESIGI_SN = 24 * 60 * 60
+let _tazeleniyor = null
+function tazelemeGerekirse() {
+  const token = getToken()
+  if (!token || _tazeleniyor) return
+  const kalan = _tokenBitis(token) - Math.floor(Date.now() / 1000)
+  if (kalan <= 0 || kalan > TAZELEME_ESIGI_SN) return
+  _tazeleniyor = fetch(mutlak('/api/auth/refresh'), {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Accept': 'application/json' },
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => { if (j?.access_token) setToken(j.access_token) })
+    .catch(() => {})
+    .finally(() => { _tazeleniyor = null })
+}
+
+/** Yetki başlığı — token yoksa başlık HİÇ eklenmez ("Bearer null" gönderilmez). */
+export function yetkiBasligi(ek = {}) {
+  const t = getToken()
+  return t ? { ...ek, Authorization: `Bearer ${t}` } : { ...ek }
+}
+
+/** Token başlığını ekleyen fetch; 401 gelirse oturumu kapatır. */
+export async function fetchYetkili(url, opts = {}) {
+  const res = await fetch(mutlak(url), { ...opts, headers: yetkiBasligi(opts.headers) })
+  if (res.status === 401) oturumBitti()
+  return res
+}
+
 export class ApiError extends Error {
   constructor(status, detail) {
     super(detail || `HTTP ${status}`)
@@ -65,9 +118,9 @@ async function request(method, url, body) {
   if (!res.ok) {
     // Oturum geçersizleştiyse (engellendi/silindi/token süresi doldu) anında çıkış yap.
     // Auth uçları (login/2fa) hariç — orada 401 normal hata akışıdır.
-    if (res.status === 401 && token && !url.includes('/api/auth/')) {
-      setToken(null)
-      if (!location.pathname.startsWith('/login')) location.href = '/login'
+    if (res.status === 401 && !url.includes('/api/auth/')) {
+      oturumBitti()
+      throw new ApiError(401, 'Oturumun sona erdi — tekrar giriş yapman gerekiyor.')
     }
     let detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`
     // FastAPI 422 doğrulama hataları liste döner — okunur metne çevir
@@ -80,6 +133,8 @@ async function request(method, url, body) {
     }
     throw new ApiError(res.status, detail)
   }
+
+  tazelemeGerekirse()
 
   // Yanıttaki /storage ve /uploads yolları da mutlaklaşsın — görseller
   // 21 ayrı yerde <img src={...}> ile basılıyor, tek tek sarmak yerine
@@ -98,7 +153,11 @@ export const api = {
     if (res.status === 204) return null
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
-    if (!res.ok) { const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`; throw new ApiError(res.status, detail) }
+    if (!res.ok) {
+      if (res.status === 401) { oturumBitti(); throw new ApiError(401, 'Oturumun sona erdi — tekrar giriş yapman gerekiyor.') }
+      const detail = (data && typeof data === 'object' && data.detail) || data || `HTTP ${res.status}`
+      throw new ApiError(res.status, detail)
+    }
     return yanitiMutlaklastir(data)
   },
   put:   (url, body)  => request('PUT',    url, body ?? {}),

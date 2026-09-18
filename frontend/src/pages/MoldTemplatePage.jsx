@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import MoldTabs from '../components/MoldTabs'
 import { mutlak } from '../lib/taban'
 
@@ -31,10 +31,8 @@ export default function MoldTemplatePage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const token = localStorage.getItem('baskici_token')
-      const res = await fetch(mutlak(`/api/templates/upload?name=${encodeURIComponent(file.name.replace(/\.pdf$/i, ''))}`), {
+      const res = await fetchYetkili(mutlak(`/api/templates/upload?name=${encodeURIComponent(file.name.replace(/\.pdf$/i, ''))}`), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: fd,
       })
       const data = await res.json()

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
 import ManualOrderDialog from '../components/ManualOrderDialog'
@@ -24,10 +24,7 @@ function ExportButton({ storeId }) {
     try {
       const params = new URLSearchParams({ format })
       if (storeId) params.set('store_id', storeId)
-      const token = localStorage.getItem('baskici_token')
-      const res = await fetch(mutlak(`/api/orders/_export?${params}`), {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/orders/_export?${params}`))
       if (!res.ok) throw new Error('İndirme hatası')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

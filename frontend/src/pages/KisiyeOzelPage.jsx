@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
 
@@ -992,9 +992,8 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
       if (lineItem.external_id) fd.append('line_item_external_id', lineItem.external_id)
       fd.append('slot', String(slot || 1))
 
-      const res = await fetch(mutlak('/api/designs'), {
+      const res = await fetchYetkili(mutlak('/api/designs'), {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
         body: fd,
       })
       if (!res.ok) {

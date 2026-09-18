@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { Modal } from './UrunlerPage'
@@ -43,9 +43,7 @@ export default function SiparislerPage() {
 
   const exportCsv = async () => {
     try {
-      const res = await fetch(mutlak(`/api/orders/export/orders.csv?store_id=${storeId}`), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/orders/export/orders.csv?store_id=${storeId}`))
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

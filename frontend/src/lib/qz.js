@@ -7,6 +7,7 @@
 //
 // Kurulu değilse her şey eskisi gibi: sayfa içi yazdırma devreye girer.
 import qz from 'qz-tray'
+import { fetchYetkili } from './api'
 
 let _baglaniyor = null
 const YAZICI_ANAHTAR = 'qz_yazici'
@@ -21,11 +22,8 @@ const YAZICI_ANAHTAR = 'qz_yazici'
 let _sertifika = null
 
 async function _sunucu(yol, secenek) {
-  const token = localStorage.getItem('baskici_token')
-  return fetch(yol, {
-    ...secenek,
-    headers: { ...(secenek?.headers || {}), Authorization: `Bearer ${token}` },
-  })
+  // fetchYetkili: token yoksa "Bearer null" GÖNDERMEZ, 401'de oturumu kapatır.
+  return fetchYetkili(yol, { ...secenek, headers: { ...(secenek?.headers || {}) } })
 }
 
 qz.security.setCertificatePromise((resolve, reject) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import ManualOrderDialog from '../components/ManualOrderDialog'
 
@@ -207,14 +207,11 @@ export function CariDialog({ dealer, onClose, onChanged }) {
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
-      const token = localStorage.getItem('baskici_token')
       const qp = new URLSearchParams()
       if (pdfFrom) qp.set('date_from', pdfFrom)
       if (pdfTo) qp.set('date_to', pdfTo)
       const qs = qp.toString() ? `?${qp}` : ''
-      const res = await fetch(mutlak(`/api/dealers/${dealer.id}/statement.pdf${qs}`), {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/dealers/${dealer.id}/statement.pdf${qs}`))
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

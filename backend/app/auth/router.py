@@ -401,6 +401,24 @@ def update_me(
     return {"ok": True, "full_name": user.full_name}
 
 
+@router.post("/refresh", response_model=None)
+def refresh(user: User = Depends(get_current_user)):
+    """Geçerli token'la YENİ token al — oturum iş günü ortasında düşmesin.
+
+    ⚠ NEDEN: token 7 gün geçerli ve panel günlerce açık duruyor. Süre dolunca
+    panel açık kalıyor, istekler 401 dönüyor ve kullanıcı "Bearer token
+    gerekli" diye anlamsız bir hata görüyordu (paketlemede "P" kısayolunda
+    yaşandı). Panel, süresi azalan token'ı kendiliğinden tazeliyor.
+
+    Güvenlik: yalnız GEÇERLİ token tazelenir (süresi dolan ya da parola
+    değişimiyle iptal edilen token get_current_user'dan geçemez), süre
+    yeniden başlar ama yetki/kullanıcı değişmez.
+    """
+    return {"access_token": create_access_token(
+        user_id=str(user.id), tenant_id=str(user.tenant_id), email=user.email),
+        "token_type": "bearer"}
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout() -> None:
     """

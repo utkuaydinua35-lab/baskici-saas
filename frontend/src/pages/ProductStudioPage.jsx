@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, yetkiBasligi, oturumBitti } from '../lib/api'
+import { mutlak } from '../lib/taban'
 import { useToast } from '../components/Toast'
 
 // XHR tabanlı yükleme — fetch'te olmayan upload ilerlemesi (%) için.
 function uploadXHR(url, formData, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', url)
-    const tok = getToken()
-    if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`)
+    xhr.open('POST', mutlak(url))
+    Object.entries(yetkiBasligi()).forEach(([k, v]) => xhr.setRequestHeader(k, v))
     xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)) }
     xhr.onload = () => {
       let data = null
       try { data = JSON.parse(xhr.responseText) } catch {}
       if (xhr.status >= 200 && xhr.status < 300) resolve(data)
-      else reject({ detail: (data && data.detail) || `HTTP ${xhr.status}` })
+      else if (xhr.status === 401) {
+        oturumBitti()
+        reject({ detail: 'Oturumun sona erdi — tekrar giriş yapman gerekiyor.' })
+      } else reject({ detail: (data && data.detail) || `HTTP ${xhr.status}` })
     }
     xhr.onerror = () => reject({ detail: 'Bağlantı hatası' })
     xhr.send(formData)

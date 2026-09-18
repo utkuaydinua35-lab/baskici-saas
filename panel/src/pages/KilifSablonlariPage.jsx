@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { mutlak } from '../lib/taban'
 
@@ -159,9 +159,8 @@ function HazirSablonlar({ storeId, templates }) {
       fd.append('file', file)
       const qs = new URLSearchParams({ store_id: storeId, label: ad.trim() })
       if (kilif) qs.set('case_template_id', kilif)
-      const res = await fetch(mutlak(`/api/case-templates/overlays?${qs}`), {
+      const res = await fetchYetkili(mutlak(`/api/case-templates/overlays?${qs}`), {
         method: 'POST', body: fd,
-        headers: { Authorization: `Bearer ${getToken()}` },
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Yüklenemedi')
       setAd('')
@@ -418,8 +417,8 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(mutlak(`/api/case-templates/${t.id}/image`), {
-        method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd,
+      const res = await fetchYetkili(mutlak(`/api/case-templates/${t.id}/image`), {
+        method: 'POST', body: fd,
       })
       if (!res.ok) throw new Error()
       const r = await res.json()
@@ -849,8 +848,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     setBusy(true); setErr('')
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch(mutlak(`/api/case-templates/overlays/${overlay.id}/alan-gorseli`), {
-        method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
+      const res = await fetchYetkili(mutlak(`/api/case-templates/overlays/${overlay.id}/alan-gorseli`), {
+        method: 'POST', body: fd,
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Yüklenemedi')
       const d = await res.json()

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { getToken } from '../lib/api'
+import { fetchYetkili } from '../lib/api'
 import { mutlak } from '../lib/taban'
 
 /**
@@ -25,8 +25,7 @@ export default function GorselBuyutec({ acik, kapat, kaynak, tasarimId, format, 
     let olusan = null
     ;(async () => {
       try {
-        const r = await fetch(mutlak(`/api/designs/${tasarimId}/onizleme?dpi=200`),
-          { headers: { Authorization: `Bearer ${getToken()}` } })
+        const r = await fetchYetkili(mutlak(`/api/designs/${tasarimId}/onizleme?dpi=200`))
         if (!r.ok) throw new Error()
         olusan = URL.createObjectURL(await r.blob())
         if (!iptal) setPdfUrl(olusan)

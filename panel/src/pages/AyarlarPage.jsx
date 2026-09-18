@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
@@ -65,8 +65,8 @@ export default function AyarlarPage() {
     setIccBusy(true); setIccHata('')
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch(mutlak(`/api/store-settings/${storeId}/cmyk-profili`), {
-        method: 'POST', body: fd, headers: { Authorization: `Bearer ${getToken()}` },
+      const res = await fetchYetkili(mutlak(`/api/store-settings/${storeId}/cmyk-profili`), {
+        method: 'POST', body: fd,
       })
       const r = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(r.detail || 'Yüklenemedi')

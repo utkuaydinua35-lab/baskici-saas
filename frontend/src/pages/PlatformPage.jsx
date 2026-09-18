@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, setToken } from '../lib/api'
+import { api, setToken, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak, uygulamaYolu } from '../lib/taban'
 
@@ -262,10 +262,7 @@ function Backups() {
 
   const download = async (name) => {
     try {
-      const token = localStorage.getItem('baskici_token')
-      const res = await fetch(mutlak(`/api/platform/backups/${encodeURIComponent(name)}/download`), {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/platform/backups/${encodeURIComponent(name)}/download`))
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

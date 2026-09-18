@@ -457,6 +457,7 @@ _AUTH_SINIF = {
     ("PATCH", "/api/auth/me"): "acik",
     ("POST", "/api/auth/verify-password"): "acik",
     ("POST", "/api/auth/change-password"): "acik",
+    ("POST", "/api/auth/refresh"): "acik",
     ("POST", "/api/auth/2fa/setup"): "kapali",
     ("POST", "/api/auth/2fa/enable"): "kapali",
     ("POST", "/api/auth/2fa/disable"): "kapali",

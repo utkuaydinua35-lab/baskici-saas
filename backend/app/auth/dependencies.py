@@ -62,6 +62,7 @@ BAYI_IZINLI_TAM = (
     "/api/auth/me",               # kendi profili (GET/PATCH)
     "/api/auth/verify-password",  # bayi ayarlarinda sifre dogrulama
     "/api/auth/change-password",  # kendi sifresi
+    "/api/auth/refresh",          # oturumu tazele (bayi de kullanir)
 )
 # Varsayilan RED zaten kapatiyor; burada acikca durmalari, biri onegi geri
 # acarsa bu ikisinin YINE kapali kalmasi icin. Profil degistirme personel

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
 import { renk } from '../lib/durum'
@@ -370,9 +370,7 @@ function MoldCard({ mold, analyzing, busyStatus, onAnalyze, onSetStatus, onPrevi
   const downloadPdf = async () => {
     setPdfBusy(true)
     setPdfDurum('')
-    const istek = () => fetch(mutlak(`/api/molds/${mold.id}/pdf`), {
-      headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
-    })
+    const istek = () => fetchYetkili(mutlak(`/api/molds/${mold.id}/pdf`))
     const basla = Date.now()
     const AZAMI_MS = 15 * 60 * 1000
     try {

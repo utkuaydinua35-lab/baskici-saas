@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api, getToken } from '../lib/api'
+import { api, yetkiBasligi, fetchYetkili, oturumBitti } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
 
@@ -745,14 +745,17 @@ function DesignUploadDialog({ storeId, onClose, onSaved, initialProduct = null }
       setProgress(0)
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.open('POST', '/api/designs')
-        xhr.setRequestHeader('Authorization', `Bearer ${getToken()}`)
+        xhr.open('POST', mutlak('/api/designs'))
+        Object.entries(yetkiBasligi()).forEach(([k, v]) => xhr.setRequestHeader(k, v))
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100))
         }
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else {
+          else if (xhr.status === 401) {
+            oturumBitti()
+            reject(new Error('Oturumun sona erdi — tekrar giriş yapman gerekiyor.'))
+          } else {
             let detail = `HTTP ${xhr.status}`
             try { detail = JSON.parse(xhr.responseText).detail || detail } catch { /* yok */ }
             reject(new Error(detail))
@@ -1053,9 +1056,8 @@ function DesignEditDialog({ design, onClose, onSaved, onDelete }) {
       // .jpg yuklenmis bir tasarimi .pdf ile duzeltmek).
       if (yeniDosya) fd.append('file', yeniDosya)
 
-      const res = await fetch(mutlak(`/api/designs/${design.id}`), {
+      const res = await fetchYetkili(mutlak(`/api/designs/${design.id}`), {
         method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${getToken()}` },
         body: fd,
       })
       if (!res.ok) {

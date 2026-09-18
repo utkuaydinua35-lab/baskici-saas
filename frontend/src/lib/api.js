@@ -69,6 +69,57 @@ export class ApiError extends Error {
   }
 }
 
+/** Token'ın bitiş zamanı (saniye) — JWT gövdesinden, doğrulama YAPMADAN. */
+function _tokenBitis(token) {
+  try {
+    const g = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return Number(g.exp) || 0
+  } catch { return 0 }
+}
+
+// Oturum bitti: token'ı at ve giriş ekranına dön. Tek yerden, tek kez.
+let _cikisYapiliyor = false
+export function oturumBitti() {
+  if (_cikisYapiliyor) return
+  _cikisYapiliyor = true
+  setToken(null)
+  // Uygulamada Studio `/studio/` altında duruyor; kök '/login' oraya gitmez.
+  if (API_TABAN) kabugaDon()
+  else if (!buYoldaMiyiz('/login')) location.href = uygulamaYolu('/login')
+}
+
+// Süresi azalan token'ı sessizce tazele (bkz. /api/auth/refresh). Panel
+// günlerce açık kalıyor; süre dolunca istekler 401 dönüyor ve kullanıcı
+// bunu ancak bir düğmeye bastığında anlıyordu.
+const TAZELEME_ESIGI_SN = 24 * 60 * 60     // son 24 saate girince tazele
+let _tazeleniyor = null
+function tazelemeGerekirse() {
+  const token = getToken()
+  if (!token || _tazeleniyor) return
+  const kalan = _tokenBitis(token) - Math.floor(Date.now() / 1000)
+  if (kalan <= 0 || kalan > TAZELEME_ESIGI_SN) return
+  _tazeleniyor = fetch(mutlak('/api/auth/refresh'), {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Accept': 'application/json' },
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => { if (j?.access_token) setToken(j.access_token) })
+    .catch(() => {})
+    .finally(() => { _tazeleniyor = null })
+}
+
+/** Yetki başlığı — token yoksa başlık HİÇ eklenmez ("Bearer null" gönderilmez). */
+export function yetkiBasligi(ek = {}) {
+  const t = getToken()
+  return t ? { ...ek, Authorization: `Bearer ${t}` } : { ...ek }
+}
+
+/** Token başlığını ekleyen fetch; 401 gelirse oturumu kapatır. */
+export async function fetchYetkili(url, opts = {}) {
+  const res = await fetch(mutlak(url), { ...opts, headers: yetkiBasligi(opts.headers) })
+  if (res.status === 401) oturumBitti()
+  return res
+}
+
 async function request(method, url, body, yeniden = false) {
   const headers = { 'Accept': 'application/json' }
   const token = getToken()
@@ -94,12 +145,14 @@ async function request(method, url, body, yeniden = false) {
   if (!res.ok) {
     // Oturum geçersizleştiyse (engellendi/silindi/token süresi doldu) anında çıkış yap.
     // Auth uçları (login/2fa) hariç — orada 401 normal hata akışıdır.
-    if (res.status === 401 && token && !url.includes('/api/auth/')) {
-      setToken(null)
-      // Uygulamada Studio `/studio/` altında duruyor; kök '/login' oraya
-      // gitmez, mağaza panelinin login'ini açardı.
-      if (API_TABAN) kabugaDon()          // uygulamada ortak giriş ekranı
-      else if (!buYoldaMiyiz('/login')) location.href = uygulamaYolu('/login')
+    // ⚠ "token varsa" KOŞULU KALDIRILDI: ilk 401 token'ı siliyor, sonraki
+    // istekler token'sız gidiyor ve sunucu "Bearer token gerekli" diyordu.
+    // Kullanıcı giriş ekranına DÜŞMEDEN sayfada kalıp bu anlamsız hatayı
+    // görüyordu (paketlemede "P" kısayolu).
+    if (res.status === 401 && !url.includes('/api/auth/')) {
+      oturumBitti()
+      throw new ApiError(401, 'Oturumun sona erdi — tekrar giriş yapman gerekiyor.',
+                         (data && typeof data === 'object') ? data : null)
     }
     // Deploy sırasındaki birkaç saniyelik kesinti kullanıcıya HİÇ görünmesin:
     // OKUMA isteği geçici bir hatayla dönerse bir kez sessizce tekrar dene.
@@ -112,6 +165,7 @@ async function request(method, url, body, yeniden = false) {
                        (data && typeof data === 'object') ? data : null)
   }
 
+  tazelemeGerekirse()
   return yanitiMutlaklastir(data)
 }
 
@@ -127,9 +181,14 @@ export const api = {
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
     if (!res.ok) {
+      if (res.status === 401) {
+        oturumBitti()
+        throw new ApiError(401, 'Oturumun sona erdi — tekrar giriş yapman gerekiyor.', null)
+      }
       throw new ApiError(res.status, hataMetni(res.status, data),
                          (data && typeof data === 'object') ? data : null)
     }
+    tazelemeGerekirse()
     return yanitiMutlaklastir(data)
   },
   put:   (url, body)  => request('PUT',    url, body ?? {}),

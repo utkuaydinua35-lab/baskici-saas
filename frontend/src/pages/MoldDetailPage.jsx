@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import PdfHazirlikPaneli, { pdfKuyrugunuYenile } from '../components/PdfHazirlikPaneli'
 import OlcuTanimlaDialog from '../components/OlcuTanimlaDialog'
 import { useToast } from '../components/Toast'
@@ -221,9 +221,7 @@ export default function MoldDetailPage() {
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
-      const res = await fetch(mutlak(`/api/molds/${moldId}/pdf`), {
-        headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/molds/${moldId}/pdf`))
       if (res.status === 409) {
         // Henüz hazır değil — üretim başladı, kullanıcı beklemesin
         toast.info('PDF henüz hazır değil, hazırlanıyor. Hazır olunca tekrar indir.')
@@ -283,9 +281,7 @@ export default function MoldDetailPage() {
   const beyazPdfIndir = async () => {
     setBeyazBusy(true)
     try {
-      const res = await fetch(mutlak(`/api/molds/${moldId}/beyaz-pdf`), {
-        headers: { Authorization: `Bearer ${localStorage.getItem('baskici_token')}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/molds/${moldId}/beyaz-pdf`))
       if (!res.ok) {
         let detay = ''
         try { detay = (await res.json())?.detail || '' } catch { /* json degilse gec */ }

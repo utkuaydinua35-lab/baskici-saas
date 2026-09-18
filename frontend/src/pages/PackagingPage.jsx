@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { zebraDurum, zebraTaban, zebraYazdir } from '../lib/zebra'
 import { qzDurum, qzYazdir, qzYazicilar, qzYaziciSec } from '../lib/qz'
 import { mutlak } from '../lib/taban'
@@ -94,9 +94,7 @@ export default function PackagingPage() {
   // istediği için tarayıcı sekmesinden açılamıyor; token ile burada çekiyoruz.
   const qzSertifikaIndir = async () => {
     try {
-      const r = await fetch(mutlak('/api/packaging/qz-sertifika'), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const r = await fetchYetkili(mutlak('/api/packaging/qz-sertifika'))
       if (!r.ok) { setMsg({ ok: false, text: 'Sertifika alınamadı' }); return }
       const url = URL.createObjectURL(new Blob([await r.text()], { type: 'application/x-x509-ca-cert' }))
       const a = document.createElement('a')
@@ -174,9 +172,8 @@ export default function PackagingPage() {
         tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h),
         doldur: doldur ? 'true' : 'false',
       })
-      const res = await fetch(
-        mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`),
-        { headers: { Authorization: `Bearer ${getToken()}` } })
+      const res = await fetchYetkili(
+        mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`))
       if (!res.ok) {
         let d = ''
         try { d = (await res.json())?.detail || '' } catch { /* json değil */ }
@@ -332,9 +329,7 @@ export default function PackagingPage() {
 
   const downloadLabel = async () => {
     if (!order) return
-    const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(order.id)}/label`), {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
+    const res = await fetchYetkili(mutlak(`/api/packaging/order/${encodeURIComponent(order.id)}/label`))
     if (!res.ok) { setMsg({ ok: false, text: 'Etiket üretilemedi' }); return }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
@@ -348,9 +343,7 @@ export default function PackagingPage() {
   const printAdresEtiketi = async (orderId) => {
     if (await zplDene(orderId, 'adres')) return true
     try {
-      const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/label`), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/label`))
       if (!res.ok) return false
       const url = URL.createObjectURL(await res.blob())
       // Önce sayfa içinde (iframe) dene; olmazsa sekmeye düş.
@@ -394,8 +387,7 @@ export default function PackagingPage() {
   // Basit Kargo SVG, Sürat (doğrudan) PDF döndürür — Content-Type'a bakılır.
   const fetchKargoEtiket = async (orderId) => {
     try {
-      const res = await fetch(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`),
-        { headers: { Authorization: `Bearer ${getToken()}` } })
+      const res = await fetchYetkili(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`))
       if (!res.ok) return null
       const tip = res.headers.get('content-type') || ''
       if (tip.includes('pdf')) {

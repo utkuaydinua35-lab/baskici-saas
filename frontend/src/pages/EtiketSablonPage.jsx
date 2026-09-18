@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
 
@@ -70,9 +70,9 @@ export default function EtiketSablonPage({ embedded = false }) {
   const ciz = useCallback(async (a) => {
     setCiziliyor(true)
     try {
-      const res = await fetch(mutlak('/api/packaging/etiket-onizleme'), {
+      const res = await fetchYetkili(mutlak('/api/packaging/etiket-onizleme'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ayarlar: a, store_id: magazaId || null }),
       })
       if (!res.ok) throw new Error('önizleme alınamadı')

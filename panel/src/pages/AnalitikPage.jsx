@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { mutlak } from '../lib/taban'
 
@@ -45,9 +45,8 @@ export default function AnalitikPage() {
         <button onClick={async () => {
           const r = RANGES.find(x => x.key === range)
           try {
-            const res = await fetch(mutlak(
-              `/api/analytics/export.csv?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`),
-              { headers: { Authorization: `Bearer ${getToken()}` } })
+            const res = await fetchYetkili(mutlak(
+              `/api/analytics/export.csv?start=${isoDaysAgo(r.days)}&end=${today()}&store_id=${storeId}`))
             if (!res.ok) throw new Error()
             const blob = await res.blob()
             const url = URL.createObjectURL(blob)

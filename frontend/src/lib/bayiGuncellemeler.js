@@ -20,6 +20,16 @@ export const BASLANGIC_SURUMU = 5
 // tur: yeni | iyilestirme | duzeltme
 export const GUNCELLEMELER = [
   {
+    surum: 8,
+    tarih: '2026-09-18',
+    baslik: 'Oturum artık ortada düşmüyor',
+    ozet: 'Panel uzun süre açık kalsa da oturumun kendini tazeliyor; süresi dolarsa doğrudan giriş ekranına dönüyorsun.',
+    degisiklikler: [
+      { tur: 'iyilestirme', metin: 'Panel açık kaldıkça oturumun sessizce tazelenir — gün ortasında kopmaz.' },
+      { tur: 'duzeltme', metin: 'Oturum gerçekten sona erdiyse artık anlaşılmaz bir hata yerine giriş ekranına yönlendiriliyorsun.' },
+    ],
+  },
+  {
     surum: 7,
     tarih: '2026-09-15',
     baslik: 'Önizleme görselini sonradan değiştir',

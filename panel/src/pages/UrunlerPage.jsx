@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import { mutlak } from '../lib/taban'
@@ -31,9 +31,7 @@ export default function UrunlerPage() {
 
   const exportCsv = async () => {
     try {
-      const res = await fetch(mutlak(`/api/catalog/export?store_id=${storeId}`), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const res = await fetchYetkili(mutlak(`/api/catalog/export?store_id=${storeId}`))
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

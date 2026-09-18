@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, getToken } from '../lib/api'
+import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { Modal } from './UrunlerPage'
 import { mutlak } from '../lib/taban'
@@ -40,9 +40,7 @@ export default function MusterilerPage() {
 
   const exportSubscribers = async () => {
     try {
-      const res = await fetch(mutlak('/api/customers/export/subscribers.csv'), {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const res = await fetchYetkili(mutlak('/api/customers/export/subscribers.csv'))
       if (!res.ok) throw new Error()
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)

@@ -76,7 +76,7 @@ export default function OrderRequestForm({ token }: { token: string }) {
             className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm bg-white"
           />
           <p className="text-[11px] text-zinc-400">
-            Kişiye özel üretimlerde iade koşulları için “İade ve Değişim” sayfasına göz atın.
+            İade ve değişim koşulları için “İade ve Değişim” sayfasına göz atın.
           </p>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <button

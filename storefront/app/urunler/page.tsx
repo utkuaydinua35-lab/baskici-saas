@@ -4,14 +4,21 @@ import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
+import { getThemePayload } from "@/lib/theme";
 
-export const metadata: Metadata = {
-  title: "Ürünler",
-  description: "Tüm baskılı telefon kılıfı tasarımları — modelini seç, sipariş ver.",
-  alternates: {
-    canonical: `${(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "")}/urunler`,
-  },
-};
+// Eskiden statikti: "Tüm baskılı telefon kılıfı tasarımları" — her mağazaya.
+export async function generateMetadata(): Promise<Metadata> {
+  const { store_name, isletme } = await getThemePayload();
+  return {
+    title: "Ürünler",
+    description: isletme.urun_turu
+      ? `Tüm ${isletme.urun_turu} ürünlerimiz — ${store_name}.`
+      : `${store_name} — tüm ürünler.`,
+    alternates: {
+      canonical: `${(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001").replace(/\/$/, "")}/urunler`,
+    },
+  };
+}
 
 export default async function ProductsPage({
   searchParams,

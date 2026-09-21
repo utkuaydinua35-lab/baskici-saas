@@ -13,7 +13,7 @@ export const SNIPPETS = [
     target: 'body_html',
     hint: 'Ziyaretçi 8 saniye sonra çarkı görür, çevirir, kupon kodunu kazanır. '
         + 'Kodları İndirimler sayfasından oluşturup aşağıdaki KUPONLAR listesine yazın.',
-    code: `<!-- BERNZ indirim çarkı — kodları kendi kuponlarınızla değiştirin -->
+    code: `<!-- İndirim çarkı — kodları kendi kuponlarınızla değiştirin -->
 <div id="bz-wheel-wrap" style="display:none">
   <div id="bz-wheel-bg"></div>
   <div id="bz-wheel-box">

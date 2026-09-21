@@ -35,8 +35,14 @@ const FONT_VAR: Record<string, string> = {
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
 
+// "telefon kılıfı" → "Telefon Kılıfı". Türkçe yerel ayarla: "istanbul"un
+// "Istanbul" değil "İstanbul" olması için (bkz. Türkçe İ tuzağı).
+function basHarfler(metin: string): string {
+  return metin.split(" ").map((k) => k ? k[0].toLocaleUpperCase("tr") + k.slice(1) : k).join(" ");
+}
+
 export async function generateMetadata(): Promise<Metadata> {
-  const { store_name, theme } = await getThemePayload();
+  const { store_name, theme, isletme } = await getThemePayload();
   // metadataBase İSTEĞİN host'undan kurulur — favicon /storage yolu hangi
   // domain'den girildiyse oraya çözülür (App Router manuel <head>'i attığı
   // için favicon YALNIZCA metadata üzerinden basılabiliyor).
@@ -50,12 +56,13 @@ export async function generateMetadata(): Promise<Metadata> {
   }
   return {
     metadataBase: base,
+    // Başlık ve açıklama MAĞAZA AYARINDAN. Eskiden "— Telefon Kılıfları" ve
+    // BERNZ'in tanıtım cümlesi her mağazanın SEO'suna sabit yazılıydı.
     title: {
-      default: `${store_name} — Telefon Kılıfları`,
+      default: isletme.urun_turu ? `${store_name} — ${basHarfler(isletme.urun_turu)}` : store_name,
       template: `%s | ${store_name}`,
     },
-    description:
-      "Özel tasarım baskılı telefon kılıfları. Yüzlerce model için kişiye özel üretim, hızlı kargo.",
+    description: isletme.tanitim || `${store_name} online mağazası.`,
     ...(theme.favicon_url
       ? { icons: { icon: [{ url: theme.favicon_url }], apple: [{ url: theme.favicon_url }] } }
       : {}),

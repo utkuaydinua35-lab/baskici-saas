@@ -16,6 +16,7 @@
  *
  * Web'de bu ekran HİÇ görünmez: `nativeMi()` false döner.
  */
+import { BRAND } from './lib/brand'
 import { nativeMi } from './lib/kamera'
 
 const ANAHTAR = 'platform_secimi'
@@ -85,7 +86,7 @@ export default function PlatformSecici({ onSec, kullanici }) {
       </div>
 
       <div className="flex flex-col gap-3">
-        <Kart ikon="🛍️" ad="BERNZ Commerce" vurgu
+        <Kart ikon="🛍️" ad={BRAND} vurgu
           aciklama="Mağaza paneli — ürünler, siparişler, vitrin"
           onClick={magaza} />
         <Kart ikon="🖨️" ad="Studio"

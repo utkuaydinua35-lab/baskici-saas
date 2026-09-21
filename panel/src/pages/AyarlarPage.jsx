@@ -180,6 +180,48 @@ export default function AyarlarPage() {
       </Section>
       )}
 
+      {tab === 'genel' && (
+      <Section title="İşletme Bilgileri" icon="📋">
+        <p className="text-xs text-panel-muted -mt-1">
+          Vitrininizdeki ürün sayfaları, arama motoru açıklamaları, mesafeli satış
+          sözleşmesi, iade sayfası ve destek asistanı bu bilgilerle kurulur.
+          <b> Boş bıraktığınız alan vitrinde hiç yazılmaz</b> — size ait olmayan bir
+          taahhüt görünmesin diye.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="Ne satıyorsunuz? (ürün türü)">
+            <input className="input mt-1" value={cfg.isletme_urun_turu || ''}
+              onChange={set('isletme_urun_turu')} maxLength={60} placeholder="Örn. telefon kılıfı" />
+          </Field>
+          <Field label="Kargoya verme süresi">
+            <input className="input mt-1" value={cfg.isletme_teslim_suresi || ''}
+              onChange={set('isletme_teslim_suresi')} maxLength={40} placeholder="Örn. 1–3 iş günü" />
+          </Field>
+        </div>
+        <Field label="Mağaza tanıtım cümlesi (arama motoru açıklaması)">
+          <textarea className="input mt-1" rows={2} value={cfg.isletme_tanitim || ''}
+            onChange={set('isletme_tanitim')} maxLength={160}
+            placeholder="Mağazanızı tek cümleyle anlatın — Google sonuçlarında görünür." />
+          <div className="text-[11px] text-panel-muted mt-1 text-right">
+            {(cfg.isletme_tanitim || '').length}/160
+          </div>
+        </Field>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" className="mt-0.5" checked={!!cfg.isletme_kisiye_ozel}
+            onChange={set('isletme_kisiye_ozel')} />
+          <span>
+            Ürünlerimi siparişe özel (kişiye özel) üretiyorum
+            <span className="block text-[11px] text-panel-muted mt-0.5">
+              İşaretliyse iade sayfası ve sözleşme, kişiye özel üretilen mallarda cayma
+              hakkının bulunmadığını belirtir. <b>Standart ürün satıyorsanız işaretlemeyin</b> —
+              o durumda müşterinin 14 günlük yasal cayma hakkı vardır ve sayfalar buna göre
+              yazılır.
+            </span>
+          </span>
+        </label>
+      </Section>
+      )}
+
       {tab === 'kargo' && (
       <Section title="Kargo ve Sepet" icon="📦">
         <div className="grid grid-cols-3 gap-3">
@@ -539,7 +581,7 @@ export default function AyarlarPage() {
       )}
 
       {tab === 'destek' && (
-      <Section title="BERNZ Support — 7/24 Asistan" icon="🎧">
+      <Section title="7/24 Destek Asistanı" icon="🎧">
         <p className="text-[11px] text-panel-muted -mt-1">
           Vitrinin sağ altındaki sohbet balonu. Yapay zekâ DEĞİLDİR — sistem
           verisiyle çalışır: sipariş durumunu e-postayla bulur, model uygunluğunu
@@ -694,7 +736,7 @@ export default function AyarlarPage() {
       <Section title="Domain Bağlama" icon="🌐">
         <Field label="Vitrin adresi (aktif)">
           <input className="input mt-1" value={cfg.storefront_url || ''} onChange={set('storefront_url')}
-            placeholder="https://magaza.bernzcompany.com" />
+            placeholder="https://magazaniz.com" />
         </Field>
         <p className="text-[11px] text-panel-muted -mt-1">
           Ödeme dönüş linkleri ve e-postalardaki adresler buradan üretilir.

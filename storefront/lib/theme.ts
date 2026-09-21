@@ -88,6 +88,15 @@ export interface ThemePayload {
   password_protected?: boolean;
   support?: { enabled: boolean; faq: { q: string; a: string }[] } | null;
   legal: { kvkk: string | null; mesafeli_satis: string | null; iade: string | null };
+  // İşletme bilgileri — BOŞ gelirse ilgili cümle HİÇ yazılmaz. Eskiden
+  // BERNZ'in taahhütleri (teslim süresi, iade istisnası) koda sabitti ve
+  // her yeni mağazaya aynen gidiyordu.
+  isletme: {
+    urun_turu: string | null;
+    tanitim: string | null;
+    teslim_suresi: string | null;
+    kisiye_ozel: boolean;
+  };
 }
 
 const DEFAULT_PAYLOAD: ThemePayload = {
@@ -112,6 +121,7 @@ const DEFAULT_PAYLOAD: ThemePayload = {
   settings: {},
   contact: { email: null, phone: null, instagram: null },
   legal: { kvkk: null, mesafeli_satis: null, iade: null },
+  isletme: { urun_turu: null, tanitim: null, teslim_suresi: null, kisiye_ozel: false },
 };
 
 export async function getThemePayload(): Promise<ThemePayload & { is_preview?: boolean }> {
@@ -146,6 +156,8 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     payload.theme.colors = { ...DEFAULT_PAYLOAD.theme.colors, ...payload.theme.colors };
     payload.theme.announcement = { ...DEFAULT_PAYLOAD.theme.announcement, ...payload.theme.announcement };
     payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
+    // Eski sunucu/önbellek isletme göndermiyorsa sayfa çökmesin
+    payload.isletme = { ...DEFAULT_PAYLOAD.isletme, ...(payload.isletme || {}) };
     return { ...payload, is_preview: preview };
   } catch {
     return DEFAULT_PAYLOAD; // backend erişilemezse varsayılan temayla render

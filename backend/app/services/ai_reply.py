@@ -34,7 +34,9 @@ MAX_TOKENS = 1024
 # Çok uzun konuşmalarda son N mesaj yeterli (taslak için bağlam)
 MAX_HISTORY = 30
 
-# BERNZ teslim süreleri — AI müşteri teslim/süre sorularında bunu kullanır
+# ESKİ SABİT TESLİM BİLGİSİ — artık KULLANILMIYOR, yalnız migration'ın
+# mevcut mağazalara tohumladığı metnin kaynağı olarak duruyor. Teslim bilgisi
+# her mağazanın kendi ayarından okunur (store.config["ai_teslim_bilgisi"]).
 _DELIVERY_INFO = """BERNZ TESLİM SÜRELERİ (iş günü; Cumartesi/Pazar hariç. Tahmini \
 sürelerdir, toptancı yoğunluğuna göre değişebilir):
 - iPhone modelleri (normal kılıf): ortalama 7 iş günü içinde kargoya verilir.
@@ -47,8 +49,11 @@ Karışık siparişte teslim süresi, en uzun süreli kaleme göre belirlenir. K
 verme; "ortalama", "tahmini" ve aralık (ör. 10–14 iş günü) ifadeleri kullan."""
 
 
-_SYSTEM = """Sen BERNZ adlı telefon kılıfı baskı atölyesinin Türkçe müşteri \
-destek temsilcisisin. Müşterinin son mesajı için İKİ şey üretirsin: bir yanıt \
+# Kişilik başlığı konuşmanın MAĞAZASINDAN kurulur (bkz. _sistem_promptu).
+# Eskiden "Sen BERNZ adlı telefon kılıfı baskı atölyesinin…" sabitti: 505 Cover
+# ve Lunera müşterilerine de BERNZ adıyla yazılıyordu; sistem kiralandığında
+# ise başka bir işletmenin müşterisine BERNZ olarak cevap verilecekti.
+_SYSTEM = """Müşterinin son mesajı için İKİ şey üretirsin: bir yanıt \
 taslağı (draft) ve operatöre kısa bir not (note).
 
 DRAFT (müşteriye gönderilmeye hazır yanıt):
@@ -186,6 +191,31 @@ def _analyze_order(db: Session, tenant_id, thread: SupportThread) -> str | None:
     return txt
 
 
+def _sistem_promptu(db: Session, thread: SupportThread, tenant) -> str:
+    """Kişilik + teslim kuralları — konuşmanın MAĞAZASINA göre."""
+    from app.models import Store
+
+    store = db.get(Store, thread.store_id) if thread.store_id else None
+    config = (store.config or {}) if store else {}
+    ad = ((store.name if store else None)
+          or getattr(tenant, "app_name", None) or getattr(tenant, "name", None)
+          or "mağaza").strip()
+    tur = (config.get("isletme_urun_turu") or "").strip()
+    kimlik = (f"Sen {ad} adlı işletmenin Türkçe müşteri destek temsilcisisin."
+              + (f" İşletme {tur} satıyor." if tur else ""))
+
+    teslim = (config.get("ai_teslim_bilgisi") or "").strip()
+    if not teslim:
+        kisa = (config.get("isletme_teslim_suresi") or "").strip()
+        teslim = (f"TESLİM SÜRESİ: siparişler ortalama {kisa} içinde kargoya verilir. "
+                  "Kesin gün/tarih verme; 'ortalama', 'tahmini' ifadelerini kullan."
+                  if kisa else
+                  "TESLİM SÜRESİ: bu işletme için tanımlı bir teslim süresi YOK. "
+                  "Süre sorulursa ASLA uydurma; draft'a [teslim süresi] yer tutucusu "
+                  "bırak ve note'ta operatöre doldurmasını söyle.")
+    return f"{kimlik} {_SYSTEM}\n\n{teslim}"
+
+
 def draft_reply(db: Session, thread: SupportThread) -> dict:
     """Konuşma geçmişinden {draft, note} üret. Hata olursa DraftError.
 
@@ -212,8 +242,8 @@ def draft_reply(db: Session, thread: SupportThread) -> dict:
     except ModuleNotFoundError as e:
         raise DraftError("anthropic SDK kurulu değil.") from e
 
-    # Sistem promptu = kişilik + teslim süresi kuralları
-    system = f"{_SYSTEM}\n\n{_DELIVERY_INFO}"
+    # Sistem promptu = kişilik + teslim süresi kuralları (mağazaya göre)
+    system = _sistem_promptu(db, thread, tenant)
 
     # Sipariş bağlamı (no/müşteri + içerik analizi)
     ctx_parts = []

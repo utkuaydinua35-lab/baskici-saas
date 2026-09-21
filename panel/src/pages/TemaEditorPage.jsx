@@ -868,7 +868,7 @@ function NavLinkRow({ link, index, count, collections, products, pages, onChange
       </div>
       {isCustom && (
         <input className="input !py-1.5 text-xs font-mono" value={link.url} maxLength={300}
-          placeholder="https://siparistakip.bernzcompany.com"
+          placeholder="https://siparis.magazaniz.com"
           onChange={e => onChange({ url: e.target.value })} />
       )}
       {isColMenu && (

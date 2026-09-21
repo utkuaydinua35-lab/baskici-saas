@@ -1347,6 +1347,15 @@ def get_store_theme(
             "mesafeli_satis": config.get("mesafeli_satis_text") or None,
             "iade": config.get("iade_text") or None,
         },
+        # İşletme bilgileri: BOŞ gelirse vitrin o cümleyi HİÇ yazmaz. Yeni bir
+        # mağazaya başka bir işletmenin taahhüdünü (teslim süresi, iade
+        # istisnası) miras bırakmaktansa susmak doğru olan.
+        "isletme": {
+            "urun_turu": (config.get("isletme_urun_turu") or "").strip() or None,
+            "tanitim": (config.get("isletme_tanitim") or "").strip() or None,
+            "teslim_suresi": (config.get("isletme_teslim_suresi") or "").strip() or None,
+            "kisiye_ozel": bool(config.get("isletme_kisiye_ozel")),
+        },
     }
 
 

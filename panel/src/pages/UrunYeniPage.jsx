@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import { vitrinAlanAdi } from '../lib/vitrin'
 import { useToast } from '../components/Toast'
 import RichTextEditor from '../components/RichTextEditor'
 
@@ -9,7 +10,7 @@ import RichTextEditor from '../components/RichTextEditor'
 // medya, fiyatlar, koleksiyonlar, SEO ve yayınlama tek ekranda.
 // Varsayılan: Kaydet'e basınca HEMEN YAYINLANIR; istenirse taslak/planlı.
 export default function UrunYeniPage() {
-  const { storeId } = useStore()
+  const { storeId, store } = useStore()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -107,7 +108,7 @@ export default function UrunYeniPage() {
             <label className="block text-sm">
               <span className="text-panel-muted text-xs">Ürün adı *</span>
               <input className="input mt-1" value={form.title} onChange={set('title')}
-                maxLength={300} placeholder='BERNZ "Sparkling Ocean" Tasarım Telefon Kılıfı' autoFocus />
+                maxLength={300} placeholder='Örn. "Sparkling Ocean" Tasarım Kılıf' autoFocus />
             </label>
             <div>
               <span className="text-panel-muted text-xs">Açıklama</span>
@@ -182,7 +183,8 @@ export default function UrunYeniPage() {
               <div className="text-[13px] text-sky-300 truncate">
                 {form.seo_title || form.title || 'Ürün adı'}
               </div>
-              <div className="text-[11px] text-emerald-300/80">magaza.bernzcompany.com › urun</div>
+              {/* Mağazanın GERÇEK alan adı — eskiden BERNZ'inki sabitti */}
+              <div className="text-[11px] text-emerald-300/80">{vitrinAlanAdi(store)} › urun</div>
               <div className="text-[11px] text-panel-muted line-clamp-2">
                 {form.seo_description || 'SEO açıklaması burada görünecek…'}
               </div>

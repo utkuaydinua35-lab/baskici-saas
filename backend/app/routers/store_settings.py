@@ -48,6 +48,13 @@ _TEXT_KEYS = {
     "studio_product_slug",
     # Baskı: CMYK ICC profilinin storage yolu (dosya ayrı uçtan yüklenir)
     "cmyk_icc_path", "cmyk_icc_ad",
+    # İşletme bilgileri — vitrinde ürün sayfası, SEO açıklamaları, yasal
+    # metinler ve destek asistanı bunlardan kurulur. Eskiden BERNZ'in iş
+    # kuralları ("baskılı telefon kılıfı", "1–3 iş günü", kişiye özel üretim)
+    # koda sabit yazılıydı ve her yeni mağazaya aynen gidiyordu.
+    "isletme_urun_turu", "isletme_tanitim", "isletme_teslim_suresi",
+    # AI destek taslağının teslim kuralları (serbest metin, mağaza başına)
+    "ai_teslim_bilgisi",
 }
 _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
@@ -55,7 +62,10 @@ _SECRET_CFG_KEYS = {
     "meta_capi_token",
 }
 _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled",
-              "support_chat_enabled", "welcome_email_enabled", "review_invite_enabled"}
+              "support_chat_enabled", "welcome_email_enabled", "review_invite_enabled",
+              # Ürünler siparişe özel mi üretiliyor → iade sayfasındaki cayma
+              # hakkı istisnası ve ürün sayfasındaki üretim notu buna bağlı
+              "isletme_kisiye_ozel"}
 # E-posta bildirim metinleri: {tip: {subject, intro}} (Shopify Notifications)
 _EMAIL_TEXT_TYPES = {"siparis_onay", "kargo", "terk_sepet", "odeme_linki", "stok",
                      "hosgeldin", "yorum_daveti"}

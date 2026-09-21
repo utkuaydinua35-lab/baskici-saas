@@ -6,6 +6,8 @@ import { useStore } from '../lib/store'
 import { useToast } from './Toast'
 import BrandMark from './BrandMark'
 import KomutPaleti from './KomutPaleti'
+import { vitrinAdresi } from '../lib/vitrin'
+import { BRAND } from '../lib/brand'
 import { nativeMi } from '../lib/kamera'
 import { platformSifirla } from '../PlatformSecici'
 
@@ -94,8 +96,9 @@ export default function Layout() {
     }
   }, [menuOpen])  // eslint-disable-line
 
-  const storefrontUrl = store?.config?.storefront_url
-    || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : null)
+  const storefrontUrl = vitrinAdresi(store)
+  // Beyaz etiket: kiracı kendi adını görür (eskiden herkese "BERNZ Commerce")
+  const markaAdi = tenant?.app_name || tenant?.name || BRAND
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -112,10 +115,8 @@ export default function Layout() {
         </button>
         <div className="flex items-center gap-2 pr-2">
           <BrandMark />
-          <span className="text-[13px] tracking-tight hidden sm:inline">
-            <span className="font-bold">BERNZ</span>
-            <span className="font-light ml-1 bg-gradient-to-r from-panel-accent to-panel-cyan
-              bg-clip-text text-transparent">Commerce</span>
+          <span className="text-[13px] tracking-tight hidden sm:inline font-bold truncate max-w-[14rem]">
+            {markaAdi}
           </span>
         </div>
 

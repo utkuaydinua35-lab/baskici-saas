@@ -43,11 +43,14 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const collection = (await getCollections()).find((c) => c.slug === slug);
+  const [collections, { isletme }] = await Promise.all([getCollections(), getThemePayload()]);
+  const collection = collections.find((c) => c.slug === slug);
   if (!collection) return { title: "Koleksiyon bulunamadı" };
   return {
     title: collection.title,
-    description: collection.description || `${collection.title} koleksiyonu — baskılı telefon kılıfları.`,
+    // Ürün türü mağaza ayarından (eskiden "baskılı telefon kılıfları" sabitti)
+    description: collection.description
+      || `${collection.title} koleksiyonu${isletme.urun_turu ? ` — ${isletme.urun_turu}` : ""}.`,
     alternates: { canonical: `${SITE_URL}/koleksiyon/${slug}` },
   };
 }

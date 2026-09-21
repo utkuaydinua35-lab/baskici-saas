@@ -25,14 +25,16 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProduct(slug);
+  const [product, { isletme }] = await Promise.all([getProduct(slug), getThemePayload()]);
   if (!product) return { title: "Ürün bulunamadı" };
   return {
     title: product.seo_title || product.title,
     description:
       product.seo_description ||
       product.description?.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) ||
-      `${product.title} — baskılı telefon kılıfı.`,
+      // Ürün türü mağaza ayarından; yoksa yalnız başlık (başka işletmenin
+      // ürün tanımını miras bırakmaktansa)
+      (isletme.urun_turu ? `${product.title} — ${isletme.urun_turu}.` : product.title),
     alternates: { canonical: `${SITE_URL}/urun/${product.slug}` },
     openGraph: product.images[0]
       ? { images: [{ url: product.images[0].url }] }
@@ -44,7 +46,7 @@ export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
   const [product, reviews] = await Promise.all([getProduct(slug), getReviews(slug)]);
   if (!product) notFound();
-  const { theme } = await getThemePayload();
+  const { theme, isletme } = await getThemePayload();
   const trustEnabled = theme.trust_badges?.enabled !== false;
 
   // Google zengin sonuçlar (fiyat/stok) için yapısal veri
@@ -158,10 +160,19 @@ export default async function ProductPage({ params }: Props) {
           <div className="mt-5">
             <ShareButtons title={product.title} />
           </div>
-          <div className="mt-6 text-xs text-zinc-400 space-y-1">
-            <p>• Siparişinize özel üretilir, 1–3 iş gününde kargoya verilir.</p>
-            <p>• Kişiye özel üretim olduğundan iade koşulları için “İade ve Değişim” sayfasına bakın.</p>
-          </div>
+          {/* Üretim/teslim taahhüdü MAĞAZA AYARINDAN. Ayar yoksa blok hiç
+              çıkmaz — başka bir işletmenin taahhüdünü göstermekten iyidir. */}
+          {(isletme.kisiye_ozel || isletme.teslim_suresi) && (
+            <div className="mt-6 text-xs text-zinc-400 space-y-1">
+              {(isletme.kisiye_ozel || isletme.teslim_suresi) && (
+                <p>• {isletme.kisiye_ozel ? "Siparişinize özel üretilir" : "Siparişiniz hazırlanır"}
+                  {isletme.teslim_suresi ? `, ${isletme.teslim_suresi} içinde kargoya verilir.` : "."}</p>
+              )}
+              {isletme.kisiye_ozel && (
+                <p>• Kişiye özel üretim olduğundan iade koşulları için “İade ve Değişim” sayfasına bakın.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {reviews.total > 0 && (

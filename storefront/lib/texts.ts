@@ -10,7 +10,9 @@ export const DEFAULT_TEXTS: Record<string, string> = {
   checkout_cta: "Ödemeye Geç",
   newsletter_title: "📮 Kampanyalardan haberdar olun",
   trust_ssl: "256-bit SSL güvenli ödeme",
-  trust_shipping: "1-3 iş gününde kargo",
+  // Nötr varsayılan. Mağaza teslim süresi girdiyse aşağıda ondan kurulur;
+  // eskiden BERNZ'in "1-3 iş gününde kargo" taahhüdü her mağazada vardı.
+  trust_shipping: "Hızlı ve güvenli kargo",
   trust_return: "Kolay iade ve değişim",
   fav_empty_title: "Favori listeniz boş",
   fav_empty_sub: "Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.",
@@ -30,7 +32,11 @@ export function useTexts(): Record<string, string> {
           Object.entries((d?.texts ?? {}) as Record<string, string>)
             .filter(([, v]) => typeof v === "string" && v.trim() !== ""),
         );
-        cached = { ...DEFAULT_TEXTS, ...custom };
+        const teslim = d?.isletme?.teslim_suresi;
+        const turetilmis: Record<string, string> =
+          teslim ? { trust_shipping: `${teslim} içinde kargo` } : {};
+        // Öncelik: mağazanın elle yazdığı metin > teslim süresinden türetilen > nötr
+        cached = { ...DEFAULT_TEXTS, ...turetilmis, ...custom };
         setTexts(cached);
       })
       .catch(() => {});

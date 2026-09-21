@@ -17,7 +17,7 @@ import Countdown from "@/components/sections/Countdown";
 
 // Anasayfa — tema bölüm listesine (sections) göre kurulur.
 export default async function HomePage() {
-  const { theme } = await getThemePayload();
+  const { theme, store_name, isletme } = await getThemePayload();
 
   const renderSection = (section: (typeof theme.sections)[number]) => {
         const s = section.settings;
@@ -26,7 +26,8 @@ export default async function HomePage() {
             return (
               <HeroSlider key={section.id} slides={s.slides ?? []}
                 autoplaySec={s.autoplay_sec ?? 5}
-                radius_scope={s.radius_scope} radius_pct={s.radius_pct} />
+                radius_scope={s.radius_scope} radius_pct={s.radius_pct}
+                magaza={store_name} tanitim={isletme.tanitim} />
             );
           case "featured_collections":
             return (

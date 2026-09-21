@@ -109,7 +109,10 @@ DEFAULT_THEME: dict = {
         "checkout_cta": "Ödemeye Geç",
         "newsletter_title": "📮 Kampanyalardan haberdar olun",
         "trust_ssl": "256-bit SSL güvenli ödeme",
-        "trust_shipping": "1-3 iş gününde kargo",
+        # BOŞ: vitrin bunu mağazanın teslim süresinden türetir (lib/texts.ts).
+        # Burada dolu olsaydı her mağazaya "özel metin" gibi gidip türetmeyi
+        # ezer ve BERNZ'in "1-3 iş günü" taahhüdünü her kiracıya yayardı.
+        "trust_shipping": "",
         "trust_return": "Kolay iade ve değişim",
         "fav_empty_title": "Favori listeniz boş",
         "fav_empty_sub": "Beğendiğiniz ürünlerin kalbine dokunun, burada biriksin.",
@@ -122,7 +125,7 @@ FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
 # Uygulanınca renk/font/duyuru/bölümler değişir; logo, favicon, WhatsApp,
 # özel kod ve mağazaya özel ayarlar KORUNUR (panel tarafı merge eder).
 THEME_PRESETS: dict[str, dict] = {
-    "bernz-modern": {
+    "modern": {
         "label": "Modern",
         "description": "Sade ve çağdaş varsayılan tasarım — Inter yazı tipi, "
                        "koyu butonlar, amber vurgu.",
@@ -145,14 +148,16 @@ THEME_PRESETS: dict[str, dict] = {
     # Poppins başlık, koyu butonlar (#121212), mor vurgu (#6d388b),
     # anasayfa: slayt → çok satanlar → neden biz → SSS → bülten.
     "shinepro": {
-        "label": "ShinePro (Lunera)",
-        "description": "Lunera Case temasından uyarlandı — Poppins yazı tipi, "
-                       "mor vurgu, kampanya şeridi ve zengin anasayfa akışı.",
+        "label": "ShinePro",
+        "description": "Poppins yazı tipi, mor vurgu, kampanya şeridi ve zengin "
+                       "anasayfa akışı.",
         "theme": {
             "colors": {"primary": "#121212", "accent": "#6d388b", "bg": "#ffffff"},
             "font": "poppins",
-            "announcement": {"enabled": True,
-                             "text": "🚚 Tüm siparişlerde hızlı kargo — bugün sipariş ver, hemen üretelim!",
+            # Kapalı gelir: kiracı kendi kampanyasını yazıp açar. Eskiden açıktı
+            # ve "hemen üretelim" diye bir üretim vaadi taşıyordu.
+            "announcement": {"enabled": False,
+                             "text": "🎉 Kampanya metninizi buraya yazın",
                              "url": "/urunler"},
             "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
             "sections": [
@@ -163,45 +168,33 @@ THEME_PRESETS: dict[str, dict] = {
                 {"id": "sp-ikonlar", "type": "icon_bar",
                  "settings": {"items": [
                      {"icon": "🚚", "title": "Hızlı Kargo",
-                      "text": "1-3 iş gününde kargoda"},
-                     {"icon": "🎨", "title": "Kişiye Özel Baskı",
-                      "text": "Tasarımını seç, biz basalım"},
-                     {"icon": "🛡️", "title": "Dayanıklı Malzeme",
-                      "text": "Darbe emici kaliteli kılıf"},
+                      "text": "Siparişiniz özenle hazırlanır"},
+                     {"icon": "💬", "title": "Destek", "text": "Sorularınız için yanınızdayız"},
+                     {"icon": "↩️", "title": "Kolay İade", "text": "Koşullar iade sayfamızda"},
                      {"icon": "🔒", "title": "Güvenli Ödeme",
-                      "text": "iyzico / PayTR güvencesi"},
+                      "text": "256-bit SSL ile korunur"},
                  ]}},
                 {"id": "sp-karsilastirma", "type": "comparison",
                  "settings": {"title": "NEDEN BİZ?", "us_label": "Biz",
                               "them_label": "Diğerleri", "rows": [
-                     {"feature": "Kişiye özel baskı kalitesi", "us": True, "them": False},
-                     {"feature": "1-3 iş gününde kargo", "us": True, "them": False},
-                     {"feature": "Yüzlerce telefon modeli", "us": True, "them": False},
+                     {"feature": "Özenli paketleme", "us": True, "them": False},
+                     {"feature": "Hızlı kargo", "us": True, "them": False},
+                     {"feature": "Güvenli ödeme", "us": True, "them": False},
                      {"feature": "Kolay iade ve değişim", "us": True, "them": False},
                      {"feature": "Gerçek müşteri desteği", "us": True, "them": False},
                  ]}},
                 {"id": "sp-galeri", "type": "gallery",
                  "settings": {"title": "SİZDEN GELENLER", "images": []}},
                 {"id": "sp-yorumlar", "type": "testimonials",
-                 "settings": {"title": "MÜŞTERİLERİMİZ NE DİYOR?", "items": [
-                     {"author": "Elif K.", "rating": 5,
-                      "text": "Baskı kalitesi harika, telefonuma tam oturdu. Kargolama da çok hızlıydı!"},
-                     {"author": "Mert A.", "rating": 5,
-                      "text": "Kendi tasarımımı yaptırdım, beklediğimden çok daha iyi geldi. Kesinlikle tavsiye ederim."},
-                     {"author": "Zeynep D.", "rating": 5,
-                      "text": "İkinci siparişim — renkleri canlı, malzemesi sağlam. Teşekkürler!"},
-                 ]}},
+                 "settings": {"title": "MÜŞTERİLERİMİZ NE DİYOR?", "items": []}},  # BOŞ: hazır temada uydurma müşteri yorumu yayınlanmaz
                 {"id": "sp-kolek", "type": "featured_collections",
                  "settings": {"title": "Koleksiyonlar", "slugs": []}},
                 {"id": "sp-sss", "type": "faq",
                  "settings": {"title": "Sıkça Sorulan Sorular", "items": [
-                     {"q": "Kargoya ne zaman verilir?",
-                      "a": "Siparişiniz kişiye özel üretilir ve 1-3 iş günü içinde kargoya verilir."},
+                     {"q": "Siparişim ne zaman kargoya verilir?",
+                      "a": "Kargo ve teslimat süreleri ürün sayfalarında ve mesafeli satış sözleşmesinde belirtilir."},
                      {"q": "İade edebilir miyim?",
-                      "a": "Kişiye özel üretimlerde iade koşulları için İade ve Değişim sayfamıza göz atın."},
-                     {"q": "Hangi telefon modelleri destekleniyor?",
-                      "a": "Ürün sayfasındaki model seçiciden telefonunuzu bulabilirsiniz — "
-                           "yüzlerce model için üretim yapıyoruz."},
+                      "a": "İade koşulları için İade ve Değişim sayfamıza göz atın."},
                  ]}},
                 {"id": "sp-iletisim", "type": "contact",
                  "settings": {"title": "İLETİŞİM",

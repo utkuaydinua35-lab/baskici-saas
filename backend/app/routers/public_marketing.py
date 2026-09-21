@@ -38,7 +38,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _brand(tenant) -> tuple[str, str, str | None]:
-    name = (getattr(tenant, "app_name", None) or getattr(tenant, "name", None) or "BERNZ")
+    name = (getattr(tenant, "app_name", None) or getattr(tenant, "name", None) or "Mağaza")
     bc = (getattr(tenant, "brand_color", None) or "").strip() if tenant else ""
     if bc and not bc.startswith("#"):
         bc = "#" + bc

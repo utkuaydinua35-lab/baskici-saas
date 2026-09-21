@@ -11,7 +11,11 @@ export default function HeroSlider({
   autoplaySec = 5,
   radius_scope = "both",
   radius_pct = 50,
+  magaza = "",
+  tanitim = null,
 }: {
+  magaza?: string;
+  tanitim?: string | null;
   slides: HeroSlide[];
   autoplaySec?: number;
   radius_scope?: "both" | "mobile" | "desktop" | "none";
@@ -40,22 +44,19 @@ export default function HeroSlider({
   if (count === 0) {
     return (
       <section className="mx-auto max-w-6xl px-4 py-14 text-center">
+        {/* Slayt eklenmemişken görünen yedek. Eskiden "Telefonunu özel
+            tasarımla giydir" + BERNZ'in üretim/kargo vaadiydi; artık mağazanın
+            adı ve KENDİ tanıtım cümlesi. */}
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          Telefonunu{" "}
-          <span className="underline decoration-4 underline-offset-4"
-            style={{ textDecorationColor: "var(--c-accent)" }}>
-            özel tasarımla
-          </span>{" "}
-          giydir
+          {magaza || "Hoş geldiniz"}
         </h1>
-        <p className="mt-3 text-zinc-600 max-w-xl mx-auto">
-          Yüzlerce telefon modeli için baskılı kılıflar — siparişinle birlikte üretilir,
-          hızlıca kargoya verilir.
-        </p>
+        {tanitim && (
+          <p className="mt-3 text-zinc-600 max-w-xl mx-auto">{tanitim}</p>
+        )}
         <Link href="/urunler"
           className="mt-6 inline-block rounded-xl text-white px-6 py-3 font-medium hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}>
-          Tasarımları Keşfet
+          Ürünleri Keşfet
         </Link>
       </section>
     );

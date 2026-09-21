@@ -375,11 +375,21 @@ def me(
     user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
 ) -> AuthMeResponse:
-    """Mevcut kullanıcı + tenant bilgisi (frontend init için)."""
-    return AuthMeResponse(
-        user=UserResponse.model_validate(user),
-        tenant=TenantResponse.model_validate(tenant),
-    )
+    """Mevcut kullanıcı + tenant bilgisi (frontend init için).
+
+    Etkin yetkiler ve abonelik durumu da döner: arayüzün menü ve uyarı
+    kararı SUNUCUNUN kararıyla birebir aynı olsun diye tek kaynaktan."""
+    from app.auth import permissions as _perms
+    from app.services import abonelik
+
+    u = UserResponse.model_validate(user)
+    u.effective_permissions = _perms.effective_permissions(user)
+    t = TenantResponse.model_validate(tenant)
+    t.abonelik = abonelik.durum(tenant).sozluk()
+    plan = getattr(tenant, "plan_kaydi", None)
+    t.plan_bilgi = ({"kod": plan.kod, "ad": plan.ad, "moduller": list(plan.moduller or [])}
+                    if plan else None)
+    return AuthMeResponse(user=u, tenant=t)
 
 
 from pydantic import BaseModel as _ProfBaseModel, Field as _ProfField  # noqa: E402

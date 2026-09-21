@@ -70,6 +70,9 @@ export interface Theme {
 }
 
 export interface ThemePayload {
+  // Kiralama: kiracının aboneliği askıya düştüyse backend 503 +
+  // "vitrin_bakimda" döner; kök düzen tüm siteyi bakım ekranına çevirir.
+  bakimda?: boolean;
   store_name: string;
   theme: Theme;
   settings: Record<string, string | null>;
@@ -127,6 +130,12 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
       // cache'i anında düşürür — 60 sn eski tema görünmesin
       preview ? { cache: "no-store" } : { next: { revalidate: 60, tags: ["theme"] } },
     );
+    if (res.status === 503) {
+      // Yalnız ABONELİK kaynaklı 503 bakım ekranıdır; sunucunun kendisi
+      // çökmüşse (başka bir 503) eski davranış — varsayılan tema.
+      const govde = await res.json().catch(() => null);
+      if (govde?.detail === "vitrin_bakimda") return { ...DEFAULT_PAYLOAD, bakimda: true };
+    }
     if (!res.ok) return DEFAULT_PAYLOAD;
     const payload = (await res.json()) as ThemePayload;
     // Şema koruması: eski önbellek/eksik alan sayfayı düşürmesin

@@ -71,6 +71,31 @@ export default async function RootLayout({
   const year = new Date().getFullYear();
   const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
 
+  // Kiralama: abonelik askıda → yalnız bakım ekranı. Ödeme yapıldığı anda
+  // (en geç tema önbelleğinin 60 sn'si içinde) site kaldığı yerden açılır.
+  // Muafiyet: ödemesi yapılmış müşterinin sipariş takibi ve ödeme dönüşü
+  // bakımdan etkilenmez — backend uçları zaten token ile çalışıyor.
+  const yol = payload.bakimda ? ((await headers()).get("x-vitrin-yol") || "") : "";
+  const bakimdanMuaf = yol.startsWith("/siparis/") || yol.startsWith("/odeme/sonuc");
+  if (payload.bakimda && !bakimdanMuaf) {
+    return (
+      <html lang="tr" className={`${inter.variable} h-full antialiased`}>
+        <body className="min-h-full flex items-center justify-center bg-zinc-50 text-zinc-900 p-6">
+          <main className="max-w-sm text-center">
+            <div className="text-4xl mb-4" aria-hidden="true">🛠️</div>
+            <h1 className="text-xl font-semibold">Kısa bir bakımdayız</h1>
+            <p className="mt-2 text-sm text-zinc-600">
+              Mağazamız şu anda hizmet vermiyor. Lütfen daha sonra tekrar deneyin.
+            </p>
+            <p className="mt-4 text-xs text-zinc-500">
+              Siparişiniz varsa, size gönderilen takip bağlantısı çalışmaya devam eder.
+            </p>
+          </main>
+        </body>
+      </html>
+    );
+  }
+
   // Yayın öncesi kilit (Shopify password page) — çerez yoksa yalnız kilit ekranı
   const locked = payload.password_protected && !payload.is_preview
     && !(await cookies()).get("vitrin_kilit");

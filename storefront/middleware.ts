@@ -9,6 +9,9 @@ export function middleware(req: NextRequest) {
   const hasCookie = req.cookies.get("vitrin_onizleme")?.value === "1";
 
   const requestHeaders = new Headers(req.headers);
+  // Kök düzen yolu bilemez; bakım ekranından MUAF sayfaları (sipariş takibi,
+  // ödeme sonucu) ayırt edebilmesi için yol başlığa yazılır.
+  requestHeaders.set("x-vitrin-yol", req.nextUrl.pathname);
   if (flag === "1" || (hasCookie && flag !== "0")) {
     requestHeaders.set("x-vitrin-onizleme", "1");
   }

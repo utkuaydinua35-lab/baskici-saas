@@ -12,6 +12,10 @@ const ADMIN_ROLES = ['yonetici', 'owner']
 
 export function canUsePanel(user) {
   if (!user) return false
+  // Sunucunun plana göre süzdüğü gerçek yetkiler esas (bkz. /api/auth/me)
+  if (Array.isArray(user.effective_permissions)) {
+    return user.effective_permissions.includes('vitrin')
+  }
   if (ADMIN_ROLES.includes(user.role)) return true
   return (user.permissions || []).includes('vitrin')
 }

@@ -97,8 +97,24 @@ def _studio_overlay_moduller(db, store, product) -> list[dict]:
     ]
 
 
+# Vitrin "bakımda" — kiracının aboneliği askıya düştüğünde. Vitrin bu
+# kodu tanıyıp hata yerine düzgün bir bakım sayfası gösterir.
+BAKIMDA_KODU = "vitrin_bakimda"
+
+
 def _resolve_store(db: Session, store_slug: str) -> Store:
-    """Vitrin mağazasını slug ile çöz. Yalnızca platform='storefront' + aktif."""
+    """Vitrin mağazasını slug ile çöz. Yalnızca platform='storefront' + aktif.
+
+    KİRALAMA: kiracının ödemesi 14 günden fazla gecikmişse (ya da hesap elle
+    askıya alındıysa) vitrin bakıma girer — 503 + BAKIMDA_KODU.
+
+    Bu kontrolün BURADA olması bilinçli: mevcut müşterinin işini gören uçlar
+    (iyzico/PayTR ödeme dönüşü, token'la sipariş takibi, sepet geri yükleme)
+    mağazayı slug ile değil token ile buluyor ve _resolve_store'dan
+    GEÇMİYOR. Böylece vitrin kapansa bile ödemesi yolda olan müşterinin
+    siparişi düşer, sipariş takip sayfası çalışmaya devam eder. Yalnız YENİ
+    alışveriş durur.
+    """
     store = db.scalar(select(Store).where(
         Store.slug == store_slug,
         Store.platform == "storefront",
@@ -106,6 +122,11 @@ def _resolve_store(db: Session, store_slug: str) -> Store:
     ))
     if not store:
         raise HTTPException(404, "Mağaza bulunamadı")
+
+    from app.models import Tenant
+    from app.services import abonelik
+    if not abonelik.durum(db.get(Tenant, store.tenant_id)).vitrin_acik:
+        raise HTTPException(503, BAKIMDA_KODU)
     return store
 
 

@@ -602,6 +602,12 @@ const NAV = [
 
 function usePerm() {
   const { user } = useAuth()
+  // Sunucu artık PLANA göre süzülmüş gerçek yetkileri gönderiyor. Onu esas
+  // al: eskiden "owner ise her şeyi göster" deniyordu ve Basic planlı bir
+  // kiracının owner'ı kalıp/üretim/bayi menülerini görüp tıklayınca 403
+  // alıyordu. effective_permissions yoksa (eski sunucu) eski davranış.
+  const etkin = user?.effective_permissions
+  if (Array.isArray(etkin)) return (perm) => !perm || etkin.includes(perm)
   const isAdmin = user?.role === 'yonetici' || user?.role === 'owner'
   const perms = isAdmin ? null : (user?.permissions || [])
   return (perm) => isAdmin || !perm || (perms || []).includes(perm)

@@ -55,7 +55,12 @@ class UserResponse(BaseModel):
     email: str
     full_name: str | None
     role: str
+    # HAM yetki sütunu — owner/yönetici için boştur (rol "her şey" demek).
     permissions: list[str] = []
+    # GERÇEK yetkiler: rol + kullanıcı yetkisi ∩ kiracının PLANI. Arayüz menü
+    # kararını buna göre vermeli; ham alana bakan arayüz Basic planlı bir
+    # owner'a üretim/bayi menülerini gösterip tıklayınca hata verdiriyordu.
+    effective_permissions: list[str] = []
     avatar_url: str | None = None
     is_active: bool
     is_platform_admin: bool = False
@@ -77,6 +82,9 @@ class TenantResponse(BaseModel):
     plan: str
     is_active: bool
     created_at: datetime
+    # Kiralama: panelin uyarı bandı ve plan bilgisi için
+    abonelik: dict | None = None
+    plan_bilgi: dict | None = None
 
 
 class AuthMeResponse(BaseModel):

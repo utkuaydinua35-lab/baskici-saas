@@ -90,6 +90,57 @@ def _bayi_kapisi(user: User, yol: str) -> None:
     )
 
 
+def _abonelik_kapisi(user: User, request: Request, db: Session) -> None:
+    """Kiralama kapısı: plan kısıtı + ödeme durumu, HER istekte.
+
+    İKİ AÇIK KAPATILIR
+      1. Kiracı eskiden yalnız GİRİŞTE kontrol ediliyordu. Elle askıya alınan
+         ya da süresi dolan bir kiracının elindeki token (7 gün geçerli) çoğu
+         uçta çalışmaya devam ediyordu. Artık her istekte bakılıyor.
+      2. owner/yönetici "her şey" demekti; kiracı kendi mağazasının owner'ı
+         olduğu için Basic planla üretim ve bayi modüllerine girebilirdi.
+         Artık yetki, PLANIN açtığıyla kesişiyor (bkz. permissions.py).
+
+    Platform yöneticisi hiçbir zaman kısıtlanmaz: sahip, "sahip" planı
+    yanlışlıkla silinse bile kendi atölyesine kilitlenip kalmasın.
+    """
+    from app.services import abonelik
+
+    if getattr(user, "is_platform_admin", False):
+        user._plan_yetkileri = None
+        return
+
+    tenant = db.get(Tenant, user.tenant_id)
+    if tenant is None or not tenant.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hesabınız askıya alındı. Lütfen bizimle iletişime geçin.",
+        )
+
+    user._plan_yetkileri = abonelik.izinli_yetkiler(tenant)
+    durum = abonelik.durum(tenant)
+    request.state.abonelik = durum
+
+    # Salt-okunur dönemde yalnız OKUMA serbest. Ödeme yapabilmesi ve oturumunu
+    # yönetebilmesi için birkaç yol açık kalır — yoksa borcunu ödeyemez.
+    if not durum.yazma_izni and request.method not in ("GET", "HEAD", "OPTIONS"):
+        yol = request.url.path
+        if not yol.startswith(ABONELIK_YAZMA_ACIK):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=durum.mesaj or "Aboneliğiniz aktif değil — panel salt-okunur.",
+            )
+
+
+# Salt-okunur dönemde bile yazılabilen yollar: oturum yönetimi, ödeme ve
+# bildirim aboneliği. Başka hiçbir şey değiştirilemez.
+ABONELIK_YAZMA_ACIK = (
+    "/api/auth/",
+    "/api/abonelik/",
+    "/api/push/",
+)
+
+
 def get_current_user(
     request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
@@ -129,6 +180,7 @@ def get_current_user(
             raise _unauthorized("Oturum sonlandırıldı — tekrar giriş yapın")
 
     _bayi_kapisi(user, request.url.path)
+    _abonelik_kapisi(user, request, db)
 
     # Tenant izolasyonu için request.state'e yaz — log/audit için faydalı
     request.state.user_id = user.id

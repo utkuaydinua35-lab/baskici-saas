@@ -47,7 +47,7 @@ export const NAV_GROUPS = [
 ]
 
 export default function Layout() {
-  const { user, logout, refresh } = useAuth()
+  const { user, tenant, logout, refresh } = useAuth()
   const { stores, store, setStoreId } = useStore()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)  // mobil çekmece
@@ -157,6 +157,7 @@ export default function Layout() {
       </header>
 
       <KomutPaleti acik={paletAcik} kapat={() => setPaletAcik(false)} />
+      <AbonelikBandi abonelik={tenant?.abonelik} />
 
       <div className="flex-1 flex min-h-0">
         {/* Mobil çekmece örtüsü */}
@@ -569,5 +570,32 @@ function PasswordModal({ user, onClose }) {
         </div>
       </form>
     </ModalShell>
+  )
+}
+
+// Kiralama: abonelik uyarı bandı.
+//
+// Sunucu ödeme durumunu /api/auth/me ile bildiriyor (services/abonelik.py).
+// Bant yalnız söylenecek bir şey varsa çıkar: bitişe 5 gün kala nazik
+// hatırlatma, sonra giderek sertleşen üç aşama. Salt-okunur dönemde
+// panel değişiklikleri sunucu tarafında zaten 402 ile reddediliyor —
+// bant, müşteri o hatayı görmeden NEDENİNİ söylemek için.
+const BANT_TONU = {
+  aktif:       'bg-sky-500/10 border-sky-500/30 text-sky-300',
+  ek_sure:     'bg-amber-500/10 border-amber-500/30 text-amber-300',
+  salt_okunur: 'bg-orange-500/15 border-orange-500/40 text-orange-300',
+  askida:      'bg-red-500/15 border-red-500/40 text-red-300',
+}
+const BANT_IKONU = { aktif: '🗓️', ek_sure: '⏳', salt_okunur: '🔒', askida: '⛔' }
+
+function AbonelikBandi({ abonelik }) {
+  if (!abonelik?.mesaj) return null
+  const asama = abonelik.asama in BANT_TONU ? abonelik.asama : 'ek_sure'
+  return (
+    <div role="status"
+      className={`shrink-0 border-b px-4 py-2 text-xs flex items-center gap-2 ${BANT_TONU[asama]}`}>
+      <span aria-hidden="true">{BANT_IKONU[asama]}</span>
+      <span className="flex-1">{abonelik.mesaj}</span>
+    </div>
   )
 }

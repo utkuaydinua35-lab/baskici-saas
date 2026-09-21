@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Float,
@@ -31,6 +32,56 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class Plan(Base):
+    """Kiralama planı: sabit aylık ücret + ciro komisyonu + açık modüller.
+
+    `moduller` modül ANAHTARLARIDIR (magaza, tasarim_studyosu, uretim, bayi);
+    hangi modülün hangi panel yetkilerini açtığı services/abonelik.py'dedir
+    — çünkü o eşleme koddaki yetki adlarına bağlıdır, veriye değil.
+    """
+    __tablename__ = "plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kod: Mapped[str] = mapped_column(String(30), unique=True)
+    ad: Mapped[str] = mapped_column(String(80))
+    aylik_ucret: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    komisyon_orani: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, server_default="0")
+    moduller: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    sinirlar: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    aktif: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    sira: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AbonelikOdemesi(Base):
+    """Bir kiracının bir dönem için ödemesi (havale ya da kart).
+
+    Tutarlar ödeme ANINDA dondurulur: plan fiyatı sonradan değişse de geçmiş
+    kayıtlar değişmez. `ciro` komisyonun hesaplandığı vitrin cirosudur.
+    """
+    __tablename__ = "abonelik_odemeleri"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
+    donem_bas: Mapped[date] = mapped_column(Date)
+    donem_bit: Mapped[date] = mapped_column(Date)
+    sabit_ucret: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    ciro: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    komisyon_orani: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
+    komisyon: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    toplam: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    yontem: Mapped[str] = mapped_column(String(20))                 # havale | kart
+    durum: Mapped[str] = mapped_column(String(20), default="bekliyor")
+    referans: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    not_: Mapped[str | None] = mapped_column(Text, nullable=True)
+    odendi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Tenant(Base):
     __tablename__ = "tenants"
 
@@ -38,7 +89,15 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(50), unique=True, index=True)
 
+    # ESKİ serbest metin ("trial", "pro"…) — hiçbir şeyi kısıtlamıyordu.
+    # Geriye uyum için duruyor; doğruluk kaynağı artık plan_id.
     plan: Mapped[str] = mapped_column(String(30), default="trial")
+    plan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
+    plan_kaydi: Mapped["Plan | None"] = relationship(lazy="joined")
+    # Aboneliğin ödenmiş olduğu son gün. None = süresiz (sahip planı).
+    # Bu tarihten sonra: 7 gün ek süre → salt-okunur → 14. günde vitrin
+    # bakıma alınır. Hesap services/abonelik.py'de.
     active_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Yeni self-servis kayıtlar yönetici onayı bekler; onaylanana kadar giriş yapılamaz.

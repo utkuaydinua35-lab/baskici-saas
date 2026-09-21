@@ -164,6 +164,14 @@ def patch_settings(
         # varsayılanı açık olan özellikler (destek balonu) istem dışı kapanır
         if key in _BOOL_KEYS and value is not None:
             value = bool(value)
+        if key in ("shop_domain", "custom_domain") and store.platform == "storefront":
+            from app.services import alan_adi
+            try:
+                value = alan_adi.dogrula(db, value, haric=store.id)
+            except ValueError as e:
+                raise HTTPException(409 if "bağlı" in str(e) else 422, str(e))
+            if key == "shop_domain" and not value:
+                raise HTTPException(422, "Vitrin alan adı boş bırakılamaz")
         if key == "email_texts" and value not in (None, ""):
             value = _sanitize_email_texts(value)
             if not value:

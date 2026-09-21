@@ -31,6 +31,7 @@ from app.adapters import PLATFORM_REGISTRY, get_adapter
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import Store, User
+from app.services import alan_adi
 
 router = APIRouter(prefix="/api/stores", tags=["stores"])
 
@@ -79,6 +80,31 @@ class TestConnectionResponse(BaseModel):
 
 
 # ─── Helpers ─────────────────────────────────────────────────
+
+# Vitrin kurulurken formda SORULMAYAN ama boş kalırsa işi bozan ayarlar.
+# payment_provider yoksa ödeme adaptörü "Bilinmeyen ödeme sağlayıcı" diye
+# patlıyor; ortam varsayılanı SANDBOX — anahtarlar girilmeden canlı ödeme
+# açılamasın. Hepsi mağaza paneli → Ayarlar'dan değiştirilir.
+_VITRIN_VARSAYILAN = {
+    "payment_provider": "iyzico",
+    "iyzico_base_url": "https://sandbox-api.iyzipay.com",
+    "sla_days": "3",
+}
+
+
+def _vitrin_kurulum_config(db: Session, config: dict) -> dict:
+    try:
+        alan = alan_adi.dogrula(db, config.get("shop_domain"))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT if "bağlı" in str(e) else 422, str(e))
+    if not alan:
+        raise HTTPException(422, "Vitrin alan adı zorunlu")
+    config["shop_domain"] = alan
+    for k, v in _VITRIN_VARSAYILAN.items():
+        if config.get(k) in (None, ""):
+            config[k] = v
+    return config
+
 
 _SECRET_KEYS = {
     "access_token", "client_secret", "api_secret", "api_key", "password", "secret",
@@ -170,12 +196,16 @@ def create_store(
             detail=f"Bu slug zaten kullanılıyor: {req.slug}",
         )
 
+    config = dict(req.config or {})
+    if req.platform == "storefront":
+        config = _vitrin_kurulum_config(db, config)
+
     store = Store(
         tenant_id=user.tenant_id,
         slug=req.slug,
         name=req.name,
         platform=req.platform,
-        config=req.config,
+        config=config,
         badge_color=req.badge_color,
         is_active=True,
     )
@@ -236,6 +266,13 @@ def update_store(
             # Maskelenmiş değer geldiyse atla (kullanıcı değiştirmemiş)
             if isinstance(v, str) and "••••••" in v:
                 continue
+            if store.platform == "storefront" and k in ("shop_domain", "custom_domain"):
+                try:
+                    v = alan_adi.dogrula(db, v, haric=store.id)
+                except ValueError as e:
+                    raise HTTPException(status.HTTP_409_CONFLICT if "bağlı" in str(e) else 422, str(e))
+                if k == "shop_domain" and not v:
+                    raise HTTPException(422, "Vitrin alan adı boş bırakılamaz")
             merged[k] = v
         store.config = merged
 
@@ -316,17 +353,13 @@ def list_platforms():
         {
             "id": "storefront",
             "name": "Kendi Mağazam (Vitrin)",
+            # Yalnız kurulumda ŞART olan alan. Ödeme sağlayıcı ve anahtarları,
+            # kargo sözü, iletişim vb. mağaza paneli → Ayarlar'da düzenleniyor;
+            # burada tekrar sormak iki yerde iki farklı değer demekti.
             "fields": [
-                {"key": "shop_domain", "label": "Vitrin Alan Adı", "placeholder": "magaza.alanadiniz.com", "required": True},
-                {"key": "payment_provider", "label": "Ödeme Sağlayıcı (iyzico | paytr)", "default": "iyzico", "required": True},
-                {"key": "iyzico_api_key", "label": "iyzico API Key", "type": "password"},
-                {"key": "iyzico_secret_key", "label": "iyzico Secret Key", "type": "password"},
-                {"key": "iyzico_base_url", "label": "iyzico Base URL", "default": "https://sandbox-api.iyzipay.com"},
-                {"key": "paytr_merchant_id", "label": "PayTR Merchant ID"},
-                {"key": "paytr_merchant_key", "label": "PayTR Merchant Key", "type": "password"},
-                {"key": "paytr_merchant_salt", "label": "PayTR Merchant Salt", "type": "password"},
-                {"key": "sla_days", "label": "Kargo Sözü (gün)", "default": "3"},
+                {"key": "shop_domain", "label": "Vitrin alan adı", "placeholder": "magaza.alanadiniz.com", "required": True},
             ],
+            "not": "Ödeme, kargo sözü ve diğer ayarlar mağaza paneli → Ayarlar'dan düzenlenir.",
         },
     ]
 

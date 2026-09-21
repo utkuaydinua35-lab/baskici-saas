@@ -149,7 +149,7 @@ export default function StoresPage({ embedded = false }) {
                       Nesne/dizi değerler ham gösterilmez ([object Object] yerine
                       özet); vitrin mağazasının bu alanları mağaza panelinden yönetilir. */}
                   <div className="mt-3 space-y-1">
-                    {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days' && k !== 'kargo_handler').map(([k, v]) => (
+                    {Object.entries(store.config || {}).filter(([k]) => k !== 'sla_days' && k !== 'kargo_handler' && !(store.platform === 'storefront' && k === 'shop_domain')).map(([k, v]) => (
                       <div key={k} className="text-xs flex gap-2">
                         <span className="text-gray-500 w-32 shrink-0">{k}:</span>
                         <span className="text-gray-300 font-mono truncate">
@@ -160,6 +160,9 @@ export default function StoresPage({ embedded = false }) {
                       </div>
                     ))}
                   </div>
+
+                  {/* Vitrin alan adı — kurulumda yanlış yazılırsa buradan düzeltilir */}
+                  {store.platform === 'storefront' && <AlanAdiEditor store={store} onSaved={loadData} />}
 
                   {/* Kargo SLA (söz tarihi gün sayısı) */}
                   <SlaEditor store={store} onSaved={loadData} />
@@ -215,6 +218,51 @@ export default function StoresPage({ embedded = false }) {
           onClose={() => setShowAddDialog(false)}
           onSaved={() => { setShowAddDialog(false); loadData() }}
         />
+      )}
+    </div>
+  )
+}
+
+function AlanAdiEditor({ store, onSaved }) {
+  const toast = useToast()
+  const original = store.config?.shop_domain ?? ''
+  const [val, setVal] = useState(original)
+  const [busy, setBusy] = useState(false)
+  const dirty = val.trim() !== original
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const r = await api.patch(`/api/stores/${store.id}`, { config: { shop_domain: val } })
+      setVal(r?.config?.shop_domain ?? val.trim())   // sunucu temizlenmiş halini döner
+      toast.success('Vitrin alan adı güncellendi')
+      onSaved?.()
+    } catch (e) {
+      toast.error(e.detail || 'Kaydedilemedi')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className="text-xs text-gray-500">🌐 Vitrin alan adı:</span>
+      <input
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && dirty) save(); if (e.key === 'Escape') setVal(original) }}
+        placeholder="magaza.alanadiniz.com"
+        className="input !text-xs !py-1 w-56 font-mono"
+      />
+      {dirty && (
+        <>
+          <button onClick={save} disabled={busy || !val.trim()} className="btn-primary !text-[11px] !py-1 !px-2 disabled:opacity-50">
+            {busy ? '...' : 'Kaydet'}
+          </button>
+          <button onClick={() => setVal(original)} disabled={busy} className="btn-secondary !text-[11px] !py-1 !px-2">
+            Vazgeç
+          </button>
+        </>
       )}
     </div>
   )
@@ -555,6 +603,12 @@ function AddStoreDialog({ platforms, onClose, onSaved }) {
               />
             </div>
           ))}
+
+          {platformMeta?.not && (
+            <p className="text-[11px] text-gray-500 bg-brand-input/40 rounded-lg px-3 py-2 border border-brand-border/50">
+              {platformMeta.not}
+            </p>
+          )}
 
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">

@@ -42,12 +42,16 @@ altyapı:
 Tema kopyalanırken landscape'te olup bizde olmayan, tema ayarıyla
 çözülemeyen işler:
 
-- [ ] **Ürün ek seçenekleri (fiyat farklı).** Landscape'te model seçiminden
-  sonra "Vernik: Evet / Hayır" gibi ek seçenek var. Bizde yalnız marka → model
-  varyantı var. Katalog, sepet, ödeme anındaki fiyat kaydı, sipariş, üretim
-  ve etiket zincirinin hepsine dokunur; en büyük madde.
-  > **Shopify kapanmadan önce kontrol:** BERNZ'de fiyat farklı ek seçenek
-  > kullanılıyorsa bu madde Faz 3'ün önüne alınmalı.
+- [ ] **Ürün ek seçeneklerine fiyat farkı.** Landscape'te model seçiminden
+  sonra "Vernik: Evet / Hayır" gibi ek seçenek var. Bizde ürün başına ek
+  alanlar (`custom_fields`: yazı / görsel / seçenekli renk) ve çift kılıf için
+  iki model seçimi var; eksik olan, seçeneğin **fiyatı değiştirmesi**. Sepet,
+  ödeme anındaki fiyat kaydı, sipariş ve üretim zincirine dokunur.
+  > **BERNZ kontrol edildi (2026-09-27, Shopify'daki son 40 sipariş):** ek
+  > seçenekler tepo.app ile yönetiliyor. Kullanılanlar renk seçimi, görsel
+  > yükleme, yazı alanları ve çift kılıfta ikinci model; **hiçbirinde fiyat
+  > farkı yok**, hepsinin bizde karşılığı var. Shopify çıkışını engellemiyor;
+  > bu madde kiracılar için.
 - [ ] **Seçenek karşılaştırma penceresi.** Ürün sayfasında "farkı gör"
   düğmesi → iki görsel arasında kaydırmalı önce/sonra karşılaştırması (mat ve
   parlak). Ek seçeneklere bağlı; onunla birlikte yapılmalı.

@@ -27,6 +27,7 @@ const YorumlarPage = lazy(() => import('./pages/YorumlarPage'))
 const TasarimTalepleriPage = lazy(() => import('./pages/TasarimTalepleriPage'))
 const UygulamalarPage = lazy(() => import('./pages/UygulamalarPage'))
 const AyarlarPage = lazy(() => import('./pages/AyarlarPage'))
+const AbonelikPage = lazy(() => import('./pages/AbonelikPage'))
 
 function Loader() {
   return (
@@ -96,6 +97,7 @@ export default function App() {
             <Route path="/kilif-sablonlari" element={<KilifSablonlariPage />} />
             <Route path="/aktivite" element={<AktivitePage />} />
             <Route path="/ayarlar" element={<AyarlarPage />} />
+            <Route path="/abonelik" element={<AbonelikPage />} />
           </Route>
           {/* Tam ekran tema editörü — sol menüsüz (Shopify tarzı) */}
           <Route path="/tema/duzenle" element={<TemaEditorPage />} />

@@ -45,6 +45,7 @@ export const NAV_GROUPS = [
   ]},
   { label: 'Yönetim', items: [
     { to: '/aktivite', label: 'Aktivite', icon: '🕘' },
+    { to: '/abonelik', label: 'Abonelik', icon: '💳' },
   ]},
 ]
 
@@ -597,6 +598,9 @@ function AbonelikBandi({ abonelik }) {
       className={`shrink-0 border-b px-4 py-2 text-xs flex items-center gap-2 ${BANT_TONU[asama]}`}>
       <span aria-hidden="true">{BANT_IKONU[asama]}</span>
       <span className="flex-1">{abonelik.mesaj}</span>
+      <NavLink to="/abonelik" className="underline underline-offset-2 whitespace-nowrap hover:opacity-80">
+        Ödeme bilgileri →
+      </NavLink>
     </div>
   )
 }

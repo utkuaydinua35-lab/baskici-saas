@@ -80,6 +80,26 @@ class AbonelikOdemesi(Base):
     odendi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Komisyonun hesaplandığı SATIŞ dönemi. Sabit ücret peşin (donem_*),
+    # komisyon geçen dönemin satışından (ciro_*) — Shopify faturası düzeni.
+    ciro_bas: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ciro_bit: Mapped[date | None] = mapped_column(Date, nullable=True)
+    siparis_sayisi: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ay_sayisi: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # Ödeme active_until'ı neden neye taşıdı — iptal edilince geri dönmek için
+    onceki_bitis: Mapped[date | None] = mapped_column(Date, nullable=True)
+    yeni_bitis: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class PlatformAyari(Base):
+    """Platform geneli ayar (anahtar → JSON). İlk kullanım: kiracılara
+    gösterilen havale bilgileri ("havale")."""
+    __tablename__ = "platform_ayarlari"
+
+    anahtar: Mapped[str] = mapped_column(String(50), primary_key=True)
+    deger: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class Tenant(Base):

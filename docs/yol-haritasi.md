@@ -29,13 +29,31 @@ altyapı:
 - Duyuru şeridi rengi
 - Koleksiyon sayfasında sayfalama (eskiden yalnız ilk 24 ürün görünüyordu)
 
-## Sıradaki: Faz 3 — Kiralama işletimi
+## Biten: Faz 3 — Kiralama işletimi (2026-09-27)
 
-- [ ] Panelde plan fiyatlarını düzenleme ekranı
-- [ ] Mağazaya plan atama / değiştirme
-- [ ] "Havale alındı" → `active_until` uzatma
-- [ ] Ödeme geçmişi (kiracı ve platform tarafı)
-- [ ] Aylık ciro komisyonu hesabı ve faturalanacak tutar
+- [x] Platform → Planlar: aylık ücret, komisyon oranı, modüller, satışta mı;
+  yeni plan ekleme. Sahip planının modülleri kilitli, mağaza modülü zorunlu.
+- [x] Kiracıya plan atama (oluştur/düzenle formunda plan seçici; eskiden
+  serbest metindi ve erişimi belirleyen `plan_id` hiçbir ekrandan atanamıyordu)
+- [x] "Ödeme alındı": tutar o anın plan fiyatıyla dondurulur, abonelik uzar;
+  1/2/3/6/12 ay peşin. Önizlemedeki tutar değiştiyse kayıt reddedilir (409).
+- [x] Yanlış girilen ödemeyi geri alma: yalnız en son ödeme; bitiş eski
+  tarihine döner.
+- [x] Ödeme geçmişi: platformda kiracı başına, mağaza panelinde Abonelik sayfası
+- [x] Tahsilat listesi: her kiracının şimdi ödeyeceği tutar, en acil üstte
+- [x] Havale bilgileri (IBAN, alıcı, banka): kiracının Abonelik sayfasında,
+  açıklamaya yazılacak mağaza koduyla birlikte
+
+Fatura düzeni (Shopify faturasıyla aynı): sabit ücret peşin, komisyon geçen
+dönemin satışından. Komisyon matrahı yalnız **vitrin** satışları, sipariş
+toplamı (indirim düşülmüş, KDV + kargo dahil). Bilinçli fark: iptal ve tam
+iade düşülür, çünkü panel ciroyu da böyle sayıyor. Vitrini kapanmış kiracının
+yeni dönemi bugünden başlar; sınırsız plandan ücretliye geçen kiracının geçmiş
+satışından komisyon alınmaz. Kurallar: `backend/app/services/abonelik.py`.
+
+Faz 3 sonrası açık kalanlar:
+- [ ] Bitişe 5 gün kala kiracıya e-posta hatırlatması (şu an yalnız panel bandı)
+- [ ] Ödeme kaydında e-fatura / fatura numarası alanı
 
 ## Faz 3.5 — Vitrin eksikleri (landscapecase.com incelemesinden)
 

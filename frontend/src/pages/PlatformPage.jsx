@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { api, setToken, fetchYetkili } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { mutlak, uygulamaYolu } from '../lib/taban'
+import {
+  AbonelikModal, DurumRozeti, HavaleKarti, PlanSecici, PlanlarKarti, TahsilatKarti, usePlanlar,
+} from '../components/PlatformAbonelik'
 
 function fmtDate(d) {
   if (!d) return '—'
@@ -14,6 +17,11 @@ export default function PlatformPage() {
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [abonelikId, setAbonelikId] = useState(null)
+  const [planlar, planlariYenile] = usePlanlar()
+  // Ödeme/plan değişince tahsilat listesi yeniden çekilsin
+  const [tazele, setTazele] = useState(0)
+  const hepsiniYenile = () => { load(); planlariYenile(); setTazele(n => n + 1) }
 
   const load = async () => {
     setLoading(true)
@@ -76,8 +84,11 @@ export default function PlatformPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-gray-300">{t.plan}</td>
-                      <td className={`px-4 py-2.5 text-xs ${expired ? 'text-red-300' : 'text-gray-400'}`}>{fmtDate(t.active_until)}</td>
+                      <td className="px-4 py-2.5 text-gray-300">{t.plan_ad || <span className="text-amber-300 text-xs">plan yok</span>}</td>
+                      <td className={`px-4 py-2.5 text-xs ${expired ? 'text-red-300' : 'text-gray-400'}`}>
+                        <div>{fmtDate(t.active_until)}</div>
+                        <div className="mt-0.5"><DurumRozeti durum={t.abonelik} /></div>
+                      </td>
                       <td className="px-4 py-2.5 text-center text-gray-300">{t.user_count}</td>
                       <td className="px-4 py-2.5 text-center text-gray-400">{t.order_count}</td>
                       <td className="px-4 py-2.5 text-center">
@@ -92,6 +103,7 @@ export default function PlatformPage() {
                         {!t.is_approved && (
                           <button onClick={() => approve(t)} className="!text-xs px-2 py-1 mr-1 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10">✓ Onayla</button>
                         )}
+                        <button onClick={() => setAbonelikId(t.id)} className="btn-secondary !text-xs mr-1">Abonelik</button>
                         <button onClick={() => setEditing(t)} className="btn-secondary !text-xs">Düzenle</button>
                       </td>
                     </tr>
@@ -106,11 +118,16 @@ export default function PlatformPage() {
         </div>
       )}
 
+      <TahsilatKarti tazele={tazele} onAc={setAbonelikId} />
+      <PlanlarKarti planlar={planlar} yenile={hepsiniYenile} />
+      <HavaleKarti />
+
       <TamYedek />
       <Backups />
 
-      {showCreate && <CreateTenant onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); load() }} />}
-      {editing && <EditTenant tenant={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); load() }} />}
+      {showCreate && <CreateTenant planlar={planlar} onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); hepsiniYenile() }} />}
+      {editing && <EditTenant planlar={planlar} tenant={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); hepsiniYenile() }} />}
+      {abonelikId && <AbonelikModal tenantId={abonelikId} onClose={() => setAbonelikId(null)} onDegisti={hepsiniYenile} />}
     </div>
   )
 }
@@ -335,9 +352,9 @@ function Field({ label, children }) {
   return <label className="block mb-3"><span className="block text-xs text-gray-400 mb-1">{label}</span>{children}</label>
 }
 
-function CreateTenant({ onClose, onDone }) {
+function CreateTenant({ planlar, onClose, onDone }) {
   const toast = useToast()
-  const [f, setF] = useState({ tenant_name: '', owner_email: '', owner_password: '', owner_name: '', plan: 'trial', active_until: '', brand_color: '#14b8a6', app_name: '' })
+  const [f, setF] = useState({ tenant_name: '', owner_email: '', owner_password: '', owner_name: '', plan_id: null, active_until: '', brand_color: '#14b8a6', app_name: '' })
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF(s => ({ ...s, [k]: v }))
 
@@ -345,6 +362,7 @@ function CreateTenant({ onClose, onDone }) {
     if (!f.tenant_name.trim() || !f.owner_email.trim() || f.owner_password.length < 6) {
       toast.error('Atölye adı, e-posta ve en az 6 haneli şifre gerekli'); return
     }
+    if (!f.plan_id) { toast.error('Plan seçin'); return }
     setBusy(true)
     try {
       await api.post('/api/platform/tenants', {
@@ -364,7 +382,7 @@ function CreateTenant({ onClose, onDone }) {
     <Modal title="Yeni Atölye" onClose={onClose}>
       <Field label="Atölye adı"><input className="input w-full" value={f.tenant_name} onChange={e => set('tenant_name', e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Plan"><input className="input w-full" value={f.plan} onChange={e => set('plan', e.target.value)} placeholder="trial / pro..." /></Field>
+        <Field label="Plan"><PlanSecici planlar={planlar} value={f.plan_id} onChange={v => set('plan_id', v)} /></Field>
         <Field label="Abonelik bitiş"><input type="date" className="input w-full" value={f.active_until} onChange={e => set('active_until', e.target.value)} /></Field>
       </div>
       <div className="border-t border-brand-border my-2 pt-2 text-[11px] text-gray-500">Sahip (owner) kullanıcı</div>
@@ -382,10 +400,10 @@ function CreateTenant({ onClose, onDone }) {
   )
 }
 
-function EditTenant({ tenant, onClose, onDone }) {
+function EditTenant({ planlar, tenant, onClose, onDone }) {
   const toast = useToast()
   const [f, setF] = useState({
-    name: tenant.name || '', plan: tenant.plan || 'trial', is_active: tenant.is_active,
+    name: tenant.name || '', plan_id: tenant.plan_id, is_active: tenant.is_active,
     is_approved: tenant.is_approved !== false,
     active_until: tenant.active_until ? tenant.active_until.slice(0, 10) : '',
     brand_color: tenant.brand_color || '#14b8a6', app_name: tenant.app_name || '',
@@ -406,7 +424,8 @@ function EditTenant({ tenant, onClose, onDone }) {
     setBusy(true)
     try {
       await api.patch(`/api/platform/tenants/${tenant.id}`, {
-        name: f.name, plan: f.plan, is_active: f.is_active, is_approved: f.is_approved,
+        name: f.name, is_active: f.is_active, is_approved: f.is_approved,
+        ...(f.plan_id && f.plan_id !== tenant.plan_id ? { plan_id: f.plan_id } : {}),
         active_until: f.active_until || null,
         clear_active_until: !f.active_until,
         brand_color: f.brand_color || null, app_name: f.app_name || null,
@@ -422,7 +441,7 @@ function EditTenant({ tenant, onClose, onDone }) {
     <Modal title={`Atölye — ${tenant.name}`} onClose={onClose}>
       <Field label="Atölye adı"><input className="input w-full" value={f.name} onChange={e => set('name', e.target.value)} /></Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Plan"><input className="input w-full" value={f.plan} onChange={e => set('plan', e.target.value)} /></Field>
+        <Field label="Plan"><PlanSecici planlar={planlar} value={f.plan_id} onChange={v => set('plan_id', v)} /></Field>
         <Field label="Abonelik bitiş"><input type="date" className="input w-full" value={f.active_until} onChange={e => set('active_until', e.target.value)} /></Field>
       </div>
       <div className="grid grid-cols-2 gap-2">

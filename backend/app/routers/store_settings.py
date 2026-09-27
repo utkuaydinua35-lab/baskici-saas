@@ -872,9 +872,14 @@ def upload_asset(
 
     store = _get_store(db, user, store_id)
     data = file.file.read()
+    ad = file.filename or "asset.png"
     try:
-        url = storage_svc.save_store_asset(
-            user.tenant_id, store.id, kind, data, file.filename or "asset.png")
+        # Galeri öğesi video olabilir (müşteri paylaşımları) — yalnız
+        # "hero" türünde; logo/favicon gibi alanlara video yüklenmez.
+        if kind == "hero" and storage_svc.get_extension(ad) in storage_svc.VIDEO_EXTENSIONS:
+            url = storage_svc.save_store_video(user.tenant_id, store.id, data, ad)
+        else:
+            url = storage_svc.save_store_asset(user.tenant_id, store.id, kind, data, ad)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"url": url, "kind": kind}

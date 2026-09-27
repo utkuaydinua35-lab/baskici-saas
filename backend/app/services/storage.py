@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import os
 import secrets
+import uuid
 from pathlib import Path
 
 ALLOWED_EXTENSIONS = {"svg", "png", "jpg", "jpeg", "pdf"}
@@ -394,7 +395,7 @@ def save_store_video(tenant_id, store_id, file_data: bytes, original_filename: s
     rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)
     full_dir = STORAGE_ROOT / rel_dir
     full_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"video-{int(time.time())}.{ext}"
+    fname = f"video-{int(time.time())}-{uuid.uuid4().hex[:6]}.{ext}"
     with open(full_dir / fname, "wb") as f:
         f.write(file_data)
     return f"/storage/{(rel_dir / fname).as_posix()}"
@@ -420,9 +421,19 @@ def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_
     rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)
     full_dir = STORAGE_ROOT / rel_dir
     full_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"{kind}-{int(time.time())}.{ext}"
+    # Rastgele ek: eskiden yalnız saniye vardı; aynı saniyede yüklenen iki
+    # görsel (galeriye art arda ekleme) birbirinin ÜZERİNE yazılıyordu.
+    govde = f"{kind}-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+    fname = f"{govde}.{ext}"
     with open(full_dir / fname, "wb") as f:
         f.write(file_data)
+    # Duyarlı varyantlar (-400/-800/-1280) — hero ve galeri ana sayfanın en
+    # ağır görselleri; mobil 2560px'lik dosyayı indirmesin. Logo/favicon
+    # küçük ve sabit boyutta gösterilir, varyant gerekmez.
+    if kind not in ("logo", "favicon") and ext != "ico":
+        from app.services.images import responsive_variants
+        for w, veri, vext in responsive_variants(file_data):
+            (full_dir / f"{govde}-{w}.{vext}").write_bytes(veri)
     return f"/storage/{(rel_dir / fname).as_posix()}"
 
 

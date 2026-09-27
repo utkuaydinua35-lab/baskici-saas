@@ -1,3 +1,4 @@
+import { urunGorsel } from "@/lib/gorsel";
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
 
@@ -26,7 +27,9 @@ export default function ImageWithText({
           <div className="md:[direction:ltr]">
             {image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt={title || ""} className="w-full h-full max-h-96 object-cover" />
+              <img src={urunGorsel(image).src} srcSet={urunGorsel(image).srcSet || undefined}
+                sizes="(min-width: 768px) 50vw, 100vw" loading="lazy" decoding="async"
+                alt={title || ""} className="w-full h-full max-h-96 object-cover" />
             ) : (
               <div className="w-full h-48 bg-zinc-100" />
             )}

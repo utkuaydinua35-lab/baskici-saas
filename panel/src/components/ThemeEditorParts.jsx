@@ -42,7 +42,7 @@ export const SECTION_DEFAULTS = {
   comparison: { title: 'Neden Biz?', us_label: 'Biz', them_label: 'Diğerleri',
     rows: [{ feature: 'Kişiye özel baskı kalitesi', us: true, them: false }] },
   testimonials: { eyebrow: '', title: 'Müşterilerimiz Ne Diyor?', subtitle: '', items: [] },
-  gallery: { eyebrow: '', title: 'Sizden Gelenler', subtitle: '', images: [], aspect: 'square', mode: 'scroll' },
+  gallery: { eyebrow: '', title: 'Sizden Gelenler', subtitle: '', ogeler: [], aspect: 'square', mode: 'scroll' },
   contact: { title: 'İletişim', subtitle: 'Soru ve önerileriniz için bize yazın.' },
   countdown: { title: 'Kampanya bitiyor!', subtitle: '', ends_at: '',
     cta_text: 'Alışverişe Başla', cta_url: '/urunler' },
@@ -498,7 +498,16 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
   }
 
   if (sec.type === 'gallery') {
-    const images = s.images || []
+    // Eski biçim (images: [url]) de okunur; kayıtta ogeler yazılır
+    const ogeler = s.ogeler?.length ? s.ogeler : (s.images || []).map(url => ({ url }))
+    const yaz = yeni => patch({ ogeler: yeni, images: yeni.map(o => o.url) })
+    const guncelle = (i, p2) => yaz(ogeler.map((o, j) => j === i ? { ...o, ...p2 } : o))
+    const tasi = (i, yon) => {
+      const j = i + yon
+      if (j < 0 || j >= ogeler.length) return
+      const n = [...ogeler]; [n[i], n[j]] = [n[j], n[i]]; yaz(n)
+    }
+    const videoMu = o => o.tip === 'video' || /\.(mp4|webm|mov|m4v)$/i.test(o.url || '')
     return (
       <>
         <HeadingFields s={s} patch={patch} />
@@ -507,28 +516,41 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
         <Choice label="Akış" value={s.mode || 'scroll'}
           options={[['scroll', 'Elle kaydır'], ['carousel', 'Oklu + otomatik'], ['marquee', 'Sürekli akan']]}
           onChange={v => patch({ mode: v })} />
-        <div className="grid grid-cols-4 gap-1.5">
-          {images.map((u, i) => (
-            <div key={i} className="relative group">
-              <img src={u} alt="" className={`w-full ${s.aspect === 'story' ? 'aspect-[9/16]' : 'aspect-square'} object-cover rounded-lg border border-panel-border`} />
-              <button onClick={() => patch({ images: images.filter((_, j) => j !== i) })}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs
-                  opacity-0 group-hover:opacity-100 transition">×</button>
+        <div className="space-y-1.5">
+          {ogeler.map((o, i) => (
+            <div key={`${o.url}-${i}`} className="flex gap-2 items-start border border-panel-border rounded-xl p-1.5">
+              <div className={`shrink-0 w-12 ${s.aspect === 'story' ? 'aspect-[9/16]' : 'aspect-square'} rounded-lg overflow-hidden bg-panel-input grid place-items-center`}>
+                {videoMu(o)
+                  ? <video src={o.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                  : <img src={o.url} alt="" className="w-full h-full object-cover" />}
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <input className="input !py-1 text-xs" value={o.etiket || ''} maxLength={60}
+                  onChange={e => guncelle(i, { etiket: e.target.value })}
+                  placeholder="Etiket (ops.) — örn. @kullaniciadi" />
+                <UrlPicker value={o.link || ''} collections={collections} products={products} pages={pages}
+                  placeholder="Tıklanınca gidilecek yer (ops.)" onChange={url => guncelle(i, { link: url })} />
+              </div>
+              <div className="flex flex-col items-center text-xs text-panel-muted">
+                <button onClick={() => tasi(i, -1)} disabled={i === 0} className="px-1 disabled:opacity-30">↑</button>
+                <button onClick={() => tasi(i, 1)} disabled={i === ogeler.length - 1} className="px-1 disabled:opacity-30">↓</button>
+                <button onClick={() => yaz(ogeler.filter((_, j) => j !== i))} className="px-1 text-red-300">×</button>
+              </div>
             </div>
           ))}
-          {images.length < 12 && (
-            <label className="aspect-square rounded-lg border border-dashed border-panel-border
-              flex items-center justify-center text-panel-muted cursor-pointer text-lg">
-              +
-              <input type="file" accept="image/*" className="hidden"
+          {ogeler.length < 12 && (
+            <label className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-panel-border
+              py-2.5 text-xs text-panel-muted cursor-pointer hover:text-panel-ink">
+              + Görsel ya da video ekle
+              <input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" className="hidden"
                 onChange={e => e.target.files?.[0] && uploadAsset('hero', e.target.files[0],
-                  url => patch({ images: [...images, url] }))} />
+                  url => yaz([...ogeler, { url, tip: /\.(mp4|webm|mov|m4v)$/i.test(url) ? 'video' : 'gorsel' }]))} />
             </label>
           )}
         </div>
         <p className="text-[11px] text-panel-muted">
-          Müşteri fotoğrafları, hikâye ekran görüntüleri… (en fazla 12 görsel).
-          Hikâye oranında 1080×1920 dikey görsel önerilir.
+          En fazla 12 öğe. Hikâye oranında 1080×1920 dikey görsel önerilir. Videolar sessiz ve döngülü,
+          yalnız ekrandayken oynar (en fazla 100 MB; kısa ve sıkıştırılmış video sayfayı hızlı tutar).
         </p>
       </>
     )

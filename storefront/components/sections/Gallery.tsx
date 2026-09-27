@@ -1,8 +1,19 @@
+import Link from "next/link";
 import Reveal from "@/components/Reveal";
 import Carousel from "@/components/Carousel";
+import GaleriVideo from "@/components/GaleriVideo";
 import SectionHeading from "@/components/SectionHeading";
+import { urunGorsel } from "@/lib/gorsel";
+
+export interface GaleriOgesi {
+  url: string;
+  tip?: "gorsel" | "video";
+  link?: string;
+  etiket?: string;
+}
 
 // Görsel galerisi ("Sizden Gelenler", hikâye paylaşımları…).
+//  Öğe: görsel ya da video; isteğe bağlı bağlantı ve etiket ("@kullanıcı").
 //  aspect: square (kare) | story (9:16 Instagram hikâyesi)
 //  mode:   scroll   — elle kaydırılan şerit
 //          carousel — oklu, kendiliğinden ilerleyen şerit
@@ -11,37 +22,66 @@ export default function Gallery({
   eyebrow,
   title,
   subtitle,
-  images = [],
+  items = [],
   aspect = "square",
   mode = "scroll",
 }: {
   eyebrow?: string;
   title?: string;
   subtitle?: string;
-  images?: string[];
+  items?: GaleriOgesi[];
   aspect?: "square" | "story";
   mode?: "scroll" | "carousel" | "marquee";
 }) {
-  const valid = images.filter(Boolean);
+  const valid = items.filter((o) => o?.url);
   if (valid.length === 0) return null;
 
   const story = aspect === "story";
   const oran = story ? "aspect-[9/16]" : "aspect-square";
   const en = story ? "w-[62vw] max-w-[280px] sm:w-[260px]" : "w-52 sm:w-60";
-  const kart = (u: string, i: number, tekrar = false) => (
-    <div key={`${tekrar ? "t" : "a"}-${i}`}
-      className={`shrink-0 ${en} ${oran} rounded-2xl overflow-hidden bg-zinc-100 snap-start`}
-      aria-hidden={tekrar || undefined}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={u} alt={tekrar ? "" : `${title || "Galeri"} ${i + 1}`} loading="lazy" decoding="async"
-        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-    </div>
-  );
+  // Kart ekranda en fazla ~280px — 400w varyant yeter, retina 800w'yi seçer
+  const sizes = story ? "(min-width: 640px) 260px, 62vw" : "(min-width: 640px) 240px, 208px";
+
+  const kart = (o: GaleriOgesi, i: number, tekrar = false) => {
+    const alt = tekrar ? "" : o.etiket || `${title || "Galeri"} ${i + 1}`;
+    const g = urunGorsel(o.url);
+    const icerik = (
+      <>
+        {o.tip === "video" ? (
+          <GaleriVideo src={o.url} etiket={o.etiket} />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={g.src} srcSet={g.srcSet || undefined} sizes={g.srcSet ? sizes : undefined}
+            alt={alt} loading="lazy" decoding="async"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+        )}
+        {o.etiket ? (
+          <span className="pointer-events-none absolute left-2.5 top-2.5 max-w-[85%] truncate rounded-full
+            bg-black/45 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+            {o.etiket}
+          </span>
+        ) : null}
+      </>
+    );
+    const kap = `group relative block shrink-0 ${en} ${oran} rounded-2xl overflow-hidden bg-zinc-100 snap-start`;
+    const anahtar = `${tekrar ? "t" : "a"}-${i}`;
+    // Tekrar kopyası (akan şeridin dikişsiz döngüsü) odaklanamaz, okunmaz
+    if (o.link && !tekrar) {
+      return o.link.startsWith("/") ? (
+        <Link key={anahtar} href={o.link} className={kap}>{icerik}</Link>
+      ) : (
+        <a key={anahtar} href={o.link} target="_blank" rel="noopener noreferrer" className={kap}>{icerik}</a>
+      );
+    }
+    return (
+      <div key={anahtar} className={kap} aria-hidden={tekrar || undefined}>{icerik}</div>
+    );
+  };
 
   const baslik = <SectionHeading eyebrow={eyebrow} title={title || "Sizden Gelenler"} subtitle={subtitle} center />;
 
   if (mode === "marquee") {
-    // Kart başına ~5 sn: az görselde de hız makul kalır
+    // Kart başına ~5 sn: az öğede de hız makul kalır
     const sure = `${Math.max(20, valid.length * 5)}s`;
     return (
       <section className="py-10">
@@ -49,8 +89,8 @@ export default function Gallery({
         <div className="akan-kap overflow-hidden">
           <div className="akan-serit flex w-max gap-4 px-2"
             style={{ "--akan-sure": sure } as React.CSSProperties}>
-            {valid.map((u, i) => kart(u, i))}
-            {valid.map((u, i) => kart(u, i, true))}
+            {valid.map((o, i) => kart(o, i))}
+            {valid.map((o, i) => kart(o, i, true))}
           </div>
         </div>
       </section>
@@ -63,11 +103,11 @@ export default function Gallery({
       <Reveal>
         {mode === "carousel" ? (
           <Carousel autoplaySec={4} ariaLabel={title || "Galeri"}>
-            {valid.map((u, i) => kart(u, i))}
+            {valid.map((o, i) => kart(o, i))}
           </Carousel>
         ) : (
           <div className="serit-gizli flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
-            {valid.map((u, i) => kart(u, i))}
+            {valid.map((o, i) => kart(o, i))}
           </div>
         )}
       </Reveal>

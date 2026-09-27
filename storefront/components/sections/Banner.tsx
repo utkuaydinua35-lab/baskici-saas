@@ -1,3 +1,4 @@
+import { urunGorsel } from "@/lib/gorsel";
 import Reveal from "@/components/Reveal";
 
 // Banner bölümü — tıklanabilir geniş görsel. Köşe ovalliği panelden ayarlanır:
@@ -22,7 +23,9 @@ export default function Banner({
     : "rounded-[var(--banner-r)]";
   const img = (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={image} alt="" style={{ "--banner-r": `${px}px` } as React.CSSProperties}
+    <img src={urunGorsel(image).src} srcSet={urunGorsel(image).srcSet || undefined}
+      sizes="(min-width: 1152px) 1152px, 100vw" loading="lazy" decoding="async"
+      alt="" style={{ "--banner-r": `${px}px` } as React.CSSProperties}
       className={`w-full object-cover max-h-80 ${roundCls}`} />
   );
   return (

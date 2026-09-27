@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mevcut katalog görselleri için duyarlı varyantları geriye dönük üret.
+"""Mevcut katalog ve tema görselleri için duyarlı varyantları geriye dönük üret.
 
 Yeni yüklenen görseller varyantlarını (-400/-800/-1280) yükleme anında
 üretiyor (services/storage.save_catalog_image). Ama bu özellikten ÖNCE
@@ -24,8 +24,13 @@ def main() -> None:
     if not kok.exists():
         print(f"storage yok: {kok}"); return
     ana_sayisi = uretilen = atlanan = hatali = 0
-    for catalog in kok.glob("*/catalog"):
+    # Ürün görselleri + tema görselleri (hero, galeri, koleksiyon, banner…).
+    # Logo/favicon küçük ve sabit boyutta gösterilir — atlanır.
+    klasorler = list(kok.glob("*/catalog")) + list(kok.glob("*/store-assets/*"))
+    for catalog in klasorler:
         for dosya in catalog.iterdir():
+            if dosya.name.startswith(("logo-", "favicon-")):
+                continue
             govde = dosya.stem
             # Varyant dosyalarının kendisini atla ("-400" ile biten)
             if any(govde.endswith(f"-{w}") for w in RESPONSIVE_WIDTHS):

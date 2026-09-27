@@ -2,6 +2,7 @@
 
 // Hero slayt gösterisi — otomatik geçiş + noktalar + kaydırma animasyonu.
 // 0 slayt → sade karşılama (tema rengiyle); 1 slayt → statik hero.
+import { urunGorsel } from "@/lib/gorsel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { HeroSlide } from "@/lib/theme";
@@ -83,7 +84,9 @@ export default function HeroSlider({
             {slide.image ? (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={slide.image} alt=""
+                <img src={urunGorsel(slide.image).src} alt=""
+                  srcSet={urunGorsel(slide.image).srcSet || undefined}
+                  sizes="(min-width: 1152px) 1152px, 100vw"
                   fetchPriority={i === 0 ? "high" : undefined}
                   loading={i === 0 ? undefined : "lazy"} decoding="async"
                   className="absolute inset-0 w-full h-full object-cover" />

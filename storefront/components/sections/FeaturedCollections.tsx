@@ -1,3 +1,4 @@
+import { urunGorsel } from "@/lib/gorsel";
 import Link from "next/link";
 import { getCollections } from "@/lib/api";
 import Reveal from "@/components/Reveal";
@@ -42,7 +43,8 @@ export default async function FeaturedCollections({
                   : { background: "linear-gradient(140deg, var(--c-primary), var(--c-accent))" }}>
                 {c.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.image_url} alt={c.title} loading="lazy" decoding="async"
+                  <img src={urunGorsel(c.image_url).src} srcSet={urunGorsel(c.image_url).srcSet || undefined}
+                    sizes="(min-width: 640px) 50vw, 100vw" alt={c.title} loading="lazy" decoding="async"
                     className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                 ) : null}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
@@ -78,7 +80,8 @@ export default async function FeaturedCollections({
             {c.image_url ? (
               <div className="relative aspect-[4/3] overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={c.image_url} alt={c.title} loading="lazy" decoding="async"
+                <img src={urunGorsel(c.image_url).src} srcSet={urunGorsel(c.image_url).srcSet || undefined}
+                  sizes="(min-width: 640px) 25vw, 50vw" alt={c.title} loading="lazy" decoding="async"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                 <div className="absolute bottom-0 inset-x-0 p-3">

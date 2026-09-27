@@ -44,6 +44,7 @@ export interface ThemeSection {
     them_label?: string;
     rows?: { feature: string; us: boolean; them: boolean }[];
     images?: string[];
+    ogeler?: { url: string; tip?: "gorsel" | "video"; link?: string; etiket?: string }[];
     ends_at?: string;
     radius_scope?: "both" | "mobile" | "desktop" | "none";
     radius_pct?: number;

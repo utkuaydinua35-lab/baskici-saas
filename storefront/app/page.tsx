@@ -84,7 +84,9 @@ export default async function HomePage() {
           case "gallery":
             return (
               <Gallery key={section.id} eyebrow={s.eyebrow} title={s.title}
-                subtitle={s.subtitle} images={s.images ?? []} aspect={s.aspect} mode={s.mode} />
+                subtitle={s.subtitle} aspect={s.aspect} mode={s.mode}
+                // Eski önbellekte yalnız images olabilir
+                items={s.ogeler?.length ? s.ogeler : (s.images ?? []).map((url) => ({ url }))} />
             );
           case "contact":
             return <ContactSection key={section.id} title={s.title} subtitle={s.subtitle} />;

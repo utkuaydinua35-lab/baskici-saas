@@ -65,8 +65,11 @@ SECTION_DEFAULTS: dict[str, dict] = {
     # Görsel galerisi (ShinePro image-slider "Sizden Gelenler")
     # aspect: square | story (9:16 hikâye kartı)
     # mode: scroll (elle kaydır) | carousel (oklu + otomatik) | marquee (sürekli akan)
+    # ogeler: [{url, tip: gorsel|video, link, etiket}] — doğruluk kaynağı.
+    # images: [url] — eski biçim; okunurken ogeler'e çevrilir, yazılırken
+    # ogeler'den türetilir (eski önbellek/istemci kırılmasın).
     "gallery": {"eyebrow": "", "title": "Sizden Gelenler", "subtitle": "",
-                "images": [], "aspect": "square", "mode": "scroll"},  # [url] max 12
+                "images": [], "ogeler": [], "aspect": "square", "mode": "scroll"},  # max 12
     # İletişim formu (ShinePro contact-form) — mağaza e-postasına iletir
     "contact": {"title": "İletişim", "subtitle": "Soru ve önerileriniz için bize yazın."},
     # Kampanya geri sayımı — süre dolunca bölüm kendini gizler
@@ -356,6 +359,33 @@ def _migrate_v1(theme: dict) -> dict:
     return out
 
 
+_VIDEO_UZANTI = (".mp4", ".webm", ".mov", ".m4v")
+
+
+def _guvenli_link(u) -> str:
+    """Galeri öğesi bağlantısı: site içi yol ya da https. javascript:, //
+    ile başlayan protokolsüz adres vb. atılır."""
+    u = str(u or "").strip()[:300]
+    if u.startswith("/") and not u.startswith("//"):
+        return u
+    return u if u.lower().startswith("https://") else ""
+
+
+def _galeri_ogesi(x) -> dict | None:
+    if isinstance(x, str):
+        x = {"url": x}
+    if not isinstance(x, dict):
+        return None
+    url = str(x.get("url") or "").strip()[:500]
+    if not url or not (url.startswith("/storage/") or url.lower().startswith("https://")):
+        return None
+    tip = x.get("tip")
+    if tip not in ("gorsel", "video"):
+        tip = "video" if url.lower().endswith(_VIDEO_UZANTI) else "gorsel"
+    return {"url": url, "tip": tip, "link": _guvenli_link(x.get("link")),
+            "etiket": str(x.get("etiket") or "").strip()[:60]}
+
+
 def _normalize_sections(sections: list) -> list:
     """Bölüm listesini temizle: bilinen tipler, ayar whitelist'i, limitler."""
     cleaned: list[dict] = []
@@ -440,9 +470,10 @@ def _normalize_sections(sections: list) -> list:
                 })
             settings["items"] = cleaned_items
         elif stype == "gallery":
-            settings["images"] = [
-                str(u)[:500] for u in (settings.get("images") or [])[:MAX_GALLERY_IMAGES] if u
-            ]
+            ham = settings.get("ogeler") or [
+                {"url": u} for u in (settings.get("images") or []) if u]
+            settings["ogeler"] = [o for o in (_galeri_ogesi(x) for x in ham) if o][:MAX_GALLERY_IMAGES]
+            settings["images"] = [o["url"] for o in settings["ogeler"]]
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
             "type": stype,

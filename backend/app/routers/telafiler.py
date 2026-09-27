@@ -121,6 +121,14 @@ def _ser_telafi(o: Order, detay: bool = False, db: Session | None = None) -> dic
             if kaynak else None
         ),
         "item_count": len(o.line_items or []),
+        # Kargo durumu: sipariş detayındaki "barkod oluştur / yeniden yazdır"
+        # düğmesi bunu okur (telafi de müşteriye kargoyla gidiyor).
+        "kargo": {
+            "takip_no": (o.kargo_info or {}).get("takip_no") or None,
+            "handler_name": (o.kargo_info or {}).get("handler_name") or None,
+            "var": bool((o.kargo_info or {}).get("takip_no")),
+            "kargoda": (o.current_stage or 1) >= 8,
+        },
     }
     if detay:
         d["line_items"] = [_ser_li(li, db) for li in (o.line_items or [])]
@@ -515,6 +523,71 @@ def _get_telafi(db, telafi_id, tenant_id) -> Order:
     if not o:
         raise HTTPException(status_code=404, detail="Telafi bulunamadi")
     return o
+
+
+class TelafiKargoIn(BaseModel):
+    il: str = ""      # adres çözülemezse elle il
+    ilce: str = ""    # adres çözülemezse elle ilçe
+
+
+@router.post("/{telafi_id}/kargo-barkod", response_model=None)
+def telafi_kargo_barkod(telafi_id: uuid.UUID, body: TelafiKargoIn = TelafiKargoIn(),
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Telafi için kargo gönderisi + barkod oluştur — sipariş detayından.
+
+    ⚠ Paketleme ekranındaki akışın AYNISI çağrılır (kopya DEĞİL): gönderi
+    oluşur, kargo bilgisi saklanır, aşama 8'e geçer, stok düşer, vitrin
+    siparişinde müşteriye kargo e-postası gider. Telafi paketleme kuyruğuna
+    girmeden elden kargoya verildiğinde bu düğme gerekiyordu.
+    """
+    from app.routers.packaging import KargoGonderRequest, kargo_gonder
+
+    t = _get_telafi(db, telafi_id, user.tenant_id)
+    if (t.kargo_info or {}).get("takip_no"):
+        raise HTTPException(409, "Bu telafinin kargo barkodu zaten var — "
+                                 "yeniden yazdırabilir ya da iptal edebilirsin")
+    return kargo_gonder(str(t.id), KargoGonderRequest(il=body.il, ilce=body.ilce),
+                        user=user, db=db)
+
+
+@router.post("/{telafi_id}/kargo-iptal", response_model=None)
+def telafi_kargo_iptal(telafi_id: uuid.UUID, user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Yanlış oluşturulan telafi kargosunu iptal et (barkod silinir, aşama geri alınır).
+
+    Barkod yanlış telafide oluşturulabiliyor; oluşturmanın karşılığı olan geri
+    alma da aynı ekranda olmalı. Paketlemedeki iptal akışının AYNISI çağrılır.
+    """
+    from app.routers.packaging import kargo_iptal
+
+    t = _get_telafi(db, telafi_id, user.tenant_id)
+    return kargo_iptal(str(t.id), user=user, db=db)
+
+
+# Etiket uçları paketlemede de var ama oraya "paketleme" yetkisi gerekiyor;
+# sipariş detayını kullanan (yalnız "siparisler" yetkili) personel barkodu
+# yazdıramıyordu. Aynı işlevler telafi kapsamında da açılıyor — iş yine
+# paketlemedeki fonksiyonlarda yapılıyor, kopya kod yok.
+@router.get("/{telafi_id}/kargo-label", response_model=None)
+def telafi_kargo_label(telafi_id: uuid.UUID, user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    """Telafinin kargo etiketini yeniden getir (Basit Kargo SVG / Sürat PDF)."""
+    from app.routers.packaging import kargo_label
+
+    t = _get_telafi(db, telafi_id, user.tenant_id)
+    return kargo_label(str(t.id), user=user, db=db)
+
+
+@router.get("/{telafi_id}/zpl", response_model=None)
+def telafi_zpl(telafi_id: uuid.UUID, tip: str = "kargo", dpi: int = 203,
+               w_mm: float = 0, h_mm: float = 0, doldur: bool = True,
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Telafi etiketini ZPL olarak ver — Zebra/QZ'ye doğrudan basmak için."""
+    from app.routers.packaging import order_zpl
+
+    t = _get_telafi(db, telafi_id, user.tenant_id)
+    return order_zpl(str(t.id), tip=tip, dpi=dpi, w_mm=w_mm, h_mm=h_mm,
+                     doldur=doldur, user=user, db=db)
 
 
 @router.patch("/{telafi_id}/match", response_model=None)

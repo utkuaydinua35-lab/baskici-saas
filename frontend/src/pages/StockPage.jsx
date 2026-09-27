@@ -34,6 +34,8 @@ export default function StockPage() {
   const [linkGroup, setLinkGroup] = useState(null)
   const [editItem, setEditItem] = useState(null)
   const [moveItem, setMoveItem] = useState(null)
+  const [showKurulum, setShowKurulum] = useState(false)
+  const [showSifirla, setShowSifirla] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -60,7 +62,10 @@ export default function StockPage() {
           <h1 className="text-2xl font-semibold text-gray-100">🗃️ Stok</h1>
           <p className="text-sm text-gray-500 mt-1">Model × varyasyon matrisi — hücreye tıkla, yerinde düzenle</p>
         </div>
-        <button onClick={() => setShowNewGroup(true)} className="btn-secondary !text-sm">➕ Yeni ana kalem</button>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowKurulum(true)} className="btn-secondary !text-sm whitespace-nowrap">🧱 Sıfırdan kur</button>
+          <button onClick={() => setShowNewGroup(true)} className="btn-secondary !text-sm whitespace-nowrap">➕ Yeni ana kalem</button>
+        </div>
       </div>
 
       {msg && <div className={`text-sm rounded-lg px-3 py-2 mb-3 border ${msg.ok ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>{msg.text}</div>}
@@ -129,6 +134,27 @@ export default function StockPage() {
           )}
         </>
       )}
+
+      {/* Stok kayıtları güvenilmez hale geldiyse: sil, ihtiyaç duyulan modelleri
+          0 adetle aç, rafı sayıp gir. Sipariş/kalıp/tasarım etkilenmez. */}
+      {!loading && (
+        <div className="mt-8 pt-4 border-t border-red-500/20">
+          <div className="text-xs uppercase tracking-wide text-red-400/80 mb-2">Tehlikeli bölge</div>
+          <button onClick={() => setShowSifirla(true)}
+            className="text-sm px-3 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors">
+            🧹 Tüm stoğu sıfırla (geçmiş dahil)
+          </button>
+          <p className="text-[10px] text-gray-600 mt-1">
+            Stok kalemleri ve tüm hareket geçmişi silinir. Siparişler, kalıplar ve tasarımlar etkilenmez.
+            Sonrasında “Sıfırdan kur” ile modelleri açıp rafı sayarsın.
+          </p>
+        </div>
+      )}
+
+      {showSifirla && <SifirlaDialog onClose={() => setShowSifirla(false)}
+        onDone={(r) => { setShowSifirla(false); flash(true, `${r.silinen_kalem} kalem ve ${r.silinen_hareket} hareket silindi — şimdi “Sıfırdan kur”`); load(); setShowKurulum(true) }} />}
+      {showKurulum && <KurulumDialog onClose={() => setShowKurulum(false)}
+        onDone={(r) => { setShowKurulum(false); flash(true, `${r.olusturulan} kayıt açıldı — adetleri gir`); load().then(() => r.grup_id && setActiveId(r.grup_id)) }} />}
 
       {showNewGroup && <NewGroupDialog onClose={() => setShowNewGroup(false)} onSaved={(id) => { setShowNewGroup(false); load().then(() => id && setActiveId(id)) }} />}
       {addItemGroup && <AddItemDialog group={addItemGroup} onClose={() => setAddItemGroup(null)} onSaved={() => { setAddItemGroup(null); load() }} />}
@@ -407,6 +433,151 @@ function MergeModelDialog({ groupId, mergeFor, allModels, onClose, onDone }) {
       </div>
     </div>
   ), document.body)
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sıfırdan stok: sil → ihtiyaç duyulan modelleri aç → rafı say
+// ═══════════════════════════════════════════════════════════
+
+function SifirlaDialog({ onClose, onDone }) {
+  const [onay, setOnay] = useState('')
+  const [gruplar, setGruplar] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [hata, setHata] = useState('')
+  const ONAY = 'STOK SIFIRLA'
+
+  const sil = async () => {
+    setBusy(true); setHata('')
+    try {
+      const r = await api.post('/api/stock/sifirla', { onay, gruplari_da_sil: gruplar })
+      onDone(r)
+    } catch (e) { setHata(e?.detail || 'Silinemedi'); setBusy(false) }
+  }
+
+  return (
+    <Modal title="🧹 Tüm stoğu sıfırla" onClose={onClose}>
+      <p className="text-sm text-gray-300 leading-relaxed">
+        Bütün stok kalemleri ve <b>tüm hareket geçmişi</b> kalıcı olarak silinir. Bu işlem geri alınamaz.
+      </p>
+      <ul className="text-xs text-gray-500 list-disc list-inside mt-2 space-y-0.5">
+        <li>Siparişler, kalıplar, tasarımlar ve bayi kayıtları <b>etkilenmez</b>.</li>
+        <li>Silme sonrası her model “stokta yok” görünür — sayımı girene kadar normaldir.</li>
+        <li>Ardından “Sıfırdan kur” ihtiyaç duyulan modelleri 0 adetle açar.</li>
+      </ul>
+      <label className="flex items-center gap-2 mt-3 cursor-pointer">
+        <input type="checkbox" checked={gruplar} onChange={e => setGruplar(e.target.checked)} className="accent-accent" />
+        <span className="text-xs text-gray-300">Ana kalemleri (grupları) da sil — bağlı ürün eşleşmeleri de gider</span>
+      </label>
+      <div className="mt-3">
+        <span className="block text-xs text-gray-400 mb-1">Onaylamak için <b className="font-mono">{ONAY}</b> yaz</span>
+        <input value={onay} onChange={e => setOnay(e.target.value)} className="input w-full font-mono !text-sm"
+               placeholder={ONAY} autoFocus />
+      </div>
+      {hata && <div className="text-xs text-red-400 mt-2">{hata}</div>}
+      <div className="flex gap-2 justify-end mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">Vazgeç</button>
+        <button onClick={sil} disabled={busy || onay.trim().toUpperCase() !== ONAY}
+          className="!text-sm px-3 py-2 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:opacity-40">
+          {busy ? 'Siliniyor…' : 'Sil'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+const KAYNAKLAR = [
+  ['ikisi', 'Kalıplar + açık siparişler', 'Basılmamış kalıplarda ve açık siparişlerde geçen tüm modeller'],
+  ['kaliplar', 'Yalnız kalıplar', 'Panelde basılmamış kalıplardaki modeller'],
+  ['siparisler', 'Yalnız açık siparişler', 'Henüz kargoya verilmemiş siparişlerdeki modeller'],
+]
+
+function KurulumDialog({ onClose, onDone }) {
+  const [kaynak, setKaynak] = useState('ikisi')
+  const [onizleme, setOnizleme] = useState(null)   // {modeller, varyasyonlar}
+  const [varyasyonlar, setVaryasyonlar] = useState(['siyah', 'şeffaf'])
+  const [grupAdi, setGrupAdi] = useState('Boş Kılıf')
+  const [busy, setBusy] = useState(false)
+  const [hata, setHata] = useState('')
+
+  useEffect(() => {
+    let iptal = false
+    setOnizleme(null)
+    api.get(`/api/stock/kur/_onizleme?kaynak=${kaynak}`)
+      .then(r => { if (!iptal) setOnizleme(r) })
+      .catch(e => { if (!iptal) setHata(e?.detail || 'Modeller alınamadı') })
+    return () => { iptal = true }
+  }, [kaynak])
+
+  const toggleVar = (v) => setVaryasyonlar(s => s.includes(v) ? s.filter(x => x !== v) : [...s, v])
+  const satirSayisi = (onizleme?.modeller?.length || 0) * Math.max(1, varyasyonlar.length)
+
+  const kur = async () => {
+    setBusy(true); setHata('')
+    try {
+      const r = await api.post('/api/stock/kur', { kaynak, varyasyonlar, grup_adi: grupAdi })
+      onDone(r)
+    } catch (e) { setHata(e?.detail || 'Kurulamadı'); setBusy(false) }
+  }
+
+  return (
+    <Modal title="🧱 Sıfırdan stok kur" onClose={onClose} wide>
+      <p className="text-sm text-gray-400 leading-relaxed">
+        İhtiyaç duyulan her model <b>0 adetle</b> açılır; sen rafı sayıp hücrelere yazarsın.
+        Var olan kayıtlara dokunulmaz, tekrar çalıştırmak sayımı bozmaz.
+      </p>
+
+      <div className="mt-3 space-y-1.5">
+        {KAYNAKLAR.map(([id, ad, aciklama]) => (
+          <label key={id} className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+            kaynak === id ? 'border-accent/50 bg-accent/10' : 'border-brand-border hover:border-gray-600'}`}>
+            <input type="radio" checked={kaynak === id} onChange={() => setKaynak(id)} className="mt-0.5 accent-accent" />
+            <span className="min-w-0">
+              <span className="block text-sm text-gray-200">{ad}</span>
+              <span className="block text-[11px] text-gray-500">{aciklama}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="mt-3">
+        <span className="block text-xs text-gray-400 mb-1">Varyasyonlar (sütunlar)</span>
+        <div className="flex gap-1.5 flex-wrap">
+          {(onizleme?.varyasyonlar || ['siyah', 'beyaz', 'şeffaf', 'parlak', 'magsafe']).map(v => (
+            <button key={v} type="button" onClick={() => toggleVar(v)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${varyasyonlar.includes(v)
+                ? 'bg-accent text-white border-accent' : 'bg-brand-input/50 text-gray-300 border-brand-border'}`}>
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <span className="block text-xs text-gray-400 mb-1">Ana kalem adı</span>
+        <input value={grupAdi} onChange={e => setGrupAdi(e.target.value)} className="input w-full !text-sm" />
+      </div>
+
+      <div className="mt-3 text-xs text-gray-400 bg-brand-input/40 rounded-lg px-3 py-2 border border-brand-border/50">
+        {onizleme
+          ? <>➕ <b>{onizleme.modeller.length}</b> model × <b>{Math.max(1, varyasyonlar.length)}</b> varyasyon = <b>{satirSayisi}</b> kayıt açılacak
+              {onizleme.modeller.length > 0 && (
+                <div className="mt-1 text-[11px] text-gray-500 max-h-24 overflow-y-auto">
+                  {onizleme.modeller.join(' · ')}
+                </div>
+              )}
+            </>
+          : 'Modeller hesaplanıyor…'}
+      </div>
+
+      {hata && <div className="text-xs text-red-400 mt-2">{hata}</div>}
+      <div className="flex gap-2 justify-end mt-4">
+        <button onClick={onClose} className="btn-secondary !text-sm">Vazgeç</button>
+        <button onClick={kur} disabled={busy || !onizleme?.modeller?.length} className="btn-primary !text-sm disabled:opacity-40">
+          {busy ? 'Açılıyor…' : `Kur (${satirSayisi})`}
+        </button>
+      </div>
+    </Modal>
+  )
 }
 
 function NewGroupDialog({ onClose, onSaved }) {

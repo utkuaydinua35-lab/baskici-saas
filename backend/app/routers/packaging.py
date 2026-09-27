@@ -805,6 +805,85 @@ def _kalip_kodu_for(db, li) -> str | None:
     return label, mi
 
 
+def _siparis_kalip_haritalari(db, order):
+    """Bu SİPARİŞİN kalıp durumları (by_li, by_om, by_slot) — _printed_maps ile
+    aynı kural, ama tenant'ın tüm kalıplarını değil yalnız bu siparişi tarar.
+
+    Paketleme ekranı her kılıfın hazır olup olmadığını göstermeli; kuyruk
+    süzgeci kapalıyken de bilgi gerekiyor.
+    """
+    li_ids = [li.id for li in (order.line_items or [])]
+    if not li_ids:
+        return {}, {}, {}
+    onum = str(order.order_number) if order.order_number is not None else None
+    kosul = MoldItem.line_item_id.in_(li_ids)
+    if onum:
+        kosul = or_(kosul, MoldItem.order_number == onum)
+    rows = db.execute(
+        select(MoldItem.line_item_id, MoldItem.design_id, MoldItem.order_number,
+               MoldItem.model, Mold.print_status, Mold.current_stage)
+        .join(Mold, Mold.id == MoldItem.mold_id)
+        .where(Mold.tenant_id == order.tenant_id, kosul)
+    ).all()
+    by_li: dict = {}
+    by_om: dict = {}
+    by_slot: dict = {}
+    for li_id, did, o_no, model, pstat, stage in rows:
+        printed = (pstat == "basildi") or (stage == 5)
+        if li_id:
+            by_li.setdefault(str(li_id), []).append(printed)
+            by_slot.setdefault((str(li_id), str(did) if did else None), []).append(printed)
+        if o_no and model:
+            by_om.setdefault((str(o_no), _nm(model)), []).append(printed)
+    return by_li, by_om, by_slot
+
+
+def _musteri_degisikligi(db, order) -> dict:
+    """{line_item_id: [metin, ...]} — müşterinin YAPTIĞI değişiklikler.
+
+    Paketleyen kişi ekranda ürünün son halini görmeli: müşteri telefon modelini,
+    ürünü ya da tasarımı değiştirdiyse eldeki eski kılıf artık geçersizdir.
+    """
+    from app.models import ModelDegisimTalebi
+
+    out: dict = {}
+    for li in (order.line_items or []):
+        ud = getattr(li, "urun_degisikligi", None) or {}
+        durum = ud.get("durum")
+        if durum == "bekliyor":
+            out.setdefault(str(li.id), []).append(
+                f"Ürün değişti: {ud.get('baslik') or '—'} · TASARIM BEKLİYOR")
+        elif durum == "uygulandi":
+            out.setdefault(str(li.id), []).append(f"Ürün değişti: {ud.get('baslik') or '—'}")
+    talepler = db.scalars(
+        select(ModelDegisimTalebi).where(
+            ModelDegisimTalebi.order_id == order.id,
+            ModelDegisimTalebi.durum == "uygulandi",
+            ModelDegisimTalebi.secilen_model.isnot(None),
+        ).order_by(ModelDegisimTalebi.uygulandi_at.asc())
+    ).all()
+    for t in talepler:
+        if t.line_item_id:
+            out.setdefault(str(t.line_item_id), []).append(
+                f"Model değişti: {t.mevcut_model or '—'} → {t.secilen_model}")
+    return out
+
+
+def _couple_slot_tasarimi(db, order, li, slot: int, couple_designs: dict):
+    """Çift kılıfın ilgili yarısının tasarımı (kaleme atanmış ya da üründe sabit)."""
+    if slot == 1:
+        d = li.assigned_design if li.assigned_design_id else None
+    else:
+        d = li.assigned_design_2 if li.assigned_design_id_2 else None
+    if d is not None:
+        return d
+    pair = (couple_designs or {}).get(str(li.product_id), (None, None))
+    did = pair[0] if slot == 1 else pair[1]
+    if not did:
+        return None
+    return db.scalar(select(Design).where(Design.id == uuid.UUID(str(did))))
+
+
 def _order_payload(db, order) -> dict:
     raw = order.raw or {}
     info = _addr(raw)
@@ -825,8 +904,15 @@ def _order_payload(db, order) -> dict:
             kisiye_ids = _get_kop_product_ids(db, order.store_id)
         except Exception:
             kisiye_ids = set()
-    # Couple ürünler: paketlemede İKİ modelin de görünmesi gerekiyor — kutuya
-    # iki farklı kılıf giriyor. Tek sorguyla siparişin couple kalemlerini bul.
+    # Müşteriye GÖNDERİLEN numune görselleri (kılıf üzerinde gösterim)
+    numuneler: dict = {}
+    try:
+        from app.services import approvals as _ap
+        numuneler = _ap.numune_gorselleri(db, order)
+    except Exception:  # noqa: BLE001 — numune yoksa paketleme çalışmaya devam etsin
+        numuneler = {}
+    # Couple ürünler: paketlemede İKİ ÜRÜN olarak listelenir — kutuya iki
+    # farklı kılıf giriyor. Tek sorguyla siparişin couple kalemlerini bul.
     _couple_pids: set = set()
     _pids = {str(li.product_id) for li in (order.line_items or []) if li.product_id}
     if _pids:
@@ -835,6 +921,11 @@ def _order_payload(db, order) -> dict:
         if order.store_id:
             _q = _q.where(_CP.store_id == order.store_id)
         _couple_pids = {str(p) for (p,) in db.execute(_q).all()}
+    couple_designs = _couple_tasarimlari(db, order.tenant_id) if _couple_pids else {}
+    acc_ids = _accessory_ids(db, order.tenant_id)
+    by_li, by_om, by_slot = _siparis_kalip_haritalari(db, order)
+    degisiklikler = _musteri_degisikligi(db, order)
+    onum = str(order.order_number) if order.order_number is not None else None
 
     items = []
     _img_filled = False
@@ -843,28 +934,64 @@ def _order_payload(db, order) -> dict:
         before = li.product_image_url
         # Ürün değişikliği uygulanmış kalem artık kişiye özel değil: müşterinin
         # eski numune fotoğrafı gösterilmesin, yeni tasarım gösterilsin.
-        _ud_uyg = (getattr(li, "urun_degisikligi", None) or {}).get("durum") == "uygulandi"
-        thumb = _design_for_line_item(db, order, li, mi, adapter, set() if _ud_uyg else kisiye_ids)
-        if li.product_image_url and li.product_image_url != before:
-            _img_filled = True
+        _ud = getattr(li, "urun_degisikligi", None) or {}
+        _ud_uyg = _ud.get("durum") == "uygulandi"
+        _kisiye = set() if _ud_uyg else kisiye_ids
         _is_couple = bool(li.product_id) and str(li.product_id) in _couple_pids
+        _durumlar = _kalem_yarim_durumlari(li, onum, by_li, by_om, acc_ids,
+                                           _couple_pids, by_slot, couple_designs)
+        # Müşteri ürünü değiştirdiyse başlık da değişmiştir; li.title Shopify
+        # senkronuyla eski ada geri döner, o yüzden kayıttaki ad kullanılır.
+        _baslik = (_ud.get("baslik") if _ud.get("durum") in ("bekliyor", "uygulandi")
+                   else None) or li.title
+        _degisiklik = degisiklikler.get(str(li.id)) or []
+
+        def _satir(slot, model, thumb, ayrildi, hazir):
+            return {
+                "key": f"{li.id}:{slot}",
+                "line_item_id": str(li.id),
+                "slot": slot,
+                "title": _baslik,
+                "model": model or None,
+                "is_couple": _is_couple,
+                # Çift kılıfın yarıları ayrı satır: hangi yarı olduğu yazılı
+                "couple_slot": (f"{slot}. kılıf" if _is_couple else None),
+                "quantity": li.quantity or 1,
+                "kalip_kodu": kod_label,        # "A5" / "A5 P1" / None
+                "thumbnail_url": thumb,         # gorsel ya da None
+                "ayrildi": bool(ayrildi),
+                "hazir": hazir,                 # None = aksesuar
+                "degisiklik": _degisiklik or None,
+            }
+
         if _is_couple:
             from app.services.mold_planner import couple_modelleri
             _m1, _m2 = couple_modelleri(li)
+            for slot, model in ((1, _m1), (2, _m2)):
+                numune = numuneler.get((str(li.id), slot)) if _kisiye and li.product_id                     and str(li.product_id) in _kisiye else None
+                thumb = numune
+                if not thumb:
+                    d = _couple_slot_tasarimi(db, order, li, slot, couple_designs)
+                    if d is not None and d.file_path:
+                        thumb = storage.get_thumbnail_url(d.file_path, d.file_format)
+                if not thumb:
+                    thumb = _design_for_line_item(db, order, li, mi, adapter, _kisiye)
+                items.append(_satir(
+                    slot, model, thumb,
+                    getattr(li, "paketleme_ayrildi" if slot == 1 else "paketleme_ayrildi_2", False),
+                    None if _durumlar is None else (_durumlar[slot - 1] if len(_durumlar) >= slot else False),
+                ))
         else:
-            _m1, _m2 = _extract_model(li), None
-        items.append({
-            "line_item_id": str(li.id),
-            "title": li.title,
-            "model": _m1 or None,
-            "model_2": _m2 or None,         # yalnizca couple'da dolu
-            "is_couple": _is_couple,
-            "quantity": li.quantity or 1,
-            "kalip_kodu": kod_label,        # "A5" / "A5 P1" / None
-            "thumbnail_url": thumb,         # gorsel ya da None
-            # Hazırlanıp kenara ayrıldı mı (paketlemede görsele tıklayınca)
-            "ayrildi": bool(getattr(li, "paketleme_ayrildi", False)),
-        })
+            numune = numuneler.get((str(li.id), 1)) if (
+                _kisiye and li.product_id and str(li.product_id) in _kisiye) else None
+            thumb = numune or _design_for_line_item(db, order, li, mi, adapter, _kisiye)
+            items.append(_satir(
+                1, _extract_model(li), thumb,
+                getattr(li, "paketleme_ayrildi", False),
+                None if _durumlar is None else all(_durumlar),
+            ))
+        if li.product_image_url and li.product_image_url != before:
+            _img_filled = True
     if _img_filled:
         try:
             db.commit()
@@ -890,7 +1017,11 @@ def _order_payload(db, order) -> dict:
         "kanal": raw.get("kanal"),
         "hepsiburada": hb.bilgi(order),
         "items": items,
-        "total_units": sum((li.quantity or 1) for li in (order.line_items or [])),
+        # Kutuya giren kılıf sayısı: çift kılıf 2 sayılır (paketlemede 2 satır)
+        "total_units": sum(
+            (li.quantity or 1) * (2 if (li.product_id and str(li.product_id) in _couple_pids) else 1)
+            for li in (order.line_items or [])
+        ),
     }
 
 
@@ -964,12 +1095,16 @@ def _couple_tasarimlari(db, tenant_id) -> dict:
     return out
 
 
-def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
-                    couple_designs=None) -> bool | None:
-    """Tek kalem üretildi mi. None = aksesuar (kalıp gerekmez, sayıma girmez).
+def _kalem_yarim_durumlari(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
+                           couple_designs=None) -> list[bool] | None:
+    """Kalemin her BASILACAK KILIFI için "üretildi mi". None = aksesuar (sayıma girmez).
 
-    _order_ready ve _eksigi_var AYNI kuralı kullanmalı; kopyalanırsa biri
-    düzeltilip diğeri eskide kalır.
+    Çift kılıf bir kalemdir ama İKİ kılıftır: paketlemede iki ürün olarak
+    listelenir, "eksiği olanlar" da yarı bazında sayar. Eskiden couple tek
+    birim sayıldığı için bir yarısı hazır olan sipariş "eksiği olanlar"
+    listesinde HİÇ görünmüyordu (hazır=0, eksik=1).
+
+    _order_ready, _eksigi_var ve kuyruk listesi AYNI kuralı buradan alır.
     """
     if li.product_id and str(li.product_id) in acc_ids:
         return None                       # aksesuar — kalıp gerekmez
@@ -977,38 +1112,45 @@ def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
     _couple = bool(li.product_id and str(li.product_id) in couple_ids)
 
     if _couple:
-        # ÇİFT KILIF: bir kalem = 2 ayrı kılıf, her yarı AYRI değerlendirilir.
-        # Bir yarı ya elle hazır işaretli ya da kendi kalıbı basılmış olmalı.
-        #
         # Tasarım kaynağı İKİ TÜRLÜ: kişiye özel couple'da kalemin kendi
         # atamaları, normal couple'da ürüne bağlı sabit tasarımlar. Yalnız
         # kaleme bakmak normal couple'da hep boş dönüyordu.
         _cp = (couple_designs or {}).get(str(li.product_id), (None, None))
         _did1 = str(li.assigned_design_id) if li.assigned_design_id else _cp[0]
         _did2 = str(li.assigned_design_id_2) if li.assigned_design_id_2 else _cp[1]
+        out = []
         for _manual, _did in (
             (getattr(li, "is_hazir", False), _did1),
             (getattr(li, "is_hazir_2", False), _did2),
         ):
             if _manual:
+                out.append(True)
                 continue
             _ms = by_slot.get((str(li.id), _did if _did else None))
-            if not _ms or len(_ms) < _qty0 or not all(_ms):
-                return False
-        return True
+            out.append(bool(_ms) and len(_ms) >= _qty0 and all(_ms))
+        return out
 
     if getattr(li, "is_hazir", False):
-        return True                       # elle hazır işaretli — üretildi sayılır
+        return [True]                     # elle hazır işaretli — üretildi sayılır
     # Kalıba eklenmemiş (hiç eklenmemiş YA DA tamamlanan kalıptan geri çıkarılmış)
     if not getattr(li, "is_kaliba_eklendi", False):
-        return False
+        return [False]
     ms = by_li.get(str(li.id))
     if not ms and onum:
         ms = by_om.get((onum, _nm(_extract_model(li))))
-    _beklenen = _qty0 * (2 if _couple else 1)
-    if not ms or len(ms) < _beklenen or not all(ms):
-        return False
-    return True
+    if not ms or len(ms) < _qty0 or not all(ms):
+        return [False]
+    return [True]
+
+
+def _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
+                    couple_designs=None) -> bool | None:
+    """Tek kalem TÜMÜYLE üretildi mi. None = aksesuar (sayıma girmez)."""
+    d = _kalem_yarim_durumlari(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
+                               couple_designs)
+    if d is None:
+        return None
+    return all(d)
 
 
 def _order_ready(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None,
@@ -1032,25 +1174,29 @@ def _eksigi_var(order, by_li, by_om, acc_ids, couple_ids=None, by_slot=None,
     hazırlanan kılıflar kenara ayrılmalı.
 
     6 ürünlü siparişin 5'i hazırsa o 5 kılıf dükkanda ayrı durur; sistemde de
-    görünsün diye bu filtre var.
+    görünsün diye bu filtre var. Çift kılıfta yarılar ayrı sayılır — tek
+    kalemlik siparişin bir kılıfı hazırsa da bu listeye girer.
     """
     couple_ids = couple_ids or set()
     by_slot = by_slot or {}
     onum = str(order.order_number) if order.order_number is not None else None
     hazir = eksik = 0
     for li in (order.line_items or []):
-        d = _kalem_uretildi(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot, couple_designs)
+        d = _kalem_yarim_durumlari(li, onum, by_li, by_om, acc_ids, couple_ids, by_slot,
+                                   couple_designs)
         if d is None:
             continue
-        if d:
-            hazir += 1
-        else:
-            eksik += 1
+        # Çift kılıfın yarıları AYRI sayılır: birisi hazır, diğeri değilse o
+        # sipariş "eksiği olanlar" listesine girer (hazır yarı kenarda duruyor).
+        hazir += sum(1 for x in d if x)
+        eksik += sum(1 for x in d if not x)
     return hazir > 0 and eksik > 0
 
 
 class AyrildiIn(BaseModel):
     ayrildi: bool = True
+    # Çift kılıfın hangi yarısı (1 | 2). Tekil üründe her zaman 1.
+    slot: int = 1
 
 
 @router.patch("/kalem/{line_item_id}/ayrildi", response_model=dict)
@@ -1059,7 +1205,8 @@ def kalem_ayrildi(line_item_id: uuid.UUID, body: AyrildiIn,
     """Kalemi "hazırlandı, kenara ayrıldı" olarak işaretle / işareti kaldır.
 
     Siparişin tamamı hazır olmasa da hazırlanan kılıflar dükkanda ayrı duruyor;
-    bu işaret aynı ayrımı sistemde de gösteriyor.
+    bu işaret aynı ayrımı sistemde de gösteriyor. Çift kılıfta iki yarı AYRI
+    işaretlenir (paketlemede iki ürün olarak listeleniyor).
     """
     li = db.scalar(
         select(LineItem).join(Order, Order.id == LineItem.order_id)
@@ -1067,9 +1214,14 @@ def kalem_ayrildi(line_item_id: uuid.UUID, body: AyrildiIn,
     )
     if not li:
         raise HTTPException(404, "Kalem bulunamadı")
-    li.paketleme_ayrildi = bool(body.ayrildi)
+    if body.slot == 2:
+        li.paketleme_ayrildi_2 = bool(body.ayrildi)
+        ayrildi = li.paketleme_ayrildi_2
+    else:
+        li.paketleme_ayrildi = bool(body.ayrildi)
+        ayrildi = li.paketleme_ayrildi
     db.commit()
-    return {"ok": True, "line_item_id": str(line_item_id), "ayrildi": li.paketleme_ayrildi}
+    return {"ok": True, "line_item_id": str(line_item_id), "slot": body.slot, "ayrildi": ayrildi}
 
 
 @router.get("/queue", response_model=dict)

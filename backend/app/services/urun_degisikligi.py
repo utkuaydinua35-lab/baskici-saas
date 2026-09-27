@@ -107,6 +107,10 @@ def tasarimi_bagla(li: LineItem, design: Design, kim: str) -> None:
         li.product_image_url = design.product_image_url
     li.is_kaliba_eklendi = False
     li.is_hazir = False
+    li.is_hazir_2 = False
+    # Paketlemede kenara ayrılmış kılıf artık YANLIŞ ÜRÜN — işaret kalkar.
+    li.paketleme_ayrildi = False
+    li.paketleme_ayrildi_2 = False
     kayit.update(durum=UYGULANDI, tasarim_id=str(design.id), tasarim_kodu=design.code,
                  karar_at=_simdi(), karar_veren=kim, sebep=None)
     li.urun_degisikligi = kayit
@@ -122,6 +126,12 @@ def kaydet(db: Session, li: LineItem, store: Store | None, *, urun_id: str, basl
         "onceki": (li.urun_degisikligi or {}).get("onceki") or _onceki(li),
     }
     li.urun_degisikligi = kayit
+    # Ürün değişti: hazırlanmış/kenara ayrılmış kılıf artık geçerli değil.
+    # (Tasarım bağlanamasa da bu doğru; kalem zaten kalıba girmeyecek.)
+    li.is_hazir = False
+    li.is_hazir_2 = False
+    li.paketleme_ayrildi = False
+    li.paketleme_ayrildi_2 = False
     design, neden = tasarim_bul(db, store, urun_id, li)
     if design is not None:
         tasarimi_bagla(li, design, kim=f"otomatik ({kim})")

@@ -223,14 +223,16 @@ export default function BaskiciPaneliPage() {
             ) : (
               <>
                 <div className="text-xs text-gray-500 mb-3">
-                  {totalMissing.total_models} satır · toplam {totalMissing.total_missing} adet eksik
+                  {totalMissing.total_models} satır · toplam {totalMissing.total_missing} adet EKSİK
+                  (rafta olması gereken değil, <b>alınması gereken</b> adet)
                   {totalMissing.siparis_kalem_sayisi > 0 &&
                     ` · ${totalMissing.siparis_kalem_sayisi}'i aksesuar/işlemsiz ürün`}
                 </div>
                 <div className="space-y-1.5">
                   {totalMissing.items.map((it, i) => (
                     <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">
-                      <span className="text-red-400 font-bold tabular-nums text-sm w-12">-{it.total_missing}</span>
+                      {/* "-12" stok eksiymiş gibi okunuyordu; eksik ADEDİ yazılı */}
+                      <span className="text-red-400 font-bold tabular-nums text-sm w-12">{it.total_missing}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-gray-200 truncate">{it.model}</div>
                         {/* Aksesuar/işleme girmeyen ürünler kalıptan değil, açık
@@ -240,7 +242,7 @@ export default function BaskiciPaneliPage() {
                                ? `Siparişler: ${it.siparisler.map(n => '#' + n).join(', ')}` : undefined}>
                           {it.kaynak === 'siparis'
                             ? `🎁 ${it.grup} · ${it.siparis_sayisi} siparişte · ihtiyaç ${it.ihtiyac}, stok ${it.mevcut}`
-                            : `${it.variation} · ${it.mold_count} kalıpta`}
+                            : `${it.variation} · ${it.mold_count} kalıpta · ihtiyaç ${it.ihtiyac ?? '—'}, stok ${it.mevcut ?? 0}`}
                         </div>
                       </div>
                       {it.not_in_system && (

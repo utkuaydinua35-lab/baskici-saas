@@ -522,6 +522,14 @@ def _serialize_detail(order: Order, db: Session | None = None) -> dict:
                 "current_stage_label": stage_info(t.current_stage)["label"],
                 "progress_percent": progress_percent(t.current_stage),
                 "item_count": len(t.line_items or []),
+                # Kargo barkodu oluşturuldu mu (düğme "oluştur" mu "yeniden
+                # yazdır" mı diyecek)
+                "kargo": {
+                    "takip_no": (t.kargo_info or {}).get("takip_no") or None,
+                    "handler_name": (t.kargo_info or {}).get("handler_name") or None,
+                    "var": bool((t.kargo_info or {}).get("takip_no")),
+                    "kargoda": (t.current_stage or 1) >= 8,
+                },
                 # Hangi kalemlerin telafisi — ürün satırında rozet için
                 # (yalnız sipariş detayından/klonla açılanlarda kayıtlı).
                 "kaynak_kalemler": sorted({

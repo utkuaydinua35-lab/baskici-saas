@@ -136,11 +136,16 @@ def build_items(db: Session, order: Order) -> list[dict]:
         )
     ).all())
 
-    def _mk_item(li, d, pm, title, qty, variation):
+    def _mk_item(li, d, pm, title, qty, variation, slot: int = 1):
         mock_url = mockup.generate_mockup_url(d, order.tenant_id, variation,
                                               phone_model=pm, db=db)
         preview = mock_url or storage.get_thumbnail_url(d.file_path, d.file_format)
         return {
+            # Hangi kaleme ve hangi yarıya ait: paketleme müşteriye GÖNDERİLEN
+            # numuneyi gösteriyor, eşleştirmeyi başlık tahminiyle yapmasın.
+            "line_item_id": str(li.id),
+            "slot": slot,
+            "design_id": str(d.id) if getattr(d, "id", None) else None,
             "image_url": _absolute(preview),
             "file_url": _absolute(storage.get_design_url(d.file_path)),
             "file_format": getattr(d, "file_format", None),
@@ -168,7 +173,7 @@ def build_items(db: Session, order: Order) -> list[dict]:
                 pm = _resolve_phone_model_by_str(db, order.tenant_id, mstr) \
                     or _resolve_phone_model(db, order.tenant_id, li)
                 variation = _variation_of(li, d, slot=slot)   # üretimle aynı çözüm
-                items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1, variation))
+                items.append(_mk_item(li, d, pm, f"{base} — {slot}. kılıf", 1, variation, slot=slot))
             continue
 
         # tekli kişiye özel kalem
@@ -189,14 +194,65 @@ def build_items(db: Session, order: Order) -> list[dict]:
     return items
 
 
+def numune_gorselleri(db: Session, order: Order) -> dict:
+    """{(line_item_id, slot): numune_url} — müşteriye GÖNDERİLEN numune görselleri.
+
+    Paketleme kişiye özel ürünü kılıf üzerindeki numuneyle göstermeli: kutuya
+    giren şey o. Kaynak, müşteriye gerçekten gönderilen onay kaydıdır (en yeni
+    versiyon); böylece ekranda görülen ile müşterinin gördüğü AYNI olur ve
+    mockup yeniden üretilmez.
+
+    Eski kayıtlarda line_item_id yoktu — orada başlığa göre eşleştirilir; o da
+    tutmazsa tek kalemli siparişte tek numune o kaleme aittir.
+    """
+    from app.models import DesignApproval
+
+    aps = db.scalars(
+        select(DesignApproval).where(DesignApproval.order_id == order.id)
+        .order_by(DesignApproval.version.asc(), DesignApproval.created_at.asc())
+    ).all()
+    if not aps:
+        return {}
+    kalemler = list(order.line_items or [])
+    basliklar = {(li.title or "").strip(): li for li in kalemler if li.title}
+    out: dict = {}
+    for ap in aps:                      # eskiden yeniye: en yeni versiyon üzerine yazar
+        for it in (ap.items or []):
+            url = it.get("image_url")
+            if not url:
+                continue
+            lid, slot = it.get("line_item_id"), int(it.get("slot") or 1)
+            if not lid:
+                baslik = (it.get("title") or "").strip()
+                li = basliklar.get(baslik)
+                if li is None and baslik:
+                    # "Ürün — 1. kılıf" gibi ekli başlıklar
+                    kok = baslik.split(" — ")[0].strip()
+                    li = basliklar.get(kok)
+                    if li is not None and " — " in baslik and baslik.rstrip().endswith("kılıf"):
+                        try:
+                            slot = int(baslik.rsplit("—", 1)[1].strip().split(".")[0])
+                        except (ValueError, IndexError):
+                            pass
+                if li is None and len(kalemler) == 1:
+                    li = kalemler[0]
+                if li is None:
+                    continue
+                lid = str(li.id)
+            out[(str(lid), slot)] = url
+    return out
+
+
 def _studyo_items(db: Session, order: Order) -> list[dict]:
     from app.models import CustomerDesign
 
     ids: list[str] = []
+    kalem_of: dict = {}                     # tasarım no -> kalem (paketleme eşlemesi)
     for li in (order.line_items or []):
         for prop in (li.properties or []):
             if prop.get("name") == "Tasarım No" and prop.get("value"):
                 ids.append(str(prop["value"]))
+                kalem_of.setdefault(str(prop["value"]), li)
     if not ids:
         return []
 
@@ -211,7 +267,10 @@ def _studyo_items(db: Session, order: Order) -> list[dict]:
         if not gosterilecek:
             continue
         from app.services.storage import design_render_url
+        _li = kalem_of.get(str(did))
         out.append({
+            "line_item_id": str(_li.id) if _li is not None else None,
+            "slot": 1,
             # Sürüm damgalı: numune/baskı yeniden üretilince müşteriye ESKİ
             # kopya gösterilmesin (dosya adı sabit, adres değişmiyordu)
             "image_url": _absolute(design_render_url(gosterilecek) or ""),

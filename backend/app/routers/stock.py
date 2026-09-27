@@ -345,6 +345,89 @@ def eksik_modelleri_olustur(group_id: uuid.UUID,
     return {"ok": True, "olusturulan": len(olusturulan), "modeller": olusturulan}
 
 
+# ═════════════════════════════════════════════════════════════════════
+# SIFIRDAN STOK: geçmişi sil, ihtiyaç duyulan modelleri 0 adetle aç
+# ═════════════════════════════════════════════════════════════════════
+class SifirlaIn(BaseModel):
+    # Yazıyla onay: "STOK SIFIRLA". Tek tık ile tüm stok geçmişi silinmesin.
+    onay: str
+    gruplari_da_sil: bool = False
+
+
+@router.post("/sifirla", response_model=dict)
+def stogu_sifirla(body: SifirlaIn, user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """TÜM stok kalemlerini ve hareket geçmişini sil. GERİ ALINAMAZ.
+
+    Sipariş, kalıp ve tasarımlara dokunulmaz — yalnız stok tabloları temizlenir.
+    Ardından /api/stock/kur ile ihtiyaç duyulan modeller 0 adetle açılır ve raf
+    sayımı girilir.
+    """
+    from app.services import stok_kurulum as sk
+
+    if (body.onay or "").strip().upper() != sk.ONAY_METNI:
+        raise HTTPException(400, f'Onay için "{sk.ONAY_METNI}" yazmalısın')
+    sonuc = sk.sifirla(db, user.tenant_id, gruplari_da_sil=body.gruplari_da_sil)
+    try:
+        from app.services import activity
+        activity.record(db, user, "stok_sifirla", entity_type="stok",
+                        entity_label="Tüm stok", detail=sonuc)
+        db.commit()
+    except Exception:  # noqa: BLE001 — günlük yazılamazsa işlem geri alınmaz
+        db.rollback()
+    return {"ok": True, **sonuc}
+
+
+@router.get("/kur/_onizleme", response_model=dict)
+def kurulum_onizleme(kaynak: str = "ikisi", user: User = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """Sıfırdan kurulumda açılacak modeller (kaynak: kaliplar | siparisler | ikisi)."""
+    from app.services import stok_kurulum as sk
+
+    if kaynak not in ("kaliplar", "siparisler", "ikisi"):
+        raise HTTPException(400, "Geçersiz kaynak")
+    modeller = sk.modelleri_topla(db, user.tenant_id, kaynak)
+    return {"kaynak": kaynak, "modeller": modeller, "model_sayisi": len(modeller),
+            "varyasyonlar": stock_svc.DEFAULT_VARIATIONS}
+
+
+class KurIn(BaseModel):
+    kaynak: str = "ikisi"                  # kaliplar | siparisler | ikisi | elle
+    modeller: list[str] | None = None      # kaynak="elle" ise zorunlu
+    varyasyonlar: list[str] = Field(default_factory=lambda: ["siyah", "şeffaf"])
+    grup_adi: str = Field("Boş Kılıf", min_length=1, max_length=200)
+    esik: int = Field(0, ge=0)
+
+
+@router.post("/kur", response_model=dict)
+def stogu_kur(body: KurIn, user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    """İhtiyaç duyulan her (model × varyasyon) için 0 adetli kayıt aç.
+
+    Var olan kayda dokunulmaz; tekrar çalıştırmak sayılmış adetleri bozmaz.
+    """
+    from app.services import stok_kurulum as sk
+
+    if body.kaynak == "elle":
+        modeller = body.modeller or []
+        if not modeller:
+            raise HTTPException(400, "Model listesi boş")
+    elif body.kaynak in ("kaliplar", "siparisler", "ikisi"):
+        modeller = sk.modelleri_topla(db, user.tenant_id, body.kaynak)
+        if not modeller:
+            raise HTTPException(400, "Bu kaynakta model bulunamadı — "
+                                     "kalıplarda ve açık siparişlerde model yok")
+    else:
+        raise HTTPException(400, "Geçersiz kaynak")
+    gecersiz = [v for v in body.varyasyonlar if v not in stock_svc.DEFAULT_VARIATIONS]
+    if gecersiz:
+        raise HTTPException(400, f"Geçersiz varyasyon: {', '.join(gecersiz)}")
+    sonuc = sk.kur(db, user.tenant_id, modeller=modeller,
+                   varyasyonlar=body.varyasyonlar, grup_adi=body.grup_adi.strip(),
+                   esik=body.esik)
+    return {"ok": True, **sonuc}
+
+
 @router.get("/groups/_suggest-compatible", response_model=dict)
 def suggest_compatible(model: str, user: User = Depends(get_current_user)):
     """Verilen model ile ayni kalibi/olcuyu paylasan (uyumlu olabilecek) modelleri oner.

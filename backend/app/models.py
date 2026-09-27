@@ -703,6 +703,11 @@ class LineItem(Base):
     paketleme_ayrildi: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    # Çift kılıfın 2. yarısı paketlemede AYRI bir ürün olarak listelenir; işareti
+    # de ayrı olmalı (tek bayrak iki yarıyı birbirine bağlıyordu).
+    paketleme_ayrildi_2: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
     kilif_varyasyon: Mapped[str | None] = mapped_column(String(20), nullable=True)  # kişiye özel kılıf rengi/varyasyon
     kilif_varyasyon_2: Mapped[str | None] = mapped_column(String(20), nullable=True)  # couple 2. kılıf varyasyonu
     product_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)  # shopify_urun_gorseli

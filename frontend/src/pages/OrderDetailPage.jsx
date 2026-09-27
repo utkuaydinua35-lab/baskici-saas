@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { useToast } from '../components/Toast'
 import { AddOrderItemsDialog } from './DealersPage'
 import { usePhoneModels } from '../lib/phoneModels'
+import { printKargoLabel, TELAFI_UCLARI } from '../lib/kargoEtiket'
 
 
 /** Line item'tan telefon modelini çıkar.
@@ -314,8 +315,23 @@ export default function OrderDetailPage() {
       {/* Telafi durumu */}
       {detail.is_telafi && (
         <div className="card mb-5 border-amber-500/30 bg-amber-500/5">
-          <div className="text-sm text-amber-300 font-medium">♻️ Bu bir TELAFİ siparişidir</div>
-          {detail.telafi_sebep && <div className="text-xs text-amber-400/80 mt-1">Sebep: {detail.telafi_sebep}</div>}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <div className="text-sm text-amber-300 font-medium">♻️ Bu bir TELAFİ siparişidir</div>
+              {detail.telafi_sebep && <div className="text-xs text-amber-400/80 mt-1">Sebep: {detail.telafi_sebep}</div>}
+            </div>
+            {/* Telafiyi elden kargoya verirken barkod buradan alınır */}
+            <TelafiKargo onYenile={load} telafi={{
+              id: orderId,
+              order_number: detail.order_number,
+              kargo: {
+                var: !!detail.kargo_info?.takip_no,
+                takip_no: detail.kargo_info?.takip_no,
+                handler_name: detail.kargo_info?.handler_name,
+                kargoda: (detail.current_stage || 1) >= 8,
+              },
+            }} />
+          </div>
         </div>
       )}
       {detail.telafiler && detail.telafiler.length > 0 && (
@@ -323,16 +339,18 @@ export default function OrderDetailPage() {
           <div className="text-sm font-medium text-gray-200 mb-2">♻️ Bu siparişin telafileri</div>
           <div className="space-y-2">
             {detail.telafiler.map(t => (
-              <a key={t.id} href={`/orders/${t.id}`}
-                onClick={e => { e.preventDefault(); navigate(`/orders/${t.id}`, { state: { from: location.pathname } }) }}
-                className="flex items-center justify-between gap-3 px-2 py-1.5 rounded bg-brand-input/50 hover:bg-brand-input text-sm">
-                <div className="flex items-center gap-2 min-w-0">
+              <div key={t.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-brand-input/50 text-sm flex-wrap">
+                <a href={`/orders/${t.id}`}
+                  onClick={e => { e.preventDefault(); navigate(`/orders/${t.id}`, { state: { from: location.pathname } }) }}
+                  className="flex items-center gap-2 min-w-0 flex-1 hover:text-white">
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">TELAFİ</span>
                   <span className="text-gray-200">{t.order_number}</span>
-                  <span className="text-gray-500 text-xs">{t.item_count} ürün{t.telafi_sebep ? ` · ${t.telafi_sebep}` : ''}</span>
-                </div>
+                  <span className="text-gray-500 text-xs truncate">{t.item_count} ürün{t.telafi_sebep ? ` · ${t.telafi_sebep}` : ''}</span>
+                </a>
                 <span className="text-xs text-gray-300 shrink-0">{t.current_stage_label} · %{t.progress_percent}</span>
-              </a>
+                {/* Telafi de müşteriye kargoyla gidiyor: barkodu buradan al */}
+                <TelafiKargo telafi={t} onYenile={load} />
+              </div>
             ))}
           </div>
         </div>
@@ -1709,6 +1727,63 @@ function UrunDegisikligiBandi({ ud, onKarar }) {
 }
 
 const TELAFI_SEBEPLERI = ['Hatalı model', 'Yanlış hazırlandı', 'Hasarlı geldi', 'Kargo kaybı', 'Yanlış tasarım']
+
+// Telafi kargo barkodu — sipariş detayından. Telafi paketleme kuyruğuna
+// girmeden elden kargoya verildiğinde barkod buradan alınır; gönderiyi
+// PAKETLEMEDEKİ akış oluşturur (/api/telafiler/{id}/kargo-barkod → aynı uç),
+// yazdırma da aynı modülden (lib/kargoEtiket) geçer.
+function TelafiKargo({ telafi, onYenile }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const kargo = telafi.kargo || {}
+
+  const olustur = async () => {
+    if (!confirm(`${telafi.order_number} telafisi KARGOYA VERİLECEK ve barkod basılacak.\n`
+      + 'Gönderi oluşur, telafi "Kargoda" aşamasına geçer. Onaylıyor musun?')) return
+    setBusy(true)
+    try {
+      const r = await api.post(`/api/telafiler/${telafi.id}/kargo-barkod`, {})
+      const tn = r.takip_no || '—'
+      const yazdirildi = await printKargoLabel(telafi.id, r.label_svg, tn, { uclar: TELAFI_UCLARI })
+      toast[yazdirildi ? 'success' : 'info'](
+        yazdirildi
+          ? `${r.handler_name || 'Kargo'} gönderi oluştu · Takip ${tn}`
+          : `Gönderi oluştu (Takip ${tn}) ama barkod otomatik açılamadı — "Barkodu yazdır"a bas`)
+      onYenile?.()
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Kargo oluşturulamadı')
+    } finally { setBusy(false) }
+  }
+
+  const yazdir = async () => {
+    setBusy(true)
+    try {
+      const ok = await printKargoLabel(telafi.id, null, kargo.takip_no, { uclar: TELAFI_UCLARI })
+      if (!ok) toast.error('Barkod alınamadı — kargo etiketi hazır değil olabilir')
+    } finally { setBusy(false) }
+  }
+
+  if (kargo.var) {
+    return (
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[10px] text-emerald-300/90 font-mono" title={kargo.handler_name || ''}>
+          🚚 {kargo.takip_no}
+        </span>
+        <button onClick={yazdir} disabled={busy}
+          className="text-[11px] px-2 py-1 rounded-lg border border-brand-border text-gray-300 hover:bg-brand-input disabled:opacity-40">
+          {busy ? '…' : '🖨 Barkodu yazdır'}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button onClick={olustur} disabled={busy}
+      className="text-[11px] px-2 py-1 rounded-lg border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 shrink-0"
+      title="Telafi için kargo gönderisi ve barkod oluştur">
+      {busy ? 'Oluşturuluyor…' : '🚚 Kargo barkodu oluştur'}
+    </button>
+  )
+}
 
 // Sipariş detayından telafi — Telafiler sayfasındaki "Siparişten Klonla" ile
 // AYNI uç (/api/telafiler/from-order). Oluşan telafi Telafiler listesine,

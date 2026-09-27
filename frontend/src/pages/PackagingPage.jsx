@@ -1,7 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api, fetchYetkili } from '../lib/api'
-import { zebraDurum, zebraTaban, zebraYazdir } from '../lib/zebra'
-import { qzDurum, qzYazdir, qzYazicilar, qzYaziciSec } from '../lib/qz'
+import { zebraDurum } from '../lib/zebra'
+import { qzDurum, qzYazicilar, qzYaziciSec } from '../lib/qz'
+// Etiket yazdırma TEK YERDE: sipariş detayındaki telafi kargosu da aynı modülü
+// kullanıyor (bkz. lib/kargoEtiket.js).
+import { printKargoLabel } from '../lib/kargoEtiket'
 import { mutlak } from '../lib/taban'
 
 const LAST_INDEX_KEY = 'packaging_last_index'
@@ -107,15 +110,18 @@ export default function PackagingPage() {
 
   // Kalemi "kenara ayrıldı" işaretle/kaldır. İyimser güncelleme: tık anında
   // görünsün, sunucu hata verirse geri alınsın.
+  // Çift kılıfın iki yarısı ayrı satır ve ayrı işaret: eşleşme `key` ile
+  // (line_item_id:slot) yapılır, yoksa bir yarıyı ayırmak diğerini de ayırır.
   const ayrildiToggle = async (it) => {
     const yeni = !it.ayrildi
-    setQueue(q => ({ ...q, order: { ...q.order,
-      items: q.order.items.map(x => x.line_item_id === it.line_item_id ? { ...x, ayrildi: yeni } : x) } }))
+    const yaz = (v) => setQueue(q => ({ ...q, order: { ...q.order,
+      items: q.order.items.map(x => x.key === it.key ? { ...x, ayrildi: v } : x) } }))
+    yaz(yeni)
     try {
-      await api.patch(`/api/packaging/kalem/${it.line_item_id}/ayrildi`, { ayrildi: yeni })
+      await api.patch(`/api/packaging/kalem/${it.line_item_id}/ayrildi`,
+                      { ayrildi: yeni, slot: it.slot || 1 })
     } catch (e) {
-      setQueue(q => ({ ...q, order: { ...q.order,
-        items: q.order.items.map(x => x.line_item_id === it.line_item_id ? { ...x, ayrildi: !yeni } : x) } }))
+      yaz(!yeni)
       setMsg({ ok: false, text: e?.detail || 'İşaretlenemedi' })
     }
   }
@@ -154,158 +160,13 @@ export default function PackagingPage() {
     try { localStorage.setItem('etiket_doldur', v ? '1' : '0') } catch { /* kota */ }
   }
 
+  // Yazdırma modülüne ekranın ayarlarını ve mesaj kanalını geçir
+  const etiketCtx = () => ({ etiketMm, doldur, qz, zebra, onMesaj: setMsg })
+
   const etiketMmKaydet = (yeni) => {
     setEtiketMm(yeni)
     try { localStorage.setItem('etiket_mm', JSON.stringify(yeni)) } catch { /* kota */ }
   }
-
-  // Etiketi ÖNCE Zebra'ya doğrudan ZPL olarak göndermeyi dene.
-  // Başarılıysa hiç yazdırma penceresi çıkmaz. Döner: gönderildi mi.
-  // Hata YUTULMAZ: sessizce tarayıcıya düşünce "neden hâlâ onay çıkıyor?"
-  // sorusunu cevaplayacak hiçbir iz kalmıyordu. Artık nerede kırıldığı
-  // ekranda ve konsolda görünüyor.
-  const zplDene = async (orderId, tip = 'kargo') => {
-    if (!dogrudan) return false          // hiçbir köprü hazır değil
-    let zpl
-    try {
-      const q = new URLSearchParams({
-        tip, w_mm: String(etiketMm.w), h_mm: String(etiketMm.h),
-        doldur: doldur ? 'true' : 'false',
-      })
-      const res = await fetchYetkili(
-        mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/zpl?${q}`))
-      if (!res.ok) {
-        let d = ''
-        try { d = (await res.json())?.detail || '' } catch { /* json değil */ }
-        const t = `ZPL alınamadı (HTTP ${res.status}) ${d}`.trim()
-        console.warn('[zebra]', t)
-        setMsg({ ok: false, text: t + ' — tarayıcıdan yazdırılacak' })
-        return false
-      }
-      zpl = await res.text()
-    } catch (e) {
-      console.warn('[zebra] ZPL isteği patladı:', e)
-      setMsg({ ok: false, text: `ZPL isteği başarısız: ${e?.message || e}` })
-      return false
-    }
-    // Önce QZ Tray (yazıcı kuyruğu), sonra Zebra Browser Print (USB keşfi)
-    if (qz?.yazici) {
-      const r = await qzYazdir(zpl)
-      if (r.ok) return true
-      console.warn('[qz] yazılamadı:', r.hata, { boyut: zpl.length })
-      setMsg({ ok: false, text: `QZ Tray'e gönderilemedi: ${r.hata} — tarayıcıdan yazdırılacak` })
-    }
-    if (zebra?.yazici) {
-      try {
-        const ok = await zebraYazdir(zpl)
-        if (ok) return true
-        console.warn('[zebra] yazıcıya yazılamadı', { taban: zebraTaban(), boyut: zpl.length })
-        setMsg({ ok: false,
-          text: `Zebra'ya gönderilemedi (${(zpl.length / 1024).toFixed(0)} KB) — tarayıcıdan yazdırılacak` })
-      } catch (e) {
-        console.warn('[zebra] yazma hatası:', e)
-        setMsg({ ok: false, text: `Zebra yazma hatası: ${e?.message || e}` })
-      }
-    }
-    return false
-  }
-
-  // ── Sayfa içinde yazdırma ───────────────────────────────────
-  // Yeni sekme açmak yerine gizli bir iframe'e yazıp oradan yazdırıyoruz:
-  //  • ikinci sekme açılmıyor, sekmeyi kapatma derdi yok
-  //  • yeni sekmedeki "yazdır" adımı gitti — yazdırma penceresi doğrudan açılıyor
-  //  • popup engelleyici devreye girmiyor (sekme açılmadığı için)
-  // NOT: tarayıcının yazdırma penceresini atlamak (sessiz baskı) web'den mümkün
-  // değil; kaldırabildiğimiz adım fazladan sekme ve ikinci tık.
-  // Etiketin GERÇEK ölçüsünü SVG'den oku (mm). Bulunamazsa 10x15 cm — bizim
-  // adres etiketimizin ölçüsü.
-  const svgOlcu = (svg) => {
-    const al = (ad) => (svg.match(new RegExp(ad + '="([\\d.]+)(mm|cm|px|pt)?"')) || [])
-    const [, w, wb] = al('width')
-    const [, h, hb] = al('height')
-    const mm = (v, birim) => {
-      const n = parseFloat(v)
-      if (!n) return null
-      if (birim === 'mm') return n
-      if (birim === 'cm') return n * 10
-      if (birim === 'pt') return n * 25.4 / 72
-      return n * 25.4 / 96          // px (96 dpi)
-    }
-    const W = mm(w, wb), H = mm(h, hb)
-    return (W && H) ? { w: W, h: H } : { w: 100, h: 150 }
-  }
-
-  const yazdirGomulu = (html, baslik = '', olcu = null) => new Promise((resolve) => {
-    const cerceve = document.createElement('iframe')
-    cerceve.setAttribute('aria-hidden', 'true')
-    // GUVENLIK: etiket SVG'si KARGO FIRMASINDAN geliyor ve icinde musterinin
-    // adi/adresi var. Firma kacirmayi atlarsa "</svg><script>" panelin
-    // ORIGIN'inde calisir (src'siz iframe ayni origin) ve localStorage'daki
-    // JWT'yi okur. sandbox'ta allow-scripts YOK: icerideki script hic
-    // calismaz. allow-same-origin duruyor cunku yazdirmayi EBEVEYN tetikliyor
-    // (contentWindow.print). Cizim etkilenmez — sanitizer riski de yok.
-    cerceve.setAttribute('sandbox', 'allow-same-origin allow-modals')
-    cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
-    document.body.appendChild(cerceve)
-    let bitti = false
-    const temizle = () => {
-      if (bitti) return
-      bitti = true
-      setTimeout(() => cerceve.remove(), 800)
-      resolve(true)
-    }
-    try {
-      const d = cerceve.contentWindow.document
-      d.open()
-      // @page size ŞART: verilmezse tarayıcı A4 varsayıp etiketi "sayfaya
-      // sığdır" ile küçültüyor — barkod okunamayacak kadar ufalıyor. Gerçek
-      // ölçüyü yazınca çıktı yazdırma ayarlarından BAĞIMSIZ olarak doğru gelir.
-      const o = olcu || { w: 100, h: 150 }
-      d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${baslik}</title>` +
-        `<style>@page{size:${o.w}mm ${o.h}mm;margin:0}` +
-        `html,body{margin:0;padding:0;width:${o.w}mm;height:${o.h}mm}` +
-        `body{display:flex;align-items:center;justify-content:center;overflow:hidden}` +
-        // max-* + auto: oran korunur ve HİÇBİR yönde taşmaz. Sabit width/height
-        // vermek, oranı farklı bir etikette içeriği alt etikete taşırıyordu.
-        `svg,img{max-width:${o.w}mm;max-height:${o.h}mm;width:auto;height:auto}` +
-        `*{break-inside:avoid;page-break-inside:avoid}` +
-        `</style></head><body>${html}</body></html>`)
-      d.close()
-      // Görseller/fontlar yerleşsin diye bir tur bekle
-      const bas = () => {
-        try {
-          cerceve.contentWindow.focus()
-          cerceve.contentWindow.onafterprint = temizle
-          cerceve.contentWindow.print()
-        } catch { /* yazdırma engellendi */ }
-        setTimeout(temizle, 4000)   // onafterprint gelmezse de temizlensin
-      }
-      if (d.readyState === 'complete') setTimeout(bas, 120)
-      else cerceve.onload = () => setTimeout(bas, 120)
-    } catch {
-      cerceve.remove()
-      resolve(false)
-    }
-  })
-
-  // PDF etiketi (adres etiketi) — blob URL'i iframe'e verip yazdır.
-  const yazdirPdfGomulu = (blobUrl) => new Promise((resolve) => {
-    const cerceve = document.createElement('iframe')
-    cerceve.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
-    cerceve.src = blobUrl
-    let bitti = false
-    const temizle = (ok) => { if (bitti) return; bitti = true; setTimeout(() => cerceve.remove(), 800); resolve(ok) }
-    cerceve.onload = () => {
-      try {
-        cerceve.contentWindow.focus()
-        cerceve.contentWindow.print()
-        setTimeout(() => temizle(true), 4000)
-      } catch { temizle(false) }
-    }
-    cerceve.onerror = () => temizle(false)
-    document.body.appendChild(cerceve)
-    setTimeout(() => temizle(false), 12000)   // PDF hiç yüklenmezse
-  })
 
   // ── "p" kısayolu ────────────────────────────────────────────
   // Kargoya ver + onay + yazdır tek tuşta. Kargoya verme GERİ ALINAMAZ bir
@@ -337,99 +198,6 @@ export default function PackagingPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000)
   }
 
-  // Panelin kendi barkodlu adres etiketi (PDF) -> yeni sekmede aç + yazdır.
-  // Kendi kargo anlaşmasında paketin üzerine yapıştırılan etiket budur.
-  // Döner: pencere açıldı mı (false = popup engeli / hata -> İLERLEME).
-  const printAdresEtiketi = async (orderId) => {
-    if (await zplDene(orderId, 'adres')) return true
-    try {
-      const res = await fetchYetkili(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/label`))
-      if (!res.ok) return false
-      const url = URL.createObjectURL(await res.blob())
-      // Önce sayfa içinde (iframe) dene; olmazsa sekmeye düş.
-      const ok = await yazdirPdfGomulu(url)
-      if (!ok) {
-        const wnd = window.open(url, '_blank')
-        if (!wnd) { URL.revokeObjectURL(url); return false }
-        try { wnd.addEventListener('load', () => { try { wnd.print() } catch { /* kullanıcı yazdırır */ } }) } catch { /* çapraz köken */ }
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-      return true
-    } catch { return false }
-  }
-
-  // SVG kargo etiketi -> SAYFA İÇİNDE yazdır (yeni sekme yok).
-  const openLabelSvg = async (svg, takipNo) => {
-    const ok = await yazdirGomulu(svg, `Kargo Etiketi ${takipNo || ''}`, etiketMm)
-    if (ok) return true
-    // Gömülü yazdırma engellenirse eski yol (sekme) yedek kalsın
-    try {
-      const w = window.open('', '_blank')
-      if (!w) return false
-      // SVG'yi HAM gommek yerine <img> ile gosteriyoruz: <img> ile yuklenen
-      // SVG'de tarayici script'i ASLA calistirmaz (SVG-as-image kurali).
-      // Bu sayfanin KENDI script'i (yazdirma tetigi) calismaya devam eder.
-      const svgData = 'data:image/svg+xml;base64,'
-        + btoa(unescape(encodeURIComponent(svg)))
-      const baslikGuvenli = String(takipNo || '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      w.document.write(
-        `<!doctype html><html><head><title>Kargo Etiketi ${baslikGuvenli}</title>` +
-        `<style>@page{margin:0}body{margin:0;display:flex;justify-content:center;padding:8px}img{max-width:100%;height:auto}</style>` +
-        `</head><body><img alt="" src="${svgData}"><scr` + `ipt>window.onload=function(){setTimeout(function(){window.print()},300)}</scr` + `ipt></body></html>`
-      )
-      w.document.close()
-      return true
-    } catch { return false }
-  }
-
-  // Kargo etiketini yeniden çek (kargo-gonder boş dönerse / re-print).
-  // Basit Kargo SVG, Sürat (doğrudan) PDF döndürür — Content-Type'a bakılır.
-  const fetchKargoEtiket = async (orderId) => {
-    try {
-      const res = await fetchYetkili(mutlak(`/api/packaging/order/${encodeURIComponent(orderId)}/kargo-label`))
-      if (!res.ok) return null
-      const tip = res.headers.get('content-type') || ''
-      if (tip.includes('pdf')) {
-        return { tip: 'pdf', url: URL.createObjectURL(await res.blob()) }
-      }
-      return { tip: 'svg', svg: await res.text() }
-    } catch { return null }
-  }
-
-  // PDF etiketi yazdır: gizli iframe'e yükleyip yazdırma penceresini aç.
-  // (SVG'deki gibi HTML'e gömemiyoruz.)
-  const openLabelPdf = async (url) => {
-    try {
-      const f = document.createElement('iframe')
-      f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
-      f.src = url
-      document.body.appendChild(f)
-      await new Promise((r) => { f.onload = r; setTimeout(r, 2500) })
-      f.contentWindow.focus(); f.contentWindow.print()
-      // Yazdırma penceresi kapanana kadar iframe dursun
-      setTimeout(() => { f.remove(); URL.revokeObjectURL(url) }, 60000)
-      return true
-    } catch { return false }
-  }
-
-  // Barkodu yazdır: svg verilmişse onu; yoksa kargo-label'dan kısa retry ile çek
-  // (Basit Kargo etiket üretimi yavaş olabiliyor). Döner: yazdırma penceresi açıldı mı.
-  const printKargoLabel = async (orderId, svg, takipNo) => {
-    // Zebra varsa doğrudan ZPL — pencere yok, ölçek sorunu yok.
-    // (Sürat'ın PDF barkodu da bu yoldan geçer; sunucu pdf_to_zpl uyguluyor.)
-    if (await zplDene(orderId, 'kargo')) return true
-    if (svg) return await openLabelSvg(svg, takipNo)
-    // Etiket üretimi gecikebiliyor — kısa aralıklarla tekrar dene
-    for (let i = 0; i < 3; i++) {
-      await new Promise(r => setTimeout(r, 1200))
-      const et = await fetchKargoEtiket(orderId)
-      if (et?.tip === 'pdf') return await openLabelPdf(et.url)
-      if (et?.tip === 'svg' && et.svg) return await openLabelSvg(et.svg, takipNo)
-    }
-    return false
-  }
-
   const kargoGonder = async (opts = {}) => {
     if (!order || busy) return
     // opts.onaysiz: "p" kısayolu — onay penceresi atlanır (paketleme sırasında
@@ -455,7 +223,7 @@ export default function PackagingPage() {
       const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
       setManualAddr(false)
       // Barkodu yazdır (svg boşsa kargo-label'dan retry ile çek). Sadece yazdırınca ilerle.
-      const printed = await printKargoLabel(order.id, r.label_svg, tn)
+      const printed = await printKargoLabel(order.id, r.label_svg, tn, etiketCtx())
       if (printed) {
         setLabelPending(null)
         setMsg({ ok: true, text: `✅ ${firma} gönderi oluştu · Takip No: ${tn}${extra}` })
@@ -567,7 +335,7 @@ export default function PackagingPage() {
           <div>
             <div className="grid grid-cols-2 gap-3">
               {order.items.map((it) => (
-                <div key={it.line_item_id} className="card !p-0 overflow-hidden">
+                <div key={it.key || it.line_item_id} className="card !p-0 overflow-hidden">
                   {/* Görsele tıkla = "hazırlandı, kenara ayrıldı". Sipariş eksik olsa
                       da hazırlanan kılıflar dükkanda ayrı duruyor; işaret o ayrımı
                       sistemde de gösteriyor. */}
@@ -609,20 +377,35 @@ export default function PackagingPage() {
                     )}
                   </button>
                   <div className="flex items-center justify-between px-2.5 py-2 gap-2">
-                    {/* Couple: kutuya İKİ kılıf giriyor — iki modeli de göster */}
-                    {it.is_couple ? (
-                      <div className="min-w-0 leading-tight">
-                        <div className="text-[9px] text-accent/80 font-semibold tracking-wide">ÇİFT KILIF</div>
-                        <div className="text-xs font-medium text-gray-200 truncate">1· {it.model || '—'}</div>
-                        <div className="text-xs font-medium text-gray-200 truncate">2· {it.model_2 || '—'}</div>
+                    {/* Çift kılıf kutuya İKİ kılıf koyar: her yarı AYRI ürün satırı */}
+                    <div className="min-w-0 leading-tight">
+                      {it.is_couple && (
+                        <div className="text-[9px] text-accent/80 font-semibold tracking-wide">
+                          ÇİFT KILIF · {it.couple_slot || ''}
+                        </div>
+                      )}
+                      <div className="text-xs font-medium text-gray-200 truncate">
+                        {it.model || (it.title || '').slice(0, 22)}
                       </div>
-                    ) : (
-                      <span className="text-xs font-medium text-gray-200 truncate">{it.model || (it.title || '').slice(0, 22)}</span>
-                    )}
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-accent/15 text-accent shrink-0 font-mono">
-                      {it.kalip_kodu || '—'}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
-                    </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {it.hazir === false && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300"
+                              title="Bu kılıf henüz basılmadı / hazır değil">eksik</span>
+                      )}
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-accent/15 text-accent font-mono">
+                        {it.kalip_kodu || '—'}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
+                      </span>
+                    </div>
                   </div>
+                  {/* Müşteri model/ürün değiştirdiyse eldeki kılıf geçersiz olabilir */}
+                  {it.degisiklik?.length > 0 && (
+                    <div className="px-2.5 pb-2 -mt-1 space-y-0.5">
+                      {it.degisiklik.map((d, i) => (
+                        <div key={i} className="text-[10px] text-amber-300/90 leading-snug">⚠ {d}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -767,7 +550,7 @@ export default function PackagingPage() {
                     ⚠ #{labelPending.order_number} <b>gönderildi</b> (Takip: {labelPending.takip_no}) ama barkod otomatik açılmadı. Yazdır, sonra "Sonraki"ye geç.
                   </div>
                   <button onClick={async () => {
-                    const ok = await printKargoLabel(labelPending.id, null, labelPending.takip_no)
+                    const ok = await printKargoLabel(labelPending.id, null, labelPending.takip_no, etiketCtx())
                     if (ok) setLabelPending(null)
                     else setMsg({ ok: false, text: 'Barkod hâlâ açılamadı — tarayıcının popup iznini ver ya da "🖨 KARGO ETİKETİ YAZDIR"ı dene.' })
                   }} className="w-full !text-sm rounded-lg py-2 font-medium bg-amber-600 hover:bg-amber-500 text-white">

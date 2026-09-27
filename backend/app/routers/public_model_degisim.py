@@ -386,6 +386,14 @@ def _kaliptan_cek(db: Session, li: LineItem) -> int:
         cekilen += 1
     if cekilen:
         li.is_kaliba_eklendi = False
+    # ⚠ HAZIR/KENARA AYRILDI İŞARETLERİ DE KALKAR: müşteri modeli değiştirdiyse
+    # hazırlanmış kılıf ARTIK YANLIŞ MODEL. Eskiden yalnız kalıp bağı kopuyordu;
+    # elle "hazır" işaretlenmiş ya da paketlemede kenara ayrılmış kalem
+    # paketlemede hâlâ hazır görünüyor, eski kılıf kutuya girebiliyordu.
+    li.is_hazir = False
+    li.is_hazir_2 = False
+    li.paketleme_ayrildi = False
+    li.paketleme_ayrildi_2 = False
     return cekilen
 
 

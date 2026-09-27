@@ -581,6 +581,35 @@ export default function TemaEditorPage() {
                 )}
               </Section>
 
+              <Section title="Açılış Pop-up'ı" icon="🎁">
+                <Toggle checked={!!theme.popup?.enabled}
+                  onChange={v => set('popup.enabled', v)}
+                  label="Sayfa açılınca kampanya pop-up'ı göster" />
+                {theme.popup?.enabled && (
+                  <>
+                    <p className="text-[11px] text-panel-muted -mt-1">
+                      Ziyaretçi siteyi açınca bir kez belirir; kapatınca o oturumda
+                      tekrar çıkmaz. <b>Başlık boşsa hiç gösterilmez.</b>
+                    </p>
+                    <input className="input" value={theme.popup.baslik || ''} maxLength={60}
+                      onChange={e => set('popup.baslik', e.target.value)}
+                      placeholder="Başlık — örn. 3 AL 2 ÖDE" />
+                    <input className="input" value={theme.popup.metin || ''} maxLength={140}
+                      onChange={e => set('popup.metin', e.target.value)}
+                      placeholder="Açıklama — örn. 700 TL üzeri ücretsiz kargo" />
+                    <input className="input font-mono" value={theme.popup.kupon || ''} maxLength={40}
+                      onChange={e => set('popup.kupon', e.target.value.toUpperCase())}
+                      placeholder="Kupon kodu (ops.) — tıklayınca kopyalanır" />
+                    <input className="input" value={theme.popup.buton || ''} maxLength={40}
+                      onChange={e => set('popup.buton', e.target.value)}
+                      placeholder="Buton yazısı — örn. Alışverişe Başla" />
+                    <input className="input" value={theme.popup.gorsel_url || ''} maxLength={500}
+                      onChange={e => set('popup.gorsel_url', e.target.value)}
+                      placeholder="Üst görsel adresi (ops.)" />
+                  </>
+                )}
+              </Section>
+
               <Section title="WhatsApp Butonu" icon="💬">
                 <Toggle checked={!!theme.whatsapp?.enabled}
                   onChange={v => set('whatsapp.enabled', v)} label="Vitrinde yüzen WhatsApp butonu göster" />

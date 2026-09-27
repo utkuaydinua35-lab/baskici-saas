@@ -62,3 +62,15 @@ html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
   body.alt-cubuk-var .vitrin-yuzen.bottom-24 { bottom: 9.5rem; }
   body.alt-cubuk-var .vitrin-yuzen-panel { bottom: 10.5rem; }
 }
+
+/* Açılış kampanya pop-up'ı — zarif giriş */
+@keyframes popup-perde-gir { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popup-kart-gir {
+  from { opacity: 0; transform: translateY(18px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.popup-perde { animation: popup-perde-gir 0.25s ease-out; }
+.popup-kart  { animation: popup-kart-gir 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .popup-perde, .popup-kart { animation: none; }
+}

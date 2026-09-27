@@ -16,6 +16,7 @@ import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
 import CopyGuard from "@/components/CopyGuard";
 import SupportChat from "@/components/SupportChat";
+import CampaignPopup from "@/components/CampaignPopup";
 import Presence from "@/components/Presence";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
@@ -217,6 +218,11 @@ export default async function RootLayout({
           </footer>
           {theme.whatsapp?.enabled && theme.whatsapp.number && (
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
+          )}
+          {theme.popup?.enabled && !payload.is_preview && (
+            <CampaignPopup baslik={theme.popup.baslik} metin={theme.popup.metin}
+              kupon={theme.popup.kupon} buton={theme.popup.buton}
+              gorselUrl={theme.popup.gorsel_url} />
           )}
           {payload.support?.enabled !== false && (
             <SupportChat faq={payload.support?.faq ?? []}

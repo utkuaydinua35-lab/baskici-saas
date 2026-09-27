@@ -76,6 +76,11 @@ DEFAULT_THEME: dict = {
     "logo_width": 120,   # px — panelden ayarlanır (60-320)
     "favicon_url": None,
     "announcement": {"enabled": False, "text": "", "url": ""},
+    # Açılış kampanya pop-up'ı — sayfa açılınca bir kez görünür (oturumda
+    # tekrar çıkmaz). Marka-nötr: her mağaza kendi metnini/kupon kodunu yazar.
+    # baslik/metin boşsa pop-up HİÇ gösterilmez (kapalı gibi davranır).
+    "popup": {"enabled": False, "baslik": "", "metin": "", "kupon": "",
+              "buton": "Alışverişe Başla", "gorsel_url": ""},
     "sections": [
         {"id": "varsayilan-hero", "type": "hero_slider",
          "settings": dict(SECTION_DEFAULTS["hero_slider"])},
@@ -202,6 +207,57 @@ THEME_PRESETS: dict[str, dict] = {
                 {"id": "sp-bulten", "type": "newsletter",
                  "settings": {"title": "Kampanyalardan haberdar olun",
                               "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."}},
+            ],
+        },
+    },
+    # ── Manzara ── landscapecase.com tarzından uyarlanmış marka-NÖTR tema.
+    # Mor vurgu + kırık beyaz + Poppins + tam yuvarlak butonlar. Açılış
+    # kampanya pop-up'ı açık gelir ama metni BOŞ — mağaza kendi kampanyasını
+    # yazınca görünür (boş pop-up hiç çıkmaz). Görsel alanları (hero, galeri)
+    # boş; mağaza kendi görsellerini ekler. Marka adı hiçbir yere gömülü
+    # değil: başlıklar mağaza adından bağımsız, genel ifadeler.
+    "manzara": {
+        "label": "Manzara",
+        "description": "Mor vurgu, Poppins yazı tipi, tam yuvarlak butonlar; "
+                       "açılış kampanya pop-up'ı, kayan hero ve aşağı kaydıkça "
+                       "beliren bölümler. Görselleri siz eklersiniz.",
+        "theme": {
+            "colors": {"primary": "#2a2340", "accent": "#6f4c87", "bg": "#f8f9fd"},
+            "font": "poppins",
+            "announcement": {"enabled": True,
+                             "text": "✨ 700 TL üzeri ücretsiz kargo ✨",
+                             "url": "/urunler"},
+            # Açılış pop-up'ı: AÇIK ama metin boş → mağaza doldurana dek çıkmaz.
+            "popup": {"enabled": True, "baslik": "", "metin": "",
+                      "kupon": "", "buton": "Alışverişe Başla", "gorsel_url": ""},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+            "sections": [
+                {"id": "mz-hero", "type": "hero_slider",
+                 "settings": {"slides": [], "autoplay_sec": 5,
+                              "radius_scope": "both", "radius_pct": 30}},
+                # "Sizden gelenler" — Instagram story tarzı görsel galerisi
+                {"id": "mz-galeri", "type": "gallery",
+                 "settings": {"title": "Sizden Gelenler ✨", "images": []}},
+                {"id": "mz-kolek", "type": "featured_collections",
+                 "settings": {"title": "Koleksiyonlar", "slugs": []}},
+                {"id": "mz-cok-satan", "type": "products_grid",
+                 "settings": {"title": "Çok Satanlar", "collection": None, "limit": 8}},
+                # Avantaj şeridi — ürüne özgü/sayısal iddia YOK (marka-nötr)
+                {"id": "mz-ikonlar", "type": "icon_bar",
+                 "settings": {"items": [
+                     {"icon": "🚚", "title": "Hızlı Kargo", "text": "Siparişiniz özenle hazırlanır"},
+                     {"icon": "🔒", "title": "Güvenli Ödeme", "text": "256-bit SSL ile korunur"},
+                     {"icon": "💬", "title": "Destek", "text": "Sorularınız için yanınızdayız"},
+                     {"icon": "↩️", "title": "Kolay İade", "text": "Koşullar iade sayfamızda"},
+                 ]}},
+                {"id": "mz-yorumlar", "type": "testimonials",
+                 "settings": {"title": "Müşterilerimiz Ne Diyor?", "items": []}},
+                {"id": "mz-bulten", "type": "newsletter",
+                 "settings": {"title": "Kampanyalardan haberdar olun",
+                              "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."}},
+                {"id": "mz-iletisim", "type": "contact",
+                 "settings": {"title": "İletişim",
+                              "subtitle": "Soru ve önerileriniz için bize yazın."}},
             ],
         },
     },
@@ -363,7 +419,7 @@ def resolve_theme(store_config: dict | None) -> dict:
 def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
-    for key in ("colors", "announcement", "animations", "footer", "whatsapp",
+    for key in ("colors", "announcement", "popup", "animations", "footer", "whatsapp",
                 "trust_badges", "cart_messages", "thankyou", "texts"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]

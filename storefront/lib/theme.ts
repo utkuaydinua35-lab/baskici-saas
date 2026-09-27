@@ -57,6 +57,7 @@ export interface Theme {
   logo_width?: number;
   favicon_url: string | null;
   announcement: { enabled: boolean; text: string; url: string };
+  popup: { enabled: boolean; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   texts?: Record<string, string>;
@@ -110,6 +111,7 @@ const DEFAULT_PAYLOAD: ThemePayload = {
     logo_url: null,
     favicon_url: null,
     announcement: { enabled: false, text: "", url: "" },
+    popup: { enabled: false, baslik: "", metin: "", kupon: "", buton: "Alışverişe Başla", gorsel_url: "" },
     sections: [
       { id: "d-hero", type: "hero_slider", settings: { slides: [], autoplay_sec: 5 } },
       { id: "d-kol", type: "featured_collections", settings: { title: "Koleksiyonlar", slugs: [] } },
@@ -155,6 +157,7 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     payload.theme.animations = { ...DEFAULT_PAYLOAD.theme.animations, ...payload.theme.animations };
     payload.theme.colors = { ...DEFAULT_PAYLOAD.theme.colors, ...payload.theme.colors };
     payload.theme.announcement = { ...DEFAULT_PAYLOAD.theme.announcement, ...payload.theme.announcement };
+    payload.theme.popup = { ...DEFAULT_PAYLOAD.theme.popup, ...(payload.theme.popup || {}) };
     payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
     // Eski sunucu/önbellek isletme göndermiyorsa sayfa çökmesin
     payload.isletme = { ...DEFAULT_PAYLOAD.isletme, ...(payload.isletme || {}) };

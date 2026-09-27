@@ -6,6 +6,7 @@ import { getCollections, getProducts } from "@/lib/api";
 import { getThemePayload } from "@/lib/theme";
 import ProductCard from "@/components/ProductCard";
 import FilterBar from "@/components/FilterBar";
+import Sayfalama from "@/components/Sayfalama";
 
 // Sayfaya özel içerik bloğu — panel Tema editöründen koleksiyon başına
 // tanımlanır (tutorial görseli + metin; listenin üstünde veya altında).
@@ -71,14 +72,6 @@ export default async function CollectionPage({ params, searchParams }: Props) {
   // Sayfalama: eskiden yalnız ilk sayfa (24 ürün) basılıyordu, geri kalanlar
   // hiçbir yoldan görünmüyordu.
   const lastPage = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.per_page ?? 24)));
-  const sayfaLink = (n: number) => {
-    const q = new URLSearchParams({
-      ...(sirala ? { sirala } : {}), ...(marka ? { marka } : {}),
-      ...(min ? { min } : {}), ...(max ? { max } : {}),
-      ...(n > 1 ? { sayfa: String(n) } : {}),
-    }).toString();
-    return `/koleksiyon/${slug}${q ? `?${q}` : ""}`;
-  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -131,23 +124,8 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         </div>
       )}
 
-      {lastPage > 1 && (
-        <nav className="mt-8 flex justify-center gap-2 text-sm" aria-label="Sayfalar">
-          {page > 1 && (
-            <Link href={sayfaLink(page - 1)}
-              className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500">
-              ← Önceki
-            </Link>
-          )}
-          <span className="px-3 py-1.5 text-zinc-500">Sayfa {page} / {lastPage}</span>
-          {page < lastPage && (
-            <Link href={sayfaLink(page + 1)}
-              className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500">
-              Sonraki →
-            </Link>
-          )}
-        </nav>
-      )}
+      <Sayfalama page={page} lastPage={lastPage} basePath={`/koleksiyon/${slug}`}
+        params={{ sirala, marka, min, max }} />
 
       {pageBlock && pageBlock.position === "alt" && (
         <PageBlock block={pageBlock} title={collection.title} />

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { getCollections, getProducts } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import Sayfalama from "@/components/Sayfalama";
 import FilterBar from "@/components/FilterBar";
 import Link from "next/link";
 import { getThemePayload } from "@/lib/theme";
@@ -114,42 +115,8 @@ export default async function ProductsPage({
         </div>
       )}
 
-      {lastPage > 1 && (
-        <nav className="mt-8 flex justify-center gap-2 text-sm">
-          {(() => {
-            const base: Record<string, string> = {
-              ...(q ? { q } : {}), ...(koleksiyon ? { koleksiyon } : {}),
-              ...(model ? { model } : {}),
-              ...(etiket ? { etiket } : {}),
-              ...(sirala ? { sirala } : {}), ...(marka ? { marka } : {}),
-              ...(min ? { min } : {}), ...(max ? { max } : {}),
-            };
-            return (
-              <>
-                {page > 1 && (
-                  <Link
-                    href={`/urunler?${new URLSearchParams({ ...base, sayfa: String(page - 1) })}`}
-                    className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
-                  >
-                    ← Önceki
-                  </Link>
-                )}
-                <span className="px-3 py-1.5 text-zinc-500">
-                  Sayfa {page} / {lastPage}
-                </span>
-                {page < lastPage && (
-                  <Link
-                    href={`/urunler?${new URLSearchParams({ ...base, sayfa: String(page + 1) })}`}
-                    className="px-3 py-1.5 rounded-lg border border-zinc-300 hover:border-zinc-500"
-                  >
-                    Sonraki →
-                  </Link>
-                )}
-              </>
-            );
-          })()}
-        </nav>
-      )}
+      <Sayfalama page={page} lastPage={lastPage} basePath="/urunler"
+        params={{ q, koleksiyon, model, etiket, sirala, marka, min, max }} />
     </div>
   );
 }

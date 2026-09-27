@@ -40,8 +40,12 @@ export default function FilterBar({
         aria-label="Sırala"
       >
         <option value="yeni">Sırala: Önerilen</option>
+        <option value="cok-satan">En çok satan</option>
+        <option value="en-yeni">En yeni</option>
         <option value="fiyat-artan">Fiyat: Düşükten Yükseğe</option>
         <option value="fiyat-azalan">Fiyat: Yüksekten Düşüğe</option>
+        <option value="a-z">Alfabetik: A-Z</option>
+        <option value="z-a">Alfabetik: Z-A</option>
       </select>
 
       {brands.length > 1 && (

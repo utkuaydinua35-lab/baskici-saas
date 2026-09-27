@@ -23,7 +23,7 @@ from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException, Query,
                      Request, Response)
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, BeforeValidator, EmailStr, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select, union_all
 from sqlalchemy.orm import Session, selectinload
 
 from app.services.site import site_url
@@ -135,6 +135,50 @@ def _effective_price(product: CatalogProduct, variant: CatalogVariant) -> str:
     return str(price)
 
 
+COK_SATAN_GUN = 90
+
+
+def _cok_satan_alt(db, store):
+    """Ürün başına son 90 günde satılan adet (alt sorgu: urun_id, adet).
+
+    Katalog ile sipariş satırı arasında doğrudan bağ yok: vitrin siparişinde
+    satır ürün kimliğini taşır, Shopify siparişinde Shopify'ın kimliğini.
+    Bu yüzden kimlik YA DA başlık eşleşmesi sayılır — Shopify'dan taşınan
+    ürünlerin satışı da "Çok Satanlar"a girer. İptal ve telafi hariç.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import LineItem, Order
+
+    sinir = datetime.now(timezone.utc) - timedelta(days=COK_SATAN_GUN)
+    satis = (
+        select(LineItem.product_id.label("pid"), LineItem.title.label("baslik"),
+               func.sum(LineItem.quantity).label("adet"))
+        .join(Order, Order.id == LineItem.order_id)
+        .where(Order.tenant_id == store.tenant_id, Order.cancelled_at.is_(None),
+               Order.is_telafi.is_(False), Order.created_at_platform >= sinir)
+        .group_by(LineItem.product_id, LineItem.title)
+    ).subquery()
+    # "kimlik YA DA başlık" tek koşulda hash join'i engelliyor (500 ürün,
+    # 1 yıllık satışla 268 ms). İki eşitlik birleştirmesi + UNION ALL aynı
+    # sonucu 50 ms'de verir; ikinci kol kimliği eşleşeni dışarıda bırakır ki
+    # satış iki kez sayılmasın.
+    urun_kimlik = cast(CatalogProduct.id, String)
+    eslesme = union_all(
+        select(CatalogProduct.id.label("urun_id"), satis.c.adet)
+        .join(satis, satis.c.pid == urun_kimlik)
+        .where(CatalogProduct.store_id == store.id),
+        select(CatalogProduct.id.label("urun_id"), satis.c.adet)
+        .join(satis, (satis.c.baslik == CatalogProduct.title)
+              & satis.c.pid.is_distinct_from(urun_kimlik))
+        .where(CatalogProduct.store_id == store.id),
+    ).subquery()
+    return (
+        select(eslesme.c.urun_id, func.sum(eslesme.c.adet).label("adet"))
+        .group_by(eslesme.c.urun_id)
+    ).subquery("cok_satan")
+
+
 def _serialize_product_card(p: CatalogProduct) -> dict:
     """Liste kartı — minimum alan (PII yok, iç ID'ler yalnızca gerekli olanlar)."""
     active_variants = [v for v in p.variants if v.is_active]
@@ -244,7 +288,8 @@ def list_products(
     brand: str | None = Query(None, max_length=60),
     collection: str | None = Query(None, max_length=200),
     slugs: str | None = Query(None, max_length=2500),  # virgüllü, verilen sırada döner
-    sort: str = Query("yeni", pattern="^(yeni|fiyat-artan|fiyat-azalan)$"),
+    # yeni = "Önerilen" (paneldeki elle sıra — adı tarihsel)
+    sort: str = Query("yeni", pattern="^(yeni|en-yeni|cok-satan|fiyat-artan|fiyat-azalan|a-z|z-a)$"),
     min_price: float | None = Query(None, ge=0),
     max_price: float | None = Query(None, ge=0),
     page: int = Query(1, ge=1, le=1000),
@@ -266,6 +311,16 @@ def list_products(
         query = query.order_by(CatalogProduct.base_price.asc(), CatalogProduct.position)
     elif sort == "fiyat-azalan":
         query = query.order_by(CatalogProduct.base_price.desc(), CatalogProduct.position)
+    elif sort == "en-yeni":
+        query = query.order_by(CatalogProduct.created_at.desc())
+    elif sort in ("a-z", "z-a"):
+        # Türkçe kural: Ç/Ş/Ö/Ü/İ doğru yere düşsün (ICU, PG16'da mevcut)
+        ad = CatalogProduct.title.collate("tr-TR-x-icu")
+        query = query.order_by(ad.asc() if sort == "a-z" else ad.desc())
+    elif sort == "cok-satan":
+        satis = _cok_satan_alt(db, store)
+        query = query.outerjoin(satis, satis.c.urun_id == CatalogProduct.id).order_by(
+            func.coalesce(satis.c.adet, 0).desc(), CatalogProduct.position)
     else:
         query = query.order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
     if q:

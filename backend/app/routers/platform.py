@@ -575,6 +575,7 @@ def _ser_odeme(o: AbonelikOdemesi, plan_ad: str | None = None) -> dict:
         "komisyon_orani": str(o.komisyon_orani), "komisyon": str(o.komisyon),
         "sabit_ucret": str(o.sabit_ucret), "toplam": str(o.toplam),
         "yontem": o.yontem, "durum": o.durum, "referans": o.referans, "not": o.not_,
+        "fatura_no": o.fatura_no,
         "odendi_at": o.odendi_at.isoformat() if o.odendi_at else None,
         "onceki_bitis": o.onceki_bitis.isoformat() if o.onceki_bitis else None,
         "yeni_bitis": o.yeni_bitis.isoformat() if o.yeni_bitis else None,
@@ -622,6 +623,7 @@ class OdemeRequest(BaseModel):
     beklenen_toplam: Decimal
     referans: str | None = Field(None, max_length=200)
     not_: str | None = Field(None, alias="not", max_length=2000)
+    fatura_no: str | None = Field(None, max_length=60)
 
 
 @router.post("/tenants/{tenant_id}/odemeler", response_model=dict, status_code=201)
@@ -639,11 +641,27 @@ def tenant_odeme_kaydet(
                                  "Ekranı yenileyip tekrar onaylayın.")
     odeme = abonelik.odeme_kaydet(
         db, t, yontem=req.yontem, ay_sayisi=req.ay_sayisi,
-        referans=req.referans, not_=req.not_, kaydeden_id=user.id,
+        referans=req.referans, not_=req.not_, fatura_no=req.fatura_no, kaydeden_id=user.id,
     )
     db.commit()
     db.refresh(odeme)
     return _ser_odeme(odeme, t.plan_kaydi.ad if t.plan_kaydi else None)
+
+
+class FaturaRequest(BaseModel):
+    fatura_no: str | None = Field(None, max_length=60)
+
+
+@router.patch("/odemeler/{odeme_id}/fatura", response_model=dict)
+def odeme_fatura(odeme_id: uuid.UUID, req: FaturaRequest, db: Session = Depends(get_db)):
+    """Fatura numarasını sonradan gir/düzelt (boş = sil). Tutar ve tarihlere
+    dokunmaz — iptal edilmiş kayıtta da düzeltilebilir (muhasebe kaydı)."""
+    o = db.get(AbonelikOdemesi, odeme_id)
+    if o is None:
+        raise HTTPException(404, "Ödeme bulunamadı")
+    o.fatura_no = (req.fatura_no or "").strip()[:60] or None
+    db.commit()
+    return _ser_odeme(o)
 
 
 @router.post("/odemeler/{odeme_id}/iptal", response_model=dict)
@@ -681,23 +699,14 @@ def tahakkuklar(db: Session = Depends(get_db)):
     return {"items": satirlar}
 
 
-HAVALE_ALANLARI = {"alici": 120, "banka": 80, "iban": 34, "aciklama": 300}
-
-
-def havale_bilgisi(db: Session) -> dict:
-    kayit = db.get(PlatformAyari, "havale")
-    deger = (kayit.deger if kayit else None) or {}
-    return {k: str(deger.get(k) or "") for k in HAVALE_ALANLARI}
-
-
 @router.get("/ayarlar/havale", response_model=dict)
 def get_havale(db: Session = Depends(get_db)):
-    return havale_bilgisi(db)
+    return abonelik.havale_bilgisi(db)
 
 
 @router.put("/ayarlar/havale", response_model=dict)
 def put_havale(body: dict, db: Session = Depends(get_db)):
-    deger = {k: str(body.get(k) or "").strip()[:n] for k, n in HAVALE_ALANLARI.items()}
+    deger = {k: str(body.get(k) or "").strip()[:n] for k, n in abonelik.HAVALE_ALANLARI.items()}
     iban = deger["iban"].replace(" ", "").upper()
     if iban and not re.fullmatch(r"TR\d{24}", iban):
         raise HTTPException(400, "IBAN TR ile başlayan 26 karakter olmalı.")

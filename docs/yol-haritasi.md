@@ -51,9 +51,12 @@ iade düşülür, çünkü panel ciroyu da böyle sayıyor. Vitrini kapanmış k
 yeni dönemi bugünden başlar; sınırsız plandan ücretliye geçen kiracının geçmiş
 satışından komisyon alınmaz. Kurallar: `backend/app/services/abonelik.py`.
 
-Faz 3 sonrası açık kalanlar:
-- [ ] Bitişe 5 gün kala kiracıya e-posta hatırlatması (şu an yalnız panel bandı)
-- [ ] Ödeme kaydında e-fatura / fatura numarası alanı
+Faz 3 sonrası (2026-09-27 tamamlandı):
+- [x] Kiracıya e-posta hatırlatması — bitişe 5 gün kala, ek süre, salt okunur,
+  vitrin kapandı; her aşama her dönem bir kez, başarısız gönderim ertesi gün
+  yeniden denenir (her sabah 09:30).
+- [x] Ödeme kaydında fatura numarası — ödemede ya da sonradan girilir,
+  kiracı ödeme geçmişinde görür.
 
 ## Biten: Faz 3.5 — Vitrin eksikleri (landscapecase.com incelemesinden, 2026-09-27)
 

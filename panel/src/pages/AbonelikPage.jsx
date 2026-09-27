@@ -158,7 +158,8 @@ export default function AbonelikPage() {
                   <th className="py-1.5 pr-3 font-normal">Dönem</th>
                   <th className="py-1.5 pr-3 font-normal text-right">Sabit</th>
                   <th className="py-1.5 pr-3 font-normal text-right">Komisyon</th>
-                  <th className="py-1.5 font-normal text-right">Toplam</th>
+                  <th className="py-1.5 pr-3 font-normal text-right">Toplam</th>
+                  <th className="py-1.5 font-normal">Fatura</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,7 +169,8 @@ export default function AbonelikPage() {
                     <td className="py-1.5 pr-3 text-panel-muted">{gun(o.donem_bas)} – {gun(o.donem_bit)}</td>
                     <td className="py-1.5 pr-3 text-right">{tl(o.sabit_ucret)}</td>
                     <td className="py-1.5 pr-3 text-right" title={`Vitrin satışı ${tl(o.ciro)} · ${o.siparis_sayisi} sipariş`}>{tl(o.komisyon)}</td>
-                    <td className="py-1.5 text-right font-medium">{tl(o.toplam)}</td>
+                    <td className="py-1.5 pr-3 text-right font-medium">{tl(o.toplam)}</td>
+                    <td className="py-1.5 text-panel-muted">{o.fatura_no || '—'}</td>
                   </tr>
                 ))}
               </tbody>

@@ -89,6 +89,8 @@ class AbonelikOdemesi(Base):
     # Ödeme active_until'ı neden neye taşıdı — iptal edilince geri dönmek için
     onceki_bitis: Mapped[date | None] = mapped_column(Date, nullable=True)
     yeni_bitis: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Kesilen faturanın numarası — ödemede ya da sonradan girilir
+    fatura_no: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
 
 class PlatformAyari(Base):

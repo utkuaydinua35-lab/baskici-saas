@@ -81,6 +81,10 @@ class Settings(BaseSettings):
 
     # Panel taban URL (Telegram deep-link icin)
     panel_base_url: str = Field("https://baskici.bernzcompany.com", alias="PANEL_BASE_URL")
+    # Mağaza paneli (kiracıların kullandığı panel) — abonelik e-postalarındaki
+    # "Ödeme bilgileri" düğmesi buraya gider. Platformun kendi alan adı; tüm
+    # kiracılar aynı paneli kullanır.
+    magaza_panel_url: str = Field("https://magazapanel.bernzcompany.com", alias="MAGAZA_PANEL_URL")
     # Passkey (WebAuthn) — RP ID tüm panellerin ORTAK üst alan adı olmalı
     # (bernzcompany.com), yoksa baskici./magazapanel. ayrı ayrı kayıt ister.
     # Boşsa panel_base_url'in host'u kullanılır (yerel geliştirme).

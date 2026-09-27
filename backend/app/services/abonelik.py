@@ -303,6 +303,7 @@ def tahakkuk_hesapla(db, tenant, ay_sayisi: int = 1, bugun: date | None = None) 
 
 def odeme_kaydet(db, tenant, *, yontem: str, ay_sayisi: int = 1,
                  referans: str | None = None, not_: str | None = None,
+                 fatura_no: str | None = None,
                  kaydeden_id=None, bugun: date | None = None):
     """Ödemeyi kaydet ve aboneliği uzat. Tutarlar o anın plan fiyatıyla
     dondurulur. Commit ÇAĞIRANIN işi."""
@@ -319,6 +320,7 @@ def odeme_kaydet(db, tenant, *, yontem: str, ay_sayisi: int = 1,
         komisyon=t.komisyon, toplam=t.toplam, yontem=yontem, durum="odendi",
         referans=(referans or "").strip()[:200] or None,
         not_=(not_ or "").strip()[:2000] or None,
+        fatura_no=(fatura_no or "").strip()[:60] or None,
         odendi_at=datetime.now(timezone.utc), created_by=kaydeden_id,
         onceki_bitis=t.onceki_bitis, yeni_bitis=t.yeni_bitis,
     )
@@ -343,3 +345,17 @@ def odeme_iptal(db, odeme) -> None:
     if tenant is not None and tenant.active_until == odeme.yeni_bitis:
         tenant.active_until = odeme.onceki_bitis
     odeme.durum = "iptal"
+
+
+# ─── Havale bilgileri (platform ayarı) ─────────────────────────────────────
+
+HAVALE_ALANLARI = {"alici": 120, "banka": 80, "iban": 34, "aciklama": 300}
+
+
+def havale_bilgisi(db) -> dict:
+    """Kiracılara gösterilen havale bilgileri (platform_ayarlari["havale"])."""
+    from app.models import PlatformAyari
+
+    kayit = db.get(PlatformAyari, "havale")
+    deger = (kayit.deger if kayit else None) or {}
+    return {k: str(deger.get(k) or "") for k in HAVALE_ALANLARI}

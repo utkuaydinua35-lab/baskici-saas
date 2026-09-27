@@ -86,7 +86,8 @@ def main() -> int:
         kontrol("eski metin alanı plan kodunu yansıtır", r.json().get("plan") == "basic", r.json())
         r = c.get(f"/api/platform/tenants/{kir_t.id}/abonelik", headers=A)
         kontrol("tahakkuk önizlemesi", r.json()["tahakkuk"]["toplam"] == "750.00", r.json()["tahakkuk"])
-        govde = {"yontem": "havale", "ay_sayisi": 1, "beklenen_toplam": "750.00", "referans": "DEKONT-1"}
+        govde = {"yontem": "havale", "ay_sayisi": 1, "beklenen_toplam": "750.00", "referans": "DEKONT-1",
+                 "fatura_no": "GIB2026000000123"}
         r = c.post(f"/api/platform/tenants/{kir_t.id}/odemeler", headers=K, json=govde)
         kontrol("kiracı kendine ödeme giremez", r.status_code == 403, r.status_code)
         r = c.post(f"/api/platform/tenants/{kir_t.id}/odemeler", headers=A,
@@ -95,6 +96,15 @@ def main() -> int:
         r = c.post(f"/api/platform/tenants/{kir_t.id}/odemeler", headers=A, json=govde)
         kontrol("yönetici ödemeyi kaydeder", r.status_code == 201, r.status_code)
         odeme = r.json()
+        kontrol("fatura no ödemeyle kaydedilir", odeme.get("fatura_no") == "GIB2026000000123", odeme)
+
+        print("── fatura numarası ──")
+        r = c.patch(f"/api/platform/odemeler/{odeme['id']}/fatura", headers=K, json={"fatura_no": "SAHTE"})
+        kontrol("kiracı fatura numarasını değiştiremez", r.status_code == 403, r.status_code)
+        r = c.patch(f"/api/platform/odemeler/{odeme['id']}/fatura", headers=A, json={"fatura_no": "  ABC-9  "})
+        kontrol("yönetici sonradan düzeltir (boşluklar kırpılır)", r.json().get("fatura_no") == "ABC-9", r.json())
+        r = c.patch(f"/api/platform/odemeler/{odeme['id']}/fatura", headers=A, json={"fatura_no": "x" * 61})
+        kontrol("60 karakter sınırı", r.status_code == 422, r.status_code)
 
         print("── havale bilgisi ──")
         r = c.put("/api/platform/ayarlar/havale", headers=A, json={"iban": "TR12 3"})
@@ -110,6 +120,7 @@ def main() -> int:
         d = c.get("/api/abonelik", headers=K).json()
         kontrol("kiracı kendi planını görür", d["plan"]["ad"] == "Basic", d["plan"])
         kontrol("kiracı ödeme geçmişini görür", [o["toplam"] for o in d["odemeler"]] == ["750.00"], d["odemeler"])
+        kontrol("kiracı fatura numarasını görür", d["odemeler"][0].get("fatura_no") == "ABC-9", d["odemeler"])
         kontrol("kiracı havale bilgisi + ödeme kodunu görür",
                 d["havale"]["iban"].startswith("TR33") and d["odeme_kodu"] == kir_t.slug, d["havale"])
 

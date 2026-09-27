@@ -24,7 +24,7 @@ def benim_aboneligim(
     user: User = Depends(require_permission("ayarlar")),
     db: Session = Depends(get_db),
 ):
-    from app.routers.platform import _ser_odeme, havale_bilgisi
+    from app.routers.platform import _ser_odeme
 
     t = db.get(Tenant, user.tenant_id)
     plan = t.plan_kaydi if t else None
@@ -49,7 +49,7 @@ def benim_aboneligim(
         "durum": abonelik.durum(t).sozluk(),
         # Ücretsiz planda tahmin ve havale bilgisi gösterilmez
         "tahmin": tahmin if ucretli else None,
-        "havale": havale_bilgisi(db) if ucretli else None,
+        "havale": abonelik.havale_bilgisi(db) if ucretli else None,
         # Havale açıklamasına yazılacak kod — ödemeyi kiracıyla eşleştirmek için
         "odeme_kodu": t.slug if t else None,
         "odemeler": [_ser_odeme(o, plan.ad if plan and o.plan_id == plan.id else None)

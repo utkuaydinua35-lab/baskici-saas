@@ -257,7 +257,7 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
   const toast = useToast()
   const [ay, setAy] = useState(1)
   const [data, setData] = useState(null)
-  const [form, setForm] = useState({ yontem: 'havale', referans: '', not: '' })
+  const [form, setForm] = useState({ yontem: 'havale', referans: '', not: '', fatura_no: '' })
   const [busy, setBusy] = useState(false)
 
   const yukle = () => api.get(`/api/platform/tenants/${tenantId}/abonelik?ay_sayisi=${ay}`)
@@ -275,12 +275,20 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
     try {
       await api.post(`/api/platform/tenants/${tenantId}/odemeler`, {
         yontem: form.yontem, ay_sayisi: ay, beklenen_toplam: th.toplam,
-        referans: form.referans || null, not: form.not || null,
+        referans: form.referans || null, not: form.not || null, fatura_no: form.fatura_no || null,
       })
       toast.success('Ödeme kaydedildi, abonelik uzatıldı')
-      setForm({ yontem: 'havale', referans: '', not: '' })
+      setForm({ yontem: 'havale', referans: '', not: '', fatura_no: '' })
       await yukle(); onDegisti?.()
     } catch (e) { toast.error(hata(e)); yukle() } finally { setBusy(false) }
+  }
+
+  // Fatura çoğu zaman ödemeden sonra kesilir — numara sonradan girilir/düzeltilir
+  const faturaGir = async o => {
+    const no = window.prompt('Fatura numarası (boş bırakılırsa silinir):', o.fatura_no || '')
+    if (no === null) return
+    try { await api.patch(`/api/platform/odemeler/${o.id}/fatura`, { fatura_no: no.trim() || null }); await yukle() }
+    catch (e) { toast.error(hata(e)) }
   }
 
   const iptal = async o => {
@@ -345,7 +353,9 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
                 </select>
                 <input className="input sm:col-span-2" maxLength={200} placeholder="Dekont / referans no (ops.)"
                   value={form.referans} onChange={e => setForm({ ...form, referans: e.target.value })} />
-                <input className="input sm:col-span-3" maxLength={2000} placeholder="Not (ops.)"
+                <input className="input" maxLength={60} placeholder="Fatura no (ops.)"
+                  value={form.fatura_no} onChange={e => setForm({ ...form, fatura_no: e.target.value })} />
+                <input className="input sm:col-span-2" maxLength={2000} placeholder="Not (ops.)"
                   value={form.not} onChange={e => setForm({ ...form, not: e.target.value })} />
               </div>
               <button onClick={kaydet} disabled={busy}
@@ -361,7 +371,7 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
           ) : (
             <div className="overflow-x-auto">
               <table className="tbl text-xs">
-                <thead><tr><th>Tarih</th><th>Dönem</th><th className="!text-right">Sabit</th><th className="!text-right">Komisyon</th><th className="!text-right">Toplam</th><th>Yöntem</th><th></th></tr></thead>
+                <thead><tr><th>Tarih</th><th>Dönem</th><th className="!text-right">Sabit</th><th className="!text-right">Komisyon</th><th className="!text-right">Toplam</th><th>Yöntem</th><th>Fatura</th><th></th></tr></thead>
                 <tbody>
                   {data.odemeler.map(o => (
                     <tr key={o.id} className={o.durum === 'iptal' ? 'opacity-50 line-through' : ''}>
@@ -372,6 +382,12 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
                       <td className="px-2 py-1.5 text-right text-gray-100">{fmtTL(o.toplam)}</td>
                       <td className="px-2 py-1.5 text-gray-400" title={[o.referans, o.not].filter(Boolean).join(' · ')}>
                         {o.yontem === 'havale' ? 'Havale' : 'Kart'}{o.referans ? ' · ' + o.referans : ''}
+                      </td>
+                      <td className="px-2 py-1.5 no-underline">
+                        <button onClick={() => faturaGir(o)} title="Fatura numarasını gir / düzelt"
+                          className={o.fatura_no ? 'text-gray-200 hover:underline' : 'text-amber-300/80 hover:text-amber-200'}>
+                          {o.fatura_no || '+ ekle'}
+                        </button>
                       </td>
                       <td className="px-2 py-1.5 text-right">
                         {o.durum === 'iptal' ? <span className="text-gray-500 no-underline">iptal</span>

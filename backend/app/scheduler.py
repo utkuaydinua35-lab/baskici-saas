@@ -245,6 +245,19 @@ def _review_invite_job():
         db.close()
 
 
+def _abonelik_hatirlatma_job():
+    """Kiracılara abonelik bitiş/gecikme e-postası — günde bir (kurallar
+    services/abonelik_hatirlatma)."""
+    from app.services.abonelik_hatirlatma import hatirlatmalari_gonder
+    db = SessionLocal()
+    try:
+        logger.info("[scheduler] abonelik hatırlatma: %s", hatirlatmalari_gonder(db))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[scheduler] abonelik hatırlatma hatası: %s", e)
+    finally:
+        db.close()
+
+
 def _tasarim_temizlik_job() -> None:
     """Kargolanmis siparislerin ham JPG/PNG tasarimlarini temizle."""
     from app.database import SessionLocal
@@ -301,6 +314,11 @@ def start_scheduler():
     # Asama otomasyonu — her 10 dk (zaman bazli gecisler)
     _scheduler.add_job(_review_invite_job, "cron", hour=11, minute=0,
                        id="review_invite", replace_existing=True)
+    # Kiralama: abonelik bitiş/gecikme e-postası — her sabah 09:30. Kaçan gün
+    # olursa ertesi gün aralık kuralıyla yine gönderilir (misfire önemsiz).
+    _scheduler.add_job(_abonelik_hatirlatma_job, "cron", hour=9, minute=30,
+                       id="abonelik_hatirlatma", max_instances=1, coalesce=True,
+                       misfire_grace_time=3600)
     _scheduler.add_job(_stage_job, "interval", minutes=10,
                        id="stage_automation", max_instances=1, coalesce=True)
     # Sabah ozeti — her gun 08:00 (Europe/Istanbul)

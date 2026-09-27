@@ -85,6 +85,13 @@ class Settings(BaseSettings):
     # "Ödeme bilgileri" düğmesi buraya gider. Platformun kendi alan adı; tüm
     # kiracılar aynı paneli kullanır.
     magaza_panel_url: str = Field("https://magazapanel.bernzcompany.com", alias="MAGAZA_PANEL_URL")
+    # Kiralama (Faz 4): kiracının abonelik ödemesini kartla yaptığı iyzico
+    # hesabı — PLATFORMUN hesabı, mağazaların kendi iyzico'su DEĞİL
+    # (kiralama geliri BERNZ satışlarıyla karışmasın). Anahtarlar boşsa
+    # "Kartla öde" gizlenir; havale çalışmaya devam eder. Adres boşsa sandbox.
+    iyzico_platform_api_key: str = Field("", alias="IYZICO_PLATFORM_API_KEY")
+    iyzico_platform_secret_key: str = Field("", alias="IYZICO_PLATFORM_SECRET_KEY")
+    iyzico_platform_base_url: str = Field("", alias="IYZICO_PLATFORM_BASE_URL")
     # Passkey (WebAuthn) — RP ID tüm panellerin ORTAK üst alan adı olmalı
     # (bernzcompany.com), yoksa baskici./magazapanel. ayrı ayrı kayıt ister.
     # Boşsa panel_base_url'in host'u kullanılır (yerel geliştirme).

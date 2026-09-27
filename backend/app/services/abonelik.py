@@ -359,3 +359,74 @@ def havale_bilgisi(db) -> dict:
     kayit = db.get(PlatformAyari, "havale")
     deger = (kayit.deger if kayit else None) or {}
     return {k: str(deger.get(k) or "") for k in HAVALE_ALANLARI}
+
+
+# ─── Kartla ödeme (Faz 4) ──────────────────────────────────────────────────
+#
+# Kiracı "Kartla öde" der → tahakkuk o an DONDURULUP "bekliyor" kaydı açılır
+# → iyzico ödeme sayfası → iyzico onaylarsa kayıt "odendi" olur ve abonelik
+# uzar. Tutar başlatırken dondurulur: müşteri iyzico sayfasındayken yeni bir
+# sipariş düşse de çekilen tutar gördüğü tutarla aynı kalır.
+
+KART_INCELEME_NOTU = ("⚠ İnceleme: ödeme sırasında aboneliğe başka bir ödeme işlendi; "
+                      "dönem ödeme anına göre yeniden hesaplandı, komisyon dönemi "
+                      "çakışıyor olabilir.")
+
+
+def kart_odemesi_hazirla(db, tenant, *, ay_sayisi: int, beklenen_toplam: Decimal,
+                         kaydeden_id=None, bugun: date | None = None):
+    """Bekleyen kart ödemesi kaydı. Önizlemedeki tutar değiştiyse ValueError
+    (kiracı görmediği tutarı ödemesin). Commit ÇAĞIRANIN işi."""
+    from app.models import AbonelikOdemesi
+
+    t = tahakkuk_hesapla(db, tenant, ay_sayisi, bugun)
+    if t.toplam != Decimal(str(beklenen_toplam)).quantize(Decimal("0.01")):
+        raise ValueError(f"Tutar değişti: güncel toplam {t.toplam} TL. Sayfayı yenileyin.")
+    if t.toplam <= 0:
+        raise ValueError("Ödenecek tutar yok.")
+    kayit = AbonelikOdemesi(
+        tenant_id=tenant.id, plan_id=t.plan_id,
+        donem_bas=t.donem_bas, donem_bit=t.donem_bit, ay_sayisi=t.ay_sayisi,
+        sabit_ucret=t.sabit_ucret, ciro=t.ciro, ciro_bas=t.ciro_bas, ciro_bit=t.ciro_bit,
+        siparis_sayisi=t.siparis_sayisi, komisyon_orani=t.komisyon_orani,
+        komisyon=t.komisyon, toplam=t.toplam, yontem="kart", durum="bekliyor",
+        created_by=kaydeden_id, onceki_bitis=t.onceki_bitis, yeni_bitis=t.yeni_bitis,
+    )
+    db.add(kayit)
+    return kayit
+
+
+def kart_odemesini_tamamla(db, kayit, *, saglayici_ref: str,
+                           bugun: date | None = None) -> bool:
+    """iyzico ödemeyi ONAYLADIKTAN sonra: kaydı ödendi yap, aboneliği uzat.
+
+    Tekrar çağrılırsa (tarayıcı geri dönüşü iki kez) hiçbir şey yapmaz.
+    Dönüş: kayıt tutarlı mı. False ise ödeme yine işlenir — para çekildi,
+    kiracının hakkı verilir — ama kayıt inceleme notu alır ve yönetici uyarılmalı.
+    Commit ÇAĞIRANIN işi.
+    """
+    from app.models import Tenant
+
+    if kayit.durum == "odendi":
+        return True
+    tenant = db.get(Tenant, kayit.tenant_id)
+    tutarli = kayit.durum == "bekliyor" and tenant.active_until == kayit.onceki_bitis
+    if not tutarli:
+        # Arada başka ödeme işlendi (ya da kayıt vazgeçildi sayılmıştı):
+        # dönemi ŞİMDİKİ duruma göre yeniden kur, ödenen tutar aynen kalır.
+        bugun = bugun or _bugun()
+        bitis = tenant.active_until
+        if bitis is None or (bugun - bitis).days > VITRIN_KAPANMA_GUN:
+            donem_bas = bugun
+        else:
+            donem_bas = bitis + timedelta(days=1)
+        kayit.donem_bas = donem_bas
+        kayit.donem_bit = ay_ekle(donem_bas, kayit.ay_sayisi) - timedelta(days=1)
+        kayit.onceki_bitis = bitis
+        kayit.yeni_bitis = kayit.donem_bit
+        kayit.not_ = ((kayit.not_ or "") + "\n" + KART_INCELEME_NOTU).strip()
+    kayit.durum = "odendi"
+    kayit.referans = (saglayici_ref or "")[:200] or None
+    kayit.odendi_at = datetime.now(timezone.utc)
+    tenant.active_until = kayit.yeni_bitis
+    return tutarli

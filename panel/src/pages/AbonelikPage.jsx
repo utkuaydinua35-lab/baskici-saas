@@ -34,13 +34,37 @@ function Kopyala({ metin, etiket = 'Kopyala' }) {
 }
 
 export default function AbonelikPage() {
+  const toast = useToast()
   const [d, setD] = useState(null)
   const [hata, setHata] = useState(null)
+  const [ay, setAy] = useState(1)
+  const [odeniyor, setOdeniyor] = useState(false)
+  // iyzico'dan dönüş: /abonelik?odeme=basarili|hata
+  const [donus] = useState(() => new URLSearchParams(window.location.search).get('odeme'))
 
   useEffect(() => {
-    api.get('/api/abonelik').then(setD)
+    api.get(`/api/abonelik?ay_sayisi=${ay}`).then(setD)
       .catch(e => setHata(typeof e?.detail === 'string' ? e.detail : 'Abonelik bilgisi alınamadı'))
-  }, [])
+  }, [ay])
+
+  useEffect(() => {
+    // Dönüş parametresi bir kez gösterilsin, yenilemede tekrar çıkmasın
+    if (donus) window.history.replaceState(null, '', window.location.pathname)
+  }, [donus])
+
+  const kartlaOde = async () => {
+    if (!d?.tahmin) return
+    setOdeniyor(true)
+    try {
+      const r = await api.post('/api/abonelik/kart', { ay_sayisi: ay, beklenen_toplam: d.tahmin.toplam })
+      window.location.href = r.url   // iyzico güvenli ödeme sayfası
+    } catch (e) {
+      toast.error(typeof e?.detail === 'string' ? e.detail : 'Ödeme başlatılamadı')
+      // Tutar değiştiyse güncel tutarı göster
+      api.get(`/api/abonelik?ay_sayisi=${ay}`).then(setD).catch(() => {})
+      setOdeniyor(false)
+    }
+  }
 
   if (hata) return <div className="card text-sm text-panel-muted">{hata}</div>
   if (!d) return <div className="card"><div className="skeleton h-5 w-48 rounded" /></div>
@@ -53,6 +77,17 @@ export default function AbonelikPage() {
   return (
     <div className="max-w-3xl space-y-4">
       <h1 className="text-xl font-semibold">Abonelik</h1>
+
+      {donus === 'basarili' && (
+        <div className="card !border-emerald-500/40 text-sm text-emerald-300">
+          ✓ Ödemeniz alındı, aboneliğiniz uzatıldı. Teşekkürler!
+        </div>
+      )}
+      {donus === 'hata' && (
+        <div className="card !border-red-500/40 text-sm text-red-300">
+          Ödeme tamamlanamadı; kartınızdan çekim yapılmadı. Tekrar deneyebilir ya da havale ile ödeyebilirsiniz.
+        </div>
+      )}
 
       <section className="card space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -85,7 +120,14 @@ export default function AbonelikPage() {
 
       {t && (
         <section className="card space-y-2">
-          <h2 className="text-sm font-semibold">Sıradaki ödeme (tahmini)</h2>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold">Sıradaki ödeme (tahmini)</h2>
+            <label className="text-xs text-panel-muted flex items-center gap-2">Peşin
+              <select className="input !py-1 !w-auto" value={ay} onChange={e => setAy(Number(e.target.value))}>
+                {[1, 3, 6, 12].map(n => <option key={n} value={n}>{n} ay</option>)}
+              </select>
+            </label>
+          </div>
           <table className="w-full text-sm">
             <tbody>
               <tr>
@@ -114,6 +156,17 @@ export default function AbonelikPage() {
             üzerinden hesaplanır; iptal ve iade edilen siparişler düşülür. Tutar, ödemenin kaydedildiği güne kadarki
             satışlarla kesinleşir.
           </p>
+          {d.kart_acik && (
+            <button onClick={kartlaOde} disabled={odeniyor}
+              className="btn-primary w-full !py-2.5 disabled:opacity-50">
+              {odeniyor ? 'Ödeme sayfası açılıyor…' : `💳 Kartla öde — ${tl(t.toplam)}`}
+            </button>
+          )}
+          {d.kart_acik && (
+            <p className="text-[11px] text-panel-muted text-center">
+              iyzico güvenli ödeme sayfasına yönlendirilirsiniz (3D Secure). Kart bilgileriniz bizde saklanmaz.
+            </p>
+          )}
         </section>
       )}
 

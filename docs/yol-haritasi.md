@@ -88,9 +88,24 @@ Bilerek alınmayanlar:
 - **Shopify uygulama bloğu model seçici:** bizde yerleşik marka → model
   seçici zaten var.
 
-## Faz 4 — Kartla abonelik
+## Biten: Faz 4 — Kartla abonelik ödemesi (2026-09-28)
 
-- [ ] iyzico abonelik (yinelenen ödeme) ile otomatik tahsilat
+Karar: kiracı her dönem KENDİSİ öder (kart saklanmaz, 3D Secure); para
+PLATFORMUN ayrı iyzico hesabına geçer (BERNZ satışlarıyla karışmaz).
+iyzico'nun hazır abonelik ürünü sabit tutar çeker; bizim fatura her ay
+değiştiği (sabit + komisyon) için tek seferlik ödeme formu kullanıldı.
+
+- [x] Mağaza paneli → Abonelik → "💳 Kartla öde" (1/3/6/12 ay peşin);
+  salt okunur / askıdaki kiracı da ödeyebilir.
+- [x] Tutar başlatırken dondurulur; dönüş iyzico'ya SUNUCUDAN sorularak
+  doğrulanır (tutar, conversationId, durum); başarılıysa abonelik uzar,
+  Utku'ya Telegram. Çift dönüşte iki kez uzatılmaz.
+- [x] Arada havale işlenirse ödeme yine işlenir ama "inceleme" işaretlenir.
+- Açılış: .env'e IYZICO_PLATFORM_API_KEY / IYZICO_PLATFORM_SECRET_KEY
+  (+ canlı için IYZICO_PLATFORM_BASE_URL=https://api.iyzipay.com).
+
+Sonraya kalan (istenirse): kayıtlı kartla otomatik çekim — iyzico'dan
+3D'siz tekrarlayan çekim onayı gerektirir.
 
 ## Açık altyapı / güvenlik işleri
 

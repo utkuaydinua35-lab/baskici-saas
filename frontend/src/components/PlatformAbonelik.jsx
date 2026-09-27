@@ -374,7 +374,8 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
                 <thead><tr><th>Tarih</th><th>Dönem</th><th className="!text-right">Sabit</th><th className="!text-right">Komisyon</th><th className="!text-right">Toplam</th><th>Yöntem</th><th>Fatura</th><th></th></tr></thead>
                 <tbody>
                   {data.odemeler.map(o => (
-                    <tr key={o.id} className={o.durum === 'iptal' ? 'opacity-50 line-through' : ''}>
+                    <tr key={o.id} className={o.durum === 'iptal' ? 'opacity-50 line-through'
+                      : o.durum !== 'odendi' ? 'opacity-50' : ''}>
                       <td className="px-2 py-1.5 text-gray-300">{fmtGun(o.odendi_at?.slice(0, 10))}</td>
                       <td className="px-2 py-1.5 text-gray-400">{fmtGun(o.donem_bas)} – {fmtGun(o.donem_bit)}</td>
                       <td className="px-2 py-1.5 text-right text-gray-300">{fmtTL(o.sabit_ucret)}</td>
@@ -382,6 +383,9 @@ export function AbonelikModal({ tenantId, onClose, onDegisti }) {
                       <td className="px-2 py-1.5 text-right text-gray-100">{fmtTL(o.toplam)}</td>
                       <td className="px-2 py-1.5 text-gray-400" title={[o.referans, o.not].filter(Boolean).join(' · ')}>
                         {o.yontem === 'havale' ? 'Havale' : 'Kart'}{o.referans ? ' · ' + o.referans : ''}
+                        {o.durum === 'bekliyor' && <span className="ml-1 text-[10px] text-sky-300">(ödeme sayfasında / yarım kaldı)</span>}
+                        {o.durum === 'basarisiz' && <span className="ml-1 text-[10px] text-red-300">(başarısız)</span>}
+                        {o.not?.includes('İnceleme') && <span className="ml-1 text-[10px] text-amber-300" title={o.not}>⚠ inceleme</span>}
                       </td>
                       <td className="px-2 py-1.5 no-underline">
                         <button onClick={() => faturaGir(o)} title="Fatura numarasını gir / düzelt"

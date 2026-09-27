@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast'
 import {
   FONTS, SECTION_TYPES, SECTION_DEFAULTS,
   SectionSettings, Section, ColorField, Toggle, AssetField, UrlPicker, Choice,
+  MedyaContext, MedyaKutuphanesi,
 } from '../components/ThemeEditorParts'
 
 // Tam ekran tema editörü (Shopify tarzı) — sol ayar paneli + sağ canlı önizleme.
@@ -20,6 +21,8 @@ export default function TemaEditorPage() {
   const toast = useToast()
 
   const [theme, setTheme] = useState(null)
+  // Medya kütüphanesi isteği: { tur, resolve } — açık pencere, seçilince çözülür
+  const [medyaIstek, setMedyaIstek] = useState(null)
   const [draftName, setDraftName] = useState('')
   const [collections, setCollections] = useState([])
   const [products, setProducts] = useState([])
@@ -273,7 +276,19 @@ export default function TemaEditorPage() {
     ? previewPath.replace('/koleksiyon/', '').split('?')[0] : null
   const collectionBlock = collectionSlug ? (theme.collection_pages?.[collectionSlug] || {}) : {}
 
+  // Görsel alanlarının ortak yükle/seç yolu (AssetField, galeri)
+  const medya = {
+    yukle: (kind, file) => new Promise(res => uploadAsset(kind, file, res)),
+    sec: tur => new Promise(res => setMedyaIstek({ tur, resolve: res })),
+  }
+  const medyaKapat = url => { medyaIstek?.resolve(url || null); setMedyaIstek(null) }
+
   return (
+    <MedyaContext.Provider value={medya}>
+    {medyaIstek && (
+      <MedyaKutuphanesi storeId={storeId} tur={medyaIstek.tur} yukle={medya.yukle}
+        onSec={url => medyaKapat(url)} onKapat={() => medyaKapat(null)} />
+    )}
     <div className="h-screen flex flex-col bg-panel-input/40">
       {/* Üst çubuk */}
       {/* Telefonda sekiz kontrol tek satıra sığmıyordu — sarıyor, yükseklik
@@ -465,8 +480,7 @@ export default function TemaEditorPage() {
                     Koleksiyonlar sayfasından düzenlenir.
                   </p>
                   <AssetField label="Blok görseli (ops.)" current={collectionBlock.image}
-                    onUpload={f => uploadAsset('hero', f,
-                      url => set(`collection_pages.${collectionSlug}.image`, url))}
+                    onUrl={url => set(`collection_pages.${collectionSlug}.image`, url)}
                     onClear={() => set(`collection_pages.${collectionSlug}.image`, null)} />
                   <label className="block text-sm">
                     <span className="text-panel-muted text-xs">Blok metni (ops.)</span>
@@ -540,8 +554,8 @@ export default function TemaEditorPage() {
               </Section>
 
               <Section title="Logo ve Favicon" icon="🖼️">
-                <AssetField label="Logo" current={theme.logo_url}
-                  onUpload={f => uploadAsset('logo', f, url => set('logo_url', url))}
+                <AssetField label="Logo" current={theme.logo_url} kind="logo"
+                  onUrl={url => set('logo_url', url)}
                   onClear={() => set('logo_url', null)} />
                 {theme.logo_url && (
                   <label className="block text-sm">
@@ -554,8 +568,8 @@ export default function TemaEditorPage() {
                       className="w-full mt-1 accent-emerald-600" />
                   </label>
                 )}
-                <AssetField label="Favicon" current={theme.favicon_url}
-                  onUpload={f => uploadAsset('favicon', f, url => set('favicon_url', url))}
+                <AssetField label="Favicon" current={theme.favicon_url} kind="favicon"
+                  onUrl={url => set('favicon_url', url)}
                   onClear={() => set('favicon_url', null)} />
               </Section>
 
@@ -636,7 +650,7 @@ export default function TemaEditorPage() {
                       placeholder="Buton yazısı — örn. Alışverişe Başla" />
                     <AssetField label="Görsel (ops.) — masaüstünde sağda, mobilde üstte"
                       current={theme.popup.gorsel_url || null}
-                      onUpload={f => uploadAsset('hero', f, url => set('popup.gorsel_url', url))}
+                      onUrl={url => set('popup.gorsel_url', url)}
                       onClear={() => set('popup.gorsel_url', '')} />
                   </>
                 )}
@@ -853,6 +867,7 @@ export default function TemaEditorPage() {
         </div>
       </div>
     </div>
+    </MedyaContext.Provider>
   )
 }
 

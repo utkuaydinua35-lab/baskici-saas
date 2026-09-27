@@ -885,6 +885,47 @@ def upload_asset(
     return {"url": url, "kind": kind}
 
 
+@router.get("/{store_id}/assets", response_model=dict)
+def list_assets(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Medya kütüphanesi: mağazaya yüklenmiş tema görselleri ve videoları,
+    yeniden seçilebilsin diye (en yeni önce). Duyarlı varyantlar (-400 vb.)
+    ayrı dosya olarak listelenmez.
+
+    Silme BİLİNÇLİ olarak yok: adres tema, taslaklar, koleksiyonlar, blog ve
+    sayfa metinlerinde geçebilir; kullanılan bir görseli silmek vitrinde
+    sessizce kırık görsel bırakırdı.
+    """
+    import re as _re
+    from app.services import storage as storage_svc
+
+    store = _get_store(db, user, store_id)
+    rel = f"tenants/{user.tenant_id}/store-assets/{store.id}"
+    d = storage_svc.STORAGE_ROOT / rel
+    ogeler = []
+    if d.is_dir():
+        for f in d.iterdir():
+            if not f.is_file() or _re.search(r"-(400|800|1280)\.(jpg|png)$", f.name):
+                continue
+            ext = f.suffix.lower().lstrip(".")
+            tur = ("video" if ext in storage_svc.VIDEO_EXTENSIONS
+                   else "gorsel" if ext in storage_svc.STORE_ASSET_EXTENSIONS else None)
+            if tur is None:
+                continue
+            st = f.stat()
+            ogeler.append({"url": f"/storage/{rel}/{f.name}", "tur": tur,
+                           "boyut": st.st_size, "_t": st.st_mtime,
+                           # dosya adının başı yükleme alanını söyler (hero, logo…)
+                           "alan": f.name.split("-", 1)[0]})
+    ogeler.sort(key=lambda o: o["_t"], reverse=True)
+    for o in ogeler:
+        o.pop("_t")
+    return {"items": ogeler[:500]}
+
+
 # ─── Özel domain doğrulama ───────────────────────────────────
 
 @router.post("/{store_id}/verify-domain", response_model=dict)

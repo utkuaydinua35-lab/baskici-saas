@@ -1,7 +1,8 @@
 // Tema editörünün ortak parçaları — bölüm tipleri, varsayılanlar ve ayar formları.
 // TemaEditorPage kullanır; TemaPage (kütüphane) yalnızca SECTION_TYPES'a bakar.
 /* eslint-disable react-refresh/only-export-components */
-import { useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { api } from '../lib/api'
 
 export const FONTS = [
   { key: 'inter', label: 'Inter (modern, varsayılan)' },
@@ -140,6 +141,7 @@ function RadiusControl({ s, patch }) {
 // Bölüm tipine özel ayar formu.
 export function SectionSettings({ sec, collections, products = [], pages = [], patch, uploadAsset }) {
   const s = sec.settings
+  const medya = useContext(MedyaContext)
 
   if (sec.type === 'hero_slider') {
     const slides = s.slides || []
@@ -154,7 +156,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
                 className="text-xs text-red-300 hover:text-red-300">Sil</button>
             </div>
             <AssetField label="Görsel" current={slide.image}
-              onUpload={f => uploadAsset('hero', f, url => patchSlide(i, { image: url }))}
+              onUrl={url => patchSlide(i, { image: url })}
               onClear={() => patchSlide(i, { image: null })} />
             <input className="input" value={slide.eyebrow || ''} maxLength={60}
               onChange={e => patchSlide(i, { eyebrow: e.target.value })}
@@ -333,7 +335,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     return (
       <>
         <AssetField label="Görsel" current={s.image}
-          onUpload={f => uploadAsset('hero', f, url => patch({ image: url }))}
+          onUrl={url => patch({ image: url })}
           onClear={() => patch({ image: null })} />
         <input className="input" value={s.title || ''} maxLength={100}
           onChange={e => patch({ title: e.target.value })} placeholder="Başlık" />
@@ -539,13 +541,22 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             </div>
           ))}
           {ogeler.length < 12 && (
-            <label className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-panel-border
-              py-2.5 text-xs text-panel-muted cursor-pointer hover:text-panel-ink">
-              + Görsel ya da video ekle
-              <input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" className="hidden"
-                onChange={e => e.target.files?.[0] && uploadAsset('hero', e.target.files[0],
-                  url => yaz([...ogeler, { url, tip: /\.(mp4|webm|mov|m4v)$/i.test(url) ? 'video' : 'gorsel' }]))} />
-            </label>
+            <div className="flex gap-1.5">
+              <label className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-dashed border-panel-border
+                py-2.5 text-xs text-panel-muted cursor-pointer hover:text-panel-ink">
+                + Görsel ya da video ekle
+                <input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" className="hidden"
+                  onChange={e => e.target.files?.[0] && uploadAsset('hero', e.target.files[0],
+                    url => yaz([...ogeler, { url, tip: /\.(mp4|webm|mov|m4v)$/i.test(url) ? 'video' : 'gorsel' }]))} />
+              </label>
+              {medya && (
+                <button type="button" className="btn-ghost !py-2 text-xs"
+                  onClick={async () => {
+                    const url = await medya.sec('hepsi')
+                    if (url) yaz([...ogeler, { url, tip: /\.(mp4|webm|mov|m4v)$/i.test(url) ? 'video' : 'gorsel' }])
+                  }}>🖼️ Kütüphaneden</button>
+              )}
+            </div>
           )}
         </div>
         <p className="text-[11px] text-panel-muted">
@@ -600,7 +611,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     return (
       <>
         <AssetField label="Banner görseli" current={s.image}
-          onUpload={f => uploadAsset('hero', f, url => patch({ image: url }))}
+          onUrl={url => patch({ image: url })}
           onClear={() => patch({ image: null })} />
         <UrlPicker value={s.url} collections={collections} products={products} pages={pages}
           placeholder="Tıklanınca gidilecek hedef (ops.)" onChange={url => patch({ url })} />
@@ -643,23 +654,97 @@ export function Toggle({ checked, onChange, label }) {
   )
 }
 
-export function AssetField({ label, current, onUpload, onClear }) {
+// Tema editörü medya bağlamı: yukle(kind, file) → url, sec(tur) → url|null.
+// TemaEditorPage sağlar; varsa görsel alanlarında "Kütüphaneden" düğmesi çıkar.
+export const MedyaContext = createContext(null)
+
+export function AssetField({ label, current, kind = 'hero', onUrl, onClear, tur = 'gorsel' }) {
+  const medya = useContext(MedyaContext)
+  const yukle = async file => {
+    if (!file || !medya) return
+    const url = await medya.yukle(kind, file)
+    if (url) onUrl(url)
+  }
+  const kutuphane = async () => {
+    const url = await medya?.sec(tur)
+    if (url) onUrl(url)
+  }
   return (
     <div className="text-sm">
       <span className="text-panel-muted text-xs">{label}</span>
-      <div className="mt-1 flex items-center gap-2">
+      <div className="mt-1 flex items-center gap-2 flex-wrap">
         {current ? (
           <>
             <img src={current} alt={label} className="h-10 max-w-[120px] object-contain rounded-lg border border-panel-border bg-panel-card p-1" />
+            <label className="text-xs text-panel-muted hover:text-panel-ink cursor-pointer">
+              Değiştir
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/x-icon" className="hidden"
+                onChange={e => yukle(e.target.files?.[0])} />
+            </label>
             <button onClick={onClear} className="text-xs text-red-300 hover:text-red-300">Kaldır</button>
           </>
         ) : (
           <label className="btn-ghost !py-1.5 text-xs cursor-pointer">
             Dosya seç
             <input type="file" accept="image/png,image/jpeg,image/webp,image/x-icon" className="hidden"
-              onChange={e => onUpload(e.target.files?.[0])} />
+              onChange={e => yukle(e.target.files?.[0])} />
           </label>
         )}
+        {medya && kind !== 'favicon' && (
+          <button type="button" onClick={kutuphane} className="btn-ghost !py-1.5 text-xs">🖼️ Kütüphaneden</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Medya kütüphanesi penceresi — daha önce yüklenen görsel/videolardan seç
+// ya da yeni yükle. Silme yok (bkz. backend list_assets).
+export function MedyaKutuphanesi({ storeId, tur, onSec, onKapat, yukle }) {
+  const [items, setItems] = useState(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    api.get(`/api/store-settings/${storeId}/assets`)
+      .then(r => setItems(r.items || [])).catch(() => setItems([]))
+  }, [storeId])
+  const gorunen = (items || []).filter(o => tur === 'hepsi' || o.tur === tur)
+  const yeni = async file => {
+    if (!file) return
+    setBusy(true)
+    try { const url = await yukle('hero', file); if (url) onSec(url) } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4"
+      onMouseDown={e => e.target === e.currentTarget && onKapat()}>
+      <div className="card w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold">🖼️ Medya kütüphanesi</h2>
+          <button onClick={onKapat} className="text-panel-muted hover:text-panel-ink text-xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 min-h-40">
+          {items === null ? <div className="skeleton h-5 w-40 rounded" />
+            : gorunen.length === 0 ? <p className="text-sm text-panel-muted py-8 text-center">Henüz yüklenmiş dosya yok.</p>
+            : (
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {gorunen.map(o => (
+                  <button key={o.url} type="button" onClick={() => onSec(o.url)} title={o.alan}
+                    className="aspect-square rounded-lg overflow-hidden border border-panel-border hover:border-panel-accent bg-panel-input">
+                    {o.tur === 'video'
+                      ? <video src={o.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                      : <img src={o.url.replace(/(\.(jpg|png))$/i, '-400$1')} alt="" loading="lazy"
+                          onError={e => { if (!e.currentTarget.dataset.yedek) { e.currentTarget.dataset.yedek = '1'; e.currentTarget.src = o.url } }}
+                          className="w-full h-full object-cover" />}
+                  </button>
+                ))}
+              </div>
+            )}
+        </div>
+        <label className="btn-ghost !py-2 text-xs cursor-pointer mt-3 text-center">
+          {busy ? 'Yükleniyor…' : '+ Yeni dosya yükle'}
+          <input type="file" className="hidden" disabled={busy}
+            accept={tur === 'gorsel' ? 'image/*' : 'image/*,video/mp4,video/webm,video/quicktime'}
+            onChange={e => yeni(e.target.files?.[0])} />
+        </label>
       </div>
     </div>
   )

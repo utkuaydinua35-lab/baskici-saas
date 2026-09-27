@@ -2,7 +2,7 @@
 
 // Ürün kartı medyası — kapak görsel; imleç gelince 2. görsel, o yoksa video oynar.
 import { useRef, useState } from "react";
-import NextImage from "next/image";
+import { urunGorsel } from "@/lib/gorsel";
 
 export default function CardMedia({
   cover,
@@ -38,11 +38,12 @@ export default function CardMedia({
       onMouseLeave={leave}
     >
       {cover ? (
-        // Liste sayfasinda onlarca kart var; sizes olmadan her biri tam boy
-        // gorsel indiriyordu. Izgara: telefon 2, tablet 3, masaustu 4 sutun.
-        <NextImage src={cover} alt={title} fill
+        // Liste: onlarca kart. Varyantlar statik; srcset ile telefon 400,
+        // tablet 800, masaüstü 1280'i seçer. İlk kart hariç tembel yüklenir.
+        <img src={urunGorsel(cover).src} srcSet={urunGorsel(cover).srcSet}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-          className={`object-cover transition-opacity duration-300 ${
+          alt={title} loading="lazy" decoding="async"
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             hover && (hoverImage || useVideo) ? "opacity-0" : "opacity-100"}`} />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-4xl text-zinc-300">
@@ -50,9 +51,10 @@ export default function CardMedia({
         </div>
       )}
       {hoverImage && (
-        <NextImage src={hoverImage} alt="" fill aria-hidden
+        <img src={urunGorsel(hoverImage).src} srcSet={urunGorsel(hoverImage).srcSet}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-          className={`object-cover transition-opacity duration-300 ${
+          alt="" aria-hidden loading="lazy" decoding="async"
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             hover ? "opacity-100" : "opacity-0"}`} />
       )}
       {useVideo && (

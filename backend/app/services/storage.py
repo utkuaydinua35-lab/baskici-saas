@@ -333,7 +333,8 @@ def save_catalog_image(tenant_id, image_id, file_data: bytes, original_filename:
     if len(file_data) > MAX_CATALOG_IMAGE_SIZE:
         raise ValueError(f"Görsel çok büyük (max {MAX_CATALOG_IMAGE_SIZE // 1024 // 1024} MB)")
 
-    from app.services.images import optimize_image
+    from app.services.images import optimize_image, responsive_variants
+    ana = file_data                      # varyantlar HAM veriden değil ana'dan
     file_data, ext = optimize_image(file_data, max_px=2048)
 
     rel_dir = Path("tenants") / str(tenant_id) / "catalog"
@@ -342,6 +343,11 @@ def save_catalog_image(tenant_id, image_id, file_data: bytes, original_filename:
     fname = f"{image_id}.{ext}"
     with open(full_dir / fname, "wb") as f:
         f.write(file_data)
+    # Duyarlı varyantlar: {image_id}-400.jpg gibi. Vitrin srcset ile bunları
+    # sunar; ilk ziyaretçi hiç optimize beklemez (statik dosya).
+    for w, veri, vext in responsive_variants(file_data):
+        with open(full_dir / f"{image_id}-{w}.{vext}", "wb") as f:
+            f.write(veri)
     return (rel_dir / fname).as_posix()
 
 
@@ -354,6 +360,12 @@ def delete_catalog_image(relative_path: str) -> bool:
         return False  # path traversal koruması
     try:
         full.unlink(missing_ok=True)
+        # Duyarlı varyantları da sil ({id}.jpg → {id}-400.jpg, -800, -1280)
+        from app.services.images import RESPONSIVE_WIDTHS
+        govde = full.name.rsplit(".", 1)[0]
+        for w in RESPONSIVE_WIDTHS:
+            for vext in ("jpg", "png"):
+                (full.parent / f"{govde}-{w}.{vext}").unlink(missing_ok=True)
         return True
     except OSError:
         return False

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import NextImage from "next/image";
+import { urunGorsel } from "@/lib/gorsel";
 
 interface Image {
   url: string;
@@ -46,7 +46,7 @@ export default function ProductGallery({
 
   return (
     <div>
-      {/* relative: next/image'ın fill modu konumlanmış bir kaba ihtiyaç duyar */}
+      {/* relative: mutlak konumlu görsel/video için konumlanmış kap */}
       <div className="relative aspect-square rounded-2xl border border-zinc-200 bg-white overflow-hidden">
         {showingVideo ? (
           ytId ? (
@@ -59,13 +59,13 @@ export default function ProductGallery({
             <video src={videoUrl!} controls playsInline className="w-full h-full object-contain" />
           )
         ) : current ? (
-          // Sayfanın LCP öğesi: priority ile önden yüklenir, sizes sayesinde
-          // telefona 2048px değil ekranı kadar görsel iner.
-          <NextImage src={current.url} alt={current.alt || title} fill
-            sizes="(min-width: 768px) 50vw, 100vw"
-            priority fetchPriority="high"
+          // Sayfanın LCP öğesi. Varyantlar yükleme anında üretildiği için
+          // statik gelir — ilk ziyaretçi optimize beklemez.
+          <img src={urunGorsel(current.url).src} srcSet={urunGorsel(current.url).srcSet}
+            sizes="(min-width: 768px) 50vw, 100vw" alt={current.alt || title}
+            fetchPriority="high" decoding="async"
             onClick={() => setLightbox(true)}
-            className="object-contain cursor-zoom-in" />
+            className="absolute inset-0 w-full h-full object-contain cursor-zoom-in" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-6xl text-zinc-200">📱</div>
         )}
@@ -74,8 +74,7 @@ export default function ProductGallery({
       {lightbox && current && (
         <div onClick={() => setLightbox(false)}
           className="fixed inset-0 z-[90] bg-black/85 flex items-center justify-center p-6 cursor-zoom-out">
-          <NextImage src={current.url} alt={current.alt || title}
-            width={1600} height={1600} sizes="100vw"
+          <img src={current.url} alt={current.alt || title} decoding="async"
             className="max-w-full max-h-full object-contain rounded-xl w-auto h-auto" />
           <button aria-label="Kapat"
             className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 text-white text-lg">
@@ -94,9 +93,10 @@ export default function ProductGallery({
               }`}
               aria-label={`Görsel ${i + 1}`}
             >
-              {/* 64px'lik kutuya tam boy görsel iniyordu; sizes bunu kesiyor */}
-              <NextImage src={im.url} alt={im.alt || ""} width={64} height={64}
-                sizes="64px" className="w-full h-full object-cover" />
+              {/* 64px kutu: en küçük varyant (400w) yeterli, tembel yüklenir */}
+              <img src={urunGorsel(im.url).srcSet ? urunGorsel(im.url).src.replace(/(\.[a-z]+)$/, "-400$1") : im.url}
+                alt={im.alt || ""} loading="lazy" decoding="async"
+                className="w-full h-full object-cover" />
             </button>
           ))}
           {hasVideo && (

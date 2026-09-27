@@ -331,6 +331,10 @@ class SafeStaticFiles(StaticFiles):
         ext = ad.rsplit(".", 1)[-1].lower() if "." in ad else ""
         # Tum statik dosyalara temel guvenlik basliklari
         resp.headers["X-Content-Type-Options"] = "nosniff"
+        # Görseller içerik adresli (dosya adında image_id) → değişmez.
+        # Uzun önbellek: aynı görsel bir daha sunucuya dönmez, CDN'de kalır.
+        if ext in ("jpg", "jpeg", "png", "webp", "gif"):
+            resp.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         if ext in self._RISKY_EXT:
             # Tarayicida CALISTIRMA — indir + CSP ile script engelle
             resp.headers["Content-Disposition"] = "attachment"

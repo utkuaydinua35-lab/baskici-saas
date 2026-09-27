@@ -16,6 +16,52 @@ from PIL import Image, ImageOps
 SKIP_THRESHOLD_BYTES = 300 * 1024
 
 
+# Vitrin ürün görselleri için duyarlı (responsive) genişlikler.
+# Telefon ~400, tablet ~800, masaüstü ~1280 piksellik kutuya oturur; ana
+# dosya (≤2048) büyütme/lightbox için kalır. Küçük varyantlar YÜKLEME ANINDA
+# üretilir ve statik sunulur — Next.js'in istek-anında optimize edicisi
+# belleği kısıtlı VPS'te ilk ziyarette 2+ sn sürüyor ve eşzamanlı isteklerde
+# zaman aşımına düşüyordu (görseller "ilk girişte gelmiyor" şikâyeti buydu).
+RESPONSIVE_WIDTHS = (400, 800, 1280)
+
+
+def responsive_variants(data: bytes) -> list[tuple[int, bytes, str]]:
+    """Ana görselden küçük genişlik varyantları üret.
+
+    Dönüş: [(genişlik, bytes, uzantı)]. Yalnız KÜÇÜLTÜR — ana görsel bir
+    genişlikten darsa o varyant atlanır (büyütmek kaliteyi düşürür, boşa
+    bayt yazar). Bozuk veri sessizce boş liste döner: ana görsel zaten
+    kaydedildiği için varyant üretimi siparişi/yüklemeyi bozmamalı.
+    """
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:  # noqa: BLE001
+        return []
+    img = ImageOps.exif_transpose(img)
+    has_alpha = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    kaynak_en = img.size[0]
+    cikti: list[tuple[int, bytes, str]] = []
+    for w in RESPONSIVE_WIDTHS:
+        # HER bucket için bir dosya üret — kaynak dardan büyükse o genişlikte
+        # KLAMPLA (asla büyütme). Böylece vitrin srcset'i -400/-800/-1280'i
+        # her zaman bulur; üretilmemiş varyant 404 vermez. Küçük kaynakta
+        # dosyalar neredeyse aynı olur, bayt maliyeti önemsiz.
+        hedef_en = min(w, kaynak_en)
+        oran = hedef_en / float(img.size[0])
+        yeni_boy = (hedef_en, max(1, round(img.size[1] * oran)))
+        kucuk = img.resize(yeni_boy, Image.LANCZOS) if hedef_en < kaynak_en else img.copy()
+        buf = io.BytesIO()
+        if has_alpha:
+            kucuk.convert("RGBA").save(buf, format="PNG", optimize=True)
+            cikti.append((w, buf.getvalue(), "png"))
+        else:
+            (kucuk if kucuk.mode == "RGB" else kucuk.convert("RGB")).save(
+                buf, format="JPEG", quality=82, optimize=True, progressive=True)
+            cikti.append((w, buf.getvalue(), "jpg"))
+    return cikti
+
+
 def optimize_image(
     data: bytes,
     *,

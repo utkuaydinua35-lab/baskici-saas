@@ -62,14 +62,24 @@ def validate_and_snapshot(
 
     snapshot: list[dict] = []
     total = Decimal("0")
-    seen: set[str] = set()
+    seen: set[tuple] = set()
+    # Aynı varyant, farklı ek seçenekle AYRI satır olabilir (sepet de böyle
+    # tutuyor: "Vernik: Evet" ve "Vernik: Hayır"). Eskiden ikinci satır
+    # "Geçersiz sepet kalemi" ile tüm ödemeyi reddediyordu. Stok bu yüzden
+    # satır başına değil VARYANT TOPLAMI üzerinden kontrol edilir.
+    varyant_adedi: dict[str, int] = {}
 
     for entry in items:
         vid = str(entry.get("variant_id") or "")
         qty = int(entry.get("quantity") or 0)
-        if not vid or vid in seen:
+        raw_custom_all = entry.get("custom") if isinstance(entry.get("custom"), dict) else {}
+        satir_anahtari = (
+            vid, str(entry.get("second_variant_id") or ""), str(entry.get("design_id") or ""),
+            tuple(sorted((str(k), str(v)) for k, v in raw_custom_all.items())),
+        )
+        if not vid or satir_anahtari in seen:
             raise CheckoutError("Geçersiz sepet kalemi")
-        seen.add(vid)
+        seen.add(satir_anahtari)
         if not (1 <= qty <= MAX_QTY_PER_ITEM):
             raise CheckoutError(f"Adet 1-{MAX_QTY_PER_ITEM} arasında olmalı")
 
@@ -85,7 +95,8 @@ def validate_and_snapshot(
         product = db.get(CatalogProduct, variant.product_id)
         if not product or product.store_id != store.id or product.status != "active":
             raise CheckoutError("Sepetteki bir ürün artık satışta değil")
-        if variant.track_stock and variant.quantity < qty:
+        varyant_adedi[vid] = varyant_adedi.get(vid, 0) + qty
+        if variant.track_stock and variant.quantity < varyant_adedi[vid]:
             raise CheckoutError(
                 f"'{product.title} — {variant.model_display}' için yeterli stok yok"
             )
@@ -108,12 +119,17 @@ def validate_and_snapshot(
             ))
             if not second:
                 raise CheckoutError("İkinci model artık satışta değil")
-            if second.track_stock and second.quantity < qty:
+            varyant_adedi[str(second.id)] = varyant_adedi.get(str(second.id), 0) + qty
+            if second.track_stock and second.quantity < varyant_adedi[str(second.id)]:
                 raise CheckoutError(
                     f"'{product.title} — {second.model_display}' için yeterli stok yok")
 
         # Kişiye özel alanlar: ürün tanımına göre doğrula (bilinmeyen anahtar atılır)
+        # Ek ücret YALNIZ ürün tanımından gelir — istemcinin gönderdiği fiyat
+        # hiçbir yerde okunmaz.
         custom_clean = None
+        ekler: list[dict] = []
+        ek_ucret = Decimal("0")
         fields = product.custom_fields or []
         if fields:
             raw_custom = entry.get("custom") or {}
@@ -126,7 +142,15 @@ def validate_and_snapshot(
                     continue
                 if f["type"] == "color" and f.get("options") and val not in f["options"]:
                     raise CheckoutError(f"'{f['label']}' için geçersiz seçim")
-                custom_clean[f["key"]] = val[:500] if f["type"] != "image" else val[:500]
+                custom_clean[f["key"]] = val[:500]
+                fiyat = (f.get("option_prices") or {}).get(val) if f["type"] == "color" \
+                    else f.get("price")
+                if fiyat:
+                    fiyat = Decimal(str(fiyat))
+                    ek_ucret += fiyat
+                    ekler.append({"label": f["label"],
+                                  "value": val if f["type"] == "color" else None,
+                                  "price": str(fiyat)})
             if not custom_clean:
                 custom_clean = None
 
@@ -151,6 +175,8 @@ def validate_and_snapshot(
                 "design_template": d.template_key,
             }
 
+        base_unit_price = unit_price
+        unit_price = unit_price + ek_ucret
         total += unit_price * qty
         snapshot.append({
             "variant_id": str(variant.id),
@@ -162,7 +188,8 @@ def validate_and_snapshot(
             "variation": variant.variation,
             "sku": variant.sku,
             "quantity": qty,
-            "unit_price": str(unit_price),
+            "unit_price": str(unit_price),   # ek seçenek ücreti DAHİL
+            **({"base_unit_price": str(base_unit_price), "extras": ekler} if ekler else {}),
             "stock_item_id": str(variant.stock_item_id) if variant.stock_item_id else None,
             **({"second_variant_id": str(second.id),
                 "second_model_key": second.model_key,

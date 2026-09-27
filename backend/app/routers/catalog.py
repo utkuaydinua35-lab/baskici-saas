@@ -170,8 +170,28 @@ def _get_storefront_store(db: Session, tenant_id, store_id) -> Store:
     return store
 
 
+EK_UCRET_UST = Decimal("100000")
+
+
+def _ek_ucret(deger) -> str | None:
+    """Ek ücret girdisini temizle: 0 < x <= üst sınır, 2 hane; aksi None."""
+    try:
+        d = Decimal(str(deger).replace(",", ".")).quantize(Decimal("0.01"))
+    except (ArithmeticError, ValueError, TypeError):
+        return None
+    return str(d) if Decimal("0") < d <= EK_UCRET_UST else None
+
+
 def _clean_custom_fields(raw) -> list[dict]:
-    """Kişiye özel alan tanımlarını temizle (max 6; type: text|image|color)."""
+    """Kişiye özel alan tanımlarını temizle (max 6; type: text|image|color).
+
+    Fiyat farkı (isteğe bağlı):
+      • color (seçenek): option_prices {seçenek: "50.00"} — o seçenek
+        seçilirse birim fiyata eklenir ("Vernik: Evet +50 TL")
+      • text / image: price "25.00" — alan DOLDURULURSA eklenir
+        ("İsim yazdırma +25 TL")
+    Tutar ödeme anında SUNUCUDA bu tanımdan hesaplanır (services/checkout).
+    """
     out = []
     for f in (raw or [])[:6]:
         if not isinstance(f, dict):
@@ -189,6 +209,26 @@ def _clean_custom_fields(raw) -> list[dict]:
         if ftype == "color":
             entry["options"] = [str(o).strip()[:30]
                                 for o in (f.get("options") or [])[:12] if str(o).strip()]
+            fiyatlar = {}
+            for o, v in (f.get("option_prices") or {}).items():
+                o = str(o).strip()[:30]
+                if o in entry["options"] and (u := _ek_ucret(v)):
+                    fiyatlar[o] = u
+            if fiyatlar:
+                entry["option_prices"] = fiyatlar
+            # Seçenek görselleri — en az ikisi varsa vitrinde "Farkı gör"
+            # karşılaştırma penceresi çıkar (mat / parlak gibi). Yalnız kendi
+            # depomuzdaki dosya kabul edilir: dış adres vitrine iz sürücü /
+            # uygunsuz içerik sokmanın kapısı olurdu.
+            gorseller = {}
+            for o, u in (f.get("option_images") or {}).items():
+                o, u = str(o).strip()[:30], str(u or "").strip()[:500]
+                if o in entry["options"] and re.fullmatch(r"/storage/[\w\-./]+", u) and ".." not in u:
+                    gorseller[o] = u
+            if gorseller:
+                entry["option_images"] = gorseller
+        elif (u := _ek_ucret(f.get("price"))):
+            entry["price"] = u
         out.append(entry)
     return out
 

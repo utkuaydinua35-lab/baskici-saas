@@ -76,7 +76,11 @@ def _build_raw(session: CheckoutSession, order_number: int,
         ] + design_props + ([{"name": "Renk", "value": item["variation"]}] if item.get("variation") else []) \
           + ([{"name": "2. Kılıf Modeli", "value": item["second_model_display"]}]
              if item.get("second_model_display") else []) \
-          + custom_props
+          + custom_props \
+          + ([{"name": "Ek seçenek ücreti", "value": ", ".join(
+                f"{e['label']}{': ' + e['value'] if e.get('value') else ''} "
+                f"+{Decimal(str(e['price'])):.2f} ₺".replace(".", ",") for e in item["extras"])}]
+             if item.get("extras") else [])
 
         line_items.append({
             "id": f"sfli_{session.id.hex}_{n}",

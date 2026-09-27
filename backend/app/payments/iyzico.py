@@ -83,15 +83,24 @@ class IyzicoProvider(PaymentProvider):
         total = str(session.amount)
         # iyzico: basketItems fiyat toplamı price alanına eşit olmalı; indirim
         # ayrı satır olamayacağından kalem toplamları indirimli tutara ölçeklenir.
+        # Kalem kimliği varyant kimliği; aynı model farklı ek seçenekle iki satır
+        # olabildiğinden tekrar eden kimliğe sıra no eklenir (tek satırlı sepet
+        # eskisi gibi kalır).
+        satirlar = scaled_basket_lines(session)
+        vid_sayisi: dict[str, int] = {}
+        for item, _ in satirlar:
+            v = str(item.get("variant_id"))
+            vid_sayisi[v] = vid_sayisi.get(v, 0) + 1
         basket_items = [
             {
-                "id": str(item.get("variant_id", i)),
+                "id": (str(item.get("variant_id", i)) if vid_sayisi.get(str(item.get("variant_id")), 0) <= 1
+                       else f"{item.get('variant_id')}-{i + 1}"),
                 "name": (f"{item.get('title', 'Ürün')} {item.get('model_display', '')}").strip()[:120],
                 "category1": "Telefon Kılıfı",
                 "itemType": "PHYSICAL",
                 "price": str(line_total),
             }
-            for i, (item, line_total) in enumerate(scaled_basket_lines(session))
+            for i, (item, line_total) in enumerate(satirlar)
         ]
         if session.shipping_amount and Decimal(str(session.shipping_amount)) > 0:
             basket_items.append({

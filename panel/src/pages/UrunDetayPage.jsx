@@ -836,6 +836,33 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
   }, [storeId])
 
   const patchF = (i, p2) => { setFields(f => f.map((x, j) => j === i ? { ...x, ...p2 } : x)); setDirtyF(true) }
+  const [yukleniyor, setYukleniyor] = useState(null)   // "alan-seçenek"
+
+  // Seçenek görseli (karşılaştırma penceresi için) — tema varlığı olarak yüklenir
+  const secenekGorseli = async (i, opt, file) => {
+    if (!file || !storeId) return
+    setYukleniyor(`${i}-${opt}`)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('kind', 'hero')
+      const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
+      setFields(f => f.map((x, j) => j === i
+        ? { ...x, option_images: { ...(x.option_images || {}), [opt]: r.url } } : x))
+      setDirtyF(true)
+    } catch (e) {
+      setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Görsel yüklenemedi' })
+    } finally { setYukleniyor(null) }
+  }
+  const secenekGorseliKaldir = (i, opt) => {
+    setFields(f => f.map((x, j) => {
+      if (j !== i) return x
+      const g = { ...(x.option_images || {}) }
+      delete g[opt]
+      return { ...x, option_images: g }
+    }))
+    setDirtyF(true)
+  }
 
   const save = async () => {
     try {
@@ -849,8 +876,9 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-panel-muted">
-        Müşteriden istenecek ek bilgiler — yazı, fotoğraf ya da renk seçimi.
-        Cevaplar sipariş detayında ve üretim kaleminde görünür.
+        Müşteriden istenecek ek bilgiler — yazı, fotoğraf ya da seçenek (renk, vernik…).
+        Cevaplar sipariş detayında ve üretim kaleminde görünür. Ek ücret girerseniz
+        seçildiğinde fiyata eklenir; tutar ödemede sunucuda hesaplanır.
       </p>
       {presets.length > 0 && (
         <select className="input !py-1.5 text-xs" value=""
@@ -874,7 +902,7 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
               onChange={e => patchF(i, { type: e.target.value })}>
               <option value="text">Yazı</option>
               <option value="image">Fotoğraf</option>
-              <option value="color">Renk seçimi</option>
+              <option value="color">Seçenek</option>
             </select>
             <label className="text-[11px] flex items-center gap-1 whitespace-nowrap">
               <input type="checkbox" checked={!!f.required}
@@ -883,10 +911,51 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
             <button onClick={() => { setFields(fl => fl.filter((_, j) => j !== i)); setDirtyF(true) }}
               className="text-red-300 hover:text-red-300 px-1">×</button>
           </div>
-          {f.type === 'color' && (
+          {f.type === 'color' && (<>
             <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}
               onChange={e => patchF(i, { options: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
-              placeholder="Seçenekler (virgülle): Beyaz, Siyah, Altın" />
+              placeholder="Seçenekler (virgülle): Evet, Hayır  ·  Beyaz, Siyah, Altın" />
+            {(f.options || []).length > 0 && (
+              <div className="space-y-1">
+                {f.options.map(o => (
+                  <div key={o} className="flex items-center gap-1.5 text-[11px] text-panel-muted">
+                    <span className="w-20 truncate text-panel-ink">{o}</span>
+                    <span>+</span>
+                    <input className="input !py-1 !px-1.5 !w-16 text-xs" type="number" min="0" step="0.01"
+                      value={f.option_prices?.[o] ?? ''} placeholder="0"
+                      onChange={e => patchF(i, { option_prices: { ...(f.option_prices || {}), [o]: e.target.value } })} />
+                    <span>TL</span>
+                    {f.option_images?.[o] ? (
+                      <>
+                        <img src={f.option_images[o]} alt={o} className="h-7 w-7 rounded object-cover border border-panel-border ml-1" />
+                        <label className="cursor-pointer underline">değiştir
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={e => secenekGorseli(i, o, e.target.files?.[0])} /></label>
+                        <button type="button" onClick={() => secenekGorseliKaldir(i, o)} className="text-red-300 underline">kaldır</button>
+                      </>
+                    ) : (
+                      <label className="ml-1 cursor-pointer underline">
+                        {yukleniyor === `${i}-${o}` ? 'yükleniyor…' : '+ görsel'}
+                        <input type="file" accept="image/*" className="hidden" disabled={!!yukleniyor}
+                          onChange={e => secenekGorseli(i, o, e.target.files?.[0])} />
+                      </label>
+                    )}
+                  </div>
+                ))}
+                <p className="text-[10px] text-panel-muted">
+                  En az iki seçeneğe görsel eklerseniz ürün sayfasında <b>"Farkı gör"</b> karşılaştırma
+                  penceresi çıkar (ör. mat ve parlak aynı kılıf, aynı açıdan).
+                </p>
+              </div>
+            )}
+          </>)}
+          {(f.type === 'text' || f.type === 'image' || !f.type) && (
+            <label className="flex items-center gap-1.5 text-[11px] text-panel-muted">
+              Doldurulursa ek ücret +
+              <input className="input !py-1 !px-1.5 !w-20 text-xs" type="number" min="0" step="0.01"
+                value={f.price ?? ''} placeholder="0" onChange={e => patchF(i, { price: e.target.value })} />
+              TL (ops.)
+            </label>
           )}
         </div>
       ))}

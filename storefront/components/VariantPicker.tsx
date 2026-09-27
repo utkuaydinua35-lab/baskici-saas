@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+import OptionCompare from "@/components/OptionCompare";
 import type { ProductDetail } from "@/lib/api";
 import { trackAddToCart } from "@/lib/track";
 import { useTexts } from "@/lib/texts";
@@ -65,7 +66,16 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
     [product.variants, modelKey, variation, variations],
   );
 
-  const price = selected ? selected.price : product.price;
+  // Seçilen ek seçeneklerin ücreti — YALNIZ gösterim; ödemede sunucu ürün
+  // tanımından yeniden hesaplar (services/checkout).
+  const ekUcret = fields.reduce((t, f) => {
+    const v = (custom[f.key] || "").trim();
+    if (!v) return t;
+    const p = f.type === "color" ? f.option_prices?.[v] : f.price;
+    return t + (p ? Number(p) : 0);
+  }, 0);
+  const birim = (Number(selected ? selected.price : product.price) + ekUcret).toFixed(2);
+  const price = birim;
   const needsVariation = variations.length > 1 && variation === null;
   const secondVariant = isCouple
     ? product.variants.find((v) => v.id === secondId) ?? null
@@ -100,7 +110,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       title: product.title,
       modelDisplay: selected.model_display,
       variation: selected.variation,
-      price: selected.price,
+      price: birim,
       image: product.images[0]?.url ?? null,
       secondVariantId: secondVariant?.id ?? null,
       secondModelDisplay: secondVariant?.model_display ?? null,
@@ -111,7 +121,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       // (varyant id'si katalogla eşleşmez → dynamic ads çalışmazdı)
       id: product.slug,
       name: `${product.title} — ${selected.model_display}`,
-      price: Number(selected.price),
+      price: Number(birim),
       quantity: qty,
     });
     setAdded(true);
@@ -223,6 +233,11 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
             {f.label}
             {f.required ? <span className="text-red-500"> *</span>
               : <span className="text-zinc-400 font-normal"> (isteğe bağlı)</span>}
+            {f.type !== "color" && f.price && Number(f.price) > 0 && (
+              <span className="ml-1 text-xs font-normal text-zinc-500">
+                +{formatPrice(f.price, product.currency)}
+              </span>
+            )}
           </label>
           {f.type === "text" && (
             <input
@@ -246,9 +261,15 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
                   }`}
                 >
                   {opt}
+                  {f.option_prices?.[opt] && Number(f.option_prices[opt]) > 0 && (
+                    <span className="ml-1 opacity-70">+{formatPrice(f.option_prices[opt], product.currency)}</span>
+                  )}
                 </button>
               ))}
             </div>
+          )}
+          {f.type === "color" && f.option_images && (
+            <OptionCompare label={f.label} images={f.option_images} />
           )}
           {f.type === "image" && (
             custom[f.key] ? (

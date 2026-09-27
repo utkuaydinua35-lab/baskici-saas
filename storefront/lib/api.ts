@@ -63,6 +63,10 @@ export interface CustomField {
   type: "text" | "image" | "color";
   required: boolean;
   options?: string[];
+  // Ek ücret (gösterim için; ödemede sunucu ürün tanımından hesaplar)
+  option_prices?: Record<string, string>;   // seçenek → "50.00"
+  price?: string;                           // yazı/fotoğraf alanı doldurulursa
+  option_images?: Record<string, string>;   // seçenek → görsel ("Farkı gör")
 }
 
 export interface ProductDetail {

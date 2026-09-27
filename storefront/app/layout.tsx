@@ -17,6 +17,7 @@ import PreviewBridge from "@/components/PreviewBridge";
 import CopyGuard from "@/components/CopyGuard";
 import SupportChat from "@/components/SupportChat";
 import CampaignPopup from "@/components/CampaignPopup";
+import ScrollTopButton from "@/components/ScrollTopButton";
 import Presence from "@/components/Presence";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
@@ -127,6 +128,9 @@ export default async function RootLayout({
       lang="tr"
       data-reveal={theme.animations.reveal ? "1" : "0"}
       data-hover-zoom={theme.animations.hover_zoom ? "1" : "0"}
+      // Tema görünümü — globals.css bu özelliklere göre kart/başlık stilini seçer
+      data-card={theme.style.card_style}
+      data-heading={theme.style.heading_style}
       className={`${inter.variable} ${poppins.variable} ${playfair.variable} ${dmSans.variable} h-full antialiased`}
       style={
         {
@@ -134,6 +138,7 @@ export default async function RootLayout({
           "--c-accent": theme.colors.accent,
           "--c-bg": theme.colors.bg,
           "--font-active": fontFamily,
+          "--btn-r": theme.style.button_shape === "pill" ? "999px" : "0.75rem",
         } as React.CSSProperties
       }
     >
@@ -168,7 +173,8 @@ export default async function RootLayout({
             </>
           )}
           {theme.announcement.enabled && (
-            <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url} />
+            <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url}
+              bg={theme.announcement.bg} />
           )}
           <Header
             siteName={store_name}
@@ -177,6 +183,7 @@ export default async function RootLayout({
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
             navLinks={theme.nav_links ?? []}
+            layout={theme.style.header_layout}
           />
           {theme.animations.cart_drawer && (
             <CartDrawer freeShippingOver={payload.settings?.free_shipping_over} />
@@ -220,10 +227,12 @@ export default async function RootLayout({
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}
           {theme.popup?.enabled && !payload.is_preview && (
-            <CampaignPopup baslik={theme.popup.baslik} metin={theme.popup.metin}
+            <CampaignPopup ustBaslik={theme.popup.ust_baslik}
+              baslik={theme.popup.baslik} metin={theme.popup.metin}
               kupon={theme.popup.kupon} buton={theme.popup.buton}
               gorselUrl={theme.popup.gorsel_url} />
           )}
+          {theme.style.scroll_top && <ScrollTopButton />}
           {payload.support?.enabled !== false && (
             <SupportChat faq={payload.support?.faq ?? []}
               magaza={payload.store_name}

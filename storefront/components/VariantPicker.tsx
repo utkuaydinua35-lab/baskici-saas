@@ -310,7 +310,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
         <button
           onClick={add}
           disabled={!canAdd}
-          className="flex-1 rounded-xl text-white font-medium py-3 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
+          className="btn-r flex-1 text-white font-medium py-3 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}
         >
           {added ? "Sepete eklendi ✓" : t.add_to_cart}

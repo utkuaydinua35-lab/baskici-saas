@@ -52,7 +52,10 @@ export default function Header({
   cartDrawer,
   collections = [],
   navLinks = [],
+  layout = "left",
 }: {
+  // left: logo solda, menü yanında | center: logo ortada, menü altında
+  layout?: "left" | "center";
   siteName: string;
   logoUrl?: string | null;
   logoWidth?: number;
@@ -91,13 +94,23 @@ export default function Header({
     (c) => !hasLinkTo(`/koleksiyon/${c.slug}`),
   );
 
+  const center = layout === "center";
+  // Ortalı düzende etkin sayfa siyah hap olarak işaretlenir
+  const aktif = (url?: string) =>
+    !!url && !url.startsWith("http") &&
+    (url === "/" ? pathname === "/" : pathname === url || pathname.startsWith(`${url}/`));
+  const navLinkCls = (url?: string) => center
+    ? `px-3 py-1.5 rounded-full whitespace-nowrap transition ${
+        aktif(url) ? "bg-zinc-900 text-white" : "hover:text-zinc-900"}`
+    : "hover:text-zinc-900 py-2 whitespace-nowrap";
+
   const cartInner = (
     <>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M6 7h12l-1.2 11.1a2 2 0 0 1-2 1.9H9.2a2 2 0 0 1-2-1.9L6 7Z" />
         <path d="M9 7V6a3 3 0 0 1 6 0v1" />
       </svg>
-      <span className="hidden sm:inline">Sepet</span>
+      {!center && <span className="hidden sm:inline">Sepet</span>}
       {count > 0 && (
         <span
           className={`absolute -top-2 -right-3 text-white text-[10px] rounded-full min-w-4 h-4 px-1 flex items-center justify-center transition-transform duration-300 ${
@@ -110,116 +123,150 @@ export default function Header({
     </>
   );
 
-  return (
-    <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-zinc-200">
-      <div className="mx-auto max-w-6xl px-4 min-h-14 py-1.5 flex items-center gap-5">
-        {/* Mobil hamburger */}
-        <button onClick={() => setMobileOpen(true)} aria-label="Menü"
-          className="sm:hidden -ml-1 p-1 text-zinc-700">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
+  const hamburger = (
+    <button onClick={() => setMobileOpen(true)} aria-label="Menü"
+      className="sm:hidden -ml-1 p-1 text-zinc-700">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    </button>
+  );
 
-        <Link href="/" className="font-bold text-lg tracking-tight flex items-center gap-2">
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={siteName}
-              className="h-auto object-contain"
-              style={{ width: logoWidth, maxWidth: "45vw" }} />
+  const logo = (
+    <Link href="/" className={`font-bold tracking-tight flex items-center gap-2 ${
+      center ? "text-xl sm:text-2xl justify-center" : "text-lg"}`}>
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoUrl} alt={siteName}
+          className="h-auto object-contain"
+          style={{ width: logoWidth, maxWidth: center ? "40vw" : "45vw" }} />
+      ) : (
+        siteName
+      )}
+    </Link>
+  );
+
+  // Masaüstü menü — panelden özel menü tanımlıysa o kullanılır.
+  const navItems = (
+    <>
+      {navLinks.length > 0 ? (
+        navLinks.map((l, li) => (
+          l.type === "collections" ? (
+            <CollectionsDropdown key={`cm-${li}`} label={l.label}
+              items={(l.slugs || [])
+                .map((s) => collections.find((c) => c.slug === s))
+                .filter((c): c is NavCollection => !!c)} />
+          ) : l.url?.startsWith("http") ? (
+            // Dış adresler (örn. sipariş takip alt alan adı) yeni sekmede açılır
+            <a key={`${l.label}-${l.url}`} href={l.url}
+              target="_blank" rel="noopener noreferrer"
+              className={navLinkCls(l.url)}>
+              {l.label}
+            </a>
           ) : (
-            siteName
-          )}
-        </Link>
-
-        {/* Desktop nav — panelden özel menü tanımlıysa o kullanılır.
-            flex-wrap + justify-center: sığmayan butonlar etiketi kırmak yerine
-            ORTALANMIŞ ikinci satıra iner (Shopify header davranışı). */}
-        <nav className="hidden sm:flex flex-1 flex-wrap items-center justify-center gap-x-4 gap-y-0 text-sm text-zinc-600 min-w-0">
-          {navLinks.length > 0 ? (
-            navLinks.map((l, li) => (
-              l.type === "collections" ? (
-                <CollectionsDropdown key={`cm-${li}`} label={l.label}
-                  items={(l.slugs || [])
-                    .map((s) => collections.find((c) => c.slug === s))
-                    .filter((c): c is NavCollection => !!c)} />
-              ) : l.url?.startsWith("http") ? (
-                // Dış adresler (örn. sipariş takip alt alan adı) yeni sekmede açılır
-                <a key={`${l.label}-${l.url}`} href={l.url}
-                  target="_blank" rel="noopener noreferrer"
-                  className="hover:text-zinc-900 py-2 whitespace-nowrap">
-                  {l.label}
-                </a>
-              ) : (
-                <Link key={`${l.label}-${l.url}`} href={l.url || "/"}
-                  className="hover:text-zinc-900 py-2 whitespace-nowrap">
-                  {l.label}
+            <Link key={`${l.label}-${l.url}`} href={l.url || "/"}
+              className={navLinkCls(l.url)}>
+              {l.label}
+            </Link>
+          )
+        ))
+      ) : (
+      <Link href="/urunler" className={navLinkCls("/urunler")}>Ürünler</Link>
+      )}
+      {navLinks.length === 0 && collections.length > 0 && (
+        <div className="relative group">
+          <button className="hover:text-zinc-900 py-4 flex items-center gap-1">
+            Koleksiyonlar
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" className="group-hover:rotate-180 transition-transform">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {/* Hover'da kayarak açılan dropdown */}
+          <div className="absolute left-0 top-full pt-1 opacity-0 -translate-y-1 pointer-events-none
+            group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto
+            transition-all duration-200">
+            <div className="w-56 bg-white border border-zinc-200 rounded-2xl shadow-lg py-2">
+              {collections.map((c) => (
+                <Link key={c.slug} href={`/koleksiyon/${c.slug}`}
+                  className="block px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50">
+                  {c.title}
                 </Link>
-              )
-            ))
-          ) : (
-          <Link href="/urunler" className="hover:text-zinc-900 py-2 whitespace-nowrap">Ürünler</Link>
-          )}
-          {navLinks.length === 0 && collections.length > 0 && (
-            <div className="relative group">
-              <button className="hover:text-zinc-900 py-4 flex items-center gap-1">
-                Koleksiyonlar
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2" className="group-hover:rotate-180 transition-transform">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              {/* Hover'da kayarak açılan dropdown */}
-              <div className="absolute left-0 top-full pt-1 opacity-0 -translate-y-1 pointer-events-none
-                group-hover:opacity-100 group-hover:translate-y-0 group-hover:pointer-events-auto
-                transition-all duration-200">
-                <div className="w-56 bg-white border border-zinc-200 rounded-2xl shadow-lg py-2">
-                  {collections.map((c) => (
-                    <Link key={c.slug} href={`/koleksiyon/${c.slug}`}
-                      className="block px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50">
-                      {c.title}
-                    </Link>
-                  ))}
-                  <div className="border-t border-zinc-100 mt-1 pt-1">
-                    <Link href="/urunler"
-                      className="block px-4 py-2 text-xs text-zinc-400 hover:text-zinc-700">
-                      Tüm ürünler →
-                    </Link>
-                  </div>
-                </div>
+              ))}
+              <div className="border-t border-zinc-100 mt-1 pt-1">
+                <Link href="/urunler"
+                  className="block px-4 py-2 text-xs text-zinc-400 hover:text-zinc-700">
+                  Tüm ürünler →
+                </Link>
               </div>
             </div>
-          )}
-        </nav>
-
-        {/* TELEFON: ikonlar 19-20px dokunma alanına sahipti (ölçüldü) —
-            p-2/-m-2 ile alan ~36px'e çıkıyor, GÖRÜNÜM değişmiyor. */}
-        <div className="ml-auto flex items-center gap-4">
-          <SearchBox />
-          <FavHeaderLink />
-          <Link href="/hesap" aria-label="Hesabım"
-            className="p-2 -m-2 sm:p-0 sm:m-0 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <circle cx="12" cy="8" r="3.5" />
-              <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
-            </svg>
-            <span className="hidden sm:inline">Hesap</span>
-          </Link>
-          {cartDrawer ? (
-            <button onClick={() => setDrawerOpen(true)}
-              className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-              aria-label="Sepeti aç">
-              {cartInner}
-            </button>
-          ) : (
-            <Link href="/sepet"
-              className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-              aria-label="Sepet">
-              {cartInner}
-            </Link>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+    </>
+  );
+
+  // TELEFON: ikonlar 19-20px dokunma alanına sahipti (ölçüldü) —
+  // p-2/-m-2 ile alan ~36px'e çıkıyor, GÖRÜNÜM değişmiyor.
+  const hesapVeSepet = (
+    <>
+      <FavHeaderLink />
+      <Link href="/hesap" aria-label="Hesabım"
+        className="p-2 -m-2 sm:p-0 sm:m-0 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-600 hover:text-zinc-900">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+        </svg>
+        {!center && <span className="hidden sm:inline">Hesap</span>}
+      </Link>
+      {cartDrawer ? (
+        <button onClick={() => setDrawerOpen(true)}
+          className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+          aria-label="Sepeti aç">
+          {cartInner}
+        </button>
+      ) : (
+        <Link href="/sepet"
+          className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
+          aria-label="Sepet">
+          {cartInner}
+        </Link>
+      )}
+    </>
+  );
+
+  return (
+    <header className={`sticky top-0 z-40 backdrop-blur border-b border-zinc-200 ${center ? "" : "bg-white/90"}`}
+      style={center ? { background: "color-mix(in srgb, var(--c-bg) 92%, transparent)" } : undefined}>
+      {center ? (
+        <div className="mx-auto max-w-6xl px-4 py-2 sm:pt-5 sm:pb-3">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div className="flex items-center gap-4">
+              {hamburger}
+              <SearchBox ikonOnly />
+            </div>
+            {logo}
+            <div className="flex items-center justify-end gap-4">{hesapVeSepet}</div>
+          </div>
+          <nav className="hidden sm:flex flex-wrap items-center justify-center gap-x-1 gap-y-1 mt-4 text-sm text-zinc-700">
+            {navItems}
+          </nav>
+        </div>
+      ) : (
+        <div className="mx-auto max-w-6xl px-4 min-h-14 py-1.5 flex items-center gap-5">
+          {hamburger}
+          {logo}
+          {/* flex-wrap + justify-center: sığmayan butonlar etiketi kırmak yerine
+              ORTALANMIŞ ikinci satıra iner (Shopify header davranışı). */}
+          <nav className="hidden sm:flex flex-1 flex-wrap items-center justify-center gap-x-4 gap-y-0 text-sm text-zinc-600 min-w-0">
+            {navItems}
+          </nav>
+          <div className="ml-auto flex items-center gap-4">
+            <SearchBox />
+            {hesapVeSepet}
+          </div>
+        </div>
+      )}
 
       {/* Mobil menü — soldan kayar. Portal ile body'ye basılır: header'ın
           sticky z-40 stacking context'i içinde kalsa hero/sepet gibi
@@ -321,7 +368,7 @@ interface Suggestion {
 
 // Canlı arama — ikona tıklayınca header altında tam genişlik kutu açılır,
 // 250ms debounce ile öneri listesi; Enter tüm sonuçlara gider.
-function SearchBox() {
+function SearchBox({ ikonOnly = false }: { ikonOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Suggestion[]>([]);
@@ -371,7 +418,7 @@ function SearchBox() {
           <circle cx="11" cy="11" r="7" />
           <line x1="21" y1="21" x2="16.5" y2="16.5" />
         </svg>
-        <span className="hidden md:inline">Ara</span>
+        {!ikonOnly && <span className="hidden md:inline">Ara</span>}
       </button>
 
       {open && (

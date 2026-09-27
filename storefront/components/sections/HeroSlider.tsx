@@ -13,7 +13,11 @@ export default function HeroSlider({
   radius_pct = 50,
   magaza = "",
   tanitim = null,
+  align = "center",
+  height = "normal",
 }: {
+  align?: "center" | "left";
+  height?: "normal" | "tall";
   magaza?: string;
   tanitim?: string | null;
   slides: HeroSlide[];
@@ -31,6 +35,7 @@ export default function HeroSlider({
   const [index, setIndex] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const count = slides.length;
+  const sol = align === "left";
 
   const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
 
@@ -54,7 +59,7 @@ export default function HeroSlider({
           <p className="mt-3 text-zinc-600 max-w-xl mx-auto">{tanitim}</p>
         )}
         <Link href="/urunler"
-          className="mt-6 inline-block rounded-xl text-white px-6 py-3 font-medium hover:opacity-90 transition"
+          className="btn-r mt-6 inline-block text-white px-6 py-3 font-medium hover:opacity-90 transition"
           style={{ background: "var(--c-primary)" }}>
           Ürünleri Keşfet
         </Link>
@@ -63,7 +68,10 @@ export default function HeroSlider({
   }
 
   return (
-    <section className={`relative overflow-hidden mx-auto max-w-6xl mt-4 ${roundCls}`}
+    // Yüksek vitrinde kenar boşluğu: yuvarlak köşeli hero ekran kenarına
+    // yapışmasın (normal hero'da eski görünüm korunur)
+    <section className={`relative overflow-hidden max-w-6xl mt-4 ${
+      height === "tall" ? "mx-3 sm:mx-4 xl:mx-auto" : "mx-auto"} ${roundCls}`}
       style={{ "--hero-r": `${radiusPx}px` } as React.CSSProperties}>
       {/* Slayt şeridi — yatay kaydırma animasyonu */}
       <div
@@ -76,36 +84,57 @@ export default function HeroSlider({
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={slide.image} alt=""
+                  fetchPriority={i === 0 ? "high" : undefined}
+                  loading={i === 0 ? undefined : "lazy"} decoding="async"
                   className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40" />
+                {/* Sola hizalı yazıda soldan koyulaşan geçiş: metin okunur,
+                    görselin sağı aydınlık kalır */}
+                <div className="absolute inset-0"
+                  style={{ background: sol
+                    ? "linear-gradient(90deg, rgba(0,0,0,.5) 0%, rgba(0,0,0,.36) 35%, rgba(0,0,0,.14) 100%)"
+                    : "rgba(0,0,0,.4)" }} />
               </>
             ) : (
               <div className="absolute inset-0"
                 style={{ background: "linear-gradient(120deg, var(--c-primary), var(--c-accent))" }} />
             )}
-            <div className="relative px-6 py-20 sm:py-28 text-center text-white">
-              {slide.title && (
-                <h2 className="text-3xl sm:text-5xl font-bold tracking-tight">{slide.title}</h2>
-              )}
-              {slide.subtitle && (
-                <p className="mt-3 text-white/85 max-w-xl mx-auto">{slide.subtitle}</p>
-              )}
-              {(slide.cta_text || slide.cta2_text) && (
-                <div className="mt-7 flex justify-center gap-3 flex-wrap">
-                  {slide.cta_text && (
-                    <Link href={slide.cta_url || "/urunler"}
-                      className="inline-block rounded-xl bg-white text-zinc-900 px-6 py-3 font-medium hover:scale-[1.03] transition">
-                      {slide.cta_text}
-                    </Link>
-                  )}
-                  {slide.cta2_text && (
-                    <Link href={slide.cta2_url || "/urunler"}
-                      className="inline-block rounded-xl border-2 border-white/80 text-white px-6 py-3 font-medium hover:bg-white/10 transition">
-                      {slide.cta2_text}
-                    </Link>
-                  )}
-                </div>
-              )}
+            <div className={`relative text-white flex items-center ${
+              height === "tall" ? "min-h-[460px] sm:min-h-[570px]" : ""} ${
+              sol ? "px-6 sm:px-12 py-16 text-left" : "px-6 py-20 sm:py-28 text-center justify-center"}`}>
+              <div className={sol ? "max-w-xl" : "w-full"}>
+                {slide.eyebrow && (
+                  <p className="text-[11px] sm:text-xs font-extrabold uppercase tracking-[0.18em] text-white/90">
+                    {slide.eyebrow}
+                  </p>
+                )}
+                {slide.title && (
+                  <h2 className={`mt-2 font-extrabold tracking-tight ${
+                    sol ? "text-4xl sm:text-5xl leading-[0.95] tracking-[-0.05em]" : "text-3xl sm:text-5xl"}`}>
+                    {slide.title}
+                  </h2>
+                )}
+                {slide.subtitle && (
+                  <p className={`mt-4 text-white/85 sm:text-lg max-w-xl ${sol ? "" : "mx-auto"}`}>
+                    {slide.subtitle}
+                  </p>
+                )}
+                {(slide.cta_text || slide.cta2_text) && (
+                  <div className={`mt-7 flex gap-3 flex-wrap ${sol ? "" : "justify-center"}`}>
+                    {slide.cta_text && (
+                      <Link href={slide.cta_url || "/urunler"}
+                        className="btn-r inline-block bg-white text-zinc-900 px-7 py-3 font-semibold hover:scale-[1.03] transition">
+                        {slide.cta_text}
+                      </Link>
+                    )}
+                    {slide.cta2_text && (
+                      <Link href={slide.cta2_url || "/urunler"}
+                        className="btn-r inline-block border border-white text-white px-7 py-3 font-semibold backdrop-blur-sm bg-white/5 hover:bg-white/15 transition">
+                        {slide.cta2_text}
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}

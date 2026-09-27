@@ -6,7 +6,7 @@ import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import {
   FONTS, SECTION_TYPES, SECTION_DEFAULTS,
-  SectionSettings, Section, ColorField, Toggle, AssetField, UrlPicker,
+  SectionSettings, Section, ColorField, Toggle, AssetField, UrlPicker, Choice,
 } from '../components/ThemeEditorParts'
 
 // Tam ekran tema editörü (Shopify tarzı) — sol ayar paneli + sağ canlı önizleme.
@@ -521,6 +521,24 @@ export default function TemaEditorPage() {
                 </select>
               </Section>
 
+              <Section title="Görünüm" icon="🧩">
+                <Choice label="Üst menü" value={theme.style?.header_layout || 'left'}
+                  options={[['left', 'Logo solda'], ['center', 'Logo ortada, menü altta']]}
+                  onChange={v => set('style.header_layout', v)} />
+                <Choice label="Butonlar" value={theme.style?.button_shape || 'rounded'}
+                  options={[['rounded', 'Yuvarlatılmış köşe'], ['pill', 'Tam yuvarlak']]}
+                  onChange={v => set('style.button_shape', v)} />
+                <Choice label="Ürün kartı" value={theme.style?.card_style || 'boxed'}
+                  options={[['boxed', 'Çerçeveli'], ['minimal', 'Çerçevesiz, ortalı']]}
+                  onChange={v => set('style.card_style', v)} />
+                <Choice label="Bölüm başlıkları" value={theme.style?.heading_style || 'compact'}
+                  options={[['compact', 'Küçük, solda'], ['showcase', 'Büyük, ortalı']]}
+                  onChange={v => set('style.heading_style', v)} />
+                <Toggle checked={!!theme.style?.scroll_top}
+                  onChange={v => set('style.scroll_top', v)}
+                  label='Sol altta "yukarı çık" düğmesi' />
+              </Section>
+
               <Section title="Logo ve Favicon" icon="🖼️">
                 <AssetField label="Logo" current={theme.logo_url}
                   onUpload={f => uploadAsset('logo', f, url => set('logo_url', url))}
@@ -577,6 +595,16 @@ export default function TemaEditorPage() {
                     <input className="input" value={theme.announcement.url}
                       onChange={e => set('announcement.url', e.target.value)}
                       placeholder="Tıklanınca gidilecek adres (ops.)" />
+                    <div className="flex items-end gap-2">
+                      <ColorField label="Şerit rengi" value={theme.announcement.bg || theme.colors.primary}
+                        onChange={v => set('announcement.bg', v)} />
+                      {theme.announcement.bg && (
+                        <button onClick={() => set('announcement.bg', '')}
+                          className="text-xs text-panel-muted hover:text-panel-ink pb-2">
+                          Ana renge dön
+                        </button>
+                      )}
+                    </div>
                   </>
                 )}
               </Section>
@@ -591,9 +619,12 @@ export default function TemaEditorPage() {
                       Ziyaretçi siteyi açınca bir kez belirir; kapatınca o oturumda
                       tekrar çıkmaz. <b>Başlık boşsa hiç gösterilmez.</b>
                     </p>
-                    <input className="input" value={theme.popup.baslik || ''} maxLength={60}
+                    <input className="input" value={theme.popup.ust_baslik || ''} maxLength={40}
+                      onChange={e => set('popup.ust_baslik', e.target.value)}
+                      placeholder="Üst etiket (ops.) — örn. ✨ KAMPANYA ✨" />
+                    <textarea className="input" rows={2} value={theme.popup.baslik || ''} maxLength={80}
                       onChange={e => set('popup.baslik', e.target.value)}
-                      placeholder="Başlık — örn. 3 AL 2 ÖDE" />
+                      placeholder={'Başlık — örn. 3 AL 2 ÖDE\n(ikinci satır için Enter)'} />
                     <input className="input" value={theme.popup.metin || ''} maxLength={140}
                       onChange={e => set('popup.metin', e.target.value)}
                       placeholder="Açıklama — örn. 700 TL üzeri ücretsiz kargo" />
@@ -603,9 +634,10 @@ export default function TemaEditorPage() {
                     <input className="input" value={theme.popup.buton || ''} maxLength={40}
                       onChange={e => set('popup.buton', e.target.value)}
                       placeholder="Buton yazısı — örn. Alışverişe Başla" />
-                    <input className="input" value={theme.popup.gorsel_url || ''} maxLength={500}
-                      onChange={e => set('popup.gorsel_url', e.target.value)}
-                      placeholder="Üst görsel adresi (ops.)" />
+                    <AssetField label="Görsel (ops.) — masaüstünde sağda, mobilde üstte"
+                      current={theme.popup.gorsel_url || null}
+                      onUpload={f => uploadAsset('hero', f, url => set('popup.gorsel_url', url))}
+                      onClear={() => set('popup.gorsel_url', '')} />
                   </>
                 )}
               </Section>

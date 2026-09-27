@@ -8,6 +8,7 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
 export interface HeroSlide {
   image: string | null;
+  eyebrow?: string;
   title: string;
   subtitle: string;
   cta_text: string;
@@ -46,7 +47,24 @@ export interface ThemeSection {
     ends_at?: string;
     radius_scope?: "both" | "mobile" | "desktop" | "none";
     radius_pct?: number;
+    // Başlık üçlüsü (üst etiket / başlık / alt başlık)
+    eyebrow?: string;
+    // Düzen seçenekleri — değerler backend'de kısıtlanır (_SECTION_ENUMS)
+    layout?: "grid" | "showcase" | "carousel";
+    align?: "center" | "left";
+    height?: "normal" | "tall";
+    aspect?: "square" | "story";
+    mode?: "scroll" | "carousel" | "marquee";
   };
+}
+
+// Tema geneli görünüm (backend _STYLE_ENUMS)
+export interface ThemeStyle {
+  header_layout: "left" | "center";
+  button_shape: "rounded" | "pill";
+  card_style: "boxed" | "minimal";
+  heading_style: "compact" | "showcase";
+  scroll_top: boolean;
 }
 
 export interface Theme {
@@ -56,8 +74,9 @@ export interface Theme {
   logo_url: string | null;
   logo_width?: number;
   favicon_url: string | null;
-  announcement: { enabled: boolean; text: string; url: string };
-  popup: { enabled: boolean; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
+  announcement: { enabled: boolean; text: string; url: string; bg?: string };
+  style: ThemeStyle;
+  popup: { enabled: boolean; ust_baslik?: string; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   texts?: Record<string, string>;
@@ -110,8 +129,10 @@ const DEFAULT_PAYLOAD: ThemePayload = {
     font: "inter",
     logo_url: null,
     favicon_url: null,
-    announcement: { enabled: false, text: "", url: "" },
-    popup: { enabled: false, baslik: "", metin: "", kupon: "", buton: "Alışverişe Başla", gorsel_url: "" },
+    announcement: { enabled: false, text: "", url: "", bg: "" },
+    style: { header_layout: "left", button_shape: "rounded", card_style: "boxed",
+      heading_style: "compact", scroll_top: false },
+    popup: { enabled: false, ust_baslik: "", baslik: "", metin: "", kupon: "", buton: "Alışverişe Başla", gorsel_url: "" },
     sections: [
       { id: "d-hero", type: "hero_slider", settings: { slides: [], autoplay_sec: 5 } },
       { id: "d-kol", type: "featured_collections", settings: { title: "Koleksiyonlar", slugs: [] } },
@@ -158,6 +179,7 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     payload.theme.colors = { ...DEFAULT_PAYLOAD.theme.colors, ...payload.theme.colors };
     payload.theme.announcement = { ...DEFAULT_PAYLOAD.theme.announcement, ...payload.theme.announcement };
     payload.theme.popup = { ...DEFAULT_PAYLOAD.theme.popup, ...(payload.theme.popup || {}) };
+    payload.theme.style = { ...DEFAULT_PAYLOAD.theme.style, ...(payload.theme.style || {}) };
     payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
     // Eski sunucu/önbellek isletme göndermiyorsa sayfa çökmesin
     payload.isletme = { ...DEFAULT_PAYLOAD.isletme, ...(payload.isletme || {}) };

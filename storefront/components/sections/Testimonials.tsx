@@ -1,20 +1,24 @@
 import Reveal from "@/components/Reveal";
+import SectionHeading from "@/components/SectionHeading";
 
 // Müşteri yorumları vitrini (ShinePro results) — anasayfa sosyal kanıt.
 export default function Testimonials({
+  eyebrow,
   title,
+  subtitle,
   items = [],
 }: {
+  eyebrow?: string;
   title?: string;
+  subtitle?: string;
   items?: { author: string; text: string; rating: number }[];
 }) {
   const valid = items.filter((i) => i.text);
   if (valid.length === 0) return null;
   return (
     <section className="mx-auto max-w-6xl px-4 py-8">
-      <h2 className="text-lg font-semibold text-center mb-5">
-        {title || "Müşterilerimiz Ne Diyor?"}
-      </h2>
+      <SectionHeading eyebrow={eyebrow} title={title || "Müşterilerimiz Ne Diyor?"}
+        subtitle={subtitle} center />
       <div className={`grid gap-4 sm:grid-cols-2 ${valid.length >= 3 ? "lg:grid-cols-3" : ""}`}>
         {valid.map((t, i) => (
           <Reveal key={i} delay={(i % 3) * 80}>

@@ -16,6 +16,7 @@ v2 yazılır. Vitrin daima tam (defaults ile birleşik) tema alır.
 from __future__ import annotations
 
 import copy
+import re
 import uuid
 
 MAX_SECTIONS = 12
@@ -28,10 +29,21 @@ SECTION_DEFAULTS: dict[str, dict] = {
         # Çerçeve köşe ovalliği: both|mobile|desktop|none + %0-100
         "radius_scope": "both",
         "radius_pct": 50,
+        # Metin hizası: center | left (sol hizada soldan koyulaşan geçiş)
+        "align": "center",
+        # Yükseklik: normal | tall (tam ekrana yakın vitrin)
+        "height": "normal",
     },
-    "featured_collections": {"title": "Koleksiyonlar", "slugs": []},
-    "products_grid": {"title": "Öne Çıkanlar", "collection": None, "limit": 8},
-    "featured_products": {"title": "Öne Çıkan Ürünler", "slugs": []},
+    # Bölüm başlığı üçlüsü (eyebrow/title/subtitle) — "SENİN İÇİN SEÇTİK /
+    # Çok Satanlar / En sevilen tasarımlar" kalıbı. Boş alan gösterilmez.
+    # layout: grid (4'lü küçük kart) | showcase (2'li büyük, numaralı, açıklamalı)
+    "featured_collections": {"eyebrow": "", "title": "Koleksiyonlar", "subtitle": "",
+                             "slugs": [], "layout": "grid", "limit": 4},
+    # layout: grid | carousel (oklu yatay şerit)
+    "products_grid": {"eyebrow": "", "title": "Öne Çıkanlar", "subtitle": "",
+                      "collection": None, "limit": 8, "layout": "grid"},
+    "featured_products": {"eyebrow": "", "title": "Öne Çıkan Ürünler", "subtitle": "",
+                          "slugs": [], "layout": "grid"},
     "rich_text": {"title": "", "body": ""},
     "banner": {"image": None, "url": "", "radius_scope": "both", "radius_pct": 50},
     # Görsel + metin (Shopify "Image with text")
@@ -48,9 +60,13 @@ SECTION_DEFAULTS: dict[str, dict] = {
     "comparison": {"title": "Neden Biz?", "us_label": "Biz", "them_label": "Diğerleri",
                    "rows": []},  # [{feature, us: bool, them: bool}] max 8
     # Müşteri yorumları vitrini (ShinePro results/testimonials)
-    "testimonials": {"title": "Müşterilerimiz Ne Diyor?", "items": []},  # [{author, text, rating}]
+    "testimonials": {"eyebrow": "", "title": "Müşterilerimiz Ne Diyor?", "subtitle": "",
+                     "items": []},  # [{author, text, rating}]
     # Görsel galerisi (ShinePro image-slider "Sizden Gelenler")
-    "gallery": {"title": "Sizden Gelenler", "images": []},  # [url] max 8
+    # aspect: square | story (9:16 hikâye kartı)
+    # mode: scroll (elle kaydır) | carousel (oklu + otomatik) | marquee (sürekli akan)
+    "gallery": {"eyebrow": "", "title": "Sizden Gelenler", "subtitle": "",
+                "images": [], "aspect": "square", "mode": "scroll"},  # [url] max 12
     # İletişim formu (ShinePro contact-form) — mağaza e-postasına iletir
     "contact": {"title": "İletişim", "subtitle": "Soru ve önerileriniz için bize yazın."},
     # Kampanya geri sayımı — süre dolunca bölüm kendini gizler
@@ -60,8 +76,32 @@ SECTION_DEFAULTS: dict[str, dict] = {
 
 MAX_FAQ_ITEMS = 12
 MAX_LIST_ITEMS = 8
+MAX_GALLERY_IMAGES = 12
 
-_SLIDE_KEYS = {"image", "title", "subtitle", "cta_text", "cta_url", "cta2_text", "cta2_url"}
+# Değeri sabit bir kümeye kısıtlanan ayarlar: (bölüm tipi, anahtar) → izinliler.
+# İlki varsayılandır. Panel/elle düzenlenmiş config'ten gelen tanımsız değer
+# vitrinde beklenmedik sınıf üretmesin diye varsayılana düşer.
+_SECTION_ENUMS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("hero_slider", "align"): ("center", "left"),
+    ("hero_slider", "height"): ("normal", "tall"),
+    ("featured_collections", "layout"): ("grid", "showcase"),
+    ("products_grid", "layout"): ("grid", "carousel"),
+    ("featured_products", "layout"): ("grid", "carousel"),
+    ("gallery", "aspect"): ("square", "story"),
+    ("gallery", "mode"): ("scroll", "carousel", "marquee"),
+}
+# Başlık üçlüsü olan bölümlerde metin alanı uzunluk sınırları
+_HEADING_LIMITS = {"eyebrow": 60, "title": 100, "subtitle": 200}
+
+# Tema geneli görünüm seçenekleri (style.*) — ilki varsayılan
+_STYLE_ENUMS: dict[str, tuple[str, ...]] = {
+    "header_layout": ("left", "center"),     # logo solda | logo ortada, menü altında
+    "button_shape": ("rounded", "pill"),     # yuvarlatılmış köşe | tam yuvarlak
+    "card_style": ("boxed", "minimal"),      # çerçeveli kart | çerçevesiz, ortalı yazı
+    "heading_style": ("compact", "showcase"),  # küçük sol başlık | büyük ortalı başlık
+}
+
+_SLIDE_KEYS = {"image", "eyebrow", "title", "subtitle", "cta_text", "cta_url", "cta2_text", "cta2_url"}
 
 DEFAULT_THEME: dict = {
     "version": 2,
@@ -75,11 +115,18 @@ DEFAULT_THEME: dict = {
     "logo_url": None,
     "logo_width": 120,   # px — panelden ayarlanır (60-320)
     "favicon_url": None,
-    "announcement": {"enabled": False, "text": "", "url": ""},
+    # bg: şerit rengi (#rrggbb); boşsa temanın ana rengi
+    "announcement": {"enabled": False, "text": "", "url": "", "bg": ""},
+    # Tema geneli görünüm — değerler _STYLE_ENUMS'ta; scroll_top: sağ altta
+    # "yukarı çık" düğmesi
+    "style": {"header_layout": "left", "button_shape": "rounded",
+              "card_style": "boxed", "heading_style": "compact", "scroll_top": False},
     # Açılış kampanya pop-up'ı — sayfa açılınca bir kez görünür (oturumda
     # tekrar çıkmaz). Marka-nötr: her mağaza kendi metnini/kupon kodunu yazar.
     # baslik/metin boşsa pop-up HİÇ gösterilmez (kapalı gibi davranır).
-    "popup": {"enabled": False, "baslik": "", "metin": "", "kupon": "",
+    # ust_baslik: başlığın üstündeki küçük etiket (örn. "✨ KAMPANYA ✨");
+    # baslik'ta satır sonu korunur ("3 AL 2 ÖDE\n5 AL 3 ÖDE").
+    "popup": {"enabled": False, "ust_baslik": "", "baslik": "", "metin": "", "kupon": "",
               "buton": "Alışverişe Başla", "gorsel_url": ""},
     "sections": [
         {"id": "varsayilan-hero", "type": "hero_slider",
@@ -210,54 +257,51 @@ THEME_PRESETS: dict[str, dict] = {
             ],
         },
     },
-    # ── Manzara ── landscapecase.com tarzından uyarlanmış marka-NÖTR tema.
-    # Mor vurgu + kırık beyaz + Poppins + tam yuvarlak butonlar. Açılış
-    # kampanya pop-up'ı açık gelir ama metni BOŞ — mağaza kendi kampanyasını
-    # yazınca görünür (boş pop-up hiç çıkmaz). Görsel alanları (hero, galeri)
-    # boş; mağaza kendi görsellerini ekler. Marka adı hiçbir yere gömülü
-    # değil: başlıklar mağaza adından bağımsız, genel ifadeler.
+    # ── Manzara ── landscapecase.com düzeninden uyarlanmış marka-NÖTR tema.
+    # Bölüm sırası onlarınkiyle aynı: sol hizalı büyük hero → hikâye kartı
+    # şeridi → numaralı büyük koleksiyon kartları → tam genişlik banner →
+    # sürekli akan "Sizden Gelenler" → oklu "Çok Satanlar" şeridi.
+    # Görsel alanları BOŞ gelir (boş bölüm vitrinde görünmez); mağaza kendi
+    # görsellerini ekler. Açılış pop-up'ı açık ama başlığı boş → mağaza kendi
+    # kampanyasını yazana dek çıkmaz. Hiçbir metinde marka adı yok.
     "manzara": {
         "label": "Manzara",
-        "description": "Mor vurgu, Poppins yazı tipi, tam yuvarlak butonlar; "
-                       "açılış kampanya pop-up'ı, kayan hero ve aşağı kaydıkça "
-                       "beliren bölümler. Görselleri siz eklersiniz.",
+        "description": "Ortada logo, tam yuvarlak butonlar, büyük ortalı başlıklar; "
+                       "açılış kampanya pop-up'ı, hikâye kartı şeridi, sürekli akan "
+                       "galeri ve oklu ürün şeridi. Görselleri siz eklersiniz.",
         "theme": {
-            "colors": {"primary": "#2a2340", "accent": "#6f4c87", "bg": "#f8f9fd"},
+            "colors": {"primary": "#111111", "accent": "#6f4c87", "bg": "#f8f9fd"},
             "font": "poppins",
-            "announcement": {"enabled": True,
-                             "text": "✨ 700 TL üzeri ücretsiz kargo ✨",
-                             "url": "/urunler"},
-            # Açılış pop-up'ı: AÇIK ama metin boş → mağaza doldurana dek çıkmaz.
-            "popup": {"enabled": True, "baslik": "", "metin": "",
-                      "kupon": "", "buton": "Alışverişe Başla", "gorsel_url": ""},
+            "announcement": {"enabled": False, "text": "", "url": "", "bg": ""},
+            "style": {"header_layout": "center", "button_shape": "pill",
+                      "card_style": "minimal", "heading_style": "showcase",
+                      "scroll_top": True},
+            "popup": {"enabled": True, "ust_baslik": "✨ KAMPANYA ✨", "baslik": "",
+                      "metin": "", "kupon": "", "buton": "Alışverişe Devam Et",
+                      "gorsel_url": ""},
             "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
             "sections": [
                 {"id": "mz-hero", "type": "hero_slider",
-                 "settings": {"slides": [], "autoplay_sec": 5,
-                              "radius_scope": "both", "radius_pct": 30}},
-                # "Sizden gelenler" — Instagram story tarzı görsel galerisi
-                {"id": "mz-galeri", "type": "gallery",
-                 "settings": {"title": "Sizden Gelenler ✨", "images": []}},
+                 "settings": {"slides": [], "autoplay_sec": 5, "align": "left",
+                              "height": "tall", "radius_scope": "both", "radius_pct": 67}},
+                {"id": "mz-hikaye", "type": "gallery",
+                 "settings": {"eyebrow": "Gerçek Deneyimler", "title": "Sizden Gelenler ✨",
+                              "subtitle": "Müşterilerimizin paylaşımları.",
+                              "images": [], "aspect": "story", "mode": "carousel"}},
                 {"id": "mz-kolek", "type": "featured_collections",
-                 "settings": {"title": "Koleksiyonlar", "slugs": []}},
+                 "settings": {"eyebrow": "Tarzını Seç", "title": "Koleksiyonlar",
+                              "subtitle": "Tarzına en yakın seriyi seç.",
+                              "slugs": [], "layout": "showcase", "limit": 6}},
+                {"id": "mz-banner", "type": "banner",
+                 "settings": {"image": None, "url": "", "radius_scope": "both", "radius_pct": 50}},
+                {"id": "mz-akan", "type": "gallery",
+                 "settings": {"eyebrow": "Gerçek Deneyimler", "title": "Sizin Karelerinizden",
+                              "subtitle": "Sizden gelen fotoğraf paylaşımları.",
+                              "images": [], "aspect": "story", "mode": "marquee"}},
                 {"id": "mz-cok-satan", "type": "products_grid",
-                 "settings": {"title": "Çok Satanlar", "collection": None, "limit": 8}},
-                # Avantaj şeridi — ürüne özgü/sayısal iddia YOK (marka-nötr)
-                {"id": "mz-ikonlar", "type": "icon_bar",
-                 "settings": {"items": [
-                     {"icon": "🚚", "title": "Hızlı Kargo", "text": "Siparişiniz özenle hazırlanır"},
-                     {"icon": "🔒", "title": "Güvenli Ödeme", "text": "256-bit SSL ile korunur"},
-                     {"icon": "💬", "title": "Destek", "text": "Sorularınız için yanınızdayız"},
-                     {"icon": "↩️", "title": "Kolay İade", "text": "Koşullar iade sayfamızda"},
-                 ]}},
-                {"id": "mz-yorumlar", "type": "testimonials",
-                 "settings": {"title": "Müşterilerimiz Ne Diyor?", "items": []}},
-                {"id": "mz-bulten", "type": "newsletter",
-                 "settings": {"title": "Kampanyalardan haberdar olun",
-                              "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."}},
-                {"id": "mz-iletisim", "type": "contact",
-                 "settings": {"title": "İletişim",
-                              "subtitle": "Soru ve önerileriniz için bize yazın."}},
+                 "settings": {"eyebrow": "Senin İçin Seçtik", "title": "Çok Satanlar",
+                              "subtitle": "En sevilen tasarımları keşfet.",
+                              "collection": None, "limit": 12, "layout": "carousel"}},
             ],
         },
     },
@@ -327,6 +371,12 @@ def _normalize_sections(sections: list) -> list:
         for k in defaults:
             if k in raw:
                 settings[k] = raw[k]
+        for (etype, key), allowed in _SECTION_ENUMS.items():
+            if etype == stype and settings.get(key) not in allowed:
+                settings[key] = allowed[0]
+        if "eyebrow" in defaults:   # başlık üçlüsü olan bölümler
+            for key, limit in _HEADING_LIMITS.items():
+                settings[key] = str(settings.get(key) or "")[:limit]
         if stype == "hero_slider":
             settings["slides"] = [
                 {k: (s.get(k) if isinstance(s, dict) else None) for k in _SLIDE_KEYS}
@@ -338,6 +388,11 @@ def _normalize_sections(sections: list) -> list:
                 settings["autoplay_sec"] = 5
         elif stype in ("featured_collections", "featured_products"):
             settings["slugs"] = [str(s)[:200] for s in (settings.get("slugs") or [])[:12]]
+            if stype == "featured_collections":
+                try:
+                    settings["limit"] = min(12, max(1, int(settings.get("limit") or 4)))
+                except (TypeError, ValueError):
+                    settings["limit"] = 4
         elif stype == "products_grid":
             try:
                 settings["limit"] = min(24, max(1, int(settings.get("limit") or 8)))
@@ -386,7 +441,7 @@ def _normalize_sections(sections: list) -> list:
             settings["items"] = cleaned_items
         elif stype == "gallery":
             settings["images"] = [
-                str(u)[:500] for u in (settings.get("images") or [])[:MAX_LIST_ITEMS] if u
+                str(u)[:500] for u in (settings.get("images") or [])[:MAX_GALLERY_IMAGES] if u
             ]
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
@@ -412,6 +467,20 @@ def resolve_theme(store_config: dict | None) -> dict:
         theme["font"] = DEFAULT_THEME["font"]
     # _deep_merge listeleri override eder ama raw'da sections yoksa defaults kalır
     theme["sections"] = _normalize_sections(theme.get("sections"))
+    style = theme.get("style") if isinstance(theme.get("style"), dict) else {}
+    for key, allowed in _STYLE_ENUMS.items():
+        if style.get(key) not in allowed:
+            style[key] = allowed[0]
+    style["scroll_top"] = bool(style.get("scroll_top"))
+    theme["style"] = style
+    ann = theme.get("announcement") or {}
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(ann.get("bg") or "")):
+        ann["bg"] = ""
+    popup = theme.get("popup") or {}
+    for key, limit in (("ust_baslik", 40), ("baslik", 80), ("metin", 140),
+                       ("kupon", 40), ("buton", 40), ("gorsel_url", 500)):
+        popup[key] = str(popup.get(key) or "")[:limit]
+    popup["enabled"] = bool(popup.get("enabled"))
     theme["version"] = 2
     return theme
 
@@ -419,7 +488,7 @@ def resolve_theme(store_config: dict | None) -> dict:
 def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
-    for key in ("colors", "announcement", "popup", "animations", "footer", "whatsapp",
+    for key in ("colors", "announcement", "popup", "style", "animations", "footer", "whatsapp",
                 "trust_badges", "cart_messages", "thankyou", "texts"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]

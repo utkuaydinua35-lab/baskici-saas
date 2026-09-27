@@ -291,13 +291,13 @@ function CartInner({
           </p>
         )}
         {belowMin ? (
-          <span className="mt-4 block text-center rounded-xl bg-zinc-300 text-zinc-500 font-medium py-3 cursor-not-allowed">
+          <span className="btn-r mt-4 block text-center bg-zinc-300 text-zinc-500 font-medium py-3 cursor-not-allowed">
             Ödemeye Geç
           </span>
         ) : (
           <Link
             href="/odeme"
-            className="mt-4 block text-center rounded-xl bg-zinc-900 text-white font-medium py-3 hover:bg-zinc-700 transition"
+            className="btn-r mt-4 block text-center bg-zinc-900 text-white font-medium py-3 hover:bg-zinc-700 transition"
           >
             Ödemeye Geç
           </Link>

@@ -27,20 +27,25 @@ export default async function HomePage() {
               <HeroSlider key={section.id} slides={s.slides ?? []}
                 autoplaySec={s.autoplay_sec ?? 5}
                 radius_scope={s.radius_scope} radius_pct={s.radius_pct}
+                align={s.align} height={s.height}
                 magaza={store_name} tanitim={isletme.tanitim} />
             );
           case "featured_collections":
             return (
-              <FeaturedCollections key={section.id} title={s.title} slugs={s.slugs ?? []} />
+              <FeaturedCollections key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} slugs={s.slugs ?? []}
+                layout={s.layout === "showcase" ? "showcase" : "grid"} limit={s.limit} />
             );
           case "products_grid":
             return (
-              <ProductsGrid key={section.id} title={s.title}
-                collection={s.collection} limit={s.limit} />
+              <ProductsGrid key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} collection={s.collection} limit={s.limit}
+                layout={s.layout} />
             );
           case "featured_products":
             return (
-              <FeaturedProducts key={section.id} title={s.title} slugs={s.slugs ?? []} />
+              <FeaturedProducts key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} slugs={s.slugs ?? []} layout={s.layout} />
             );
           case "rich_text":
             return <RichText key={section.id} title={s.title} body={s.body} />;
@@ -72,11 +77,15 @@ export default async function HomePage() {
             );
           case "testimonials":
             return (
-              <Testimonials key={section.id} title={s.title}
+              <Testimonials key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle}
                 items={(s.items ?? []) as { author: string; text: string; rating: number }[]} />
             );
           case "gallery":
-            return <Gallery key={section.id} title={s.title} images={s.images ?? []} />;
+            return (
+              <Gallery key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} images={s.images ?? []} aspect={s.aspect} mode={s.mode} />
+            );
           case "contact":
             return <ContactSection key={section.id} title={s.title} subtitle={s.subtitle} />;
           case "countdown":

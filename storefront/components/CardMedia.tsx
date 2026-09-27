@@ -33,7 +33,7 @@ export default function CardMedia({
 
   return (
     <div
-      className="aspect-square bg-zinc-100 overflow-hidden hover-zoom relative"
+      className="kart-medya aspect-square bg-zinc-100 overflow-hidden hover-zoom relative"
       onMouseEnter={enter}
       onMouseLeave={leave}
     >

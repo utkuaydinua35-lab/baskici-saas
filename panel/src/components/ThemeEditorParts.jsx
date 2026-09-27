@@ -29,10 +29,10 @@ export const SECTION_TYPES = {
 }
 
 export const SECTION_DEFAULTS = {
-  hero_slider: { slides: [], autoplay_sec: 5, radius_scope: 'both', radius_pct: 50 },
-  featured_collections: { title: 'Koleksiyonlar', slugs: [] },
-  products_grid: { title: 'Öne Çıkanlar', collection: null, limit: 8 },
-  featured_products: { title: 'Öne Çıkan Ürünler', slugs: [] },
+  hero_slider: { slides: [], autoplay_sec: 5, radius_scope: 'both', radius_pct: 50, align: 'center', height: 'normal' },
+  featured_collections: { eyebrow: '', title: 'Koleksiyonlar', subtitle: '', slugs: [], layout: 'grid', limit: 4 },
+  products_grid: { eyebrow: '', title: 'Öne Çıkanlar', subtitle: '', collection: null, limit: 8, layout: 'grid' },
+  featured_products: { eyebrow: '', title: 'Öne Çıkan Ürünler', subtitle: '', slugs: [], layout: 'grid' },
   rich_text: { title: '', body: '' },
   banner: { image: null, url: '', radius_scope: 'both', radius_pct: 50 },
   image_with_text: { image: null, title: '', body: '', cta_text: '', cta_url: '', image_side: 'left' },
@@ -41,8 +41,8 @@ export const SECTION_DEFAULTS = {
   icon_bar: { items: [{ icon: '🚚', title: 'Hızlı Kargo', text: '1-3 iş gününde kargoda' }] },
   comparison: { title: 'Neden Biz?', us_label: 'Biz', them_label: 'Diğerleri',
     rows: [{ feature: 'Kişiye özel baskı kalitesi', us: true, them: false }] },
-  testimonials: { title: 'Müşterilerimiz Ne Diyor?', items: [] },
-  gallery: { title: 'Sizden Gelenler', images: [] },
+  testimonials: { eyebrow: '', title: 'Müşterilerimiz Ne Diyor?', subtitle: '', items: [] },
+  gallery: { eyebrow: '', title: 'Sizden Gelenler', subtitle: '', images: [], aspect: 'square', mode: 'scroll' },
   contact: { title: 'İletişim', subtitle: 'Soru ve önerileriniz için bize yazın.' },
   countdown: { title: 'Kampanya bitiyor!', subtitle: '', ends_at: '',
     cta_text: 'Alışverişe Başla', cta_url: '/urunler' },
@@ -75,6 +75,38 @@ export function UrlPicker({ value, onChange, collections = [], products = [], pa
         <input className="input" value={value || ''}
           onChange={e => onChange(e.target.value)} placeholder="/sayfa/hakkimizda veya https://…" />
       )}
+    </div>
+  )
+}
+
+// Bölüm başlığı üçlüsü — üst etiket / başlık / alt başlık.
+// Tema "Büyük ortalı başlık" stilindeyken üst etiket ve alt başlık öne çıkar.
+function HeadingFields({ s, patch, titlePlaceholder = 'Bölüm başlığı' }) {
+  return (
+    <>
+      <input className="input" value={s.eyebrow || ''} maxLength={60}
+        onChange={e => patch({ eyebrow: e.target.value })}
+        placeholder="Üst etiket (ops.) — örn. SENİN İÇİN SEÇTİK" />
+      <input className="input" value={s.title || ''} maxLength={100}
+        onChange={e => patch({ title: e.target.value })} placeholder={titlePlaceholder} />
+      <input className="input" value={s.subtitle || ''} maxLength={200}
+        onChange={e => patch({ subtitle: e.target.value })}
+        placeholder="Alt başlık (ops.) — örn. En sevilen tasarımları keşfet." />
+    </>
+  )
+}
+
+// Hap şeklinde tek seçim — [[değer, etiket], …]
+export function Choice({ label, value, options, onChange }) {
+  return (
+    <div className="flex gap-1.5 text-xs items-center flex-wrap">
+      <span className="text-panel-muted">{label}:</span>
+      {options.map(([v, l]) => (
+        <button key={v} type="button" onClick={() => onChange(v)}
+          className={`px-2.5 py-1 rounded-full border transition ${value === v
+            ? 'border-panel-accent bg-emerald-500/10 text-emerald-300'
+            : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>{l}</button>
+      ))}
     </div>
   )
 }
@@ -124,6 +156,9 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             <AssetField label="Görsel" current={slide.image}
               onUpload={f => uploadAsset('hero', f, url => patchSlide(i, { image: url }))}
               onClear={() => patchSlide(i, { image: null })} />
+            <input className="input" value={slide.eyebrow || ''} maxLength={60}
+              onChange={e => patchSlide(i, { eyebrow: e.target.value })}
+              placeholder="Üst etiket (ops.) — örn. YENİ SEZON" />
             <input className="input" value={slide.title || ''} maxLength={100}
               onChange={e => patchSlide(i, { title: e.target.value })} placeholder="Başlık" />
             <input className="input" value={slide.subtitle || ''} maxLength={200}
@@ -142,7 +177,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           </div>
         ))}
         {slides.length < 6 && (
-          <button onClick={() => patch({ slides: [...slides, { image: null, title: '', subtitle: '', cta_text: '', cta_url: '/urunler' }] })}
+          <button onClick={() => patch({ slides: [...slides, { image: null, eyebrow: '', title: '', subtitle: '', cta_text: '', cta_url: '/urunler' }] })}
             className="btn-ghost !py-1.5 text-xs w-full">+ Slayt Ekle</button>
         )}
         {slides.length > 1 && (
@@ -158,6 +193,10 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             Slayt eklemezseniz sade bir karşılama metni gösterilir.
           </p>
         )}
+        <Choice label="Yazı hizası" value={s.align || 'center'}
+          options={[['center', 'Ortada'], ['left', 'Solda']]} onChange={v => patch({ align: v })} />
+        <Choice label="Yükseklik" value={s.height || 'normal'}
+          options={[['normal', 'Normal'], ['tall', 'Yüksek vitrin']]} onChange={v => patch({ height: v })} />
         <RadiusControl s={s} patch={patch} />
       </>
     )
@@ -167,8 +206,10 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     const slugs = s.slugs || []
     return (
       <>
-        <input className="input" value={s.title || ''} maxLength={80}
-          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <HeadingFields s={s} patch={patch} />
+        <Choice label="Düzen" value={s.layout || 'grid'}
+          options={[['grid', "4'lü küçük kart"], ['showcase', "2'li büyük, numaralı"]]}
+          onChange={v => patch({ layout: v })} />
         {collections.length === 0 ? (
           <p className="text-xs text-panel-muted">Önce Koleksiyonlar sayfasından koleksiyon oluşturun.</p>
         ) : (
@@ -187,7 +228,17 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             })}
           </div>
         )}
-        <p className="text-[11px] text-panel-muted">Hiçbiri seçilmezse ilk 4 koleksiyon gösterilir.</p>
+        {slugs.length === 0 && (
+          <label className="flex items-center gap-2 text-xs text-panel-muted">
+            Hiçbiri seçilmezse ilk
+            <input className="input !w-16 !py-1" type="number" min="1" max="12" value={s.limit ?? 4}
+              onChange={e => patch({ limit: Math.max(1, Math.min(12, Number(e.target.value) || 4)) })} />
+            koleksiyon gösterilir.
+          </label>
+        )}
+        <p className="text-[11px] text-panel-muted">
+          Büyük kartlarda koleksiyonun görseli ve açıklaması görünür — Koleksiyonlar sayfasından ekleyin.
+        </p>
       </>
     )
   }
@@ -205,8 +256,9 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     }
     return (
       <>
-        <input className="input" value={s.title || ''} maxLength={80}
-          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <HeadingFields s={s} patch={patch} />
+        <Choice label="Düzen" value={s.layout || 'grid'}
+          options={[['grid', 'Izgara'], ['carousel', 'Oklu şerit']]} onChange={v => patch({ layout: v })} />
         {slugs.length > 0 && (
           <div className="space-y-1">
             {slugs.map((slug, i) => (
@@ -244,8 +296,9 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
   if (sec.type === 'products_grid') {
     return (
       <>
-        <input className="input" value={s.title || ''} maxLength={80}
-          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <HeadingFields s={s} patch={patch} />
+        <Choice label="Düzen" value={s.layout || 'grid'}
+          options={[['grid', 'Izgara'], ['carousel', 'Oklu şerit']]} onChange={v => patch({ layout: v })} />
         <div className="grid grid-cols-2 gap-2">
           <label className="block text-sm">
             <span className="text-panel-muted text-xs">Koleksiyon (ops.)</span>
@@ -416,8 +469,7 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     const patchItem = (i, p2) => patch({ items: items.map((it, j) => j === i ? { ...it, ...p2 } : it) })
     return (
       <>
-        <input className="input" value={s.title || ''} maxLength={100}
-          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <HeadingFields s={s} patch={patch} />
         {items.map((it, i) => (
           <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
             <div className="flex gap-1.5">
@@ -449,18 +501,22 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
     const images = s.images || []
     return (
       <>
-        <input className="input" value={s.title || ''} maxLength={100}
-          onChange={e => patch({ title: e.target.value })} placeholder="Bölüm başlığı" />
+        <HeadingFields s={s} patch={patch} />
+        <Choice label="Kart oranı" value={s.aspect || 'square'}
+          options={[['square', 'Kare'], ['story', 'Hikâye (9:16)']]} onChange={v => patch({ aspect: v })} />
+        <Choice label="Akış" value={s.mode || 'scroll'}
+          options={[['scroll', 'Elle kaydır'], ['carousel', 'Oklu + otomatik'], ['marquee', 'Sürekli akan']]}
+          onChange={v => patch({ mode: v })} />
         <div className="grid grid-cols-4 gap-1.5">
           {images.map((u, i) => (
             <div key={i} className="relative group">
-              <img src={u} alt="" className="w-full aspect-square object-cover rounded-lg border border-panel-border" />
+              <img src={u} alt="" className={`w-full ${s.aspect === 'story' ? 'aspect-[9/16]' : 'aspect-square'} object-cover rounded-lg border border-panel-border`} />
               <button onClick={() => patch({ images: images.filter((_, j) => j !== i) })}
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs
                   opacity-0 group-hover:opacity-100 transition">×</button>
             </div>
           ))}
-          {images.length < 8 && (
+          {images.length < 12 && (
             <label className="aspect-square rounded-lg border border-dashed border-panel-border
               flex items-center justify-center text-panel-muted cursor-pointer text-lg">
               +
@@ -471,7 +527,8 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           )}
         </div>
         <p className="text-[11px] text-panel-muted">
-          Müşteri fotoğrafları, kullanım kareleri… (en fazla 8 görsel)
+          Müşteri fotoğrafları, hikâye ekran görüntüleri… (en fazla 12 görsel).
+          Hikâye oranında 1080×1920 dikey görsel önerilir.
         </p>
       </>
     )

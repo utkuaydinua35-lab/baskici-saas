@@ -17,7 +17,7 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
   return (
     <Link
       href={`/urun/${product.slug}`}
-      className="group relative block rounded-2xl border border-zinc-200 overflow-hidden bg-white hover:shadow-md transition-shadow"
+      className="urun-kart group relative block rounded-2xl border border-zinc-200 overflow-hidden bg-white hover:shadow-md transition-shadow"
     >
       <FavButton item={{ slug: product.slug, title: product.title, price: product.price,
         currency: product.currency, image: product.cover_image }} />
@@ -44,9 +44,9 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
         videoUrl={product.video_url}
         title={product.title}
       />
-      <div className="p-3">
-        <h3 className="text-sm font-medium text-zinc-900 line-clamp-2">{product.title}</h3>
-        <div className="mt-1.5 flex items-baseline gap-2">
+      <div className="urun-kart-bilgi p-3">
+        <h3 className="urun-kart-baslik text-sm font-medium text-zinc-900 line-clamp-2">{product.title}</h3>
+        <div className="urun-kart-fiyat mt-1.5 flex items-baseline gap-2">
           <span className="font-semibold">{formatPrice(product.price, product.currency)}</span>
           {product.compare_at_price && (
             <span className="text-xs text-zinc-400 line-through">

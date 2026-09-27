@@ -136,7 +136,7 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
               <div className="text-xs text-emerald-600">🎁 Kampanya: kargo ücretsiz</div>
             )}
             <Link href="/odeme" onClick={() => setDrawerOpen(false)}
-              className="block text-center rounded-xl text-white font-medium py-3 transition hover:opacity-90"
+              className="btn-r block text-center text-white font-medium py-3 transition hover:opacity-90"
               style={{ background: "var(--c-primary)" }}>
               {t.checkout_cta}
             </Link>

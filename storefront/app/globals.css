@@ -74,3 +74,58 @@ html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   .popup-perde, .popup-kart { animation: none; }
 }
+
+/* ── Tema görünümü (theme.style) — <html data-*> ve --btn-r ile sürülür ── */
+
+/* Ana butonların köşesi: rounded (12px) | pill (tam yuvarlak) */
+.btn-r { border-radius: var(--btn-r, 0.75rem); }
+
+/* Bölüm başlığı üçlüsü. compact: solda küçük başlık + sağda "Tümünü gör".
+   showcase: ortalı büyük başlık, üst etiket ve alt başlık; "Tümünü gör"
+   şeridin ALTINA iner (.bb-alt-link). */
+.bolum-baslik { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.bolum-baslik .bb-ust { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--c-accent); margin-bottom: .25rem; }
+.bolum-baslik .bb-baslik { font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
+.bolum-baslik .bb-alt { font-size: .875rem; color: #71717a; margin-top: .25rem; }
+.bolum-baslik .bb-link { font-size: .875rem; color: #71717a; white-space: nowrap; }
+.bolum-baslik .bb-link:hover { color: #27272a; }
+.bb-alt-link { display: none; }
+.bolum-baslik.bb-orta { justify-content: center; text-align: center; margin-bottom: 1.25rem; }
+html[data-heading="showcase"] .bolum-baslik { display: block; text-align: center; margin-bottom: 2rem; }
+html[data-heading="showcase"] .bolum-baslik .bb-ust { font-size: 12px; font-weight: 800; letter-spacing: .18em; color: #111; margin-bottom: .5rem; }
+html[data-heading="showcase"] .bolum-baslik .bb-baslik { font-size: clamp(1.75rem, 4.2vw, 2.45rem); font-weight: 800; letter-spacing: -0.045em; line-height: 1.08; }
+html[data-heading="showcase"] .bolum-baslik .bb-alt { font-size: 1rem; margin-top: .6rem; }
+html[data-heading="showcase"] .bolum-baslik .bb-link { display: none; }
+html[data-heading="showcase"] .bb-alt-link { display: flex; justify-content: center; margin-top: 1.75rem; }
+
+/* Ürün kartı: minimal — çerçevesiz, zeminsiz, ortalı yazı, kalın fiyat */
+html[data-card="minimal"] .urun-kart { border-color: transparent; background: transparent; overflow: visible; }
+html[data-card="minimal"] .urun-kart:hover { box-shadow: none; }
+html[data-card="minimal"] .urun-kart .kart-medya { border-radius: 1rem; background: transparent; }
+html[data-card="minimal"] .urun-kart-bilgi { text-align: center; padding-left: .25rem; padding-right: .25rem; }
+html[data-card="minimal"] .urun-kart-baslik { font-weight: 400; }
+html[data-card="minimal"] .urun-kart-fiyat { justify-content: center; }
+html[data-card="minimal"] .urun-kart-fiyat > span:first-child { font-weight: 700; }
+
+/* Yatay şeritlerde kaydırma çubuğunu gizle (oklar ve dokunma yeterli) */
+.serit-gizli { scrollbar-width: none; }
+.serit-gizli::-webkit-scrollbar { display: none; }
+
+/* Sürekli akan şerit (marquee): içerik iki kez basılır, yarısı kadar kayar →
+   dikişsiz döngü. Üstüne gelince durur. Hareket azaltma tercihinde animasyon
+   kapanır ve elle kaydırılabilir olur. */
+@keyframes akan-serit { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.akan-serit { animation: akan-serit var(--akan-sure, 40s) linear infinite; }
+.akan-serit:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .akan-serit { animation: none; }
+  .akan-kap { overflow-x: auto; }
+}
+
+/* Pop-up üst etiketi — yavaş parıltı */
+@keyframes popup-parilti {
+  0%, 100% { text-shadow: 0 0 4px color-mix(in srgb, var(--c-accent) 25%, transparent); opacity: .9; }
+  50% { text-shadow: 0 0 10px color-mix(in srgb, var(--c-accent) 50%, transparent); opacity: 1; }
+}
+.popup-ust { animation: popup-parilti 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .popup-ust { animation: none; } }

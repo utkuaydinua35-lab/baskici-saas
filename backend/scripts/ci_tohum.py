@@ -27,7 +27,7 @@ from app.auth.security import hash_password  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.models import (  # noqa: E402
     CatalogProduct, CatalogVariant, Design, LineItem, Mold, MoldItem, Order,
-    PhoneModel, StockGroup, StockItem, Store, Tenant, User,
+    PhoneModel, Plan, StockGroup, StockItem, Store, Tenant, User,
 )
 
 SIFRE = "DevAdmin12345!"
@@ -61,7 +61,14 @@ def main() -> int:
         print("tohum: veri zaten var, atlandı")
         return 0
 
-    t = Tenant(name="CI Atölye", slug="ci-atolye")
+    # Plan: canlıdaki mevcut kiracılar migration e1f2a3b4c5d6 ile "sahip"
+    # (sınırsız) planına alındı. CI'da veritabanı BOŞ başlar, kiracı migration
+    # SONRASI kurulur ve plansız kalırdı → plansız kiracı güvenli tarafta
+    # yalnız "mağaza" modülünü alır, üretim/bayi/tasarım testleri 403'e
+    # düşer (CI 2026-09-21'den beri bu yüzden kırmızıydı). Canlıyla aynı olsun.
+    sahip = db.scalar(select(Plan).where(Plan.kod == "sahip"))
+    t = Tenant(name="CI Atölye", slug="ci-atolye", plan="sahip",
+               plan_id=sahip.id if sahip else None)
     db.add(t); db.flush()
 
     db.add(User(tenant_id=t.id, email="ci-admin@ci-atolye.com", full_name="CI Yönetici",

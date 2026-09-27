@@ -45,6 +45,20 @@ class IyzicoProvider(PaymentProvider):
     def secret_key(self) -> str:
         return self.config.get("iyzico_secret_key") or ""
 
+    @property
+    def urun_kategorisi(self) -> str:
+        """Sepet kalemi kategorisi — mağazanın ürün türü (Ayarlar → İşletme).
+
+        Eskiden koda "Telefon Kılıfı" sabitti: BERNZ'e özel değer her kiracının
+        iyzico kaydına gidiyordu. iyzico boş kategori kabul etmediği için ürün
+        türü girilmemişse nötr "Genel".
+        """
+        from app.services.tr_metin import kelime_basi_buyuk
+        tur = (self.config.get("isletme_urun_turu") or "").strip()[:64]
+        # Panelde genelde küçük harfle girilir ("telefon kılıfı"). .title()
+        # Türkçe'de bozar (i → I, "İç" yerine "Iç"); tek kaynak tr_metin.
+        return kelime_basi_buyuk(tur) if tur else "Genel"
+
     # ── IYZWSv2 imzalı istek ──
     def _headers(self, uri_path: str, body: str) -> dict:
         random_key = uuid.uuid4().hex
@@ -96,7 +110,7 @@ class IyzicoProvider(PaymentProvider):
                 "id": (str(item.get("variant_id", i)) if vid_sayisi.get(str(item.get("variant_id")), 0) <= 1
                        else f"{item.get('variant_id')}-{i + 1}"),
                 "name": (f"{item.get('title', 'Ürün')} {item.get('model_display', '')}").strip()[:120],
-                "category1": "Telefon Kılıfı",
+                "category1": self.urun_kategorisi,
                 "itemType": "PHYSICAL",
                 "price": str(line_total),
             }

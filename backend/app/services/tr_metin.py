@@ -34,3 +34,19 @@ def baslik(s: str) -> str:
         ilk = "İ" if kucuk[0] == "i" else kucuk[0].upper()
         cikti.append(ilk + kucuk[1:])
     return " ".join(cikti)
+
+
+def kelime_basi_buyuk(s: str) -> str:
+    """Her kelimenin İLK harfini Türkçe kurala göre büyütür, kalanına dokunmaz.
+
+    "telefon kılıfı" → "Telefon Kılıfı", "iç giyim" → "İç Giyim",
+    "ıhlamur çayı" → "Ihlamur Çayı". Kullanıcının küçük harfle girdiği
+    etiketleri (ürün türü vb.) başlık gibi göstermek için. Karışık yazım
+    ("iPhone kılıfı") ilk harf dışında korunur.
+    """
+    def buyut(k: str) -> str:
+        if not k:
+            return k
+        ilk = {"i": "İ", "ı": "I"}.get(k[0], k[0].upper())
+        return ilk + k[1:]
+    return " ".join(buyut(k) for k in (s or "").split(" "))

@@ -49,6 +49,31 @@ export const SECTION_DEFAULTS = {
     cta_text: 'Alışverişe Başla', cta_url: '/urunler' },
 }
 
+// Bölüm vitrinde HİÇBİR ŞEY çizmeyecekse nedeni (yoksa null). Kurallar
+// vitrin bileşenlerindeki "return null" koşullarıyla birebir — hazır şablonun
+// görsel alanları boş gelir ve boş bölüm sessizce kaybolur; sahibi bunu
+// bölüm listesinde görsün. (Koleksiyon/ürün ızgarası veriye bağlı, atlanır.)
+export function bosBolumNedeni(sec) {
+  const s = sec.settings || {}
+  const dolu = (liste, alan) => (liste || []).some(x => (alan ? x?.[alan] : x))
+  switch (sec.type) {
+    case 'gallery':
+      return dolu(s.ogeler, 'url') || dolu(s.images) ? null : 'görsel bekliyor'
+    case 'banner': return s.image ? null : 'görsel bekliyor'
+    case 'featured_products': return (s.slugs || []).length ? null : 'ürün seçilmedi'
+    case 'testimonials': return dolu(s.items, 'text') ? null : 'yorum eklenmedi'
+    case 'faq': return (s.items || []).some(i => i?.q && i?.a) ? null : 'soru-cevap eklenmedi'
+    case 'icon_bar': return dolu(s.items, 'title') ? null : 'avantaj eklenmedi'
+    case 'comparison': return dolu(s.rows, 'feature') ? null : 'satır eklenmedi'
+    case 'rich_text': return s.title || s.body ? null : 'metin yok'
+    case 'image_with_text': return s.image || s.title || s.body ? null : 'içerik yok'
+    case 'countdown':
+      if (!s.ends_at) return 'bitiş zamanı yok'
+      return new Date(s.ends_at) > new Date() ? null : 'süresi doldu'
+    default: return null
+  }
+}
+
 // CTA/link hedef seçici — koleksiyon, ürün, sayfa hazır listeden seçilir;
 // "Özel URL" ile serbest adres de girilebilir (Shopify link picker).
 export function UrlPicker({ value, onChange, collections = [], products = [], pages = [], placeholder = 'Hedef seçin' }) {

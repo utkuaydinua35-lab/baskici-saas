@@ -181,7 +181,8 @@ export default function TemaPage() {
             <button key={pr.key} disabled={busy}
               onClick={() => newDraft(pr.label, { ...pr.theme, logo_url: live.logo_url, favicon_url: live.favicon_url, logo_width: live.logo_width, whatsapp: live.whatsapp, footer: live.footer })}
               className="card !p-3 text-left hover:border-panel-accent transition disabled:opacity-50">
-              <div className="flex items-center gap-2 text-sm font-medium">
+              <SablonKrokisi tema={pr.theme} />
+              <div className="flex items-center gap-2 text-sm font-medium mt-2">
                 <span className="flex gap-1">
                   {[pr.colors.primary, pr.colors.accent, pr.colors.bg].map((c2, i) => (
                     <span key={i} className="w-3.5 h-3.5 rounded-full border border-panel-border"
@@ -212,6 +213,117 @@ function ThemeSwatch({ theme, size = 'md' }) {
       <div className="flex-1 flex items-center justify-center gap-1 px-1.5">
         <span className="w-3 h-3 rounded-full" style={{ background: c.accent || '#999' }} />
         <span className="flex-1 h-1.5 rounded-full opacity-30" style={{ background: c.primary || '#111' }} />
+      </div>
+    </div>
+  )
+}
+
+// Şablonun şematik krokisi — kendi verisinden çizilir (renkler, header
+// düzeni, buton şekli, bölüm sırası). Ekran görüntüsü yerine: hazır
+// şablonların görsel alanları boş gelir, fotoğraf boş sayfa gösterirdi;
+// kroki yapıyı anlatır ve yeni şablonlarda kendiliğinden çalışır.
+function SablonKrokisi({ tema }) {
+  const c = tema.colors || {}
+  const st = tema.style || {}
+  const hap = st.button_shape === 'pill'
+  const ortali = st.heading_style === 'showcase'
+  const minimal = st.card_style === 'minimal'
+  const cizgi = (en, renk = c.primary, op = 0.35) => (
+    <div className="h-1 rounded-full" style={{ width: en, background: renk, opacity: op }} />
+  )
+  const baslik = () => (
+    <div className={`flex flex-col gap-0.5 mb-1 ${ortali ? 'items-center' : ''}`}>
+      {ortali && cizgi(14, '#111', 0.5)}
+      {cizgi(ortali ? 34 : 24, '#111', 0.7)}
+    </div>
+  )
+  const bolum = (sec, i) => {
+    const s = sec.settings || {}
+    switch (sec.type) {
+      case 'hero_slider': {
+        const sol = s.align === 'left'
+        return (
+          <div key={i} className={`rounded-md flex flex-col justify-center gap-1 px-2 ${s.height === 'tall' ? 'h-14' : 'h-10'} ${sol ? 'items-start' : 'items-center'}`}
+            style={{ background: `linear-gradient(120deg, ${c.primary}, ${c.accent})` }}>
+            {cizgi(sol ? 38 : 44, '#fff', 0.9)}
+            {cizgi(26, '#fff', 0.6)}
+            <div className="flex gap-1 mt-0.5">
+              <div className={`h-1.5 w-6 bg-white ${hap ? 'rounded-full' : 'rounded-sm'}`} />
+              <div className={`h-1.5 w-6 border border-white/80 ${hap ? 'rounded-full' : 'rounded-sm'}`} />
+            </div>
+          </div>
+        )
+      }
+      case 'gallery': {
+        const hikaye = s.aspect === 'story'
+        return (
+          <div key={i}>{baslik()}
+            <div className="flex gap-1 overflow-hidden">
+              {[0, 1, 2, 3, 4].map(k => (
+                <div key={k} className={`shrink-0 rounded-sm bg-black/15 ${hikaye ? 'w-5 h-9' : 'w-6 h-6'}`} />
+              ))}
+            </div>
+          </div>
+        )
+      }
+      case 'featured_collections':
+        return (
+          <div key={i}>{baslik()}
+            <div className={`grid gap-1 ${s.layout === 'showcase' ? 'grid-cols-2' : 'grid-cols-4'}`}>
+              {(s.layout === 'showcase' ? [0, 1] : [0, 1, 2, 3]).map(k => (
+                <div key={k} className={`rounded-sm ${s.layout === 'showcase' ? 'h-9' : 'h-5'} flex items-end p-0.5`}
+                  style={{ background: c.accent, opacity: 0.55 }}>{cizgi(10, '#fff', 0.9)}</div>
+              ))}
+            </div>
+          </div>
+        )
+      case 'products_grid': case 'featured_products':
+        return (
+          <div key={i}>{baslik()}
+            <div className="grid grid-cols-4 gap-1">
+              {[0, 1, 2, 3].map(k => (
+                <div key={k} className={`rounded-sm p-0.5 ${minimal ? '' : 'border border-black/10'}`}
+                  style={minimal ? undefined : { background: '#fff' }}>
+                  <div className="h-5 rounded-sm bg-black/10" />
+                  <div className={`mt-0.5 flex ${minimal ? 'justify-center' : ''}`}>{cizgi(12, '#111', 0.5)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      case 'banner':
+        return <div key={i} className="h-6 rounded-md bg-black/10" />
+      default:
+        return <div key={i}>{baslik()}<div className="h-3 rounded-sm bg-black/5" /></div>
+    }
+  }
+  return (
+    <div className="w-44 h-48 rounded-lg border border-panel-border overflow-hidden flex flex-col"
+      style={{ background: c.bg || '#fff' }} aria-hidden="true">
+      {/* Header */}
+      <div className="shrink-0 px-2 py-1 border-b border-black/10 bg-white/70">
+        {st.header_layout === 'center' ? (
+          <div className="flex flex-col items-center gap-0.5">
+            <div className="w-full flex items-center justify-between">
+              <div className="w-1.5 h-1.5 rounded-full bg-black/30" />
+              {cizgi(22, '#111', 0.8)}
+              <div className="w-3 h-1.5 rounded-sm bg-black/30" />
+            </div>
+            <div className="flex gap-1">
+              <div className="h-1.5 w-4 rounded-full bg-black/70" />
+              {cizgi(8, '#111', 0.3)}{cizgi(8, '#111', 0.3)}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            {cizgi(16, '#111', 0.8)}
+            <div className="flex-1 flex justify-center gap-1">{cizgi(8, '#111', 0.3)}{cizgi(8, '#111', 0.3)}</div>
+            <div className="w-3 h-1.5 rounded-sm bg-black/30" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 overflow-hidden p-1.5 space-y-2">
+        {(tema.sections || []).slice(0, 6).map(bolum)}
       </div>
     </div>
   )

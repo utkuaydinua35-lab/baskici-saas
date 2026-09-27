@@ -12,6 +12,9 @@
 import { useEffect, useState } from "react";
 
 interface Props {
+  // Tema editörü önizlemesi: kendiliğinden AÇILMAZ (her tazelemede çıkıp
+  // düzenlemeyi engellerdi); editör "Önizlemede göster" deyince açılır.
+  onizleme?: boolean;
   ustBaslik?: string;
   baslik?: string;
   metin?: string;
@@ -22,12 +25,22 @@ interface Props {
 
 const ANAHTAR = "vitrin_popup_kapatildi";
 
-export default function CampaignPopup({ ustBaslik, baslik, metin, kupon, buton, gorselUrl }: Props) {
+export default function CampaignPopup({ onizleme, ustBaslik, baslik, metin, kupon, buton, gorselUrl }: Props) {
   const [acik, setAcik] = useState(false);
   const [kopyalandi, setKopyalandi] = useState(false);
 
   useEffect(() => {
-    if (!baslik && !metin) return;
+    if (!onizleme) return;
+    // Yalnız editörden (üst pencere) gelen komut; mesajın içeriği kullanılmaz
+    const dinle = (e: MessageEvent) => {
+      if (e.source === window.parent && e.data?.type === "vitrin-popup-onizle") setAcik(true);
+    };
+    window.addEventListener("message", dinle);
+    return () => window.removeEventListener("message", dinle);
+  }, [onizleme]);
+
+  useEffect(() => {
+    if (onizleme || (!baslik && !metin)) return;
     let kapatilmis = false;
     try { kapatilmis = sessionStorage.getItem(ANAHTAR) === "1"; } catch { /* yok */ }
     if (kapatilmis) return;
@@ -45,6 +58,7 @@ export default function CampaignPopup({ ustBaslik, baslik, metin, kupon, buton, 
 
   const kapat = () => {
     setAcik(false);
+    if (onizleme) return;   // önizlemede kapatmak ziyaretçi kaydı değil
     try { sessionStorage.setItem(ANAHTAR, "1"); } catch { /* yok */ }
   };
 
@@ -57,7 +71,7 @@ export default function CampaignPopup({ ustBaslik, baslik, metin, kupon, buton, 
     } catch { /* pano yoksa yoksay */ }
   };
 
-  if (!acik) return null;
+  if (!acik || (!baslik && !metin)) return null;
 
   return (
     <div

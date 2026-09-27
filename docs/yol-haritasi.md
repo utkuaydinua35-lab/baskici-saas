@@ -55,42 +55,31 @@ Faz 3 sonrası açık kalanlar:
 - [ ] Bitişe 5 gün kala kiracıya e-posta hatırlatması (şu an yalnız panel bandı)
 - [ ] Ödeme kaydında e-fatura / fatura numarası alanı
 
-## Faz 3.5 — Vitrin eksikleri (landscapecase.com incelemesinden)
+## Biten: Faz 3.5 — Vitrin eksikleri (landscapecase.com incelemesinden, 2026-09-27)
 
-Tema kopyalanırken landscape'te olup bizde olmayan, tema ayarıyla
-çözülemeyen işler:
-
-- [ ] **Ürün ek seçeneklerine fiyat farkı.** Landscape'te model seçiminden
-  sonra "Vernik: Evet / Hayır" gibi ek seçenek var. Bizde ürün başına ek
-  alanlar (`custom_fields`: yazı / görsel / seçenekli renk) ve çift kılıf için
-  iki model seçimi var; eksik olan, seçeneğin **fiyatı değiştirmesi**. Sepet,
-  ödeme anındaki fiyat kaydı, sipariş ve üretim zincirine dokunur.
-  > **BERNZ kontrol edildi (2026-09-27, Shopify'daki son 40 sipariş):** ek
-  > seçenekler tepo.app ile yönetiliyor. Kullanılanlar renk seçimi, görsel
-  > yükleme, yazı alanları ve çift kılıfta ikinci model; **hiçbirinde fiyat
-  > farkı yok**, hepsinin bizde karşılığı var. Shopify çıkışını engellemiyor;
-  > bu madde kiracılar için.
-- [ ] **Seçenek karşılaştırma penceresi.** Ürün sayfasında "farkı gör"
-  düğmesi → iki görsel arasında kaydırmalı önce/sonra karşılaştırması (mat ve
-  parlak). Ek seçeneklere bağlı; onunla birlikte yapılmalı.
-- [ ] **Galeriye video, bağlantı ve etiket.** Landscape "fotoğraf ve video
-  paylaşımları" gösteriyor. Galeri öğesi şu an yalnız görsel adresi; öğeye
-  tür (görsel/video), tıklanınca gidilecek adres ve kullanıcı adı etiketi
-  eklenmeli.
-- [ ] **Medya kütüphanesi.** Hero, galeri, pop-up ve banner'a yüklenen her
-  görsel ayrı yükleniyor; bir kez yüklenenin başka yerde tekrar seçilebilmesi.
-- [ ] **Tema kütüphanesinde ekran görüntüsü.** Şablonlar şu an 3 renk
-  noktasıyla tanıtılıyor; kiracı seçerken gerçek görünümü görmeli. Ayrıca
-  panelde "görsel bekleyen boş bölüm" uyarısı: Manzara'nın görsel alanları
-  boş gelir ve boş bölüm vitrinde hiç görünmez.
-- [ ] **Sıralama seçenekleri + numaralı sayfalama.** Bizde 3 sıralama var
-  (önerilen, fiyat artan/azalan); landscape'te en çok satan, en yeni,
-  alfabetik de var. Sayfalama "Önceki / Sonraki", numaralı değil.
-- [ ] **Tema editöründe pop-up önizlemesi.** Canlı önizlemede pop-up
-  bilerek gizli; "pop-up'ı önizle" düğmesi.
-- [ ] Kozmetik: akan galerideki kartlarda bulanık zeminli çerçeve.
+- [x] **Ek seçeneklere fiyat farkı** — seçenek başına ("Parlak +50 TL") ve
+  doldurulursa ücretli alan ("İsim +25 TL"). Tutar ödemede sunucuda ürün
+  tanımından hesaplanır. Yolda düzeltildi: aynı model farklı seçenekle iki
+  satır olunca ödeme tümden reddediliyordu.
+  > BERNZ kontrol edildi (Shopify'daki son 40 sipariş): ek alanlar fiyat
+  > farksız ve hepsinin bizde karşılığı var; Shopify çıkışını engellemiyordu.
+- [x] **"Farkı gör" karşılaştırma penceresi** — seçeneğe görsel; iki görsel
+  üst üste, sürüklenen ayırıcı (klavye/dokunma/ekran okuyucu).
+- [x] **Galeriye video, bağlantı, etiket** — video yalnız ekrandayken oynar.
+- [x] **Medya kütüphanesi** — yüklenen görsel/video her alanda yeniden seçilir.
+  Silme bilinçli olarak yok (kullanılan görseli kırmamak için).
+- [x] **Tema kütüphanesinde kroki** + editörde **"görünmüyor: görsel bekliyor"**
+  uyarısı (kurallar vitrin bileşenleriyle birebir).
+- [x] **Sıralama** (en çok satan, en yeni, A-Z/Z-A Türkçe) + **numaralı sayfalama**.
+- [x] **Editörde pop-up önizlemesi** ("👁 Önizlemede göster").
+- Hız (yolda): tema görsellerine (hero, galeri, koleksiyon, banner) duyarlı
+  boyutlar + retina için orijinal; aynı saniyede yüklenen iki görselin
+  birbirinin üzerine yazılması düzeltildi.
 
 Bilerek alınmayanlar:
+- **Akan galeride bulanık zeminli çerçeve:** hareket eden şeritte bulanıklık
+  filtresi telefonda takılma riski taşıyor (bkz. menü akıcılığı dersi);
+  kazancı kozmetik, riski "akıcı site" hedefine ters.
 - **Müzik çalar:** landscape'te de kapalı; kendiliğinden çalan ses dönüşümü
   düşürür.
 - **Shopify uygulama bloğu model seçici:** bizde yerleşik marka → model

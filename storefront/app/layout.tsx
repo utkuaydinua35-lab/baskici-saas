@@ -226,8 +226,8 @@ export default async function RootLayout({
           {theme.whatsapp?.enabled && theme.whatsapp.number && (
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}
-          {theme.popup?.enabled && !payload.is_preview && (
-            <CampaignPopup ustBaslik={theme.popup.ust_baslik}
+          {theme.popup?.enabled && (
+            <CampaignPopup onizleme={!!payload.is_preview} ustBaslik={theme.popup.ust_baslik}
               baslik={theme.popup.baslik} metin={theme.popup.metin}
               kupon={theme.popup.kupon} buton={theme.popup.buton}
               gorselUrl={theme.popup.gorsel_url} />

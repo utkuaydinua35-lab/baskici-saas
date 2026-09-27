@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast'
 import {
   FONTS, SECTION_TYPES, SECTION_DEFAULTS,
   SectionSettings, Section, ColorField, Toggle, AssetField, UrlPicker, Choice,
-  MedyaContext, MedyaKutuphanesi,
+  MedyaContext, MedyaKutuphanesi, bosBolumNedeni,
 } from '../components/ThemeEditorParts'
 
 // Tam ekran tema editörü (Shopify tarzı) — sol ayar paneli + sağ canlı önizleme.
@@ -633,6 +633,12 @@ export default function TemaEditorPage() {
                       Ziyaretçi siteyi açınca bir kez belirir; kapatınca o oturumda
                       tekrar çıkmaz. <b>Başlık boşsa hiç gösterilmez.</b>
                     </p>
+                    <button type="button" className="btn-ghost !py-1.5 text-xs w-full"
+                      disabled={!theme.popup.baslik && !theme.popup.metin}
+                      title={!theme.popup.baslik && !theme.popup.metin ? 'Önce başlık yazın' : ''}
+                      onClick={() => iframeRef.current?.contentWindow?.postMessage({ type: 'vitrin-popup-onizle' }, '*')}>
+                      👁 Önizlemede göster
+                    </button>
                     <input className="input" value={theme.popup.ust_baslik || ''} maxLength={40}
                       onChange={e => set('popup.ust_baslik', e.target.value)}
                       placeholder="Üst etiket (ops.) — örn. ✨ KAMPANYA ✨" />
@@ -754,6 +760,12 @@ export default function TemaEditorPage() {
                           <span className="truncate">{meta.label}</span>
                           {sec.hidden && (
                             <span className="text-[10px] bg-slate-500/20 text-panel-muted px-1.5 py-0.5 rounded-full shrink-0">gizli</span>
+                          )}
+                          {!sec.hidden && bosBolumNedeni(sec) && (
+                            <span className="text-[10px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded-full shrink-0 truncate"
+                              title="Bu bölüm vitrinde görünmüyor — doldurun ya da gizleyin">
+                              görünmüyor: {bosBolumNedeni(sec)}
+                            </span>
                           )}
                           <span className="text-panel-muted text-xs ml-auto shrink-0">Düzenle ›</span>
                         </button>

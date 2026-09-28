@@ -442,6 +442,11 @@ export default function TemaEditorPage() {
                       : 'border-panel-border'}`}>{l}</button>
                 ))}
               </div>
+              {theme.style?.akis_cizgisi && (
+                <Toggle checked={!!activeSec.akis}
+                  onChange={v => patchSectionMeta(activeSec.id, { akis: v })}
+                  label="〰️ Akış çizgisi bu bölümün üstünden geçsin" />
+              )}
               <div className="space-y-2">
                 <SectionSettings sec={activeSec} collections={collections} products={products}
                   pages={pages} patch={p => patchSection(activeSec.id, p)} uploadAsset={uploadAsset} />
@@ -549,24 +554,58 @@ export default function TemaEditorPage() {
 
               <Section title="Görünüm" icon="🧩">
                 <Choice label="Üst menü" value={theme.style?.header_layout || 'left'}
-                  options={[['left', 'Logo solda'], ['center', 'Logo ortada, menü altta']]}
+                  options={[['left', 'Logo solda'], ['center', 'Logo ortada, menü altta'],
+                    ['vitrin', 'Logo ortada + Koleksiyonlar düğmesi ve arama çubuğu']]}
                   onChange={v => set('style.header_layout', v)} />
+                {theme.style?.header_layout === 'vitrin' && (
+                  <div className="space-y-1.5 border border-panel-border rounded-xl p-2.5">
+                    <input className="input !py-1.5 text-xs" value={theme.style?.ust_not || ''} maxLength={40}
+                      onChange={e => set('style.ust_not', e.target.value)}
+                      placeholder="Logonun solundaki küçük yazı (ops.) — örn. SIRA DIŞI TASARIMLAR" />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input className="input !py-1.5 text-xs" value={theme.style?.ust_link_metin || ''} maxLength={30}
+                        onChange={e => set('style.ust_link_metin', e.target.value)}
+                        placeholder="Sağdaki bağlantı — örn. Sipariş takibi" />
+                      <UrlPicker value={theme.style?.ust_link_url || ''} collections={collections} products={products}
+                        pages={pages} placeholder="Bağlantı hedefi" onChange={url => set('style.ust_link_url', url)} />
+                    </div>
+                  </div>
+                )}
                 <Choice label="Butonlar" value={theme.style?.button_shape || 'rounded'}
                   options={[['rounded', 'Yuvarlatılmış köşe'], ['pill', 'Tam yuvarlak']]}
                   onChange={v => set('style.button_shape', v)} />
                 <Choice label="Ürün kartı" value={theme.style?.card_style || 'boxed'}
-                  options={[['boxed', 'Çerçeveli'], ['minimal', 'Çerçevesiz, ortalı']]}
+                  options={[['boxed', 'Çerçeveli'], ['minimal', 'Çerçevesiz, ortalı'], ['yumusak', 'Yumuşak (gri zemin, fiyat sağda)']]}
                   onChange={v => set('style.card_style', v)} />
                 <Choice label="Bölüm başlıkları" value={theme.style?.heading_style || 'compact'}
-                  options={[['compact', 'Küçük, solda'], ['showcase', 'Büyük, ortalı']]}
+                  options={[['compact', 'Küçük, solda'], ['showcase', 'Büyük, ortalı'], ['editoryal', 'Editoryal (büyük, solda, açıklama sağda)']]}
                   onChange={v => set('style.heading_style', v)} />
                 <Choice label="Kaydırınca üst menü" value={theme.style?.header_sabit || 'hep'}
                   options={[['hep', 'Hep görünür'], ['mobil', 'Yalnız mobilde görünür'],
                     ['masaustu', 'Yalnız masaüstünde görünür'], ['yok', 'Sayfayla kayar']]}
                   onChange={v => set('style.header_sabit', v)} />
+                <Choice label="Footer" value={theme.style?.footer_stil || 'sade'}
+                  options={[['sade', 'Sade (tek blok)'], ['genis', 'Geniş (logolu, sütunlu)']]}
+                  onChange={v => set('style.footer_stil', v)} />
                 <Toggle checked={!!theme.style?.scroll_top}
                   onChange={v => set('style.scroll_top', v)}
                   label='Sol altta "yukarı çık" düğmesi' />
+                <Toggle checked={!!theme.style?.mobil_dock}
+                  onChange={v => set('style.mobil_dock', v)}
+                  label="📱 Telefonda altta sabit çubuk (Keşfet · Tasarla · Favoriler · Sepet)" />
+                <Toggle checked={!!theme.style?.ilerleme}
+                  onChange={v => set('style.ilerleme', v)}
+                  label="En üstte kaydırma ilerleme çizgisi" />
+                <Toggle checked={!!theme.style?.akis_cizgisi}
+                  onChange={v => set('style.akis_cizgisi', v)}
+                  label="〰️ Anasayfada kaydırdıkça çizilen akış çizgisi" />
+                {theme.style?.akis_cizgisi && (
+                  <p className="text-[11px] text-panel-muted">
+                    Çizgi, bölüm ayarlarında <b>“Akış çizgisi bu bölümün üstünden geçsin”</b> işaretli
+                    bölümlerde karşı kenara geçer; ilk işaretli bölümde soldan girer, footer'da biter.
+                    {!theme.sections.some(x => x.akis) && ' Henüz işaretli bölüm yok — çizgi görünmez.'}
+                  </p>
+                )}
               </Section>
 
               <Section title="Logo ve Favicon" icon="🖼️">
@@ -848,7 +887,7 @@ export default function TemaEditorPage() {
                     )
                   })}
                 </div>
-                {theme.sections.length < 12 && (
+                {theme.sections.length < 16 && (
                   <div className="flex gap-1.5 flex-wrap pt-1">
                     {Object.entries(SECTION_TYPES).map(([type, meta]) => (
                       <button key={type} onClick={() => addSec(type)}

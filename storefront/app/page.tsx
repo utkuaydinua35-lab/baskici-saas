@@ -14,10 +14,16 @@ import Testimonials from "@/components/sections/Testimonials";
 import Gallery from "@/components/sections/Gallery";
 import ContactSection from "@/components/sections/ContactSection";
 import Countdown from "@/components/sections/Countdown";
+import Kurdele from "@/components/sections/Kurdele";
+import StilOnerici from "@/components/sections/StilOnerici";
+import Adimlar from "@/components/sections/Adimlar";
+import KilifOnizleme from "@/components/sections/KilifOnizleme";
+import AkisCizgisi from "@/components/AkisCizgisi";
 
 // Anasayfa — tema bölüm listesine (sections) göre kurulur.
 export default async function HomePage() {
-  const { theme, store_name, isletme } = await getThemePayload();
+  const { theme, store_name, isletme, contact } = await getThemePayload();
+  const instagram = (theme.footer.instagram || contact.instagram || "").replace(/^@/, "");
 
   const renderSection = (section: (typeof theme.sections)[number]) => {
         const s = section.settings;
@@ -28,24 +34,26 @@ export default async function HomePage() {
                 autoplaySec={s.autoplay_sec ?? 5}
                 radius_scope={s.radius_scope} radius_pct={s.radius_pct}
                 align={s.align} height={s.height}
+                stil={s.stil} panelRenk={s.panel_renk}
                 magaza={store_name} tanitim={isletme.tanitim} />
             );
           case "featured_collections":
             return (
               <FeaturedCollections key={section.id} eyebrow={s.eyebrow} title={s.title}
                 subtitle={s.subtitle} slugs={s.slugs ?? []}
-                layout={s.layout === "showcase" ? "showcase" : "grid"} limit={s.limit} />
+                layout={s.layout === "showcase" || s.layout === "kartlar" ? s.layout : "grid"} limit={s.limit} />
             );
           case "products_grid":
             return (
               <ProductsGrid key={section.id} eyebrow={s.eyebrow} title={s.title}
                 subtitle={s.subtitle} collection={s.collection} limit={s.limit}
-                layout={s.layout} />
+                layout={s.layout === "kartlar" ? "grid" : s.layout} sekmeler={s.sekmeler ?? []} />
             );
           case "featured_products":
             return (
               <FeaturedProducts key={section.id} eyebrow={s.eyebrow} title={s.title}
-                subtitle={s.subtitle} slugs={s.slugs ?? []} layout={s.layout} />
+                subtitle={s.subtitle} slugs={s.slugs ?? []}
+                layout={s.layout === "carousel" ? "carousel" : "grid"} />
             );
           case "rich_text":
             return <RichText key={section.id} title={s.title} body={s.body} />;
@@ -56,19 +64,21 @@ export default async function HomePage() {
             return (
               <ImageWithText key={section.id} image={s.image} title={s.title}
                 body={s.body} ctaText={s.cta_text} ctaUrl={s.cta_url}
-                imageSide={s.image_side} />
+                imageSide={s.image_side} eyebrow={s.eyebrow} stil={s.stil} gorselNotu={s.gorsel_notu} />
             );
           case "faq":
             return (
               <Faq key={section.id} title={s.title}
-                items={(s.items ?? []) as { q: string; a: string }[]} />
+                items={(s.items ?? []) as { q: string; a: string }[]}
+                stil={s.stil} eyebrow={s.eyebrow} subtitle={s.subtitle}
+                eposta={s.eposta || contact.email} />
             );
           case "newsletter":
             return <NewsletterSection key={section.id} title={s.title} subtitle={s.subtitle} />;
           case "icon_bar":
             return (
-              <IconBar key={section.id}
-                items={(s.items ?? []) as { icon: string; title: string; text?: string }[]} />
+              <IconBar key={section.id} stil={s.stil}
+                items={(s.items ?? []) as { icon: string; title: string; text?: string; url?: string }[]} />
             );
           case "comparison":
             return (
@@ -78,13 +88,15 @@ export default async function HomePage() {
           case "testimonials":
             return (
               <Testimonials key={section.id} eyebrow={s.eyebrow} title={s.title}
-                subtitle={s.subtitle}
-                items={(s.items ?? []) as { author: string; text: string; rating: number }[]} />
+                subtitle={s.subtitle} stil={s.stil} altNot={s.alt_not} instagram={instagram}
+                items={(s.items ?? []) as { author: string; text: string; rating: number; image?: string }[]} />
             );
           case "gallery":
             return (
               <Gallery key={section.id} eyebrow={s.eyebrow} title={s.title}
                 subtitle={s.subtitle} aspect={s.aspect} mode={s.mode}
+                baglanti={s.baglanti || (instagram ? `https://instagram.com/${instagram}` : "")}
+                baglantiMetni={s.baglanti_metni}
                 // Eski önbellekte yalnız images olabilir
                 items={s.ogeler?.length ? s.ogeler : (s.images ?? []).map((url) => ({ url }))} />
             );
@@ -95,21 +107,52 @@ export default async function HomePage() {
               <Countdown key={section.id} title={s.title} subtitle={s.subtitle}
                 endsAt={s.ends_at} ctaText={s.cta_text} ctaUrl={s.cta_url} />
             );
+          case "kurdele":
+            return (
+              <Kurdele key={section.id} sembol={s.sembol} palet={s.palet}
+                items={(s.items ?? []) as { text: string; buyuk?: boolean }[]} />
+            );
+          case "stil_onerici":
+            return (
+              <StilOnerici key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} secenekler={s.secenekler ?? []} />
+            );
+          case "adimlar":
+            return (
+              <Adimlar key={section.id} eyebrow={s.eyebrow} title={s.title} subtitle={s.subtitle}
+                items={(s.items ?? []) as { title: string; text?: string; url?: string }[]} />
+            );
+          case "kilif_onizleme":
+            return (
+              <KilifOnizleme key={section.id} eyebrow={s.eyebrow} title={s.title}
+                subtitle={s.subtitle} buton={s.buton} ctaText={s.cta_text} ctaUrl={s.cta_url}
+                logoYazi={s.logo_yazi} not={s.not} />
+            );
           default:
             return null;
         }
   };
 
+  // Akış çizgisi: işaretli bölümlerin ÜSTÜNE geçiş boşluğu eklenir; çizgi
+  // ilkinde soldan girer, sonrakilerde karşı kenara geçer, footer'da biter.
+  // Hiç işaret yoksa (ya da ayar kapalıysa) boşluk da çizgi de yok.
+  const gorunen = theme.sections.filter((sec) => !sec.hidden);
+  const akis = !!theme.style.akis_cizgisi && gorunen.some((sec) => sec.akis);
   return (
     <div>
-      {theme.sections
-        .filter((sec) => !sec.hidden)
-        .map((sec) => (
-          <div key={sec.id} data-sec-id={sec.id}
-            className={sec.scheme === "band" ? "bg-white border-y border-zinc-200 my-4" : ""}>
-            {renderSection(sec)}
-          </div>
-        ))}
+      {gorunen.map((sec) => (
+        <div key={sec.id} data-sec-id={sec.id}
+          className={sec.scheme === "band" ? "bg-white border-y border-zinc-200 my-4" : ""}>
+          {akis && sec.akis && <div className="akis-gecis" data-akis-gecis aria-hidden="true" />}
+          {renderSection(sec)}
+        </div>
+      ))}
+      {akis && (
+        <>
+          <div className="akis-gecis akis-gecis-son" data-akis-gecis aria-hidden="true" />
+          <AkisCizgisi />
+        </>
+      )}
     </div>
   );
 }

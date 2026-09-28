@@ -38,6 +38,8 @@ export default function AnnouncementBar({
   };
 
   const zemin = { background: bg || "var(--c-primary)" };
+  // Açık zeminde (ör. #f1f1f1) beyaz yazı okunmaz → koyu yazı
+  const yaziRengi = acikMi(bg) ? "text-zinc-900" : "text-white";
 
   if (kayan) {
     // Kısa listede yarıyı dolduracak kadar tekrarla
@@ -57,7 +59,7 @@ export default function AnnouncementBar({
       </div>
     );
     return (
-      <div className="akan-kap overflow-hidden py-2 text-white" style={zemin}
+      <div className={`akan-kap overflow-hidden py-2 ${yaziRengi}`} style={zemin}
         role="region" aria-label="Duyurular">
         <div className="akan-serit flex w-max" style={{ "--akan-sure": sure } as React.CSSProperties}>
           {parca(false)}
@@ -69,8 +71,16 @@ export default function AnnouncementBar({
 
   const d = liste[sira % liste.length];
   return (
-    <div className="text-center py-2 px-4 text-white" style={zemin} role="region" aria-label="Duyuru">
+    <div className={`text-center py-2 px-4 ${yaziRengi}`} style={zemin} role="region" aria-label="Duyuru">
       <div key={sira} className="duyuru-gecis">{yazi(d, "d")}</div>
     </div>
   );
+}
+
+// #rrggbb algısal parlaklığı yüksekse açık zemin say
+function acikMi(renk?: string): boolean {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(renk || "");
+  if (!m) return false;
+  const [r, g, b] = m.slice(1).map((h) => parseInt(h, 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 170;
 }

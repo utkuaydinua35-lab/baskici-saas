@@ -16,7 +16,12 @@ export default function HeroSlider({
   tanitim = null,
   align = "center",
   height = "normal",
+  stil = "kaplama",
+  panelRenk = "#efefef",
 }: {
+  // kaplama: görsel tam zemin | bolunmus: açık pano, yazı solda görsel sağda
+  stil?: string;
+  panelRenk?: string;
   align?: "center" | "left";
   height?: "normal" | "tall";
   magaza?: string;
@@ -68,6 +73,11 @@ export default function HeroSlider({
     );
   }
 
+  if (stil === "bolunmus") {
+    return <BolunmusHero slides={slides} autoplaySec={autoplaySec} panelRenk={panelRenk}
+      roundCls={roundCls} radiusPx={radiusPx} />;
+  }
+
   return (
     // Yüksek vitrinde kenar boşluğu: yuvarlak köşeli hero ekran kenarına
     // yapışmasın (normal hero'da eski görünüm korunur)
@@ -111,7 +121,7 @@ export default function HeroSlider({
                   </p>
                 )}
                 {slide.title && (
-                  <h2 className={`mt-2 font-extrabold tracking-tight ${
+                  <h2 className={`mt-2 font-extrabold tracking-tight whitespace-pre-line ${
                     sol ? "text-4xl sm:text-5xl leading-[0.95] tracking-[-0.05em]" : "text-3xl sm:text-5xl"}`}>
                     {slide.title}
                   </h2>
@@ -162,6 +172,111 @@ export default function HeroSlider({
             ))}
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+// ── Bölünmüş hero (Füzyon) ──────────────────────────────────────────────
+// Açık renkli yuvarlak pano: solda üst etiket + serif başlık (2. satır italik)
+// + koyu hap buton, sağda süzülen görsel. Slaytlar üst üste durur, etkin olan
+// görünür (yer değiştirme yok → sayfa zıplamaz). Otomatik geçiş: yalnız
+// gerçek fare üstündeyken ve sekme gizliyken durur; oka/noktaya dokunmak
+// sayacı sıfırlar (iOS sahte mouseenter tuzağı — bkz. Carousel).
+function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
+  slides: HeroSlide[]; autoplaySec: number; panelRenk: string; roundCls: string; radiusPx: number;
+}) {
+  const [etkin, setEtkin] = useState(0);
+  const fare = useRef(false);
+  const sonEl = useRef(0);
+  const n = slides.length;
+  const git = (i: number) => { sonEl.current = Date.now(); setEtkin(((i % n) + n) % n); };
+
+  useEffect(() => {
+    if (n < 2 || !autoplaySec) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => {
+      if (fare.current || document.hidden) return;
+      if (Date.now() - sonEl.current < autoplaySec * 1000) return;
+      setEtkin((i) => (i + 1) % n);
+    }, autoplaySec * 1000);
+    return () => clearInterval(t);
+  }, [n, autoplaySec]);
+
+  return (
+    <section className={`fz-hero relative mx-4 xl:mx-auto max-w-6xl mt-4 overflow-hidden ${roundCls}`}
+      style={{ background: panelRenk, "--hero-r": `${Math.max(radiusPx, 18)}px` } as React.CSSProperties}
+      aria-roledescription="carousel"
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") fare.current = true; }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") fare.current = false; }}>
+      <div className="grid">
+        {slides.map((sl, i) => {
+          const aktif = i === etkin;
+          const [ilk, ...kalan] = (sl.title || "").split("\n");
+          const g = sl.image ? urunGorsel(sl.image) : null;
+          const kapla = sl.gorsel_kip === "kapla";
+          return (
+            <div key={i} aria-hidden={!aktif}
+              className={`[grid-area:1/1] grid lg:grid-cols-[38%_62%] lg:min-h-[540px] transition-opacity duration-500 ${
+                aktif ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+              <div className={`relative z-[1] self-center px-7 pt-9 pb-3 lg:pl-11 lg:pr-0 lg:py-16 ${aktif ? "fz-metin-gir" : ""}`}>
+                {sl.eyebrow && (
+                  <p className="text-[9px] sm:text-[10px] font-semibold tracking-[.16em] text-zinc-500 uppercase">{sl.eyebrow}</p>
+                )}
+                {sl.title && (
+                  <h2 className="f-baslik mt-5 text-[44px] sm:text-[56px] lg:text-[clamp(52px,5vw,80px)] leading-[1.03] tracking-[-.02em]">
+                    {ilk}
+                    {kalan.length > 0 && <em className="block italic text-zinc-500">{kalan.join(" ")}</em>}
+                  </h2>
+                )}
+                {sl.subtitle && (
+                  <p className="mt-4 text-[13px] sm:text-[15px] leading-relaxed text-zinc-600 max-w-sm">{sl.subtitle}</p>
+                )}
+                {sl.cta_text && (
+                  <Link href={sl.cta_url || "/urunler"} tabIndex={aktif ? undefined : -1}
+                    className="fz-buton mt-6 inline-flex items-center gap-6 rounded-full px-6 py-4 text-[11px] font-medium tracking-wide text-white">
+                    {sl.cta_text} <span aria-hidden className="text-lg leading-none">→</span>
+                  </Link>
+                )}
+                {sl.cta2_text && (
+                  <Link href={sl.cta2_url || "/urunler"} tabIndex={aktif ? undefined : -1}
+                    className="block mt-4 text-[12px] text-zinc-600 hover:text-zinc-900">
+                    {sl.cta2_text} →
+                  </Link>
+                )}
+              </div>
+              <div className={`relative min-w-0 flex items-center justify-center overflow-hidden h-[280px] sm:h-[360px] lg:h-auto mb-14 lg:mb-0 ${
+                kapla ? "px-7 lg:px-10 lg:py-12" : ""}`}>
+                {g && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={g.src} srcSet={g.srcSet || undefined}
+                    sizes="(min-width: 1024px) 700px, 100vw" alt=""
+                    fetchPriority={i === 0 ? "high" : undefined}
+                    loading={i === 0 ? undefined : "lazy"} decoding="async"
+                    className={kapla
+                      ? "w-full h-full lg:max-h-[480px] object-cover rounded-[20px]"
+                      : `fz-suzul w-[112%] max-w-none h-full object-contain mix-blend-darken ${aktif ? "" : "fz-durgun"}`} />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {n > 1 && (
+        <div className="absolute z-[2] bottom-4 left-7 lg:bottom-6 lg:left-11 flex items-center gap-3.5">
+          <button type="button" onClick={() => git(etkin - 1)} aria-label="Önceki"
+            className="w-8 h-8 rounded-full bg-white text-lg leading-none grid place-items-center hover:bg-zinc-200 transition-colors">←</button>
+          <div className="flex items-center gap-1.5">
+            {slides.map((_, i) => (
+              <button key={i} type="button" onClick={() => git(i)} aria-label={`Slayt ${i + 1}`}
+                aria-pressed={i === etkin}
+                className={`h-[7px] rounded-full transition-all duration-300 ${
+                  i === etkin ? "w-[22px] bg-zinc-900" : "w-[7px] bg-zinc-300"}`} />
+            ))}
+          </div>
+          <button type="button" onClick={() => git(etkin + 1)} aria-label="Sonraki"
+            className="w-8 h-8 rounded-full bg-white text-lg leading-none grid place-items-center hover:bg-zinc-200 transition-colors">→</button>
+        </div>
       )}
     </section>
   );

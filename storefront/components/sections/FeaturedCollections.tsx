@@ -7,6 +7,7 @@ import SectionHeading from "@/components/SectionHeading";
 // Öne çıkan koleksiyonlar — tema ayarındaki slug listesi (boşsa ilk `limit`).
 //  layout: grid     — 4'lü küçük kartlar
 //          showcase — 2'li büyük kartlar; numara, açıklama ve "Keşfet"
+//          kartlar  — 4'lü yuvarlak görsel kart, altta beyaz etiket kutusu (Füzyon)
 export default async function FeaturedCollections({
   eyebrow,
   title,
@@ -19,7 +20,7 @@ export default async function FeaturedCollections({
   title?: string;
   subtitle?: string;
   slugs: string[];
-  layout?: "grid" | "showcase";
+  layout?: "grid" | "showcase" | "kartlar";
   limit?: number;
 }) {
   const all = await getCollections();
@@ -29,6 +30,44 @@ export default async function FeaturedCollections({
       : all.slice(0, limit)
   ).filter((c): c is NonNullable<typeof c> => !!c);
   if (picked.length === 0) return null;
+
+  if (layout === "kartlar") {
+    return (
+      <section className="mx-auto max-w-6xl px-4 pt-10 sm:pt-12 pb-4">
+        <SectionHeading eyebrow={eyebrow} title={title || "Kategoriler"} subtitle={subtitle}
+          href="/urunler" linkText="Tümünü gör →" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+          {picked.map((c, i) => (
+            <Reveal key={c.slug} delay={(i % 4) * 70}>
+              <Link href={`/koleksiyon/${c.slug}`}
+                className="group relative block aspect-[1/1.2] sm:aspect-[1/1.1] rounded-[14px] sm:rounded-[18px] overflow-hidden bg-zinc-100"
+                style={c.image_url ? undefined
+                  : { background: "linear-gradient(140deg, color-mix(in srgb, var(--c-accent) 18%, #f4f4f4), #ececec)" }}>
+                {c.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urunGorsel(c.image_url).src} srcSet={urunGorsel(c.image_url).srcSet || undefined}
+                    sizes="(min-width: 1024px) 280px, 50vw" alt={c.title} loading="lazy" decoding="async"
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-[cubic-bezier(.22,1,.36,1)] group-hover:scale-[1.06]" />
+                ) : null}
+                {/* Etiket kutusu opak (bulanıklık yok: görsel büyürken her
+                    karede yeniden bulanıklaştırma mobilde takılırdı) */}
+                <div className="absolute inset-x-2 bottom-2 sm:inset-x-3.5 sm:bottom-3.5 flex items-center justify-between gap-2
+                  rounded-[9px] sm:rounded-xl border border-white/60 bg-white/[.93] px-2.5 py-2.5 sm:px-4 sm:py-4">
+                  <div className="min-w-0">
+                    <h3 className="text-[12px] sm:text-[15px] font-medium leading-tight tracking-[-.01em] truncate">{c.title}</h3>
+                    {c.description ? (
+                      <p className="hidden sm:block mt-1 text-[10px] text-zinc-500 truncate">{c.description}</p>
+                    ) : null}
+                  </div>
+                  <span aria-hidden className="text-lg sm:text-2xl text-zinc-700 transition-transform duration-300 group-hover:translate-x-[3px] group-hover:-translate-y-[3px]">→</span>
+                </div>
+              </Link>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (layout === "showcase") {
     return (

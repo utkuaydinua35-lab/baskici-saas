@@ -15,15 +15,21 @@ export interface HeroSlide {
   cta_url: string;
   cta2_text?: string;
   cta2_url?: string;
+  // Bölünmüş hero: sigdir (kesilmeden; beyaz/pano renkli zemin panoya karışır —
+  // mix-blend darken) | kapla (yuvarlak kart)
+  gorsel_kip?: "sigdir" | "kapla";
 }
 
 export interface ThemeSection {
   id: string;
   hidden?: boolean;
   scheme?: "none" | "band";
+  // Akış çizgisi bu bölümün üstünden geçsin (style.akis_cizgisi açıkken)
+  akis?: boolean;
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
     | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter"
-    | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact" | "countdown";
+    | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact" | "countdown"
+    | "kurdele" | "stil_onerici" | "adimlar" | "kilif_onizleme";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;
@@ -38,7 +44,7 @@ export interface ThemeSection {
     cta_url?: string;
     image_side?: string;
     items?: { q?: string; a?: string; icon?: string; title?: string; text?: string;
-      author?: string; rating?: number }[];
+      author?: string; rating?: number; image?: string; url?: string; buyuk?: boolean }[];
     subtitle?: string;
     us_label?: string;
     them_label?: string;
@@ -51,28 +57,51 @@ export interface ThemeSection {
     // Başlık üçlüsü (üst etiket / başlık / alt başlık)
     eyebrow?: string;
     // Düzen seçenekleri — değerler backend'de kısıtlanır (_SECTION_ENUMS)
-    layout?: "grid" | "showcase" | "carousel";
+    layout?: "grid" | "showcase" | "carousel" | "kartlar" | "sekmeli";
     align?: "center" | "left";
     height?: "normal" | "tall";
     aspect?: "square" | "story";
-    mode?: "scroll" | "carousel" | "marquee";
+    mode?: "scroll" | "carousel" | "marquee" | "izgara";
+    // Füzyon seçenekleri
+    stil?: string;               // bölüm tipine göre (backend _SECTION_ENUMS)
+    panel_renk?: string;
+    sekmeler?: string[];
+    gorsel_notu?: string;
+    eposta?: string;
+    alt_not?: string;
+    baglanti?: string;
+    baglanti_metni?: string;
+    sembol?: string;
+    palet?: "neon" | "tema";
+    secenekler?: { etiket: string; renk: string; kelime: string; neden: string;
+      urun: string; zemin: string }[];
+    buton?: string;
+    logo_yazi?: string;
+    not?: string;
   };
 }
 
 // Tema geneli görünüm (backend _STYLE_ENUMS)
 export interface ThemeStyle {
-  header_layout: "left" | "center";
+  header_layout: "left" | "center" | "vitrin";
   button_shape: "rounded" | "pill";
-  card_style: "boxed" | "minimal";
-  heading_style: "compact" | "showcase";
+  card_style: "boxed" | "minimal" | "yumusak";
+  heading_style: "compact" | "showcase" | "editoryal";
   scroll_top: boolean;
   header_sabit?: "hep" | "mobil" | "masaustu" | "yok";
+  footer_stil?: "sade" | "genis";
+  ust_not?: string;
+  ust_link_metin?: string;
+  ust_link_url?: string;
+  mobil_dock?: boolean;
+  ilerleme?: boolean;
+  akis_cizgisi?: boolean;
 }
 
 export interface Theme {
   version: number;
   colors: { primary: string; accent: string; bg: string };
-  font: "inter" | "poppins" | "playfair" | "dm-sans";
+  font: "inter" | "poppins" | "playfair" | "dm-sans" | "editoryal";
   logo_url: string | null;
   logo_width?: number;
   logo_width_mobile?: number | null;
@@ -156,6 +185,18 @@ const DEFAULT_PAYLOAD: ThemePayload = {
   isletme: { urun_turu: null, tanitim: null, teslim_suresi: null, kisiye_ozel: false },
 };
 
+// Hazır şablon metinlerindeki {magaza} yer tutucusu → mağazanın adı
+// ("{magaza} SPECIAL", kurdele yazıları, kılıf üstündeki logo yazısı…).
+// Şablon marka-nötr kalır, her mağazada kendi adı görünür.
+function magazaAdiniYerlestir(theme: Theme, ad: string): Theme {
+  const ham = JSON.stringify(theme);
+  if (!ham.includes("{magaza}")) return theme;
+  // JSON dizesi içine güvenli gömme (tırnak, ters bölü kaçışlı)
+  const kacisli = JSON.stringify(ad || "").slice(1, -1);
+  // Fonksiyonla: dize verilseydi addaki "$&" gibi kalıplar özel anlam taşırdı
+  return JSON.parse(ham.replaceAll("{magaza}", () => kacisli)) as Theme;
+}
+
 export async function getThemePayload(): Promise<ThemePayload & { is_preview?: boolean }> {
   try {
     const slug = await getStoreSlug();
@@ -192,6 +233,7 @@ export async function getThemePayload(): Promise<ThemePayload & { is_preview?: b
     payload.theme.footer = { ...DEFAULT_PAYLOAD.theme.footer, ...payload.theme.footer };
     // Eski sunucu/önbellek isletme göndermiyorsa sayfa çökmesin
     payload.isletme = { ...DEFAULT_PAYLOAD.isletme, ...(payload.isletme || {}) };
+    payload.theme = magazaAdiniYerlestir(payload.theme, payload.store_name);
     return { ...payload, is_preview: preview };
   } catch {
     return DEFAULT_PAYLOAD; // backend erişilemezse varsayılan temayla render

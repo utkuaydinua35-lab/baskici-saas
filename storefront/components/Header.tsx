@@ -64,9 +64,17 @@ export default function Header({
   collections = [],
   navLinks = [],
   layout = "left",
+  ustNot = "",
+  ustLinkMetin = "",
+  ustLinkUrl = "",
 }: {
-  // left: logo solda, menü yanında | center: logo ortada, menü altında
-  layout?: "left" | "center";
+  // left: logo solda, menü yanında | center: logo ortada, menü altında |
+  // vitrin: logo ortada, altında koyu "Koleksiyonlar" + geniş arama (Füzyon)
+  layout?: "left" | "center" | "vitrin";
+  // vitrin düzeninde logonun solundaki küçük yazı ve sağdaki yazı bağlantısı
+  ustNot?: string;
+  ustLinkMetin?: string;
+  ustLinkUrl?: string;
   siteName: string;
   logoUrl?: string | null;
   logoWidth?: number;
@@ -254,6 +262,49 @@ export default function Header({
       )}
     </>
   );
+
+  if (layout === "vitrin") {
+    const sepetDugmesi = cartDrawer ? (
+      <button onClick={() => setDrawerOpen(true)} aria-label="Sepeti aç"
+        className="relative inline-flex items-center gap-2 text-xs p-2 -m-2">
+        {cartInner}
+      </button>
+    ) : (
+      <Link href="/sepet" aria-label="Sepet" className="relative inline-flex items-center gap-2 text-xs p-2 -m-2">
+        {cartInner}
+      </Link>
+    );
+    return (
+      <header className={`${SABIT_SINIFI[sabit] ?? SABIT_SINIFI.hep} z-40 bg-white`}>
+        <div className="mx-auto max-w-6xl px-4">
+          <div className="grid grid-cols-[.6fr_auto_1fr] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-[84px] sm:h-[104px]">
+            <div className="min-w-0">
+              {ustNot && (
+                <Link href="/urunler" className="block text-[7px] sm:text-[10px] tracking-[.12em] sm:tracking-[.2em] leading-relaxed text-zinc-500 uppercase max-w-[70px] sm:max-w-none">
+                  {ustNot}
+                </Link>
+              )}
+            </div>
+            {logo}
+            <div className="flex items-center justify-end gap-4 sm:gap-6 text-zinc-800">
+              <FavHeaderLink />
+              {ustLinkMetin && ustLinkUrl && (
+                ustLinkUrl.startsWith("http")
+                  ? <a href={ustLinkUrl} target="_blank" rel="noopener noreferrer" className="hidden md:inline text-xs text-zinc-500 hover:text-zinc-900">{ustLinkMetin}</a>
+                  : <Link href={ustLinkUrl} className="hidden md:inline text-xs text-zinc-500 hover:text-zinc-900">{ustLinkMetin}</Link>
+              )}
+              {sepetDugmesi}
+            </div>
+          </div>
+          <div className="relative flex gap-2.5 sm:gap-5 pb-4 sm:pb-5">
+            <KoleksiyonMenusu navLinks={navLinks} collections={collections} autoCollections={autoCollections}
+              hasLinkTo={hasLinkTo} hasCollectionsMenu={hasCollectionsMenu} />
+            <AramaCubugu />
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     // backdrop-blur YOK: sabit header'ın altından akan şeritler ve kaydırılan
@@ -530,5 +581,148 @@ function FavHeaderLink() {
         </span>
       )}
     </Link>
+  );
+}
+
+// ── Vitrin düzeni (Füzyon) parçaları ────────────────────────────────────
+
+// Koyu "Koleksiyonlar ☰" düğmesi + altında açılan menü kartı. Mobilde yalnız
+// ikon görünür; kart iki boyutta da aynı (soldan kayan çekmece gerekmez).
+function KoleksiyonMenusu({ navLinks, collections, autoCollections, hasLinkTo, hasCollectionsMenu }: {
+  navLinks: { label: string; url?: string; type?: string; slugs?: string[] }[];
+  collections: NavCollection[];
+  autoCollections: NavCollection[];
+  hasLinkTo: (path: string) => boolean;
+  hasCollectionsMenu: boolean;
+}) {
+  const [acik, setAcik] = useState(false);
+  const kap = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  useEffect(() => setAcik(false), [pathname]);
+  useEffect(() => {
+    if (!acik) return;
+    const dis = (e: PointerEvent) => { if (!kap.current?.contains(e.target as Node)) setAcik(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAcik(false); };
+    document.addEventListener("pointerdown", dis);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", dis); document.removeEventListener("keydown", esc); };
+  }, [acik]);
+
+  const satir = "block py-3.5 text-[15px] text-zinc-800 border-b border-zinc-100 last:border-b-0 hover:text-zinc-500";
+  const baslik = "pt-4 pb-1 text-[10px] uppercase tracking-[.14em] text-zinc-400";
+  return (
+    <div ref={kap} className="shrink-0">
+      <button type="button" onClick={() => setAcik((a) => !a)} aria-expanded={acik} aria-label="Koleksiyonları aç"
+        className="h-full flex items-center justify-between gap-3 w-[46px] sm:w-[240px] rounded-[10px] bg-zinc-900 text-white px-3 sm:px-[22px] py-3 sm:py-[15px] text-left text-sm">
+        <span className="hidden sm:inline">Koleksiyonlar</span>
+        <span aria-hidden className="text-xl leading-none w-5 text-center">{acik ? "×" : "☰"}</span>
+      </button>
+      {acik && (
+        <nav aria-label="Koleksiyon menüsü"
+          className="absolute left-0 top-full z-50 mt-1 w-[min(330px,92vw)] max-h-[70vh] overflow-y-auto rounded-xl border border-zinc-100 bg-white px-6 py-3 shadow-[0_15px_40px_#0002]">
+          {navLinks.map((l, li) => l.type === "collections" ? (
+            <div key={`v-cm-${li}`}>
+              <div className={baslik}>{l.label}</div>
+              {(l.slugs || []).map((s2) => collections.find((c) => c.slug === s2))
+                .filter((c): c is NavCollection => !!c)
+                .map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+            </div>
+          ) : l.url?.startsWith("http") ? (
+            <a key={`v-${li}`} href={l.url} target="_blank" rel="noopener noreferrer" className={satir}>{l.label}</a>
+          ) : (
+            <Link key={`v-${li}`} href={l.url || "/"} className={satir}>{l.label}</Link>
+          ))}
+          {navLinks.length === 0 && <Link href="/urunler" className={satir}>Tüm ürünler</Link>}
+          {!hasCollectionsMenu && autoCollections.length > 0 && (
+            <>
+              <div className={baslik}>Koleksiyonlar</div>
+              {autoCollections.map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+            </>
+          )}
+          {!hasLinkTo("/hesap") && <Link href="/hesap" className={satir}>Hesabım</Link>}
+          {!hasLinkTo("/favoriler") && <Link href="/favoriler" className={satir}>Favorilerim</Link>}
+        </nav>
+      )}
+    </div>
+  );
+}
+
+// Her zaman görünen geniş arama çubuğu — yazdıkça öneri listesi (250 ms
+// gecikmeli), Enter tüm sonuçlara gider.
+function AramaCubugu() {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<Suggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [odak, setOdak] = useState(false);
+  const kap = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => { setQ(""); setResults([]); }, [pathname]);
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setResults([]); return; }
+    setLoading(true);
+    const t = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(term)}`)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => setResults(d.items || []))
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  useEffect(() => {
+    if (!odak) return;
+    const dis = (e: PointerEvent) => { if (!kap.current?.contains(e.target as Node)) setOdak(false); };
+    document.addEventListener("pointerdown", dis);
+    return () => document.removeEventListener("pointerdown", dis);
+  }, [odak]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (!term) return;
+    setOdak(false);
+    router.push(`/urunler?q=${encodeURIComponent(term)}`);
+  };
+  const acik = odak && q.trim().length >= 2;
+  return (
+    <form ref={kap} onSubmit={submit} role="search"
+      className="relative flex-1 min-w-0 flex items-center rounded-[10px] bg-zinc-100 px-2.5 sm:px-4 focus-within:outline focus-within:outline-2 focus-within:outline-zinc-500">
+      <label htmlFor="vitrin-ara" className="sr-only">Ürün ara</label>
+      <input id="vitrin-ara" type="search" value={q} autoComplete="off"
+        onChange={(e) => { setQ(e.target.value); setOdak(true); }} onFocus={() => setOdak(true)}
+        onKeyDown={(e) => { if (e.key === "Escape") setOdak(false); }}
+        placeholder="Tasarım ara…"
+        className="w-full min-w-0 bg-transparent py-3 sm:py-4 text-xs sm:text-sm outline-none text-zinc-800 placeholder:text-zinc-500" />
+      <button type="submit" aria-label="Ara" className="shrink-0 w-8 h-9 sm:w-9 sm:h-10 grid place-items-center text-zinc-800">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5" aria-hidden>
+          <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" />
+        </svg>
+      </button>
+      {acik && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-zinc-200 bg-white p-1.5 shadow-lg max-h-80 overflow-y-auto">
+          {results.map((r) => (
+            <Link key={r.slug} href={`/urun/${r.slug}`}
+              className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-zinc-50">
+              <div className="w-10 h-10 rounded-lg bg-zinc-100 overflow-hidden shrink-0">
+                {r.cover_image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.cover_image} alt="" className="w-full h-full object-cover" />
+                ) : null}
+              </div>
+              <span className="flex-1 text-sm line-clamp-1">{r.title}</span>
+              <span className="text-sm font-medium whitespace-nowrap">{formatPrice(r.price, r.currency)}</span>
+            </Link>
+          ))}
+          {!loading && results.length === 0 && <p className="px-2 py-3 text-sm text-zinc-400">Sonuç bulunamadı.</p>}
+          {results.length > 0 && (
+            <button type="submit" className="w-full text-left px-2 py-2 text-xs text-zinc-500 hover:text-zinc-900">
+              “{q.trim()}” için tüm sonuçları gör →
+            </button>
+          )}
+        </div>
+      )}
+    </form>
   );
 }

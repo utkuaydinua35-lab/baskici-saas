@@ -179,7 +179,7 @@ export default function TemaPage() {
           </button>
           {presets.map(pr => (
             <button key={pr.key} disabled={busy}
-              onClick={() => newDraft(pr.label, { ...pr.theme, logo_url: live.logo_url, favicon_url: live.favicon_url, logo_width: live.logo_width, whatsapp: live.whatsapp, footer: live.footer })}
+              onClick={() => newDraft(pr.label, sablonuUygula(pr.theme, live))}
               className="card !p-3 text-left hover:border-panel-accent transition disabled:opacity-50">
               <SablonKrokisi tema={pr.theme} />
               <div className="flex items-center gap-2 text-sm font-medium mt-2">
@@ -196,11 +196,28 @@ export default function TemaPage() {
           ))}
         </div>
         <p className="text-[11px] text-panel-muted mt-2">
-          Şablondan oluşturulan taslakta logo, WhatsApp ve footer bilgileriniz korunur.
+          Şablon yalnız görünümü değiştirir: logo, menü, footer, WhatsApp, çark/çıkış kampanyası ve
+          sepet mesajlarınız taslakta korunur.
         </p>
       </section>
     </div>
   )
+}
+
+// Şablon yalnız GÖRÜNÜMÜ değiştirir; mağazanın kendi içeriği yayındaki
+// temadan taşınır. Eskiden yalnız logo/WhatsApp/footer korunuyordu: şablondan
+// açılan taslak yayınlanınca üst menü, çark/çıkış kampanyası, sepet mesajları
+// ve metin sözlüğü sessizce siliniyordu.
+const KORUNAN_ALANLAR = ['logo_url', 'favicon_url', 'logo_width', 'logo_width_mobile', 'whatsapp', 'footer',
+  'nav_links', 'cark', 'cikis', 'cart_messages', 'texts', 'thankyou', 'trust_badges', 'collection_pages']
+function sablonuUygula(sablon, yayin) {
+  const tema = structuredClone(sablon)
+  for (const alan of KORUNAN_ALANLAR) {
+    if (yayin[alan] !== undefined && yayin[alan] !== null) tema[alan] = structuredClone(yayin[alan])
+  }
+  // Açılış pop-up'ı: mağaza kendi kampanyasını yazmışsa o kalır
+  if (yayin.popup?.baslik || yayin.popup?.metin) tema.popup = structuredClone(yayin.popup)
+  return tema
 }
 
 // Tema renklerinden mini kart önizlemesi.
@@ -242,6 +259,18 @@ function SablonKrokisi({ tema }) {
     switch (sec.type) {
       case 'hero_slider': {
         const sol = s.align === 'left'
+        if (s.stil === 'bolunmus') {
+          return (
+            <div key={i} className="h-12 rounded-md grid grid-cols-[40%_60%] items-center px-1.5 gap-1"
+              style={{ background: s.panel_renk || '#efefef' }}>
+              <div className="flex flex-col gap-0.5">
+                {cizgi(20, '#111', 0.75)}{cizgi(14, '#111', 0.4)}
+                <div className="mt-0.5 h-1.5 w-7 rounded-full" style={{ background: c.primary }} />
+              </div>
+              <div className="h-9 rounded-sm bg-black/10" />
+            </div>
+          )
+        }
         return (
           <div key={i} className={`rounded-md flex flex-col justify-center gap-1 px-2 ${s.height === 'tall' ? 'h-14' : 'h-10'} ${sol ? 'items-start' : 'items-center'}`}
             style={{ background: `linear-gradient(120deg, ${c.primary}, ${c.accent})` }}>
@@ -293,6 +322,52 @@ function SablonKrokisi({ tema }) {
         )
       case 'banner':
         return <div key={i} className="h-6 rounded-md bg-black/10" />
+      case 'kurdele':
+        return (
+          <div key={i} className="relative h-7 overflow-hidden">
+            <div className="absolute -inset-x-2 top-1.5 h-2 -rotate-3" style={{ background: '#edff34' }} />
+            <div className="absolute -inset-x-2 top-4 h-2 rotate-3" style={{ background: '#e7d4f3' }} />
+          </div>
+        )
+      case 'icon_bar':
+        return (
+          <div key={i} className={`grid grid-cols-4 ${s.stil === 'serit' ? 'border border-black/10 rounded-sm divide-x divide-black/10' : 'gap-1'}`}>
+            {[0, 1, 2, 3].map(k => (
+              <div key={k} className={`h-3 flex items-center justify-center ${s.stil === 'serit' ? '' : 'rounded-sm border border-black/10'}`}>
+                {cizgi(8, '#111', 0.35)}
+              </div>
+            ))}
+          </div>
+        )
+      case 'stil_onerici': case 'kilif_onizleme': {
+        const koyu = sec.type === 'kilif_onizleme'
+        return (
+          <div key={i} className="h-10 rounded-md grid grid-cols-2 overflow-hidden border border-black/10"
+            style={{ background: koyu ? '#171717' : '#fcfcfa' }}>
+            <div className="flex flex-col justify-center gap-0.5 px-1">
+              {cizgi(18, koyu ? '#fff' : '#111', 0.7)}{cizgi(12, koyu ? '#fff' : '#111', 0.35)}
+            </div>
+            <div className="grid place-items-center" style={{ background: koyu ? '#2a2a28' : '#e5e8ed' }}>
+              <div className={`${koyu ? 'w-2.5 h-5 rounded-[3px]' : 'w-4 h-4 rounded-sm -rotate-6'} bg-white/70`} />
+            </div>
+          </div>
+        )
+      }
+      case 'image_with_text':
+        return (
+          <div key={i} className="h-8 rounded-md grid grid-cols-2 overflow-hidden"
+            style={{ background: s.stil === 'koyu' ? '#171717' : '#fff' }}>
+            <div className="bg-black/15" />
+            <div className="flex items-center px-1">{cizgi(16, s.stil === 'koyu' ? '#fff' : '#111', 0.7)}</div>
+          </div>
+        )
+      case 'testimonials':
+        if (s.stil !== 'fotografli') return <div key={i}>{baslik()}<div className="h-3 rounded-sm bg-black/5" /></div>
+        return (
+          <div key={i} className="-mx-1.5 px-1.5 py-1.5 bg-black flex gap-1 overflow-hidden">
+            {[0, 1].map(k => <div key={k} className="shrink-0 w-16 h-6 rounded-sm border border-white/15 grid grid-cols-2"><div className="bg-white/15" /></div>)}
+          </div>
+        )
       default:
         return <div key={i}>{baslik()}<div className="h-3 rounded-sm bg-black/5" /></div>
     }
@@ -302,7 +377,19 @@ function SablonKrokisi({ tema }) {
       style={{ background: c.bg || '#fff' }} aria-hidden="true">
       {/* Header */}
       <div className="shrink-0 px-2 py-1 border-b border-black/10 bg-white/70">
-        {st.header_layout === 'center' ? (
+        {st.header_layout === 'vitrin' ? (
+          <div className="flex flex-col gap-1">
+            <div className="w-full flex items-center justify-between">
+              {cizgi(10, '#111', 0.3)}
+              {cizgi(22, '#111', 0.8)}
+              <div className="w-3 h-1.5 rounded-sm bg-black/30" />
+            </div>
+            <div className="flex gap-1">
+              <div className="h-2 w-8 rounded-sm bg-black/80" />
+              <div className="h-2 flex-1 rounded-sm bg-black/10" />
+            </div>
+          </div>
+        ) : st.header_layout === 'center' ? (
           <div className="flex flex-col items-center gap-0.5">
             <div className="w-full flex items-center justify-between">
               <div className="w-1.5 h-1.5 rounded-full bg-black/30" />

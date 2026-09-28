@@ -19,7 +19,7 @@ import copy
 import re
 import uuid
 
-MAX_SECTIONS = 12
+MAX_SECTIONS = 16
 MAX_SLIDES = 6
 
 SECTION_DEFAULTS: dict[str, dict] = {
@@ -33,6 +33,11 @@ SECTION_DEFAULTS: dict[str, dict] = {
         "align": "center",
         # Yükseklik: normal | tall (tam ekrana yakın vitrin)
         "height": "normal",
+        # Görünüm: kaplama (görsel tam zemin, yazı üstünde) | bolunmus (açık
+        # renkli yuvarlak pano: yazı solda, görsel sağda — Füzyon)
+        "stil": "kaplama",
+        # Bölünmüş panonun zemin rengi (#rrggbb)
+        "panel_renk": "#efefef",
     },
     # Bölüm başlığı üçlüsü (eyebrow/title/subtitle) — "SENİN İÇİN SEÇTİK /
     # Çok Satanlar / En sevilen tasarımlar" kalıbı. Boş alan gösterilmez.
@@ -40,44 +45,80 @@ SECTION_DEFAULTS: dict[str, dict] = {
     "featured_collections": {"eyebrow": "", "title": "Koleksiyonlar", "subtitle": "",
                              "slugs": [], "layout": "grid", "limit": 4},
     # layout: grid | carousel (oklu yatay şerit)
+    # layout sekmeli: üstte koleksiyon hapları (Tümü + sekmeler) ve sıralama;
+    # hap seçilince o koleksiyonun ürünleri gösterilir (sayfa yenilenmeden)
     "products_grid": {"eyebrow": "", "title": "Öne Çıkanlar", "subtitle": "",
-                      "collection": None, "limit": 8, "layout": "grid"},
+                      "collection": None, "limit": 8, "layout": "grid", "sekmeler": []},
     "featured_products": {"eyebrow": "", "title": "Öne Çıkan Ürünler", "subtitle": "",
                           "slugs": [], "layout": "grid"},
     "rich_text": {"title": "", "body": ""},
     "banner": {"image": None, "url": "", "radius_scope": "both", "radius_pct": 50},
     # Görsel + metin (Shopify "Image with text")
-    "image_with_text": {"image": None, "title": "", "body": "",
-                        "cta_text": "", "cta_url": "", "image_side": "left"},
+    # stil: acik (beyaz kart) | koyu (koyu editoryal pano, büyük başlık,
+    # görselin köşesinde küçük not — Füzyon)
+    "image_with_text": {"image": None, "eyebrow": "", "title": "", "body": "",
+                        "cta_text": "", "cta_url": "", "image_side": "left",
+                        "stil": "acik", "gorsel_notu": ""},
     # SSS akordeonu (Shopify "Collapsible content")
-    "faq": {"title": "Sıkça Sorulan Sorular", "items": []},  # [{q, a}]
+    # stil: tek (ortada liste) | iki_sutun (solda başlık + iletişim, sağda liste)
+    # eposta: iki sütunda başlığın altındaki iletişim adresi (boşsa mağazanınki)
+    "faq": {"eyebrow": "", "title": "Sıkça Sorulan Sorular", "subtitle": "", "items": [],
+            "stil": "tek", "eposta": ""},  # [{q, a}]
     # Bülten kayıt bölümü (footer'daki formun büyük hali)
     "newsletter": {"title": "Kampanyalardan haberdar olun",
                    "subtitle": "İndirim ve yeni tasarımlar e-postanıza gelsin."},
     # İkon şeridi (ShinePro icon-bar): avantaj vurguları
-    "icon_bar": {"items": []},   # [{icon, title, text}] max 6
+    # stil: kart (ortalı kutular) | serit (tek çerçevede yan yana, tıklanır)
+    # icon: emoji ya da çizgi ikon adı (kargo, konum, iade, eposta, destek,
+    # guvenli, hediye, yildiz, kalp, saat, telefon, kutu)
+    "icon_bar": {"items": [], "stil": "kart"},   # [{icon, title, text, url}] max 6
     # Karşılaştırma tablosu (ShinePro comparison-table): Biz vs Diğerleri
     "comparison": {"title": "Neden Biz?", "us_label": "Biz", "them_label": "Diğerleri",
                    "rows": []},  # [{feature, us: bool, them: bool}] max 8
     # Müşteri yorumları vitrini (ShinePro results/testimonials)
+    # stil: kart (yıldızlı kutular) | fotografli (koyu bant, fotoğraflı
+    # yatay kartlar, oklu + otomatik ilerleyen şerit)
     "testimonials": {"eyebrow": "", "title": "Müşterilerimiz Ne Diyor?", "subtitle": "",
-                     "items": []},  # [{author, text, rating}]
+                     "items": [], "stil": "kart", "alt_not": ""},  # [{author, text, rating, image}]
     # Görsel galerisi (ShinePro image-slider "Sizden Gelenler")
     # aspect: square | story (9:16 hikâye kartı)
     # mode: scroll (elle kaydır) | carousel (oklu + otomatik) | marquee (sürekli akan)
     # ogeler: [{url, tip: gorsel|video, link, etiket}] — doğruluk kaynağı.
     # images: [url] — eski biçim; okunurken ogeler'e çevrilir, yazılırken
     # ogeler'den türetilir (eski önbellek/istemci kırılmasın).
+    # mode izgara: masaüstünde yan yana 5'li, mobilde kaydırılır; görseller
+    # yavaşça yakınlaşır (Instagram paylaşımları). baglanti: başlığın
+    # sağındaki link ("Takip et →").
     "gallery": {"eyebrow": "", "title": "Sizden Gelenler", "subtitle": "",
-                "images": [], "ogeler": [], "aspect": "square", "mode": "scroll"},  # max 12
+                "images": [], "ogeler": [], "aspect": "square", "mode": "scroll",
+                "baglanti": "", "baglanti_metni": ""},  # max 12
     # İletişim formu (ShinePro contact-form) — mağaza e-postasına iletir
     "contact": {"title": "İletişim", "subtitle": "Soru ve önerileriniz için bize yazın."},
     # Kampanya geri sayımı — süre dolunca bölüm kendini gizler
     "countdown": {"title": "Kampanya bitiyor!", "subtitle": "", "ends_at": "",
                   "cta_text": "Alışverişe Başla", "cta_url": "/urunler"},
+    # ── Füzyon bölümleri ──
+    # Çapraz kurdeleler: üç eğik şerit zıt yönlerde akar. items: [{text, buyuk}]
+    # palet: neon (sarı + pembe) | tema (ana renk + vurgu)
+    "kurdele": {"items": [], "sembol": "✦", "palet": "neon"},
+    # Stil önerici: ziyaretçi bir ruh hâli seçer, o hâle bağlı ürün sahnede
+    # belirir. secenekler: [{etiket, renk, kelime, neden, urun(slug), zemin}]
+    "stil_onerici": {"eyebrow": "", "title": "Hangi tarz\nsana göre?", "subtitle": "",
+                     "secenekler": []},
+    # Numaralı adımlar: solda başlık, sağda 01-02-03 satırları (tıklanır)
+    "adimlar": {"eyebrow": "", "title": "", "subtitle": "", "items": []},  # [{title, text, url}]
+    # Canlı kılıf önizleme: ziyaretçi fotoğrafını seçer, kılıfın üstünde
+    # sürükler/yakınlaştırır. Fotoğraf cihazdan ÇIKMAZ (yüklenmez).
+    "kilif_onizleme": {"eyebrow": "", "title": "", "subtitle": "",
+                       "buton": "FOTOĞRAF SEÇ", "cta_text": "", "cta_url": "/tasarla",
+                       "logo_yazi": "{magaza}",
+                       "not": "Önizlemedir; baskı renkleri ekrana göre küçük farklar gösterebilir."},
 }
 
 MAX_FAQ_ITEMS = 12
+# Çizgi ikon adları (vitrin lib/cizgiIkon.tsx ile birebir)
+CIZGI_IKONLAR = {"kargo", "konum", "iade", "eposta", "destek", "guvenli", "hediye",
+                 "yildiz", "kalp", "saat", "telefon", "kutu"}
 MAX_LIST_ITEMS = 8
 MAX_GALLERY_IMAGES = 12
 
@@ -87,26 +128,42 @@ MAX_GALLERY_IMAGES = 12
 _SECTION_ENUMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("hero_slider", "align"): ("center", "left"),
     ("hero_slider", "height"): ("normal", "tall"),
-    ("featured_collections", "layout"): ("grid", "showcase"),
-    ("products_grid", "layout"): ("grid", "carousel"),
+    ("hero_slider", "stil"): ("kaplama", "bolunmus"),
+    ("featured_collections", "layout"): ("grid", "showcase", "kartlar"),
+    ("products_grid", "layout"): ("grid", "carousel", "sekmeli"),
     ("featured_products", "layout"): ("grid", "carousel"),
     ("gallery", "aspect"): ("square", "story"),
-    ("gallery", "mode"): ("scroll", "carousel", "marquee"),
+    ("gallery", "mode"): ("scroll", "carousel", "marquee", "izgara"),
+    ("image_with_text", "stil"): ("acik", "koyu"),
+    ("faq", "stil"): ("tek", "iki_sutun"),
+    ("icon_bar", "stil"): ("kart", "serit"),
+    ("testimonials", "stil"): ("kart", "fotografli"),
+    ("kurdele", "palet"): ("neon", "tema"),
 }
 # Başlık üçlüsü olan bölümlerde metin alanı uzunluk sınırları
 _HEADING_LIMITS = {"eyebrow": 60, "title": 100, "subtitle": 200}
 
 # Tema geneli görünüm seçenekleri (style.*) — ilki varsayılan
 _STYLE_ENUMS: dict[str, tuple[str, ...]] = {
-    "header_layout": ("left", "center"),     # logo solda | logo ortada, menü altında
+    # left: logo solda | center: logo ortada, menü altında | vitrin: logo
+    # ortada, altında koyu "Koleksiyonlar" düğmesi + geniş arama çubuğu (Füzyon)
+    "header_layout": ("left", "center", "vitrin"),
     "button_shape": ("rounded", "pill"),     # yuvarlatılmış köşe | tam yuvarlak
-    "card_style": ("boxed", "minimal"),      # çerçeveli kart | çerçevesiz, ortalı yazı
-    "heading_style": ("compact", "showcase"),  # küçük sol başlık | büyük ortalı başlık
+    # boxed: çerçeveli | minimal: çerçevesiz, ortalı | yumusak: yuvarlak gri
+    # zeminli görsel, ad solda fiyat sağda
+    "card_style": ("boxed", "minimal", "yumusak"),
+    # compact: küçük sol | showcase: büyük ortalı | editoryal: büyük serif
+    # başlık solda, açıklama sağda, satır satır yükselerek belirir
+    "heading_style": ("compact", "showcase", "editoryal"),
     "header_sabit": ("hep", "mobil", "masaustu", "yok"),
+    "footer_stil": ("sade", "genis"),        # tek satır | logolu, sütunlu
 }
 MAX_DUYURU = 8
 
-_SLIDE_KEYS = {"image", "eyebrow", "title", "subtitle", "cta_text", "cta_url", "cta2_text", "cta2_url"}
+# gorsel_kip (bölünmüş hero): sigdir (görsel kesilmeden, açık zemine karışır)
+# | kapla (yuvarlak köşeli kart gibi doldurur)
+_SLIDE_KEYS = {"image", "eyebrow", "title", "subtitle", "cta_text", "cta_url", "cta2_text",
+               "cta2_url", "gorsel_kip"}
 
 DEFAULT_THEME: dict = {
     "version": 2,
@@ -132,9 +189,16 @@ DEFAULT_THEME: dict = {
     # "yukarı çık" düğmesi
     # header_sabit: sayfa kayarken üst menü görünür kalsın mı — hep | mobil
     # (yalnız mobilde) | masaustu (yalnız masaüstünde) | yok
+    # ust_not: vitrin üst menüsünde logonun solundaki küçük yazı;
+    # ust_link_*: sağdaki yazı bağlantısı ("Sipariş takibi").
+    # mobil_dock: telefonda altta sabit Keşfet/Tasarla/Favoriler/Sepet çubuğu.
+    # ilerleme: sayfanın üstünde kaydırma ilerleme çizgisi.
+    # akis_cizgisi: anasayfada kaydırdıkça çizilen renkli, halkalı çizgi.
     "style": {"header_layout": "left", "button_shape": "rounded",
               "card_style": "boxed", "heading_style": "compact", "scroll_top": False,
-              "header_sabit": "hep"},
+              "header_sabit": "hep", "footer_stil": "sade",
+              "ust_not": "", "ust_link_metin": "", "ust_link_url": "",
+              "mobil_dock": False, "ilerleme": False, "akis_cizgisi": False},
     # Açılış kampanya pop-up'ı — sayfa açılınca bir kez görünür (oturumda
     # tekrar çıkmaz). Marka-nötr: her mağaza kendi metnini/kupon kodunu yazar.
     # baslik/metin boşsa pop-up HİÇ gösterilmez (kapalı gibi davranır).
@@ -204,7 +268,8 @@ DEFAULT_THEME: dict = {
     },
 }
 
-FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans"}
+# editoryal: gövde Inter, başlıklar Instrument Serif (ince, zarif serif)
+FONT_PRESETS = {"inter", "poppins", "playfair", "dm-sans", "editoryal"}
 
 # ─── Hazır tema şablonları (Shopify theme library karşılığı) ─────
 # Uygulanınca renk/font/duyuru/bölümler değişir; logo, favicon, WhatsApp,
@@ -338,6 +403,149 @@ THEME_PRESETS: dict[str, dict] = {
             ],
         },
     },
+    # ── Füzyon ── BERNZ "fusion" tasarım taslağından (2026-09) uyarlandı,
+    # marka-NÖTR. Beyaz zemin, Instrument Serif başlıklar, koyu hap butonlar,
+    # mavi vurgu. Üstte logo ortada + koyu "Koleksiyonlar" düğmesi ve geniş
+    # arama; açık gri panolu bölünmüş hero; çapraz akan kurdeleler; stil
+    # önerici; sekmeli ürünler; koyu editoryal pano; fotoğraflı yorumlar;
+    # Instagram ızgarası; numaralı adımlar; canlı kılıf önizleme; iki
+    # sütunlu SSS. Sayfa boyunca kaydırdıkça çizilen halkalı akış çizgisi ve
+    # telefonda alt çubuk. {magaza} yazan yerlere mağaza adı gelir. Görsel
+    # alanları BOŞ gelir; uydurma müşteri yorumu yoktur.
+    "fuzyon": {
+        "label": "Füzyon",
+        "description": "Beyaz, editoryal ve hareketli: serif başlıklar, bölünmüş hero, "
+                       "çapraz akan kurdeleler, stil önerici, canlı kılıf önizleme ve "
+                       "kaydırdıkça çizilen akış çizgisi. Görselleri siz eklersiniz.",
+        "theme": {
+            "colors": {"primary": "#191919", "accent": "#3d49ee", "bg": "#ffffff"},
+            "font": "editoryal",
+            "announcement": {"enabled": True, "bg": "#f1f1f1", "kayan": True, "items": [
+                {"text": "{magaza}", "url": ""},
+                {"text": "KENDİ KILIFINI TASARLA", "url": "/tasarla"},
+                {"text": "HER TARZA BİR KOLEKSİYON", "url": "/urunler"},
+            ]},
+            "style": {"header_layout": "vitrin", "button_shape": "pill",
+                      "card_style": "yumusak", "heading_style": "editoryal",
+                      "header_sabit": "yok", "footer_stil": "genis", "scroll_top": False,
+                      "ust_not": "SIRA DIŞI TASARIMLAR",
+                      "ust_link_metin": "Siparişlerim", "ust_link_url": "/hesap",
+                      "mobil_dock": True, "ilerleme": True, "akis_cizgisi": True},
+            "popup": {"enabled": False},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+            "sections": [
+                {"id": "fz-hero", "type": "hero_slider",
+                 "settings": {"stil": "bolunmus", "panel_renk": "#efefef", "autoplay_sec": 6,
+                              "radius_scope": "both", "radius_pct": 50, "slides": [
+                     {"image": None, "eyebrow": "KİŞİYE ÖZEL BASKI",
+                      "title": "Fotoğrafın,\nkılıfın olsun.",
+                      "subtitle": "Görselini yükle, telefon modelini seç. Gerisini biz halledelim.",
+                      "cta_text": "KENDİ KILIFINI OLUŞTUR", "cta_url": "/tasarla",
+                      "cta2_text": "ya da hazır tasarımlara göz at", "cta2_url": "/urunler",
+                      "gorsel_kip": "sigdir"},
+                     {"image": None, "eyebrow": "KOLEKSİYONLAR",
+                      "title": "Her tarza\nbir kılıf.",
+                      "subtitle": "Serilerimizden sana uyan tasarımı seç.",
+                      "cta_text": "KOLEKSİYONU KEŞFET", "cta_url": "/urunler",
+                      "cta2_text": "", "cta2_url": "", "gorsel_kip": "sigdir"},
+                     {"image": None, "eyebrow": "EDİTÖRÜN SEÇİMİ",
+                      "title": "Editörün\nseçimi.",
+                      "subtitle": "Sakin tonlarda, güçlü dokulu bir tasarım.",
+                      "cta_text": "ÜRÜNÜ İNCELE", "cta_url": "/urunler",
+                      "cta2_text": "", "cta2_url": "", "gorsel_kip": "kapla"},
+                 ]}},
+                {"id": "fz-hizmet", "type": "icon_bar",
+                 "settings": {"stil": "serit", "items": [
+                     {"icon": "kargo", "title": "Özenli paketleme",
+                      "text": "Siparişin özenle hazırlanır", "url": ""},
+                     {"icon": "konum", "title": "Sipariş takibi",
+                      "text": "Kargon nerede, anında gör", "url": "/hesap"},
+                     {"icon": "iade", "title": "İade ve değişim",
+                      "text": "Koşulları önceden incele", "url": "/iade"},
+                     {"icon": "eposta", "title": "Destek",
+                      "text": "Sorularına hızlı yanıt", "url": ""},
+                 ]}},
+                {"id": "fz-kategori", "type": "featured_collections",
+                 "settings": {"title": "Kategoriler", "slugs": [], "layout": "kartlar", "limit": 4}},
+                {"id": "fz-kurdele", "type": "kurdele",
+                 "settings": {"palet": "neon", "sembol": "✦", "items": [
+                     {"text": "KENDİ KILIFINI TASARLA", "buyuk": True},
+                     {"text": "{magaza}", "buyuk": False},
+                     {"text": "Tarzını yanında taşı", "buyuk": False},
+                     {"text": "SIRA DIŞI TASARIMLAR", "buyuk": True},
+                     {"text": "Yeni koleksiyon", "buyuk": False},
+                     {"text": "Her tarza bir kılıf", "buyuk": False},
+                 ]}},
+                {"id": "fz-stil", "type": "stil_onerici",
+                 "settings": {"eyebrow": "STİL ÖNERİCİ", "title": "Hangi tarz\nsana göre?",
+                              "subtitle": "Birini seç, sana uygun tasarımı gösterelim.",
+                              "secenekler": [
+                     {"etiket": "Sakin & sanatsal", "renk": "#69778c", "kelime": "SANAT.",
+                      "neden": "Sakin renkler. Güçlü bir bakış açısı.", "urun": "", "zemin": "#e5e8ed"},
+                     {"etiket": "Cesur & hızlı", "renk": "#ce4444", "kelime": "HIZ.",
+                      "neden": "Yarış ruhunu her gün yanında taşı.", "urun": "", "zemin": "#edc4c2"},
+                     {"etiket": "Farklı & özgün", "renk": "#bba075", "kelime": "ÖZGÜN.",
+                      "neden": "Herkesten farklı bir çizgin olsun.", "urun": "", "zemin": "#e6dfd2"},
+                     {"etiket": "Tamamen bana özel", "renk": "#8871b4", "kelime": "SEN.",
+                      "neden": "Bir anı, bir fotoğraf. Hikâye tamamen senin.", "urun": "",
+                      "zemin": "#e3d7ed"},
+                 ]}},
+                {"id": "fz-urunler", "type": "products_grid", "akis": True,
+                 "settings": {"eyebrow": "KOLEKSİYON", "title": "Öne çıkan tasarımlar",
+                              "subtitle": "Serilerimizden en çok bakılanlar.",
+                              "collection": None, "limit": 8, "layout": "sekmeli", "sekmeler": []}},
+                {"id": "fz-imza", "type": "image_with_text", "akis": True,
+                 "settings": {"stil": "koyu", "eyebrow": "İMZA SERİ", "title": "İmza tasarımımız",
+                              "body": "Serimizin en sevilen tasarımını yakından tanı.",
+                              "cta_text": "Koleksiyonu keşfet", "cta_url": "/urunler",
+                              "image": None, "image_side": "left", "gorsel_notu": ""}},
+                {"id": "fz-yorumlar", "type": "testimonials",
+                 "settings": {"stil": "fotografli", "eyebrow": "MÜŞTERİ FOTOĞRAFLARI",
+                              "title": "Siparişlerden gelen fotoğraflar",
+                              "subtitle": "Müşterilerimizin sipariş sonrası paylaştığı yorumlar ve fotoğraflar.",
+                              "items": [], "alt_not": "Daha fazlası Instagram'da."}},
+                {"id": "fz-instagram", "type": "gallery",
+                 "settings": {"eyebrow": "INSTAGRAM", "title": "Instagram'dan", "subtitle": "",
+                              "ogeler": [], "images": [], "aspect": "story", "mode": "izgara",
+                              "baglanti": "", "baglanti_metni": "Takip et"}},
+                {"id": "fz-adimlar", "type": "adimlar", "akis": True,
+                 "settings": {"eyebrow": "KİŞİYE ÖZEL", "title": "Kendi kılıfını\n3 adımda tasarla.",
+                              "items": [
+                     {"title": "Görselini seç.",
+                      "text": "Bir fotoğraf, bir çizim ya da bir yazı; ne istersen.", "url": "/tasarla"},
+                     {"title": "Baskıya hazırlıyoruz.",
+                      "text": "Tasarımın özenle basılır ve paketlenir.", "url": ""},
+                     {"title": "Kargonu takip et.",
+                      "text": "Siparişinin nerede olduğunu tek yerden gör.", "url": "/hesap"},
+                 ]}},
+                {"id": "fz-onizleme", "type": "kilif_onizleme",
+                 "settings": {"eyebrow": "CANLI ÖNİZLEME",
+                              "title": "Fotoğrafını seç,\nkılıfını hemen gör.",
+                              "subtitle": "Fotoğrafın yalnızca bu ekranda kalır, hiçbir yere "
+                                          "yüklenmez. Sürükle, yakınlaştır, modelini seç.",
+                              "buton": "FOTOĞRAF SEÇ", "cta_text": "Bu tasarımla sipariş ver",
+                              "cta_url": "/tasarla", "logo_yazi": "{magaza}"}},
+                {"id": "fz-sss", "type": "faq",
+                 "settings": {"stil": "iki_sutun", "eyebrow": "YARDIM",
+                              "title": "Sık sorulan sorular",
+                              "subtitle": "Cevabını bulamadığın bir soru olursa bize yaz, yardımcı olalım.",
+                              "eposta": "", "items": [
+                     {"q": "Telefonuma uygun modeli nasıl seçerim?",
+                      "a": "Ürün sayfasındaki model listesinden telefonunu seç. Tam model adını "
+                           "cihaz ayarlarındaki \u201cHakkında\u201d bölümünde bulabilirsin."},
+                     {"q": "Kendi görselimle kılıf tasarlayabilir miyim?",
+                      "a": "Evet. Tasarım sayfasında görselini yükle ve telefon modelini seç, "
+                           "gerisini biz hazırlayalım."},
+                     {"q": "Siparişimi nereden takip ederim?",
+                      "a": "Sipariş onayı e-postandaki bağlantıdan ya da Hesabım sayfasından "
+                           "siparişinin durumunu görebilirsin."},
+                     {"q": "İade ve değişim koşulları neler?",
+                      "a": "Koşullarımızı İade ve Değişim sayfamızda bulabilirsin. Kişiye özel "
+                           "ürünlerle ilgili soruların için bize yazabilirsin."},
+                 ]}},
+            ],
+        },
+    },
 }
 
 
@@ -416,6 +624,15 @@ def _galeri_ogesi(x) -> dict | None:
             "etiket": str(x.get("etiket") or "").strip()[:60]}
 
 
+def _renk(v, varsayilan: str = "") -> str:
+    v = str(v or "").strip()
+    return v if re.fullmatch(r"#[0-9a-fA-F]{6}", v) else varsayilan
+
+
+def _metin(v, limit: int) -> str:
+    return str(v or "").strip()[:limit]
+
+
 def _sinirli_sayi(v, alt: int, ust: int, varsayilan: int) -> int:
     try:
         return min(ust, max(alt, int(v)))
@@ -487,6 +704,10 @@ def _normalize_sections(sections: list) -> list:
                 {k: (s.get(k) if isinstance(s, dict) else None) for k in _SLIDE_KEYS}
                 for s in (settings.get("slides") or [])[:MAX_SLIDES]
             ]
+            for sl in settings["slides"]:
+                if sl.get("gorsel_kip") not in ("sigdir", "kapla"):
+                    sl["gorsel_kip"] = "sigdir"
+            settings["panel_renk"] = _renk(settings.get("panel_renk"), "#efefef")
             try:
                 settings["autoplay_sec"] = min(30, max(0, int(settings.get("autoplay_sec") or 5)))
             except (TypeError, ValueError):
@@ -503,9 +724,12 @@ def _normalize_sections(sections: list) -> list:
                 settings["limit"] = min(24, max(1, int(settings.get("limit") or 8)))
             except (TypeError, ValueError):
                 settings["limit"] = 8
+            settings["sekmeler"] = [str(x)[:200] for x in (settings.get("sekmeler") or [])
+                                    if isinstance(x, str) and x][:6]
         elif stype == "image_with_text":
             if settings.get("image_side") not in ("left", "right"):
                 settings["image_side"] = "left"
+            settings["gorsel_notu"] = _metin(settings.get("gorsel_notu"), 80)
         elif stype == "faq":
             settings["items"] = [
                 {"q": str((i or {}).get("q") or "")[:300],
@@ -513,11 +737,15 @@ def _normalize_sections(sections: list) -> list:
                 for i in (settings.get("items") or [])[:MAX_FAQ_ITEMS]
                 if isinstance(i, dict) and (i.get("q") or i.get("a"))
             ]
+            settings["eposta"] = _metin(settings.get("eposta"), 120)
         elif stype == "icon_bar":
             settings["items"] = [
                 {"icon": str((i or {}).get("icon") or "✨")[:8],
                  "title": str((i or {}).get("title") or "")[:80],
-                 "text": str((i or {}).get("text") or "")[:200]}
+                 "text": str((i or {}).get("text") or "")[:200],
+                 "url": _guvenli_link((i or {}).get("url")) or (
+                     _metin((i or {}).get("url"), 120)
+                     if str((i or {}).get("url") or "").startswith("mailto:") else "")}
                 for i in (settings.get("items") or [])[:6]
                 if isinstance(i, dict) and i.get("title")
             ]
@@ -538,17 +766,53 @@ def _normalize_sections(sections: list) -> list:
                     rating = min(5, max(1, int(i.get("rating") or 5)))
                 except (TypeError, ValueError):
                     rating = 5
+                img = _metin(i.get("image"), 500)
                 cleaned_items.append({
                     "author": str(i.get("author") or "Müşteri")[:80],
                     "text": str(i.get("text") or "")[:600],
                     "rating": rating,
+                    # Fotoğraflı stil için (ops.) — yalnız kendi deposu ya da https
+                    "image": img if img.startswith("/storage/") or img.startswith("https://") else "",
                 })
             settings["items"] = cleaned_items
+            settings["alt_not"] = _metin(settings.get("alt_not"), 120)
         elif stype == "gallery":
             ham = settings.get("ogeler") or [
                 {"url": u} for u in (settings.get("images") or []) if u]
             settings["ogeler"] = [o for o in (_galeri_ogesi(x) for x in ham) if o][:MAX_GALLERY_IMAGES]
             settings["images"] = [o["url"] for o in settings["ogeler"]]
+            settings["baglanti"] = _guvenli_link(settings.get("baglanti"))
+            settings["baglanti_metni"] = _metin(settings.get("baglanti_metni"), 40)
+        elif stype == "kurdele":
+            settings["items"] = [
+                {"text": _metin(i.get("text"), 60), "buyuk": bool(i.get("buyuk"))}
+                for i in (settings.get("items") or [])[:10]
+                if isinstance(i, dict) and _metin(i.get("text"), 60)
+            ]
+            settings["sembol"] = _metin(settings.get("sembol"), 4) or "✦"
+        elif stype == "stil_onerici":
+            settings["secenekler"] = [
+                {"etiket": _metin(o.get("etiket"), 40),
+                 "renk": _renk(o.get("renk"), "#888888"),
+                 "kelime": _metin(o.get("kelime"), 14),
+                 "neden": _metin(o.get("neden"), 120),
+                 "urun": _metin(o.get("urun"), 200),
+                 "zemin": _renk(o.get("zemin"), "#e5e8ed")}
+                for o in (settings.get("secenekler") or [])[:6]
+                if isinstance(o, dict) and _metin(o.get("etiket"), 40)
+            ]
+        elif stype == "adimlar":
+            settings["items"] = [
+                {"title": _metin(i.get("title"), 80), "text": _metin(i.get("text"), 200),
+                 "url": _guvenli_link(i.get("url"))}
+                for i in (settings.get("items") or [])[:6]
+                if isinstance(i, dict) and _metin(i.get("title"), 80)
+            ]
+        elif stype == "kilif_onizleme":
+            for key, limit in (("buton", 30), ("cta_text", 40), ("logo_yazi", 24), ("not", 140)):
+                settings[key] = _metin(settings.get(key), limit)
+            settings["buton"] = settings["buton"] or "FOTOĞRAF SEÇ"
+            settings["cta_url"] = _guvenli_link(settings.get("cta_url")) or "/tasarla"
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
             "type": stype,
@@ -557,6 +821,8 @@ def _normalize_sections(sections: list) -> list:
             "hidden": bool(sec.get("hidden")),
             # Zemin şeması: none (sayfa zemini) | band (beyaz bant)
             "scheme": sec.get("scheme") if sec.get("scheme") in ("none", "band") else "none",
+            # Akış çizgisi bu bölümün üstünden geçsin (style.akis_cizgisi açıkken)
+            "akis": bool(sec.get("akis")),
         })
     return cleaned
 
@@ -577,7 +843,11 @@ def resolve_theme(store_config: dict | None) -> dict:
     for key, allowed in _STYLE_ENUMS.items():
         if style.get(key) not in allowed:
             style[key] = allowed[0]
-    style["scroll_top"] = bool(style.get("scroll_top"))
+    for key in ("scroll_top", "mobil_dock", "ilerleme", "akis_cizgisi"):
+        style[key] = bool(style.get(key))
+    style["ust_not"] = _metin(style.get("ust_not"), 40)
+    style["ust_link_metin"] = _metin(style.get("ust_link_metin"), 30)
+    style["ust_link_url"] = _guvenli_link(style.get("ust_link_url"))
     theme["style"] = style
     ann = theme.get("announcement") or {}
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(ann.get("bg") or "")):

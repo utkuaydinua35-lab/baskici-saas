@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans, Inter, Playfair_Display, Poppins } from "next/font/google";
+import { DM_Sans, Instrument_Serif, Inter, Playfair_Display, Poppins } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { getThemePayload } from "@/lib/theme";
@@ -21,6 +21,8 @@ import ScrollTopButton from "@/components/ScrollTopButton";
 import IndirimCarki from "@/components/IndirimCarki";
 import CikisPopup from "@/components/CikisPopup";
 import Presence from "@/components/Presence";
+import MobilDock from "@/components/MobilDock";
+import GenisFooter from "@/components/GenisFooter";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
@@ -29,12 +31,18 @@ const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" 
 const poppins = Poppins({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700"], variable: "--font-poppins" });
 const playfair = Playfair_Display({ subsets: ["latin", "latin-ext"], variable: "--font-playfair" });
 const dmSans = DM_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-dm-sans" });
+// Editoryal başlık yazı tipi — önceden yüklenmez (preload: false): onu
+// kullanmayan mağazalar bu dosyayı hiç indirmez.
+const instrument = Instrument_Serif({ subsets: ["latin", "latin-ext"], weight: "400",
+  style: ["normal", "italic"], variable: "--font-instrument", preload: false });
 
 const FONT_VAR: Record<string, string> = {
   inter: "var(--font-inter)",
   poppins: "var(--font-poppins)",
   playfair: "var(--font-playfair)",
   "dm-sans": "var(--font-dm-sans)",
+  // Gövde Inter; başlıklar --font-heading ile Instrument Serif
+  editoryal: "var(--font-inter)",
 };
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3001";
@@ -133,19 +141,25 @@ export default async function RootLayout({
       // Tema görünümü — globals.css bu özelliklere göre kart/başlık stilini seçer
       data-card={theme.style.card_style}
       data-heading={theme.style.heading_style}
-      className={`${inter.variable} ${poppins.variable} ${playfair.variable} ${dmSans.variable} h-full antialiased`}
+      data-font={theme.font}
+      className={`${inter.variable} ${poppins.variable} ${playfair.variable} ${dmSans.variable} ${
+        theme.font === "editoryal" ? instrument.variable : ""} h-full antialiased`}
       style={
         {
           "--c-primary": theme.colors.primary,
           "--c-accent": theme.colors.accent,
           "--c-bg": theme.colors.bg,
           "--font-active": fontFamily,
+          "--font-heading": theme.font === "editoryal" ? "var(--font-instrument)" : fontFamily,
           "--btn-r": theme.style.button_shape === "pill" ? "999px" : "0.75rem",
         } as React.CSSProperties
       }
     >
       <body className="min-h-full flex flex-col text-zinc-900" style={{ background: "var(--c-bg)" }}>
         {custom_code?.css && <style dangerouslySetInnerHTML={{ __html: custom_code.css }} />}
+        {/* Kaydırma ilerleme çizgisi — yalnız CSS (scroll-driven animation);
+            desteklemeyen tarayıcıda hiç görünmez, JS/kaydırma dinleyicisi yok */}
+        {theme.style.ilerleme && <div className="ilerleme-cizgisi" aria-hidden="true" />}
         {custom_code?.head_html && <CustomCode html={custom_code.head_html} />}
         <CartProvider>
           <Suspense><CouponFromUrl /></Suspense>
@@ -191,12 +205,21 @@ export default async function RootLayout({
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
             navLinks={theme.nav_links ?? []}
             layout={theme.style.header_layout}
+            ustNot={theme.style.ust_not}
+            ustLinkMetin={theme.style.ust_link_metin}
+            ustLinkUrl={theme.style.ust_link_url}
           />
           {theme.animations.cart_drawer && (
             <CartDrawer freeShippingOver={payload.settings?.free_shipping_over} />
           )}
           <main className="flex-1">{children}</main>
-          <footer className="border-t border-zinc-200 bg-white mt-12">
+          {theme.style.footer_stil === "genis" ? (
+            <GenisFooter storeName={store_name} logoUrl={theme.logo_url} about={theme.footer.about}
+              instagram={instagram} email={contact.email} pages={pages} hasBlog={!!payload.has_blog}
+              navLinks={theme.nav_links ?? []} year={year}
+              newsletterTitle={theme.texts?.newsletter_title} sslText={theme.texts?.trust_ssl} />
+          ) : (
+          <footer className="vitrin-footer border-t border-zinc-200 bg-white mt-12">
             <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-zinc-500 space-y-4">
               <div className="max-w-sm">
                 <div className="text-xs font-semibold text-zinc-700 mb-1.5">
@@ -230,6 +253,10 @@ export default async function RootLayout({
               </div>
             </div>
           </footer>
+          )}
+          {theme.style.mobil_dock && (
+            <MobilDock cartDrawer={theme.animations.cart_drawer} tasarla={!!payload.isletme?.kisiye_ozel} />
+          )}
           {theme.whatsapp?.enabled && theme.whatsapp.number && (
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}

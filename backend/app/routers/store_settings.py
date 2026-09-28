@@ -769,7 +769,12 @@ def put_theme_draft(
         raise HTTPException(422, f"En fazla {MAX_THEME_DRAFTS} taslak tema tutulabilir")
     entry = dict(drafts.get(draft_key) or {})
     if "name" in (body or {}):
-        entry["name"] = str(body["name"] or "")[:80] or "Adsız taslak"
+        entry["name"] = str(body["name"] or "").strip()[:80] or "Adsız taslak"
+        # Temalar adıyla tutulur — aynı adda ikinci taslak açılmaz (panel
+        # böyle durumda mevcut olanın üzerine yazmayı önerir)
+        if any(k != draft_key and (d.get("name") or "").strip() == entry["name"]
+               for k, d in drafts.items()):
+            raise HTTPException(409, f"“{entry['name']}” adında bir tema zaten var")
     if "theme" in (body or {}):
         entry["theme"] = validate_theme_patch(body["theme"] or {})
     if "theme" not in entry:  # ilk oluşturmada tema zorunlu
@@ -807,7 +812,14 @@ def publish_theme_draft(
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    """Taslağı yayına al — eski yayın, taslak olarak saklanır (geri dönülebilir)."""
+    """Taslağı yayına al — takas: taslak yayına geçer, eski yayın KENDİ ADIYLA
+    taslaklara döner (geri dönülebilir).
+
+    Temalar adıyla tutulur: eski yayının adında bir taslak zaten varsa onun
+    ÜZERİNE yazılır, yoksa yayınlanan taslağın boşalan yerine konur. Eskiden
+    her yayında "Önceki yayın — tarih" adlı YENİ bir kopya açılıyordu; üç temayı
+    sırayla deneyen mağazada taslak listesi kopyalarla doluyordu.
+    """
     store = _get_store(db, user, store_id, for_update=True)
     config = dict(store.config or {})
     drafts = dict(config.get("theme_drafts") or {})
@@ -815,19 +827,14 @@ def publish_theme_draft(
     if not draft or not draft.get("theme"):
         raise HTTPException(404, "Taslak bulunamadı")
     now = datetime.now(timezone.utc)
-    old_key = f"eski-{now.strftime('%Y%m%d%H%M%S')}"
-    drafts[old_key] = {
-        "name": f"Önceki yayın — {now.astimezone().strftime('%d.%m.%Y %H:%M')}",
-        "theme": validate_theme_patch(config.get("theme") or {}),
-        "updated_at": now.isoformat(),
-    }
-    # Otomatik yedekler sınırı aşarsa en eski "eski-*" kayıtları buda
-    while len(drafts) > MAX_THEME_DRAFTS:
-        old_backups = sorted(k for k in drafts if k.startswith("eski-"))
-        if not old_backups:
-            break
-        drafts.pop(old_backups[0])
+    eski = validate_theme_patch(config.get("theme") or {})
+    eski_ad = str((config.get("theme") or {}).get("name") or "").strip() or "Mağaza Teması"
+    eski["name"] = eski_ad
+    ayni_ad = next((k for k, d in drafts.items() if (d.get("name") or "").strip() == eski_ad), None)
+    drafts[ayni_ad or draft_key] = {"name": eski_ad, "theme": eski, "updated_at": now.isoformat()}
+    yeni_ad = (draft.get("name") or "").strip() or "Mağaza Teması"
     config["theme"] = validate_theme_patch(draft["theme"])
+    config["theme"]["name"] = yeni_ad     # yayındaki tema taslağın adını taşır
     config["theme_drafts"] = drafts
     config.pop("theme_preview", None)  # bayat önizleme kalmasın
     store.config = config

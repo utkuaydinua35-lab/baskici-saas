@@ -35,12 +35,21 @@ export default function TemaPage() {
   }, [storeId])
   useEffect(() => { load() }, [load])
 
+  // Temalar adıyla tutulur: aynı adda taslak varsa yenisi açılmaz — üzerine
+  // yazmak ya da mevcut olanı açmak sorulur (kopya yığılmasın)
   const newDraft = async (name, theme) => {
+    const mevcut = drafts.find(d => (d.name || '').trim() === name.trim())
+    if (mevcut && !window.confirm(`"${name}" adında bir tema zaten var.\n\n`
+        + `Tamam: şablonla ÜZERİNE yaz (o temadaki değişiklikler gider)\n`
+        + `İptal: mevcut "${name}" temasını aç`)) {
+      navigate(`/tema/duzenle?taslak=${mevcut.key}`)
+      return
+    }
     setBusy(true)
     try {
-      const key = `taslak-${Date.now().toString(36)}`
+      const key = mevcut?.key || `taslak-${Date.now().toString(36)}`
       await api.put(`/api/store-settings/${storeId}/theme/drafts/${key}`, { name, theme })
-      toast.success(`"${name}" taslağı oluşturuldu`)
+      toast.success(mevcut ? `"${name}" teması şablonla yenilendi` : `"${name}" taslağı oluşturuldu`)
       navigate(`/tema/duzenle?taslak=${key}`)
     } catch (e) {
       toast.error(typeof e?.detail === 'string' ? e.detail : 'Taslak oluşturulamadı')
@@ -49,7 +58,7 @@ export default function TemaPage() {
 
   const publish = async (d) => {
     if (!window.confirm(`"${d.name}" yayına alınacak — vitrindeki tema değişir. `
-        + `Şu anki yayın, taslak olarak saklanır. Devam?`)) return
+        + `Şu anki "${live.name || 'Mağaza Teması'}" teması taslaklara döner (aynı adda taslak varsa onun üzerine yazılır). Devam?`)) return
     setBusy(true)
     try {
       await api.post(`/api/store-settings/${storeId}/theme/drafts/${d.key}/publish`)
@@ -58,6 +67,20 @@ export default function TemaPage() {
     } catch (e) {
       toast.error(typeof e?.detail === 'string' ? e.detail : 'Yayınlanamadı')
     } finally { setBusy(false) }
+  }
+
+  // Eski sürümün her yayında açtığı "Önceki yayın — tarih" kopyaları
+  const yedekler = drafts.filter(d => d.key.startsWith('eski-') || (d.name || '').startsWith('Önceki yayın'))
+  const yedekleriTemizle = async () => {
+    if (!window.confirm(`${yedekler.length} otomatik yedek ("Önceki yayın — tarih") kalıcı olarak silinecek. `
+        + `Adıyla kaydettiğiniz taslaklar ve yayındaki tema etkilenmez. Devam?`)) return
+    setBusy(true)
+    try {
+      for (const d of yedekler) await api.del(`/api/store-settings/${storeId}/theme/drafts/${d.key}`)
+      toast.success('Otomatik yedekler temizlendi')
+      await load()
+    } catch { toast.error('Bazı yedekler silinemedi'); await load() }
+    finally { setBusy(false) }
   }
 
   const remove = async (d) => {
@@ -78,7 +101,7 @@ export default function TemaPage() {
         { name: renaming.name, theme: drafts.find(x => x.key === renaming.key)?.theme })
       setRenaming(null)
       await load()
-    } catch { toast.error('Ad değiştirilemedi') }
+    } catch (e) { toast.error(typeof e?.detail === 'string' ? e.detail : 'Ad değiştirilemedi') }
     finally { setBusy(false) }
   }
 
@@ -119,8 +142,14 @@ export default function TemaPage() {
 
       {/* Taslaklar */}
       <section>
-        <div className="flex items-center mb-2">
+        <div className="flex items-center mb-2 gap-3">
           <h2 className="text-sm font-semibold">Taslak temalar ({drafts.length})</h2>
+          {yedekler.length > 0 && (
+            <button onClick={yedekleriTemizle} disabled={busy}
+              className="ml-auto text-xs text-red-300 hover:text-red-200 disabled:opacity-40">
+              Otomatik yedekleri temizle ({yedekler.length})
+            </button>
+          )}
         </div>
         <div className="space-y-2">
           {drafts.map(d => (
@@ -170,7 +199,7 @@ export default function TemaPage() {
         <h2 className="text-sm font-semibold mb-2">Yeni taslak oluştur</h2>
         <div className="flex gap-2 flex-wrap">
           <button disabled={busy}
-            onClick={() => newDraft(`Kopya — ${new Date().toLocaleDateString('tr-TR')}`, live)}
+            onClick={() => newDraft(`${live.name || 'Mağaza Teması'} (kopya)`, live)}
             className="card !p-3 text-left hover:border-panel-accent transition disabled:opacity-50">
             <div className="text-sm font-medium">📋 Yayındaki temanın kopyası</div>
             <p className="text-[11px] text-panel-muted mt-0.5">

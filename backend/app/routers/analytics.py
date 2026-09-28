@@ -7,12 +7,13 @@ tarih aralığına genelleştirir + ürün/model/kanal kırılımları ve checko
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Numeric, cast, func as sql_func, select
 from sqlalchemy.orm import Session
 
+from app.services import gun as _gun
 from app.auth.dependencies import require_permission
 from app.database import get_db
 from app.models import CheckoutSession, LineItem, Order, Store, User
@@ -39,8 +40,7 @@ def analytics_summary(
         raise HTTPException(422, f"Aralık en fazla {MAX_RANGE_DAYS} gün olabilir")
 
     tid = user.tenant_id
-    start_dt = datetime.combine(start, time.min, tzinfo=timezone.utc)
-    end_dt = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    start_dt, end_dt = _gun.aralik(start, end)   # İstanbul günleri (bkz. services/gun)
 
     # Dashboard ciro kuralları birebir: telafi + iptal + tam iade hariç
     base_conds = [
@@ -78,7 +78,7 @@ def analytics_summary(
     aov = round(revenue / _tl_adet, 2) if _tl_adet else 0.0
 
     # ── Günlük ciro serisi (eksik günler 0) ──
-    day_col = sql_func.date_trunc("day", Order.created_at_platform)
+    day_col = _gun.gun_sql(Order.created_at_platform)
     daily_map: dict[str, dict] = {}
     for r in db.execute(
         select(day_col.label("gun"),
@@ -234,8 +234,7 @@ def profit_report(
     from app.models import CatalogProduct
 
     tid = user.tenant_id
-    start_dt = datetime.combine(start, time.min, tzinfo=timezone.utc)
-    end_dt = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    start_dt, end_dt = _gun.aralik(start, end)   # İstanbul günleri (bkz. services/gun)
     ayar = _cost_settings(db, tid, store_id)
 
     base_conds = [
@@ -372,7 +371,7 @@ def analytics_live(
     """
     tid = user.tenant_id
     now = datetime.now(timezone.utc)
-    start_today = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+    start_today = _gun.gun_basi(_gun.bugun(now))
     m15 = now - timedelta(minutes=15)
     from app.services import ciro as _ciro_svc
     total_price = _ciro_svc.tl_tutar()

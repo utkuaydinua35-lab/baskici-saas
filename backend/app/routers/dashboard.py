@@ -7,7 +7,7 @@ metriklerine uygulanır; stok (fiziksel envanter) tenant geneli kalır.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Numeric, cast, desc, func as sql_func, select
@@ -76,7 +76,8 @@ def summary(
     acik = _oc.acik(db, tid, store_id=_sid)
     acil = _oc.acil(db, tid, store_id=_sid)          # yaş bazlı (liste 'acil' tab'ı ile aynı)
 
-    start_today = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    from app.services import gun as _gun   # İstanbul günü (bkz. services/gun)
+    start_today = _gun.gun_basi(_gun.bugun())
     bugun = ocount(Order.created_at_platform >= start_today)
 
     paketleme_bekleyen = _oc.paketleme(db, tid, store_id=_sid)
@@ -121,9 +122,9 @@ def summary(
 
     def _ciro_usd(*conds) -> float:
         return _toplam(_ciro_svc.usd_tutar(), *conds)
-    _today = date.today()
-    _start_week = datetime.combine(_today - timedelta(days=_today.weekday()), time.min, tzinfo=timezone.utc)
-    _start_month = datetime.combine(_today.replace(day=1), time.min, tzinfo=timezone.utc)
+    _today = _gun.bugun()
+    _start_week = _gun.gun_basi(_today - timedelta(days=_today.weekday()))
+    _start_month = _gun.gun_basi(_today.replace(day=1))
     ciro_bugun = _ciro(*_ciro_kosul, Order.created_at_platform >= start_today)
     ciro_hafta = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_week)
     ciro_ay = _ciro(*_ciro_kosul, Order.created_at_platform >= _start_month)
@@ -132,8 +133,8 @@ def summary(
     ciro_usd_ay = _ciro_usd(*_ciro_kosul, Order.created_at_platform >= _start_month)
 
     # Son 30 gun gunluk ciro serisi (grafik icin)
-    _start_30 = datetime.combine(_today - timedelta(days=29), time.min, tzinfo=timezone.utc)
-    _gun_col = sql_func.date_trunc("day", Order.created_at_platform)
+    _start_30 = _gun.gun_basi(_today - timedelta(days=29))
+    _gun_col = _gun.gun_sql(Order.created_at_platform)
     _gq = (
         select(_gun_col.label("gun"), sql_func.coalesce(sql_func.sum(_ciro_svc.tl_tutar()), 0).label("tutar"))
         .where(Order.tenant_id == tid, _not_telafi, *_ciro_kosul, Order.created_at_platform >= _start_30)

@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.auth.permissions import ALL_PERMISSIONS
@@ -107,7 +107,8 @@ class Durum:
 
 
 def _bugun() -> date:
-    return datetime.now(timezone.utc).date()
+    from app.services import gun
+    return gun.bugun()
 
 
 def durum(tenant, bugun: date | None = None) -> Durum:
@@ -175,16 +176,16 @@ def ay_ekle(gun: date, ay: int) -> date:
 def vitrin_cirosu(db, tenant_id, bas: date, bit: date) -> tuple[Decimal, int]:
     """[bas, bit] (iki uç dahil) vitrin satışı: (TL tutar, sipariş adedi).
 
-    Gün sınırları analitik ekranıyla aynı (UTC) — kiracının panelde gördüğü
-    ciro ile faturadaki birebir tutsun.
+    Gün sınırları analitik ekranıyla aynı (İstanbul, services/gun) —
+    kiracının panelde gördüğü ciro ile faturadaki birebir tutsun.
     """
     from sqlalchemy import func, select
 
     from app.models import Order, Store
     from app.services import ciro
 
-    bas_dt = datetime.combine(bas, time.min, tzinfo=timezone.utc)
-    bit_dt = datetime.combine(bit + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    from app.services import gun
+    bas_dt, bit_dt = gun.aralik(bas, bit)
     tutar, adet = db.execute(
         select(func.coalesce(func.sum(ciro.tl_tutar()), 0), func.count(Order.id))
         .join(Store, Store.id == Order.store_id)

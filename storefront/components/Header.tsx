@@ -45,10 +45,21 @@ function CollectionsDropdown({ label, items }: { label: string; items: NavCollec
   );
 }
 
+// Menünün kaydırmada davranışı. sm = masaüstü kırılımı (640px). "relative"
+// kalır: arama kutusu ve açılır menüler header'a göre konumlanıyor.
+const SABIT_SINIFI: Record<string, string> = {
+  hep: "sticky top-0",
+  mobil: "sticky top-0 sm:relative",
+  masaustu: "relative sm:sticky sm:top-0",
+  yok: "relative",
+};
+
 export default function Header({
   siteName,
   logoUrl,
   logoWidth = 120,
+  logoWidthMobile = null,
+  sabit = "hep",
   cartDrawer,
   collections = [],
   navLinks = [],
@@ -59,6 +70,10 @@ export default function Header({
   siteName: string;
   logoUrl?: string | null;
   logoWidth?: number;
+  // Mobil logo genişliği; null = masaüstüyle aynı (ekrana sığdırılır)
+  logoWidthMobile?: number | null;
+  // Sayfa kayarken menü görünür kalsın mı: hep | mobil | masaustu | yok
+  sabit?: "hep" | "mobil" | "masaustu" | "yok";
   cartDrawer?: boolean;
   collections?: NavCollection[];
   navLinks?: { label: string; url?: string; type?: string; slugs?: string[] }[];
@@ -137,9 +152,14 @@ export default function Header({
       center ? "text-xl sm:text-2xl justify-center" : "text-lg"}`}>
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
+        // Mobil ve masaüstü genişliği ayrı: CSS değişkeni + sm: kırılımı
         <img src={logoUrl} alt={siteName}
-          className="h-auto object-contain"
-          style={{ width: logoWidth, maxWidth: center ? "40vw" : "45vw" }} />
+          className="h-auto object-contain w-[var(--logo-m)] sm:w-[var(--logo-d)]"
+          style={{
+            "--logo-d": `${logoWidth}px`,
+            "--logo-m": `${logoWidthMobile ?? logoWidth}px`,
+            maxWidth: center ? "40vw" : "45vw",
+          } as React.CSSProperties} />
       ) : (
         siteName
       )}
@@ -236,7 +256,7 @@ export default function Header({
   );
 
   return (
-    <header className={`sticky top-0 z-40 backdrop-blur border-b border-zinc-200 ${center ? "" : "bg-white/90"}`}
+    <header className={`${SABIT_SINIFI[sabit] ?? SABIT_SINIFI.hep} z-40 backdrop-blur border-b border-zinc-200 ${center ? "" : "bg-white/90"}`}
       style={center ? { background: "color-mix(in srgb, var(--c-bg) 92%, transparent)" } : undefined}>
       {center ? (
         <div className="mx-auto max-w-6xl px-4 py-2 sm:pt-5 sm:pb-3">
@@ -286,7 +306,7 @@ export default function Header({
         <div className="flex items-center justify-between px-4 h-14 border-b border-zinc-200">
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={siteName} style={{ width: Math.min(logoWidth, 140) }}
+            <img src={logoUrl} alt={siteName} style={{ width: Math.min(logoWidthMobile ?? logoWidth, 140) }}
               className="max-h-9 object-contain object-left" />
           ) : (
             <span className="font-semibold">{siteName}</span>

@@ -102,7 +102,9 @@ _STYLE_ENUMS: dict[str, tuple[str, ...]] = {
     "button_shape": ("rounded", "pill"),     # yuvarlatılmış köşe | tam yuvarlak
     "card_style": ("boxed", "minimal"),      # çerçeveli kart | çerçevesiz, ortalı yazı
     "heading_style": ("compact", "showcase"),  # küçük sol başlık | büyük ortalı başlık
+    "header_sabit": ("hep", "mobil", "masaustu", "yok"),
 }
+MAX_DUYURU = 8
 
 _SLIDE_KEYS = {"image", "eyebrow", "title", "subtitle", "cta_text", "cta_url", "cta2_text", "cta2_url"}
 
@@ -116,21 +118,31 @@ DEFAULT_THEME: dict = {
     },
     "font": "inter",            # inter | poppins | playfair | dm-sans
     "logo_url": None,
-    "logo_width": 120,   # px — panelden ayarlanır (60-320)
+    "logo_width": 120,   # px — MASAÜSTÜ logo genişliği (60-320)
+    # px — MOBİL logo genişliği (40-240); None = masaüstüyle aynı (ekrana sığdırılır)
+    "logo_width_mobile": None,
     "favicon_url": None,
-    # bg: şerit rengi (#rrggbb); boşsa temanın ana rengi
-    "announcement": {"enabled": False, "text": "", "url": "", "bg": ""},
+    # bg: şerit rengi (#rrggbb); boşsa temanın ana rengi.
+    # items: [{text, url}] — birden fazla duyuru ("3 AL 2 ÖDE!", "950 TL üzeri
+    # ücretsiz kargo!"). kayan: sürekli akan şerit; kapalıysa duyurular sırayla
+    # değişir. text/url eski tek-duyuru biçimi: okunurken items'a çevrilir.
+    "announcement": {"enabled": False, "text": "", "url": "", "bg": "",
+                     "items": [], "kayan": True},
     # Tema geneli görünüm — değerler _STYLE_ENUMS'ta; scroll_top: sağ altta
     # "yukarı çık" düğmesi
+    # header_sabit: sayfa kayarken üst menü görünür kalsın mı — hep | mobil
+    # (yalnız mobilde) | masaustu (yalnız masaüstünde) | yok
     "style": {"header_layout": "left", "button_shape": "rounded",
-              "card_style": "boxed", "heading_style": "compact", "scroll_top": False},
+              "card_style": "boxed", "heading_style": "compact", "scroll_top": False,
+              "header_sabit": "hep"},
     # Açılış kampanya pop-up'ı — sayfa açılınca bir kez görünür (oturumda
     # tekrar çıkmaz). Marka-nötr: her mağaza kendi metnini/kupon kodunu yazar.
     # baslik/metin boşsa pop-up HİÇ gösterilmez (kapalı gibi davranır).
     # ust_baslik: başlığın üstündeki küçük etiket (örn. "✨ KAMPANYA ✨");
     # baslik'ta satır sonu korunur ("3 AL 2 ÖDE\n5 AL 3 ÖDE").
+    # gorsel_boyut: pop-up görselinin (ör. logo) genişliği, % (30-100)
     "popup": {"enabled": False, "ust_baslik": "", "baslik": "", "metin": "", "kupon": "",
-              "buton": "Alışverişe Başla", "gorsel_url": ""},
+              "buton": "Alışverişe Başla", "gorsel_url": "", "gorsel_boyut": 100},
     "sections": [
         {"id": "varsayilan-hero", "type": "hero_slider",
          "settings": dict(SECTION_DEFAULTS["hero_slider"])},
@@ -507,11 +519,30 @@ def resolve_theme(store_config: dict | None) -> dict:
     ann = theme.get("announcement") or {}
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(ann.get("bg") or "")):
         ann["bg"] = ""
+    ham = ann.get("items") or ([{"text": ann.get("text"), "url": ann.get("url")}]
+                               if (ann.get("text") or "").strip() else [])
+    ann["items"] = [
+        {"text": str(x.get("text") or "").strip()[:140], "url": _guvenli_link(x.get("url"))}
+        for x in ham[:MAX_DUYURU] if isinstance(x, dict) and str(x.get("text") or "").strip()
+    ]
+    ann["kayan"] = bool(ann.get("kayan", True))
+    # Eski alanlar ilk duyuruyu yansıtır (eski önbellek / istemci kırılmasın)
+    ann["text"] = ann["items"][0]["text"] if ann["items"] else ""
+    ann["url"] = ann["items"][0]["url"] if ann["items"] else ""
     popup = theme.get("popup") or {}
     for key, limit in (("ust_baslik", 40), ("baslik", 80), ("metin", 140),
                        ("kupon", 40), ("buton", 40), ("gorsel_url", 500)):
         popup[key] = str(popup.get(key) or "")[:limit]
     popup["enabled"] = bool(popup.get("enabled"))
+    try:
+        popup["gorsel_boyut"] = min(100, max(30, int(popup.get("gorsel_boyut") or 100)))
+    except (TypeError, ValueError):
+        popup["gorsel_boyut"] = 100
+    lwm = theme.get("logo_width_mobile")
+    try:
+        theme["logo_width_mobile"] = min(240, max(40, int(lwm))) if lwm not in (None, "") else None
+    except (TypeError, ValueError):
+        theme["logo_width_mobile"] = None
     theme["version"] = 2
     return theme
 
@@ -552,6 +583,12 @@ def validate_theme_patch(patch: dict) -> dict:
             cleaned[key] = patch[key]
     if "name" in patch:
         cleaned["name"] = str(patch["name"] or "").strip()[:80] or "Mağaza Teması"
+    if "logo_width_mobile" in patch:
+        v = patch["logo_width_mobile"]
+        try:
+            cleaned["logo_width_mobile"] = min(240, max(40, int(v))) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            cleaned["logo_width_mobile"] = None
     if "logo_width" in patch:
         try:
             cleaned["logo_width"] = min(320, max(60, int(patch["logo_width"] or 120)))

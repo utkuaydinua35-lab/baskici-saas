@@ -66,6 +66,7 @@ export interface ThemeStyle {
   card_style: "boxed" | "minimal";
   heading_style: "compact" | "showcase";
   scroll_top: boolean;
+  header_sabit?: "hep" | "mobil" | "masaustu" | "yok";
 }
 
 export interface Theme {
@@ -74,10 +75,12 @@ export interface Theme {
   font: "inter" | "poppins" | "playfair" | "dm-sans";
   logo_url: string | null;
   logo_width?: number;
+  logo_width_mobile?: number | null;
   favicon_url: string | null;
-  announcement: { enabled: boolean; text: string; url: string; bg?: string };
+  announcement: { enabled: boolean; text: string; url: string; bg?: string;
+    items?: { text: string; url?: string }[]; kayan?: boolean };
   style: ThemeStyle;
-  popup: { enabled: boolean; ust_baslik?: string; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
+  popup: { enabled: boolean; ust_baslik?: string; gorsel_boyut?: number; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
   texts?: Record<string, string>;

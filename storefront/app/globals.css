@@ -129,3 +129,8 @@ html[data-card="minimal"] .urun-kart-fiyat > span:first-child { font-weight: 700
 }
 .popup-ust { animation: popup-parilti 2.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .popup-ust { animation: none; } }
+
+/* Duyuru şeridi (kayan değil modu): sıradaki duyuru yumuşakça belirir */
+@keyframes duyuru-gir { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.duyuru-gecis { animation: duyuru-gir .45s ease-out; }
+@media (prefers-reduced-motion: reduce) { .duyuru-gecis { animation: none; } }

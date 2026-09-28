@@ -173,13 +173,18 @@ export default async function RootLayout({
             </>
           )}
           {theme.announcement.enabled && (
-            <AnnouncementBar text={theme.announcement.text} url={theme.announcement.url}
-              bg={theme.announcement.bg} />
+            <AnnouncementBar
+              // Eski önbellekte yalnız text olabilir
+              items={theme.announcement.items?.length ? theme.announcement.items
+                : [{ text: theme.announcement.text, url: theme.announcement.url }]}
+              kayan={theme.announcement.kayan !== false} bg={theme.announcement.bg} />
           )}
           <Header
             siteName={store_name}
             logoUrl={theme.logo_url}
             logoWidth={theme.logo_width ?? 120}
+            logoWidthMobile={theme.logo_width_mobile ?? null}
+            sabit={theme.style.header_sabit ?? "hep"}
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
             navLinks={theme.nav_links ?? []}
@@ -228,6 +233,7 @@ export default async function RootLayout({
           )}
           {theme.popup?.enabled && (
             <CampaignPopup onizleme={!!payload.is_preview} ustBaslik={theme.popup.ust_baslik}
+              gorselBoyut={theme.popup.gorsel_boyut ?? 100}
               baslik={theme.popup.baslik} metin={theme.popup.metin}
               kupon={theme.popup.kupon} buton={theme.popup.buton}
               gorselUrl={theme.popup.gorsel_url} />

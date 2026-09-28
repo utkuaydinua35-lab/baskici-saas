@@ -548,6 +548,10 @@ export default function TemaEditorPage() {
                 <Choice label="Bölüm başlıkları" value={theme.style?.heading_style || 'compact'}
                   options={[['compact', 'Küçük, solda'], ['showcase', 'Büyük, ortalı']]}
                   onChange={v => set('style.heading_style', v)} />
+                <Choice label="Kaydırınca üst menü" value={theme.style?.header_sabit || 'hep'}
+                  options={[['hep', 'Hep görünür'], ['mobil', 'Yalnız mobilde görünür'],
+                    ['masaustu', 'Yalnız masaüstünde görünür'], ['yok', 'Sayfayla kayar']]}
+                  onChange={v => set('style.header_sabit', v)} />
                 <Toggle checked={!!theme.style?.scroll_top}
                   onChange={v => set('style.scroll_top', v)}
                   label='Sol altta "yukarı çık" düğmesi' />
@@ -557,17 +561,33 @@ export default function TemaEditorPage() {
                 <AssetField label="Logo" current={theme.logo_url} kind="logo"
                   onUrl={url => set('logo_url', url)}
                   onClear={() => set('logo_url', null)} />
-                {theme.logo_url && (
+                {theme.logo_url && (<>
                   <label className="block text-sm">
                     <span className="text-panel-muted text-xs">
-                      Logo genişliği: <b>{theme.logo_width || 120}px</b>
+                      🖥️ Masaüstü logo genişliği: <b>{theme.logo_width || 120}px</b>
                     </span>
                     <input type="range" min="60" max="320" step="10"
                       value={theme.logo_width || 120}
                       onChange={e => set('logo_width', Number(e.target.value))}
                       className="w-full mt-1 accent-emerald-600" />
                   </label>
-                )}
+                  <label className="block text-sm">
+                    <span className="text-panel-muted text-xs flex items-center justify-between">
+                      <span>📱 Mobil logo genişliği: <b>{theme.logo_width_mobile ? `${theme.logo_width_mobile}px` : 'masaüstüyle aynı'}</b></span>
+                      {theme.logo_width_mobile && (
+                        <button type="button" onClick={() => set('logo_width_mobile', null)}
+                          className="text-[11px] underline">masaüstüyle aynı yap</button>
+                      )}
+                    </span>
+                    <input type="range" min="40" max="240" step="5"
+                      value={theme.logo_width_mobile || Math.min(theme.logo_width || 120, 240)}
+                      onChange={e => set('logo_width_mobile', Number(e.target.value))}
+                      className="w-full mt-1 accent-emerald-600" />
+                  </label>
+                  <p className="text-[11px] text-panel-muted -mt-1">
+                    Önizlemenin üstündeki cihaz düğmesiyle mobil görünümü kontrol edebilirsiniz.
+                  </p>
+                </>)}
                 <AssetField label="Favicon" current={theme.favicon_url} kind="favicon"
                   onUrl={url => set('favicon_url', url)}
                   onClear={() => set('favicon_url', null)} />
@@ -601,26 +621,49 @@ export default function TemaEditorPage() {
               <Section title="Duyuru Şeridi" icon="📢">
                 <Toggle checked={theme.announcement.enabled}
                   onChange={v => set('announcement.enabled', v)} label="Duyuru şeridini göster" />
-                {theme.announcement.enabled && (
-                  <>
-                    <input className="input" value={theme.announcement.text} maxLength={140}
-                      onChange={e => set('announcement.text', e.target.value)}
-                      placeholder="🚚 500 TL üzeri kargo bedava!" />
-                    <input className="input" value={theme.announcement.url}
-                      onChange={e => set('announcement.url', e.target.value)}
-                      placeholder="Tıklanınca gidilecek adres (ops.)" />
-                    <div className="flex items-end gap-2">
-                      <ColorField label="Şerit rengi" value={theme.announcement.bg || theme.colors.primary}
-                        onChange={v => set('announcement.bg', v)} />
-                      {theme.announcement.bg && (
-                        <button onClick={() => set('announcement.bg', '')}
-                          className="text-xs text-panel-muted hover:text-panel-ink pb-2">
-                          Ana renge dön
-                        </button>
+                {theme.announcement.enabled && (() => {
+                  // Eski tek-duyuru biçimi de okunur; kayıtta items yazılır
+                  const items = theme.announcement.items?.length ? theme.announcement.items
+                    : (theme.announcement.text ? [{ text: theme.announcement.text, url: theme.announcement.url || '' }] : [])
+                  const yaz = yeni => set('announcement.items', yeni)
+                  return (
+                    <>
+                      {items.map((d, i) => (
+                        <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
+                          <div className="flex gap-1.5">
+                            <input className="input !py-1.5 text-xs flex-1" value={d.text} maxLength={140}
+                              onChange={e => yaz(items.map((x, j) => j === i ? { ...x, text: e.target.value } : x))}
+                              placeholder="örn. 3 AL 2 ÖDE!" />
+                            <button onClick={() => { if (i > 0) { const n = [...items]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; yaz(n) } }}
+                              disabled={i === 0} className="px-1 text-panel-muted disabled:opacity-30">↑</button>
+                            <button onClick={() => yaz(items.filter((_, j) => j !== i))}
+                              className="px-1 text-red-300">×</button>
+                          </div>
+                          <UrlPicker value={d.url || ''} collections={collections} products={products} pages={pages}
+                            placeholder="Tıklanınca gidilecek yer (ops.)"
+                            onChange={url => yaz(items.map((x, j) => j === i ? { ...x, url } : x))} />
+                        </div>
+                      ))}
+                      {items.length < 8 && (
+                        <button onClick={() => yaz([...items, { text: '', url: '' }])}
+                          className="btn-ghost !py-1 text-xs w-full">+ Duyuru ekle</button>
                       )}
-                    </div>
-                  </>
-                )}
+                      <Toggle checked={theme.announcement.kayan !== false}
+                        onChange={v => set('announcement.kayan', v)}
+                        label="Kayan şerit (kapalıysa duyurular sırayla değişir)" />
+                      <div className="flex items-end gap-2">
+                        <ColorField label="Şerit rengi" value={theme.announcement.bg || theme.colors.primary}
+                          onChange={v => set('announcement.bg', v)} />
+                        {theme.announcement.bg && (
+                          <button onClick={() => set('announcement.bg', '')}
+                            className="text-xs text-panel-muted hover:text-panel-ink pb-2">
+                            Ana renge dön
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
               </Section>
 
               <Section title="Açılış Pop-up'ı" icon="🎁">
@@ -658,6 +701,17 @@ export default function TemaEditorPage() {
                       current={theme.popup.gorsel_url || null}
                       onUrl={url => set('popup.gorsel_url', url)}
                       onClear={() => set('popup.gorsel_url', '')} />
+                    {theme.popup.gorsel_url && (
+                      <label className="block text-sm">
+                        <span className="text-panel-muted text-xs">
+                          Görsel boyutu: <b>%{theme.popup.gorsel_boyut || 100}</b>
+                        </span>
+                        <input type="range" min="30" max="100" step="5"
+                          value={theme.popup.gorsel_boyut || 100}
+                          onChange={e => set('popup.gorsel_boyut', Number(e.target.value))}
+                          className="w-full mt-1 accent-emerald-600" />
+                      </label>
+                    )}
                   </>
                 )}
               </Section>

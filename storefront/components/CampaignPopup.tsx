@@ -15,6 +15,8 @@ interface Props {
   // Tema editörü önizlemesi: kendiliğinden AÇILMAZ (her tazelemede çıkıp
   // düzenlemeyi engellerdi); editör "Önizlemede göster" deyince açılır.
   onizleme?: boolean;
+  // Görselin (ör. logo) genişliği, sütununa göre % (30-100)
+  gorselBoyut?: number;
   ustBaslik?: string;
   baslik?: string;
   metin?: string;
@@ -25,7 +27,7 @@ interface Props {
 
 const ANAHTAR = "vitrin_popup_kapatildi";
 
-export default function CampaignPopup({ onizleme, ustBaslik, baslik, metin, kupon, buton, gorselUrl }: Props) {
+export default function CampaignPopup({ onizleme, gorselBoyut = 100, ustBaslik, baslik, metin, kupon, buton, gorselUrl }: Props) {
   const [acik, setAcik] = useState(false);
   const [kopyalandi, setKopyalandi] = useState(false);
 
@@ -99,7 +101,8 @@ export default function CampaignPopup({ onizleme, ustBaslik, baslik, metin, kupo
             // Mobilde üstte, masaüstünde sağda
             <div className="sm:order-2 p-6 sm:p-8 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={gorselUrl} alt="" className="max-h-56 sm:max-h-80 w-auto object-contain" />
+              <img src={gorselUrl} alt="" className="h-auto max-h-72 sm:max-h-[26rem] object-contain"
+                style={{ width: `${Math.min(100, Math.max(30, gorselBoyut))}%` }} />
             </div>
           ) : null}
 

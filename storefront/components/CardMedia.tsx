@@ -17,6 +17,21 @@ export default function CardMedia({
 }) {
   const [hover, setHover] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const kare = useRef<number | null>(null);
+  // Farede 3B eğilme + ışık: yalnız CSS değişkeni yazılır (yeniden çizim yok),
+  // karede bir kez. Görünümü tema seçer (globals.css — "yumuşak" kart).
+  const egil = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || kare.current != null) return;
+    const el = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
+    kare.current = requestAnimationFrame(() => {
+      kare.current = null;
+      const r = el.getBoundingClientRect(), x = (x0 - r.left) / r.width, y = (y0 - r.top) / r.height;
+      el.style.setProperty("--tilt-x", `${((0.5 - y) * 4).toFixed(2)}deg`);
+      el.style.setProperty("--tilt-y", `${((x - 0.5) * 5).toFixed(2)}deg`);
+      el.style.setProperty("--light-x", `${(x * 100).toFixed(1)}%`);
+      el.style.setProperty("--light-y", `${(y * 100).toFixed(1)}%`);
+    });
+  };
   const useVideo = !hoverImage && !!videoUrl;
 
   const enter = () => {
@@ -38,7 +53,13 @@ export default function CardMedia({
     <div
       className="kart-medya aspect-square bg-zinc-100 overflow-hidden hover-zoom relative"
       onPointerEnter={(e) => { if (e.pointerType === "mouse") enter(); }}
-      onPointerLeave={(e) => { if (e.pointerType === "mouse") leave(); }}
+      onPointerMove={egil}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse") return;
+        leave();
+        e.currentTarget.style.setProperty("--tilt-x", "0deg");
+        e.currentTarget.style.setProperty("--tilt-y", "0deg");
+      }}
     >
       {cover ? (
         // Liste: onlarca kart. Varyantlar statik; srcset ile telefon 400,
@@ -57,7 +78,7 @@ export default function CardMedia({
         <img src={urunGorsel(hoverImage).src} srcSet={urunGorsel(hoverImage).srcSet}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
           alt="" aria-hidden loading="lazy" decoding="async"
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+          className={`ikinci absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             hover ? "opacity-100" : "opacity-0"}`} />
       )}
       {useVideo && (
@@ -65,6 +86,8 @@ export default function CardMedia({
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             hover ? "opacity-100" : "opacity-0"}`} />
       )}
+      {/* Köşedeki "+" — yalnız yumuşak kart stilinde görünür (globals.css) */}
+      <span aria-hidden className="kart-arti">+</span>
     </div>
   );
 }

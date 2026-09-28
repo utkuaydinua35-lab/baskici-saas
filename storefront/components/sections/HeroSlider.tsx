@@ -234,7 +234,7 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
                 )}
                 {sl.cta_text && (
                   <Link href={sl.cta_url || "/urunler"} tabIndex={aktif ? undefined : -1}
-                    className="fz-buton mt-6 inline-flex items-center gap-6 rounded-full px-6 py-4 text-[11px] font-medium tracking-wide text-white">
+                    className="fz-buton parilti-gec mt-6 inline-flex items-center gap-6 rounded-full px-6 py-4 text-[11px] font-medium tracking-wide text-white">
                     {sl.cta_text} <span aria-hidden className="text-lg leading-none">→</span>
                   </Link>
                 )}
@@ -245,7 +245,7 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
                   </Link>
                 )}
               </div>
-              <div className={`relative min-w-0 flex items-center justify-center overflow-hidden h-[280px] sm:h-[360px] lg:h-auto mb-14 lg:mb-0 ${
+              <div className={`fz-acilis relative min-w-0 flex items-center justify-center overflow-hidden h-[280px] sm:h-[360px] lg:h-auto mb-14 lg:mb-0 ${
                 kapla ? "px-7 lg:px-10 lg:py-12" : ""}`}>
                 {g && (
                   // eslint-disable-next-line @next/next/no-img-element

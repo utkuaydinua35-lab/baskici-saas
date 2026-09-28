@@ -41,6 +41,7 @@ export function writeFavs(list: FavItem[]) {
 
 export default function FavButton({ item, floating = true }: { item: FavItem; floating?: boolean }) {
   const [fav, setFav] = useState(false);
+  const [zipla, setZipla] = useState(false);
 
   useEffect(() => {
     setFav(readFavs().some((f) => f.slug === item.slug));
@@ -57,17 +58,19 @@ export default function FavButton({ item, floating = true }: { item: FavItem; fl
       writeFavs([item, ...list]);
       setFav(true);
     }
+    setZipla(true);
   };
 
   return (
     <button
       onClick={toggle}
+      onAnimationEnd={() => setZipla(false)}
       aria-label={fav ? "Favorilerden çıkar" : "Favorilere ekle"}
-      className={
+      className={`${zipla ? "kalp-zipla " : ""}${
         floating
           ? "absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center hover:scale-110 transition-transform"
           : "inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-zinc-900 py-2 -my-2"
-      }
+      }`}
     >
       <svg width="18" height="18" viewBox="0 0 24 24"
         fill={fav ? "#ef4444" : "none"} stroke={fav ? "#ef4444" : "currentColor"} strokeWidth="1.8">

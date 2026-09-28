@@ -38,6 +38,7 @@ export const SECTION_TYPES = {
   stil_onerici: { label: 'Stil Önerici (tarzını seç)', icon: '🎨' },
   adimlar: { label: 'Numaralı Adımlar', icon: '🔢' },
   kilif_onizleme: { label: 'Canlı Kılıf Önizleme', icon: '📱' },
+  son_bakilanlar: { label: 'Son Baktıkların', icon: '🕘' },
 }
 
 export const SECTION_DEFAULTS = {
@@ -78,6 +79,7 @@ export const SECTION_DEFAULTS = {
     subtitle: 'Fotoğrafın yalnızca bu ekranda kalır, hiçbir yere yüklenmez.', buton: 'FOTOĞRAF SEÇ',
     cta_text: 'Bu tasarımla sipariş ver', cta_url: '/tasarla', logo_yazi: '{magaza}',
     not: 'Önizlemedir; baskı renkleri ekrana göre küçük farklar gösterebilir.' },
+  son_bakilanlar: { eyebrow: 'SON BAKTIKLARIN', title: 'Son baktığın tasarımlar', subtitle: '' },
 }
 
 // Bölüm vitrinde HİÇBİR ŞEY çizmeyecekse nedeni (yoksa null). Kurallar
@@ -895,6 +897,18 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           Ziyaretçi fotoğrafını seçip kılıfın üstünde sürükler, yakınlaştırır; iPhone/Samsung ve parlak/mat
           arasında geçer. Fotoğraf yalnız ziyaretçinin cihazında kalır, sunucuya yüklenmez.
           <b> {'{magaza}'}</b> yazan yere mağaza adınız gelir.
+        </p>
+      </>
+    )
+  }
+
+  if (sec.type === 'son_bakilanlar') {
+    return (
+      <>
+        <HeadingFields s={s} patch={patch} />
+        <p className="text-[11px] text-panel-muted">
+          Ziyaretçinin ürün sayfalarında son gezdiği 4 ürün, kendi tarayıcısından okunur (sunucuya bir şey
+          gitmez). İlk kez gelen ziyaretçide liste boş olduğundan bölüm görünmez; ziyaretçi "Geçmişi temizle" ile silebilir.
         </p>
       </>
     )

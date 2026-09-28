@@ -1,3 +1,4 @@
+import SatirliBaslik from "@/components/SatirliBaslik";
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
 
@@ -18,7 +19,6 @@ export default function Adimlar({
 }) {
   const liste = items.filter((i) => i.title);
   if (liste.length === 0) return null;
-  const [ilk, ...kalan] = (title || "").split("\n");
 
   const satir = (a: Adim, i: number) => {
     const ic = (
@@ -47,9 +47,7 @@ export default function Adimlar({
       <Reveal>
         {eyebrow && <p className="text-[10px] font-semibold tracking-[.16em] uppercase text-zinc-500">{eyebrow}</p>}
         {title && (
-          <h2 className="f-baslik mt-4 text-[42px] sm:text-[54px] leading-[1.12] tracking-[-.015em]">
-            {ilk}{kalan.length > 0 && <em className="block italic text-zinc-500">{kalan.join(" ")}</em>}
-          </h2>
+          <SatirliBaslik metin={title} italikAlt className="f-baslik mt-4 text-[42px] sm:text-[54px] leading-[1.12] tracking-[-.015em]" />
         )}
         {subtitle && <p className="mt-4 text-sm text-zinc-500 max-w-xs leading-relaxed">{subtitle}</p>}
       </Reveal>

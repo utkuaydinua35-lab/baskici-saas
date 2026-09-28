@@ -1,7 +1,6 @@
 import Reveal from "@/components/Reveal";
-import Carousel from "@/components/Carousel";
+import YorumSeridi from "@/components/sections/YorumSeridi";
 import SectionHeading from "@/components/SectionHeading";
-import { urunGorsel } from "@/lib/gorsel";
 
 type Yorum = { author: string; text: string; rating: number; image?: string };
 
@@ -33,40 +32,8 @@ export default function Testimonials({
     return (
       <section className="bg-[#050505] text-zinc-100 py-10 sm:py-16 my-8 sm:my-12 koyu-bant">
         <div className="mx-auto max-w-6xl px-4">
-          <SectionHeading eyebrow={eyebrow} title={title || "Müşterilerimiz Ne Diyor?"} subtitle={subtitle} />
-          <Carousel autoplaySec={5} ariaLabel={title || "Müşteri yorumları"}>
-            {valid.map((t, i) => {
-              const g = t.image ? urunGorsel(t.image) : null;
-              return (
-                <figure key={i}
-                  className={`shrink-0 snap-start grid overflow-hidden rounded-[9px] sm:rounded-[5px] border border-[#303030] bg-[#131313]
-                    w-[83vw] max-w-[380px] sm:max-w-none ${g ? "sm:w-[710px] sm:h-[355px] sm:grid-cols-2 grid-rows-[250px_1fr] sm:grid-rows-1" : "sm:w-[420px]"}`}>
-                  {g && (
-                    <div className="relative bg-zinc-800 overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={g.src} srcSet={g.srcSet || undefined} sizes="(min-width: 640px) 355px, 83vw"
-                        alt={`${t.author || "Müşteri"} paylaşımı`} loading="lazy" decoding="async"
-                        className="absolute inset-0 w-full h-full object-cover" />
-                    </div>
-                  )}
-                  <figcaption className="flex flex-col justify-center gap-5 p-5 sm:p-7 min-w-0">
-                    <div className="flex items-center gap-3">
-                      <span aria-hidden className="f-baslik w-9 h-9 shrink-0 rounded-full bg-zinc-800 text-zinc-300 grid place-items-center text-lg">
-                        {(t.author || "M").trim().charAt(0).toLocaleUpperCase("tr")}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-[13px] sm:text-sm truncate">{t.author || "Müşteri"}</div>
-                        <div className="text-[10px] sm:text-[11px] text-zinc-500">
-                          {"★".repeat(Math.min(5, Math.max(1, t.rating || 5)))}
-                        </div>
-                      </div>
-                    </div>
-                    <blockquote className="text-[13px] sm:text-[15px] leading-[1.8] text-zinc-300">“{t.text}”</blockquote>
-                  </figcaption>
-                </figure>
-              );
-            })}
-          </Carousel>
+          <YorumSeridi items={valid} ariaLabel={title || "Müşteri yorumları"}
+            baslik={<SectionHeading eyebrow={eyebrow} title={title || "Müşterilerimiz Ne Diyor?"} subtitle={subtitle} />} />
           {(altNot || instagram) && (
             <div className="mt-6 flex flex-col sm:flex-row gap-2 sm:justify-between text-[11px] text-zinc-500">
               {altNot && <span>{altNot}</span>}

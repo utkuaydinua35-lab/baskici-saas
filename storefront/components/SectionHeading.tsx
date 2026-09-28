@@ -1,3 +1,4 @@
+import SatirliBaslik from "@/components/SatirliBaslik";
 import Link from "next/link";
 
 // Bölüm başlığı üçlüsü — üst etiket / başlık / alt başlık. Görünümü tema
@@ -25,7 +26,7 @@ export default function SectionHeading({
     <div className={`bolum-baslik${center ? " bb-orta" : ""}`}>
       <div>
         {eyebrow ? <p className="bb-ust">{eyebrow}</p> : null}
-        {title ? <h2 className="bb-baslik">{title}</h2> : null}
+        {title ? <SatirliBaslik metin={title} className="bb-baslik" /> : null}
         {subtitle ? <p className="bb-alt">{subtitle}</p> : null}
       </div>
       {href ? <Link href={href} className="bb-link">{linkText}</Link> : null}

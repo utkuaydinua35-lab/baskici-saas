@@ -29,7 +29,7 @@ export interface ThemeSection {
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
     | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter"
     | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact" | "countdown"
-    | "kurdele" | "stil_onerici" | "adimlar" | "kilif_onizleme";
+    | "kurdele" | "stil_onerici" | "adimlar" | "kilif_onizleme" | "son_bakilanlar";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;
@@ -116,7 +116,8 @@ export interface Theme {
     vazgec: string; tekrar_gun: number; mobil_gecikme_sn: number };
   popup: { enabled: boolean; ust_baslik?: string; gorsel_boyut?: number; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
-  animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean };
+  // sepete_ucus: sepete ekleyince ürün görseli sepet simgesine uçar
+  animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean; sepete_ucus?: boolean };
   texts?: Record<string, string>;
   collection_pages?: Record<string, { image?: string | null; body?: string; position?: string }>;
   footer: { about: string; instagram: string };

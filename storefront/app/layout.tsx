@@ -138,6 +138,7 @@ export default async function RootLayout({
       lang="tr"
       data-reveal={theme.animations.reveal ? "1" : "0"}
       data-hover-zoom={theme.animations.hover_zoom ? "1" : "0"}
+      data-ucus={theme.animations.sepete_ucus ? "1" : "0"}
       // Tema görünümü — globals.css bu özelliklere göre kart/başlık stilini seçer
       data-card={theme.style.card_style}
       data-heading={theme.style.heading_style}

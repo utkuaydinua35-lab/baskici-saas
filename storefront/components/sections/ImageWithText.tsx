@@ -1,3 +1,4 @@
+import SatirliBaslik from "@/components/SatirliBaslik";
 import { urunGorsel } from "@/lib/gorsel";
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
@@ -27,7 +28,6 @@ export default function ImageWithText({
 }) {
   if (!image && !title && !body) return null;
   if (stil === "koyu") {
-    const [ilk, ...kalan] = (title || "").split("\n");
     return (
       <section className="mx-auto max-w-6xl px-4 py-8 sm:py-12">
         <Reveal>
@@ -46,9 +46,8 @@ export default function ImageWithText({
             <div className="flex flex-col justify-center px-6 py-10 sm:px-[12%] sm:py-14">
               {eyebrow && <p className="text-[10px] font-semibold tracking-[.16em] uppercase text-zinc-400">{eyebrow}</p>}
               {title && (
-                <h2 className="f-baslik mt-5 text-[44px] sm:text-[62px] leading-[1.08] tracking-[-.015em]">
-                  {ilk}{kalan.length > 0 && <em className="block italic text-zinc-400">{kalan.join(" ")}</em>}
-                </h2>
+                <SatirliBaslik metin={title} italikAlt italikSinif="text-zinc-400"
+                  className="f-baslik mt-5 text-[44px] sm:text-[62px] leading-[1.08] tracking-[-.015em]" />
               )}
               {body && <p className="mt-5 text-[13px] sm:text-sm leading-[1.9] text-zinc-400 max-w-xs whitespace-pre-line">{body}</p>}
               {ctaText && ctaUrl && (

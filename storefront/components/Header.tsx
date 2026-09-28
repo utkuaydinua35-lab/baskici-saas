@@ -250,13 +250,13 @@ export default function Header({
       {cartDrawer ? (
         <button onClick={() => setDrawerOpen(true)}
           className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-          aria-label="Sepeti aç">
+          aria-label="Sepeti aç" data-sepet-hedef="ust">
           {cartInner}
         </button>
       ) : (
         <Link href="/sepet"
           className="p-2 -m-2 sm:p-0 sm:m-0 relative inline-flex items-center gap-1.5 text-sm font-medium hover:text-zinc-900"
-          aria-label="Sepet">
+          aria-label="Sepet" data-sepet-hedef="ust">
           {cartInner}
         </Link>
       )}
@@ -265,12 +265,12 @@ export default function Header({
 
   if (layout === "vitrin") {
     const sepetDugmesi = cartDrawer ? (
-      <button onClick={() => setDrawerOpen(true)} aria-label="Sepeti aç"
-        className="relative inline-flex items-center gap-2 text-xs p-2 -m-2">
+      <button onClick={() => setDrawerOpen(true)} aria-label="Sepeti aç" data-sepet-hedef="ust"
+        className="relative inline-flex items-center gap-2 text-xs p-2 -m-2 transition-transform duration-200 hover:-translate-y-0.5">
         {cartInner}
       </button>
     ) : (
-      <Link href="/sepet" aria-label="Sepet" className="relative inline-flex items-center gap-2 text-xs p-2 -m-2">
+      <Link href="/sepet" aria-label="Sepet" data-sepet-hedef="ust" className="relative inline-flex items-center gap-2 text-xs p-2 -m-2">
         {cartInner}
       </Link>
     );
@@ -655,9 +655,24 @@ function AramaCubugu() {
   const [loading, setLoading] = useState(false);
   const [odak, setOdak] = useState(false);
   const kap = useRef<HTMLFormElement>(null);
+  const girdi = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const pathname = usePathname();
   useEffect(() => { setQ(""); setResults([]); }, [pathname]);
+  // "/" tuşu aramaya odaklar (yazı alanında ya da açık pencerede değilken)
+  useEffect(() => {
+    const tus = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName) || a.isContentEditable)) return;
+      if (document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      girdi.current?.focus();
+      girdi.current?.scrollIntoView({ block: "center" });
+    };
+    document.addEventListener("keydown", tus);
+    return () => document.removeEventListener("keydown", tus);
+  }, []);
   useEffect(() => {
     const term = q.trim();
     if (term.length < 2) { setResults([]); return; }
@@ -690,7 +705,7 @@ function AramaCubugu() {
     <form ref={kap} onSubmit={submit} role="search"
       className="relative flex-1 min-w-0 flex items-center rounded-[10px] bg-zinc-100 px-2.5 sm:px-4 focus-within:outline focus-within:outline-2 focus-within:outline-zinc-500">
       <label htmlFor="vitrin-ara" className="sr-only">Ürün ara</label>
-      <input id="vitrin-ara" type="search" value={q} autoComplete="off"
+      <input ref={girdi} id="vitrin-ara" type="search" value={q} autoComplete="off"
         onChange={(e) => { setQ(e.target.value); setOdak(true); }} onFocus={() => setOdak(true)}
         onKeyDown={(e) => { if (e.key === "Escape") setOdak(false); }}
         placeholder="Tasarım ara…"

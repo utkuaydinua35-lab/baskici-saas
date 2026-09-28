@@ -176,19 +176,15 @@ html[data-heading="editoryal"] .bolum-baslik.bb-orta .bb-alt { max-width: none; 
 .koyu-bant .bolum-baslik .bb-alt { color: #868686; }
 .koyu-bant .bolum-baslik .bb-link { color: #bbb; }
 
-/* Başlıklar görünüme girerken yükselir — kaydırmaya bağlı CSS animasyonu
-   (JS yok, bileşik katmanda). Desteklemeyen tarayıcıda başlık zaten görünür. */
-@keyframes baslik-yuksel { from { opacity: 0; transform: translateY(.45em); } to { opacity: 1; transform: none; } }
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    html[data-heading="editoryal"][data-reveal="1"] .bolum-baslik .bb-baslik,
-    html[data-heading="editoryal"][data-reveal="1"] section:not(.fz-hero) h2.f-baslik {
-      animation: baslik-yuksel linear both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 55%;
-    }
-  }
-}
+/* Başlık satırları maskeden yükselir (SatirliBaslik): her satır kendi
+   taşma kutusunda aşağıdan gelir, satırlar arası .12 sn. Yalnız editoryal
+   başlık stilinde ve belirme açıkken; aksi hâlde satırlar düz metin. */
+.satirli .satir, .satirli .satir > span { display: inline; }
+.satirli .italik-satir { display: block; }
+html[data-heading="editoryal"] .satirli .satir { display: block; overflow: hidden; padding-bottom: .12em; margin-bottom: -.12em; }
+html[data-heading="editoryal"] .satirli .satir > span { display: block; }
+html[data-heading="editoryal"][data-reveal="1"] .satirli:not(.satir-in) .satir > span { transform: translateY(112%); }
+html[data-heading="editoryal"][data-reveal="1"] .satirli .satir > span { transition: transform 1.1s cubic-bezier(.22,1,.36,1); }
 
 /* Ürün kartı: yumuşak — gri zeminli yuvarlak görsel, ad solda fiyat sağda */
 html[data-card="yumusak"] .urun-kart { border-color: transparent; background: transparent; overflow: visible; }
@@ -207,8 +203,17 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 /* Bölünmüş hero */
 .fz-buton { background: var(--c-primary); transition: background-color .3s, transform .4s cubic-bezier(.22,1,.36,1); }
 @media (hover: hover) and (pointer: fine) {
-  .fz-buton:hover { background: var(--c-accent); transform: translateY(-2px); }
+  .fz-buton:hover { background: var(--c-accent); transform: translateY(-3px); }
 }
+/* Butonda soldan sağa geçen ışık (yalnız farede, üstüne gelince bir kez) */
+.parilti-gec { position: relative; overflow: hidden; }
+.parilti-gec::after { content: ""; position: absolute; top: -100%; bottom: -100%; left: -70%; width: 45%;
+  transform: skewX(-25deg); background: linear-gradient(90deg, transparent, #ffffff40, transparent); pointer-events: none; }
+@keyframes parilti-gec { to { left: 150%; } }
+@media (hover: hover) and (pointer: fine) { .parilti-gec:hover::after { animation: parilti-gec .85s ease; } }
+/* Hero görseli sayfa açılışında yükselerek gelir */
+@keyframes fz-acilis { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.fz-acilis { animation: fz-acilis 1s .1s cubic-bezier(.22,1,.36,1) both; }
 @keyframes fz-metin { from { opacity: .2; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .fz-metin-gir { animation: fz-metin .5s cubic-bezier(.22,1,.36,1) both; }
 @keyframes fz-suzul { 0%, 100% { transform: translate(-5%, 0) scale(1); } 50% { transform: translate(-5%, -9px) scale(1.02); } }
@@ -237,6 +242,8 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 .kurdele-iz { display: flex; width: max-content; flex: none; animation: akan-serit 38s linear infinite; will-change: transform; }
 .kurdele-alt .kurdele-iz { animation-direction: reverse; animation-duration: 45s; }
 .kurdele-arka .kurdele-iz { animation-duration: 55s; animation-delay: -12s; }
+/* Üstüne gelinen şerit durur, diğerleri akmaya devam eder (yalnız farede) */
+@media (hover: hover) and (pointer: fine) { .kurdele:hover .kurdele-iz { animation-play-state: paused; } }
 .kurdele-grup { display: flex; align-items: center; gap: 45px; padding-right: 45px; flex-shrink: 0; white-space: nowrap; }
 .kurdele-yazi { font-size: 19px; line-height: 1.2; letter-spacing: -.35px; }
 .kurdele-yazi.buyuk { font-size: 28px; font-weight: 500; letter-spacing: -.8px; }
@@ -260,10 +267,18 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 .kenburns { animation: kenburns 16s ease-in-out infinite alternate; will-change: transform; }
 
 /* Stil önerici */
-@keyframes stil-gir { from { opacity: .3; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes stil-gir { from { opacity: .3; transform: translateY(14px) rotate(8deg) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes stil-kart { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes stil-suzul { 0%, 100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-10px) rotate(-2deg); } }
 .stil-giris { animation: stil-gir .6s cubic-bezier(.22,1,.36,1) both; }
+.stil-ipucu { opacity: 0; transform: translateY(5px); transition: opacity .3s, transform .3s; }
+.stil-kutu:focus-visible .stil-ipucu { opacity: 1; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+  .stil-kutu:hover .stil-ipucu { opacity: 1; transform: none; }
+  .stil-kutu:hover { box-shadow: 0 34px 60px #0003; }
+  .stil-secenek:hover { transform: translateX(3px); }
+}
+@media (hover: none) { .stil-ipucu { opacity: 1; transform: none; } }
 .stil-kart { animation: stil-kart .5s cubic-bezier(.22,1,.36,1) both; }
 .stil-suzul { transform: rotate(-5deg); animation: stil-suzul 10s ease-in-out infinite; will-change: transform; }
 
@@ -274,8 +289,11 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 .onizleme-aralik { accent-color: #edf83d; }
 @keyframes onizleme-suzul { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
 .onizleme-suzul { animation: onizleme-suzul 7s ease-in-out infinite; }
-.onizleme-kasa { border-radius: 46px; transform: perspective(1300px) rotateX(4deg) rotateY(-9deg);
-  box-shadow: 0 50px 80px #0009, 0 0 0 1px #ffffff14; transition: border-radius .45s; }
+.onizleme-kasa { --rx: 4deg; --ry: -9deg; border-radius: 46px; transform: perspective(1300px) rotateX(var(--rx)) rotateY(var(--ry));
+  box-shadow: 0 50px 80px #0009, 0 0 0 1px #ffffff14; transition: transform .7s cubic-bezier(.22,1,.36,1), border-radius .45s; }
+.onizleme-kasa.suruklen { transition: border-radius .45s; }
+@keyframes baski-gir { from { opacity: 0; filter: blur(10px); } }
+.onizleme-baski.taze { animation: baski-gir .8s cubic-bezier(.22,1,.36,1); }
 .onizleme-kasa[data-sekil="samsung"] { border-radius: 34px; }
 .onizleme-kasa::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 6px #121212, inset 0 0 0 7px #ffffff26, inset 0 0 22px #0007; }
@@ -317,6 +335,46 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
   .akis-gecis { height: 60px; } .akis-gecis-son { height: 70px; }
 }
 
+/* Ürün kartı (yumuşak): farede 3B eğilme + imleci izleyen ışık, ikinci
+   görsel büyükten gelir, köşede dönen "+" — yalnız gerçek farede */
+.kart-arti { display: none; }
+html[data-card="yumusak"] .kart-arti { display: grid; position: absolute; right: 12px; bottom: 12px; z-index: 2; width: 36px; height: 36px;
+  place-items: center; border-radius: 999px; background: #fff; color: #222; font-size: 21px; line-height: 1; pointer-events: none;
+  transition: transform .4s, background-color .3s, color .3s; }
+@media (max-width: 1023px) { html[data-card="yumusak"] .kart-arti { width: 32px; height: 32px; right: 9px; bottom: 9px; font-size: 20px; } }
+@media (hover: hover) and (pointer: fine) {
+  html[data-card="yumusak"] .urun-kart { perspective: 900px; }
+  html[data-card="yumusak"] .urun-kart .kart-medya { transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+    transition: transform .45s cubic-bezier(.22,1,.36,1), box-shadow .45s; }
+  html[data-card="yumusak"] .urun-kart:hover .kart-medya { box-shadow: 0 15px 32px #00000015; }
+  html[data-card="yumusak"] .urun-kart .kart-medya::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at var(--light-x, 50%) var(--light-y, 0%), #ffffff50, transparent 55%); transition: opacity .3s; }
+  html[data-card="yumusak"] .urun-kart:hover .kart-medya::after { opacity: .65; }
+  html[data-card="yumusak"] .urun-kart:hover .kart-arti { transform: rotate(90deg); background: #222; color: #fff; }
+  html[data-card="yumusak"][data-hover-zoom="1"] .urun-kart:hover .kart-medya img { transform: scale(1.07); }
+  html[data-card="yumusak"] .urun-kart .kart-medya img { transition: transform 1s cubic-bezier(.22,1,.36,1), opacity .6s; }
+  html[data-card="yumusak"] .urun-kart .kart-medya img.ikinci { transform: scale(1.08); }
+  html[data-card="yumusak"] .urun-kart:hover .kart-medya img.ikinci { transform: scale(1); }
+}
+
+/* Favori kalbi tıklanınca "zıplar" */
+@keyframes kalp-zipla { 0%, 100% { transform: scale(1); } 35% { transform: scale(1.27); } 65% { transform: scale(.92); } }
+.kalp-zipla svg { animation: kalp-zipla .5s ease; }
+
+/* Sepete uçan küçük görsel */
+.ucan-gorsel { position: fixed; z-index: 90; border-radius: 12px; object-fit: cover; pointer-events: none; box-shadow: 0 12px 30px #0004; }
+
+/* Müşteri yorumu tam görüntü penceresi */
+.yorum-pencere::backdrop { background: #0009; }
+.yorum-buyut { opacity: 0; transition: opacity .2s; }
+@media (hover: hover) and (pointer: fine) { .yorum-foto:hover .yorum-buyut { opacity: 1; } }
+@media (hover: none) { .yorum-buyut { opacity: 1; } }
+
+/* "Animasyonları durdur" (footer) — ziyaretçinin tercihi, tarayıcıda saklanır */
+html.hareketsiz *, html.hareketsiz *::before, html.hareketsiz *::after { animation-play-state: paused !important; }
+html.hareketsiz .satirli .satir > span { transform: none !important; transition: none !important; }
+html.hareketsiz .onizleme-kasa, html.hareketsiz .urun-kart .kart-medya { transform: none !important; }
+
 /* Telefon alt çubuğu görünürken yüzen balonlar üstüne çıkar, sayfa sonu
    çubuğun altında kalmaz */
 @media (max-width: 1023px) {
@@ -327,7 +385,11 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kurdele-iz, .kenburns, .fz-suzul, .fz-metin-gir, .stil-giris, .stil-kart, .stil-suzul, .onizleme-suzul { animation: none; will-change: auto; }
+  .kurdele-iz, .kenburns, .fz-suzul, .fz-metin-gir, .fz-acilis, .stil-giris, .stil-kart, .stil-suzul, .onizleme-suzul,
+  .onizleme-baski.taze, .kalp-zipla svg { animation: none; will-change: auto; }
+  .satirli .satir > span { transform: none !important; transition: none !important; }
+  .parilti-gec::after { display: none; }
+  .urun-kart .kart-medya, .onizleme-kasa { transform: none !important; }
   .stil-suzul { transform: rotate(-5deg); }
   .akis-katman { transition: none; }
 }

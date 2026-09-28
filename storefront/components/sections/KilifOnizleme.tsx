@@ -7,6 +7,7 @@
 // Akıcılık: sürükleme/yakınlaştırma yalnız transform yazar (yeniden
 // yerleşim yok), karede en fazla bir güncelleme (rAF). Farenin eğdirmesi
 // yalnız gerçek farede; dokunmatikte parmak sürüklemeyle karışmasın.
+import SatirliBaslik from "@/components/SatirliBaslik";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
@@ -35,6 +36,8 @@ export default function KilifOnizleme({
   const [sekil, setSekil] = useState<"iphone" | "samsung">("iphone");
   const [yuzey, setYuzey] = useState<"parlak" | "mat">("parlak");
   const [zoom, setZoom] = useState(120);
+  const [taze, setTaze] = useState(0);        // yeni fotoğraf: bulanıktan netleşir
+  const egimKare = useRef<number | null>(null);
   const konum = useRef({ x: 0, y: 0 });
   const surukle = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const kare = useRef<number | null>(null);
@@ -54,7 +57,7 @@ export default function KilifOnizleme({
     });
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { boya(); }, [zoom, sekil]);
+  useEffect(() => { boya(); }, [zoom, sekil, taze]);   // taze: baskı katmanı yeniden kuruldu
   // Sayfadan çıkınca nesne URL'sini bırak (bellek)
   useEffect(() => () => { if (foto) URL.revokeObjectURL(foto); }, [foto]);
 
@@ -64,9 +67,27 @@ export default function KilifOnizleme({
     setFoto(URL.createObjectURL(f));
     konum.current = { x: 0, y: 0 };
     setZoom(120);
+    setTaze((n) => n + 1);
   };
 
-  const [ilk, ...kalan] = (title || "").split("\n");
+  // Farede kılıf imleci izleyerek hafifçe eğilir (sürüklerken değil)
+  const egil = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || surukle.current || egimKare.current != null) return;
+    const sahne = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
+    egimKare.current = requestAnimationFrame(() => {
+      egimKare.current = null;
+      const k = kasa.current;
+      if (!k) return;
+      const r = sahne.getBoundingClientRect();
+      k.style.setProperty("--ry", `${(((x0 - r.left) / r.width - 0.5) * 22).toFixed(2)}deg`);
+      k.style.setProperty("--rx", `${((0.5 - (y0 - r.top) / r.height) * 14).toFixed(2)}deg`);
+    });
+  };
+  const egimSifirla = () => {
+    kasa.current?.style.removeProperty("--rx");
+    kasa.current?.style.removeProperty("--ry");
+  };
+
 
   const chip = (aktif: boolean) =>
     `rounded-full border px-3.5 py-2 text-xs transition-colors ${aktif
@@ -78,12 +99,11 @@ export default function KilifOnizleme({
         <div className="order-2 lg:order-1 flex flex-col justify-center px-6 py-9 sm:px-[11%] sm:py-16">
           {eyebrow && <p className="text-[10px] font-semibold tracking-[.16em] uppercase text-zinc-400">{eyebrow}</p>}
           {title && (
-            <h2 className="f-baslik mt-5 text-[44px] sm:text-[62px] leading-[1.02] tracking-[-.015em]">
-              {ilk}{kalan.length > 0 && <em className="block italic text-zinc-400">{kalan.join(" ")}</em>}
-            </h2>
+            <SatirliBaslik metin={title} italikAlt italikSinif="text-zinc-400"
+              className="f-baslik mt-5 text-[44px] sm:text-[62px] leading-[1.02] tracking-[-.015em]" />
           )}
           {subtitle && <p className="mt-4 text-sm leading-[1.8] text-zinc-400 max-w-sm">{subtitle}</p>}
-          <label className="onizleme-yukle mt-6 self-start inline-flex items-center gap-6 rounded-full px-6 py-4 text-[11px] font-medium tracking-wide cursor-pointer">
+          <label className="onizleme-yukle parilti-gec mt-6 self-start inline-flex items-center gap-6 rounded-full px-6 py-4 text-[11px] font-medium tracking-wide cursor-pointer">
             {buton} <span aria-hidden className="text-lg leading-none">+</span>
             <input type="file" accept="image/*" className="sr-only" onChange={dosyaSec} />
           </label>
@@ -120,6 +140,7 @@ export default function KilifOnizleme({
           )}
         </div>
         <div className="order-1 lg:order-2 relative grid place-items-center overflow-hidden px-5 pt-10 pb-14 sm:py-16 min-h-[470px]"
+          onPointerMove={egil} onPointerLeave={(e) => { if (e.pointerType === "mouse") egimSifirla(); }}
           style={{ background: "radial-gradient(circle at 50% 38%, #2e2e2b, #121212 70%)" }}>
           <div className="onizleme-suzul">
             <div ref={kasa} role="img" aria-label="Kılıf önizlemesi"
@@ -130,6 +151,7 @@ export default function KilifOnizleme({
                 if (!foto) return;
                 surukle.current = { x: e.clientX, y: e.clientY, tx: konum.current.x, ty: konum.current.y };
                 e.currentTarget.setPointerCapture(e.pointerId);
+                e.currentTarget.classList.add("suruklen");
               }}
               onPointerMove={(e) => {
                 const d = surukle.current;
@@ -137,9 +159,9 @@ export default function KilifOnizleme({
                 konum.current = { x: d.tx + e.clientX - d.x, y: d.ty + e.clientY - d.y };
                 boya();
               }}
-              onPointerUp={() => { surukle.current = null; }}
-              onPointerCancel={() => { surukle.current = null; }}>
-              <div ref={baski} className={`onizleme-baski absolute inset-0 ${foto ? "dolu" : ""}`}
+              onPointerUp={(e) => { surukle.current = null; e.currentTarget.classList.remove("suruklen"); }}
+              onPointerCancel={(e) => { surukle.current = null; e.currentTarget.classList.remove("suruklen"); }}>
+              <div ref={baski} key={taze} className={`onizleme-baski absolute inset-0 ${foto ? "dolu" : ""} ${taze ? "taze" : ""}`}
                 style={foto ? { backgroundImage: `url("${foto}")` } : undefined}>
                 {!foto && <span className="absolute inset-x-0 top-[56%] text-center text-[11px] font-semibold tracking-[5px] text-black/25">FOTOĞRAFIN</span>}
               </div>

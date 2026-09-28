@@ -2,6 +2,7 @@
 
 // Marka → model → renk seçici ve "Sepete Ekle" — ürün sayfasının istemci parçası.
 // Tek marka varsa marka adımı atlanır; markası olmayan varyantlar "Diğer"de.
+import { sepeteUcur } from "@/lib/sepeteUcur";
 import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
@@ -125,7 +126,9 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
       quantity: qty,
     });
     setAdded(true);
-    setDrawerOpen(true); // çekmece kapalıysa no-op (layout render etmez)
+    // Tema açtıysa görsel sepete uçar, çekmece uçuş bitince açılır
+    sepeteUcur(document.querySelector<HTMLImageElement>("img[data-urun-ana-gorsel]"),
+      () => setDrawerOpen(true)); // çekmece kapalıysa no-op (layout render etmez)
     setTimeout(() => setAdded(false), 1600);
   };
 

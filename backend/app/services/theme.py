@@ -113,6 +113,9 @@ SECTION_DEFAULTS: dict[str, dict] = {
                        "buton": "FOTOĞRAF SEÇ", "cta_text": "", "cta_url": "/tasarla",
                        "logo_yazi": "{magaza}",
                        "not": "Önizlemedir; baskı renkleri ekrana göre küçük farklar gösterebilir."},
+    # Son bakılanlar: ziyaretçinin ürün sayfalarında gezdikleri (tarayıcısında
+    # saklanır); ilk kez gelende liste boş → bölüm görünmez
+    "son_bakilanlar": {"eyebrow": "", "title": "Son baktığın tasarımlar", "subtitle": ""},
 }
 
 MAX_FAQ_ITEMS = 12
@@ -233,7 +236,8 @@ DEFAULT_THEME: dict = {
         {"id": "varsayilan-urunler", "type": "products_grid",
          "settings": dict(SECTION_DEFAULTS["products_grid"])},
     ],
-    "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+    # sepete_ucus: sepete ekleyince ürün görseli sepet simgesine uçar
+    "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": False},
     "footer": {"about": "", "instagram": ""},
     # Üst menü linkleri (Shopify Navigation) — boşsa varsayılan menü kullanılır
     "nav_links": [],   # [{label, url}]
@@ -432,7 +436,7 @@ THEME_PRESETS: dict[str, dict] = {
                       "ust_link_metin": "Siparişlerim", "ust_link_url": "/hesap",
                       "mobil_dock": True, "ilerleme": True, "akis_cizgisi": True},
             "popup": {"enabled": False},
-            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": True},
             "sections": [
                 {"id": "fz-hero", "type": "hero_slider",
                  "settings": {"stil": "bolunmus", "panel_renk": "#efefef", "autoplay_sec": 6,
@@ -525,6 +529,8 @@ THEME_PRESETS: dict[str, dict] = {
                                           "yüklenmez. Sürükle, yakınlaştır, modelini seç.",
                               "buton": "FOTOĞRAF SEÇ", "cta_text": "Bu tasarımla sipariş ver",
                               "cta_url": "/tasarla", "logo_yazi": "{magaza}"}},
+                {"id": "fz-son", "type": "son_bakilanlar",
+                 "settings": {"eyebrow": "SON BAKTIKLARIN", "title": "Son baktığın tasarımlar"}},
                 {"id": "fz-sss", "type": "faq",
                  "settings": {"stil": "iki_sutun", "eyebrow": "YARDIM",
                               "title": "Sık sorulan sorular",

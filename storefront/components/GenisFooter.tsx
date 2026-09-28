@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NewsletterForm from "@/components/NewsletterForm";
+import HareketDugmesi from "@/components/HareketDugmesi";
 
 // Geniş footer (tema style.footer_stil = "genis") — açık zeminde logo +
 // tanıtım + bülten, "Keşfet" ve "İletişim & Destek" sütunları, altta telif,
@@ -89,6 +90,7 @@ export default function GenisFooter({
             </svg>
             {sslText || "256-bit SSL ile güvenli ödeme"}
           </span>
+          <HareketDugmesi />
           <a href="#" className="hover:text-zinc-900">Yukarı dön ↑</a>
         </div>
       </div>

@@ -33,6 +33,8 @@ export default function AkisCizgisi() {
     const paths = [...svgEl.querySelectorAll<SVGPathElement>("path")];
     const govde = paths[2];
     const hareket = matchMedia("(prefers-reduced-motion: reduce)");
+    // Hareket azaltma ya da ziyaretçinin "Animasyonları durdur" tercihi
+    const durgun = () => hareket.matches || document.documentElement.classList.contains("hareketsiz");
     let length = 0, drawn = 0, target = 0, raf = 0, olcKare = 0, entryY = 0, endY = 0, lastTime = 0;
     let samples: { y: number; l: number }[] = [];
 
@@ -57,7 +59,7 @@ export default function AkisCizgisi() {
       raf = 0;
       const dt = lastTime ? Math.min(t - lastTime, 48) : 16;
       lastTime = t;
-      if (hareket.matches) { drawn = length; uygula(drawn); return; }
+      if (durgun()) { drawn = length; uygula(drawn); return; }
       drawn += (target - drawn) * (1 - Math.exp(-dt / 85));
       if (Math.abs(target - drawn) < 0.4) drawn = target;
       uygula(drawn);
@@ -65,7 +67,7 @@ export default function AkisCizgisi() {
     };
     const guncelle = () => {
       target = hedefUzunluk();
-      if (hareket.matches) { drawn = length; uygula(length); return; }
+      if (durgun()) { drawn = length; uygula(length); return; }
       if (!raf && !document.hidden) { lastTime = 0; raf = requestAnimationFrame(tik); }
     };
 
@@ -177,6 +179,8 @@ export default function AkisCizgisi() {
     document.addEventListener("visibilitychange", gorunurluk);
     hareket.addEventListener("change", guncelle);
     document.fonts?.ready.then(olcSirala).catch(() => {});
+    const sinifIzle = new MutationObserver(guncelle);
+    sinifIzle.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     const ro = new ResizeObserver(olcSirala);
     const main = document.querySelector("main");
     if (main) ro.observe(main);
@@ -190,6 +194,7 @@ export default function AkisCizgisi() {
       document.removeEventListener("visibilitychange", gorunurluk);
       hareket.removeEventListener("change", guncelle);
       ro.disconnect();
+      sinifIzle.disconnect();
       if (raf) cancelAnimationFrame(raf);
       if (olcKare) cancelAnimationFrame(olcKare);
     };

@@ -908,6 +908,9 @@ export default function TemaEditorPage() {
                   onChange={v => set('animations.hover_zoom', v)} label="Ürün görseline yakınlaşma (hover)" />
                 <Toggle checked={theme.animations.cart_drawer}
                   onChange={v => set('animations.cart_drawer', v)} label="Sepet çekmecesi (yandan kayan)" />
+                <Toggle checked={!!theme.animations.sepete_ucus}
+                  onChange={v => set('animations.sepete_ucus', v)}
+                  label="Sepete eklenince ürün görseli sepete uçsun" />
               </Section>
 
               <Section title="Alt Bilgi (Footer)" icon="⬇️">

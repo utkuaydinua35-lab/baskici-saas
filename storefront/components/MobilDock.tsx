@@ -73,14 +73,14 @@ export default function MobilDock({
         Favoriler{rozet(fav)}
       </Link>
       {cartDrawer ? (
-        <button type="button" onClick={() => setDrawerOpen(true)} className={oge}>
+        <button type="button" onClick={() => setDrawerOpen(true)} className={oge} data-sepet-hedef="dock">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[22px] h-[22px]" aria-hidden>
             <path d="M5 7h14l1 14H4L5 7Z" /><path d="M8 8V5a4 4 0 0 1 8 0v3" />
           </svg>
           Sepetim{rozet(count)}
         </button>
       ) : (
-        <Link href="/sepet" className={oge}>
+        <Link href="/sepet" className={oge} data-sepet-hedef="dock">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[22px] h-[22px]" aria-hidden>
             <path d="M5 7h14l1 14H4L5 7Z" /><path d="M8 8V5a4 4 0 0 1 8 0v3" />
           </svg>

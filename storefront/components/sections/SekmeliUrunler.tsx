@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { ProductCard as ProductCardType } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import Reveal from "@/components/Reveal";
 import SectionHeading from "@/components/SectionHeading";
 
 type Sira = "one" | "artan" | "azalan" | "ad";
@@ -65,7 +66,12 @@ export default function SekmeliUrunler({
         </label>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 sm:gap-5">
-        {liste.map((p) => <ProductCard key={p.slug} product={p} />)}
+        {/* Sekme değişince kartlar yeniden sırayla belirir (anahtar sekmeyi içerir) */}
+        {liste.map((p, i) => (
+          <Reveal key={`${etkin}-${sira}-${p.slug}`} delay={(i % 4) * 80}>
+            <ProductCard product={p} />
+          </Reveal>
+        ))}
       </div>
       <div className="mt-7 flex items-center justify-between gap-6">
         <p className="text-[10px] sm:text-[11px] text-zinc-500 max-w-md">

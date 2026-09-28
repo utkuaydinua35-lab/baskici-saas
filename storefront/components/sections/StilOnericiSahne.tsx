@@ -1,5 +1,6 @@
 "use client";
 
+import SatirliBaslik from "@/components/SatirliBaslik";
 import { useState } from "react";
 import Link from "next/link";
 import { urunGorsel } from "@/lib/gorsel";
@@ -34,7 +35,6 @@ export default function StilOnericiSahne({
 }) {
   const [sira, setSira] = useState(0);
   const s = secenekler[Math.min(sira, secenekler.length - 1)];
-  const [ilk, ...kalan] = (title || "").split("\n");
   const g = urunGorsel(s.gorsel);
   const rastgele = () => {
     if (secenekler.length < 2) return;
@@ -49,9 +49,7 @@ export default function StilOnericiSahne({
         <div className="px-6 py-8 sm:px-[13%] sm:py-14">
           {eyebrow && <p className="text-[10px] font-semibold tracking-[.16em] uppercase text-zinc-500">{eyebrow}</p>}
           {title && (
-            <h2 className="f-baslik mt-5 text-[46px] sm:text-[66px] leading-[1.02] tracking-[-.015em]">
-              {ilk}{kalan.length > 0 && <em className="block italic text-zinc-500">{kalan.join(" ")}</em>}
-            </h2>
+            <SatirliBaslik metin={title} italikAlt className="f-baslik mt-5 text-[46px] sm:text-[66px] leading-[1.02] tracking-[-.015em]" />
           )}
           {subtitle && <p className="mt-4 text-[13px] sm:text-sm leading-relaxed text-zinc-500">{subtitle}</p>}
           <div role="group" aria-label="Tarz seç" className="mt-6 grid grid-cols-2 lg:grid-cols-1 gap-2">
@@ -59,7 +57,7 @@ export default function StilOnericiSahne({
               const aktif = i === sira;
               return (
                 <button key={i} type="button" onClick={() => setSira(i)} aria-pressed={aktif}
-                  className={`flex items-center gap-2 sm:gap-3 rounded-[10px] border px-3 py-3 sm:px-4 sm:py-[15px] text-left text-[11px] sm:text-[13px] leading-snug transition-colors ${
+                  className={`stil-secenek flex items-center gap-2 sm:gap-3 rounded-[10px] border px-3 py-3 sm:px-4 sm:py-[15px] text-left text-[11px] sm:text-[13px] leading-snug transition-[background-color,border-color,transform] duration-300 ${
                     aktif ? "bg-zinc-900 text-white border-zinc-900" : "border-zinc-200 hover:bg-zinc-100"}`}>
                   <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0" style={{ background: o.renk }} />
                   <span className="min-w-0">{o.etiket}</span>
@@ -85,12 +83,17 @@ export default function StilOnericiSahne({
           )}
           <div key={`g-${sira}`} className="stil-giris relative z-[1] w-[min(330px,90%)] max-w-[235px] sm:max-w-none">
             <Link href={`/urun/${s.urun}`} aria-label={`${s.urunAdi} tasarımını incele`}
-              className="stil-suzul block aspect-square rounded-2xl border-[5px] sm:border-[7px] border-white/30 shadow-[0_30px_55px_#0002] overflow-hidden bg-white/40">
+              className="stil-suzul stil-kutu relative block aspect-square rounded-2xl border-[5px] sm:border-[7px] border-white/30 shadow-[0_30px_55px_#0002] overflow-hidden bg-white/40 transition-shadow duration-500">
               {g.src && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={g.src} srcSet={g.srcSet || undefined} sizes="330px" alt={s.urunAdi}
                   loading="lazy" decoding="async" className="w-full h-full object-cover rounded-[9px]" />
               )}
+              {/* Opak ipucu (bulanıklık yok): süzülen kartın üstünde her karede
+                  yeniden bulanıklaştırma olurdu */}
+              <span className="stil-ipucu absolute inset-x-3 bottom-3 rounded-md bg-zinc-900/85 py-2.5 sm:py-3 text-center text-[8px] sm:text-[9px] tracking-[.1em] text-white">
+                TASARIMI İNCELE
+              </span>
             </Link>
           </div>
           <div key={`k-${sira}`} className="stil-kart relative z-[2] mt-6 sm:mt-10 w-full max-w-[390px] flex items-center justify-between gap-4 rounded-[14px] border border-white/60 bg-white/[.92] px-5 py-4 sm:px-6 sm:py-5 shadow-[0_10px_30px_#00000008]"

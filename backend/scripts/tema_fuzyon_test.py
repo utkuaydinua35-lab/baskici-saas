@@ -42,7 +42,7 @@ def main() -> int:
     print("Füzyon şablonu")
     t = tur(THEME_PRESETS["fuzyon"]["theme"])
     tipler = [s["type"] for s in t["sections"]]
-    kontrol("12 bölüm korunur", len(tipler), 12)
+    kontrol("13 bölüm korunur", len(tipler), 13)
     kontrol("yeni bölüm tipleri", [x for x in tipler if x in ("kurdele", "stil_onerici", "adimlar", "kilif_onizleme")],
             ["kurdele", "stil_onerici", "adimlar", "kilif_onizleme"])
     kontrol("akış çizgisi işaretleri", [s["id"] for s in t["sections"] if s["akis"]],
@@ -53,6 +53,9 @@ def main() -> int:
     kontrol("hero bölünmüş + başlık satır sonu", (t["sections"][0]["settings"]["stil"],
             t["sections"][0]["settings"]["slides"][0]["title"]), ("bolunmus", "Fotoğrafın,\nkılıfın olsun."))
     kontrol("uydurma müşteri yorumu yok", t["sections"][7]["settings"]["items"], [])
+    kontrol("son bakılanlar SSS'den önce", tipler[-2:], ["son_bakilanlar", "faq"])
+    kontrol("sepete uçuş açık (şablon) / kapalı (varsayılan)",
+            (t["animations"]["sepete_ucus"], tur({})["animations"]["sepete_ucus"]), (True, False))
     kontrol("mağaza adı yer tutucusu (vitrin doldurur)",
             any(i["text"] == "{magaza}" for i in t["sections"][3]["settings"]["items"]), True)
     kontrol("bölüm sınırı 16", MAX_SECTIONS, 16)

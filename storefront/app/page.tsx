@@ -18,6 +18,7 @@ import Kurdele from "@/components/sections/Kurdele";
 import StilOnerici from "@/components/sections/StilOnerici";
 import Adimlar from "@/components/sections/Adimlar";
 import KilifOnizleme from "@/components/sections/KilifOnizleme";
+import SonBakilanlar from "@/components/sections/SonBakilanlar";
 import AkisCizgisi from "@/components/AkisCizgisi";
 
 // Anasayfa — tema bölüm listesine (sections) göre kurulur.
@@ -128,6 +129,8 @@ export default async function HomePage() {
                 subtitle={s.subtitle} buton={s.buton} ctaText={s.cta_text} ctaUrl={s.cta_url}
                 logoYazi={s.logo_yazi} not={s.not} />
             );
+          case "son_bakilanlar":
+            return <SonBakilanlar key={section.id} eyebrow={s.eyebrow} title={s.title} subtitle={s.subtitle} />;
           default:
             return null;
         }

@@ -65,6 +65,7 @@ export default function ProductGallery({
             sizes="(min-width: 768px) 50vw, 100vw" alt={current.alt || title}
             fetchPriority="high" decoding="async"
             onClick={() => setLightbox(true)}
+            data-urun-ana-gorsel=""
             className="absolute inset-0 w-full h-full object-contain cursor-zoom-in" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-6xl text-zinc-200">📱</div>

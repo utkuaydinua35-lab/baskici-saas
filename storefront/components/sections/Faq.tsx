@@ -1,3 +1,4 @@
+import SatirliBaslik from "@/components/SatirliBaslik";
 import { jsonLdScript } from "@/lib/jsonld";
 // SSS akordeonu (Shopify "Collapsible content") — native <details>, JS gerekmez.
 //  stil tek:       ortada kutulu liste
@@ -32,16 +33,14 @@ export default function Faq({
   };
 
   if (stil === "iki_sutun") {
-    const [ilk, ...kalan] = (title || "Sıkça Sorulan Sorular").split("\n");
     return (
       <section className="mx-auto max-w-6xl px-4 py-10 sm:py-16 grid lg:grid-cols-[1fr_1.4fr] gap-6 lg:gap-20">
         <script type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
         <div>
           {eyebrow && <p className="text-[10px] font-semibold tracking-[.16em] uppercase text-zinc-500">{eyebrow}</p>}
-          <h2 className="f-baslik mt-4 text-[42px] sm:text-[52px] leading-[1.1] tracking-[-.015em]">
-            {ilk}{kalan.length > 0 && <em className="block italic text-zinc-500">{kalan.join(" ")}</em>}
-          </h2>
+          <SatirliBaslik metin={title || "Sıkça Sorulan Sorular"} italikAlt
+            className="f-baslik mt-4 text-[42px] sm:text-[52px] leading-[1.1] tracking-[-.015em]" />
           {subtitle && <p className="mt-4 text-[13px] sm:text-sm leading-[1.8] text-zinc-500 max-w-xs">{subtitle}</p>}
           {eposta && (
             <a href={`mailto:${eposta}`} className="mt-4 inline-block border-b border-zinc-300 py-2 text-xs hover:border-zinc-900">{eposta}</a>

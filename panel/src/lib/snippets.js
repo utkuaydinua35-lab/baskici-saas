@@ -196,3 +196,87 @@ export const SNIPPETS = [
 /* @media (max-width: 480px) { .grid-cols-2 { grid-template-columns: 1fr !important; } } */`,
   },
 ]
+
+// ─── Eski ham kod → Tema "Kampanya araçları" ayarları ────────────────────
+// Çark ve çıkış pop-up'ı eskiden yukarıdaki parçacıklarla HAM KOD olarak
+// ekleniyordu. Mağazada bu kod varsa: değerlerini (metin, kupon, süre) okuyup
+// ayarlara aktarır ve bloğu koddan çıkarır. Aynı blok iki kez yapıştırılmışsa
+// (sahada görüldü) HEPSİ çıkarılır. Kod elle değiştirilmişse bulunabilen
+// alanlar okunur, bulunamayan alan ayarın varsayılanında kalır.
+
+const _bul = (re, s) => { const m = re.exec(s); return m ? m[1] : null }
+const _duz = s => (s || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+
+// [baş, son) aralıkları: yorum satırı (yoksa kapsayıcı div) → ardından gelen İLK </script>
+function _bloklar(html, basliklar) {
+  const out = []
+  let i = 0
+  for (;;) {
+    const adaylar = basliklar.map(b => html.indexOf(b, i)).filter(x => x >= 0)
+    if (!adaylar.length) break
+    const bas = Math.min(...adaylar)
+    const son = html.indexOf('</script>', bas)
+    if (son < 0) break
+    out.push([bas, son + '</script>'.length])
+    i = son + 1
+  }
+  return out
+}
+
+const CARK_BASLARI = ['<!-- İndirim çarkı', '<div id="bz-wheel-wrap"']
+const CIKIS_BASLARI = ['<!-- Çıkış niyeti', '<div id="bz-exit"']
+
+export function kampanyaKoduVarMi(html) {
+  return { cark: (html || '').includes('bz-wheel'), cikis: (html || '').includes('bz-exit') }
+}
+
+export function kampanyaKodunuAyristir(html) {
+  html = html || ''
+  const sonuc = { cark: null, cikis: null }
+  const cb = _bloklar(html, CARK_BASLARI)
+  if (cb.length) {
+    const k = html.slice(cb[0][0], cb[0][1])
+    const dilimler = []
+    const re = /\{\s*yazi:\s*'([^']*)'\s*,\s*kod:\s*(?:'([^']*)'|null)\s*\}/g
+    let m
+    while ((m = re.exec(k))) dilimler.push({ yazi: m[1], kod: m[2] || '' })
+    sonuc.cark = {
+      enabled: true,
+      baslik: _duz(_bul(/<h3>([\s\S]*?)<\/h3>/, k)) || undefined,
+      metin: _duz(_bul(/<p>([\s\S]*?)<\/p>/, k)) || undefined,
+      buton: _duz(_bul(/id="bz-wheel-go">([\s\S]*?)</, k)) || undefined,
+      gecikme_sn: Number(_bul(/GECIKME_SN\s*=\s*(\d+)/, k)) || undefined,
+      tekrar_gun: Number(_bul(/TEKRAR_GUN\s*=\s*(\d+)/, k)) || undefined,
+      dilimler: dilimler.length >= 2 ? dilimler : undefined,
+    }
+  }
+  const xb = _bloklar(html, CIKIS_BASLARI)
+  if (xb.length) {
+    const k = html.slice(xb[0][0], xb[0][1])
+    const ms = Number(_bul(/setTimeout\(\s*ac\s*,\s*(\d+)\s*\)/, k))
+    sonuc.cikis = {
+      enabled: true,
+      baslik: _duz(_bul(/<h3>([\s\S]*?)<\/h3>/, k)) || undefined,
+      metin: _duz(_bul(/<p>([\s\S]*?)<\/p>/, k)) || undefined,
+      kupon: _duz(_bul(/id="bz-exit-code">([\s\S]*?)</, k)) || undefined,
+      buton: _duz(_bul(/id="bz-exit-cta">([\s\S]*?)</, k)) || undefined,
+      vazgec: _duz(_bul(/id="bz-exit-no">([\s\S]*?)</, k)) || undefined,
+      tekrar_gun: Number(_bul(/GUN\s*=\s*(\d+)/, k)) || undefined,
+      mobil_gecikme_sn: ms ? Math.round(ms / 1000) : undefined,
+    }
+  }
+  // Tanımsız alanları at (ayarın varsayılanı korunur)
+  for (const a of ['cark', 'cikis']) {
+    if (sonuc[a]) sonuc[a] = Object.fromEntries(Object.entries(sonuc[a]).filter(([, v]) => v !== undefined))
+  }
+  return sonuc
+}
+
+export function kampanyaKodunuKaldir(html, { cark = true, cikis = true } = {}) {
+  html = html || ''
+  const basliklar = [...(cark ? CARK_BASLARI : []), ...(cikis ? CIKIS_BASLARI : [])]
+  const bloklar = _bloklar(html, basliklar)
+  let out = html
+  for (const [bas, son] of bloklar.reverse()) out = out.slice(0, bas) + out.slice(son)
+  return out.replace(/\n{3,}/g, '\n\n').trim()
+}

@@ -143,6 +143,24 @@ DEFAULT_THEME: dict = {
     # gorsel_boyut: pop-up görselinin (ör. logo) genişliği, % (30-100)
     "popup": {"enabled": False, "ust_baslik": "", "baslik": "", "metin": "", "kupon": "",
               "buton": "Alışverişe Başla", "gorsel_url": "", "gorsel_boyut": 100},
+    # ── Kampanya araçları (eskiden "Özel Kod → Hazır ekle" ile HAM KOD olarak
+    # ekleniyordu; metin/kupon/süre değiştirmek için kod düzenlemek gerekiyordu
+    # ve aynı kod iki kez yapıştırılabiliyordu). Artık formla ayarlanır.
+    # İndirim çarkı: ziyaretçi gecikme_sn sonra görür, çevirir, kupon kazanır.
+    # dilimler: [{yazi, kod}] — kod boşsa "Tekrar dene" dilimi. 2-8 dilim.
+    "cark": {"enabled": False, "baslik": "Şansını dene! 🎁",
+             "metin": "Çarkı çevir, indirim kodunu kap.", "buton": "ÇEVİR",
+             "gecikme_sn": 8, "tekrar_gun": 7,
+             "dilimler": [
+                 {"yazi": "%10 İNDİRİM", "kod": ""}, {"yazi": "Tekrar dene", "kod": ""},
+                 {"yazi": "%15 İNDİRİM", "kod": ""}, {"yazi": "Ücretsiz Kargo", "kod": ""},
+             ]},
+    # Çıkışta yakala: masaüstünde imleç sayfadan çıkarken, mobilde
+    # mobil_gecikme_sn sonra indirim teklifi. Kupon boşsa hiç gösterilmez.
+    "cikis": {"enabled": False, "baslik": "Gitmeden önce… 🎁",
+              "metin": "Bu siparişe özel indirim hazırladık.", "kupon": "",
+              "buton": "Kodu Kullan", "vazgec": "Hayır, teşekkürler",
+              "tekrar_gun": 3, "mobil_gecikme_sn": 45},
     "sections": [
         {"id": "varsayilan-hero", "type": "hero_slider",
          "settings": dict(SECTION_DEFAULTS["hero_slider"])},
@@ -398,6 +416,51 @@ def _galeri_ogesi(x) -> dict | None:
             "etiket": str(x.get("etiket") or "").strip()[:60]}
 
 
+def _sinirli_sayi(v, alt: int, ust: int, varsayilan: int) -> int:
+    try:
+        return min(ust, max(alt, int(v)))
+    except (TypeError, ValueError):
+        return varsayilan
+
+
+def _kupon_kodu(v) -> str:
+    """Kupon kodu: kuponlar büyük harfle saklanır (bkz. apply_discount)."""
+    return "".join(str(v or "").split()).upper()[:40]
+
+
+def _cark_temizle(c: dict) -> dict:
+    v = DEFAULT_THEME["cark"]
+    dilimler = [
+        {"yazi": str(d.get("yazi") or "").strip()[:24], "kod": _kupon_kodu(d.get("kod"))}
+        for d in (c.get("dilimler") or [])[:8]
+        if isinstance(d, dict) and str(d.get("yazi") or "").strip()
+    ]
+    return {
+        "enabled": bool(c.get("enabled")),
+        "baslik": str(c.get("baslik") or "").strip()[:60] or v["baslik"],
+        "metin": str(c.get("metin") or "").strip()[:140],
+        "buton": str(c.get("buton") or "").strip()[:24] or v["buton"],
+        "gecikme_sn": _sinirli_sayi(c.get("gecikme_sn"), 0, 120, v["gecikme_sn"]),
+        "tekrar_gun": _sinirli_sayi(c.get("tekrar_gun"), 1, 60, v["tekrar_gun"]),
+        # En az 2 dilim; biri bile kuponlu değilse çark anlamsız → vitrin göstermez
+        "dilimler": dilimler if len(dilimler) >= 2 else copy.deepcopy(v["dilimler"]),
+    }
+
+
+def _cikis_temizle(c: dict) -> dict:
+    v = DEFAULT_THEME["cikis"]
+    return {
+        "enabled": bool(c.get("enabled")),
+        "baslik": str(c.get("baslik") or "").strip()[:60] or v["baslik"],
+        "metin": str(c.get("metin") or "").strip()[:200],
+        "kupon": _kupon_kodu(c.get("kupon")),
+        "buton": str(c.get("buton") or "").strip()[:30] or v["buton"],
+        "vazgec": str(c.get("vazgec") or "").strip()[:40] or v["vazgec"],
+        "tekrar_gun": _sinirli_sayi(c.get("tekrar_gun"), 1, 60, v["tekrar_gun"]),
+        "mobil_gecikme_sn": _sinirli_sayi(c.get("mobil_gecikme_sn"), 5, 600, v["mobil_gecikme_sn"]),
+    }
+
+
 def _normalize_sections(sections: list) -> list:
     """Bölüm listesini temizle: bilinen tipler, ayar whitelist'i, limitler."""
     cleaned: list[dict] = []
@@ -538,6 +601,8 @@ def resolve_theme(store_config: dict | None) -> dict:
         popup["gorsel_boyut"] = min(100, max(30, int(popup.get("gorsel_boyut") or 100)))
     except (TypeError, ValueError):
         popup["gorsel_boyut"] = 100
+    theme["cark"] = _cark_temizle(theme.get("cark") or {})
+    theme["cikis"] = _cikis_temizle(theme.get("cikis") or {})
     lwm = theme.get("logo_width_mobile")
     try:
         theme["logo_width_mobile"] = min(240, max(40, int(lwm))) if lwm not in (None, "") else None
@@ -550,7 +615,7 @@ def resolve_theme(store_config: dict | None) -> dict:
 def validate_theme_patch(patch: dict) -> dict:
     """Panelden gelen temayı temizle: yalnızca bilinen anahtarlar."""
     cleaned: dict = {}
-    for key in ("colors", "announcement", "popup", "style", "animations", "footer", "whatsapp",
+    for key in ("colors", "announcement", "popup", "style", "cark", "cikis", "animations", "footer", "whatsapp",
                 "trust_badges", "cart_messages", "thankyou", "texts"):
         value = patch.get(key)
         default = DEFAULT_THEME[key]

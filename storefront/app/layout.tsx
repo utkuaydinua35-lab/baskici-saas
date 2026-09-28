@@ -18,6 +18,8 @@ import CopyGuard from "@/components/CopyGuard";
 import SupportChat from "@/components/SupportChat";
 import CampaignPopup from "@/components/CampaignPopup";
 import ScrollTopButton from "@/components/ScrollTopButton";
+import IndirimCarki from "@/components/IndirimCarki";
+import CikisPopup from "@/components/CikisPopup";
 import Presence from "@/components/Presence";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
@@ -239,6 +241,17 @@ export default async function RootLayout({
               gorselUrl={theme.popup.gorsel_url} />
           )}
           {theme.style.scroll_top && <ScrollTopButton />}
+          {theme.cark?.enabled && (
+            <IndirimCarki onizleme={!!payload.is_preview} baslik={theme.cark.baslik}
+              metin={theme.cark.metin} buton={theme.cark.buton} gecikmeSn={theme.cark.gecikme_sn}
+              tekrarGun={theme.cark.tekrar_gun} dilimler={theme.cark.dilimler} />
+          )}
+          {theme.cikis?.enabled && (
+            <CikisPopup onizleme={!!payload.is_preview} baslik={theme.cikis.baslik}
+              metin={theme.cikis.metin} kupon={theme.cikis.kupon} buton={theme.cikis.buton}
+              vazgec={theme.cikis.vazgec} tekrarGun={theme.cikis.tekrar_gun}
+              mobilGecikmeSn={theme.cikis.mobil_gecikme_sn} />
+          )}
           {payload.support?.enabled !== false && (
             <SupportChat faq={payload.support?.faq ?? []}
               magaza={payload.store_name}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
-import { SNIPPETS } from '../lib/snippets'
+import { SNIPPETS, kampanyaKoduVarMi, kampanyaKodunuAyristir, kampanyaKodunuKaldir } from '../lib/snippets'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/Toast'
 import {
@@ -35,6 +35,10 @@ export default function TemaEditorPage() {
   const [device, setDevice] = useState('desktop')
   const [openSection, setOpenSection] = useState(null) // dolu ise tek-bölüm modu
   const [customCode, setCustomCode] = useState(null)
+  // Aktif kupon kodları — çark/çıkış pop-up'ına yazılan kod gerçekten var mı?
+  // (Eski ham kod parçacığında kuponu önce oluşturmak unutuluyordu: müşteri
+  // "kazandığı" kodu sepete girince "geçersiz" alıyordu.)
+  const [kuponlar, setKuponlar] = useState(null)
   const [pages, setPages] = useState([])         // özel sayfalar (önizleme seçici)
   const [previewPath, setPreviewPath] = useState('/')  // önizlenen vitrin sayfası
   const [dragIdx, setDragIdx] = useState(null)   // sürüklenen bölüm indeksi
@@ -108,6 +112,14 @@ export default function TemaEditorPage() {
     }
   }, [storeId, draftKey])
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/discounts?store_id=${storeId}`)
+      .then(r => setKuponlar(new Set((r.items || r || []).filter(k => k.is_active !== false)
+        .map(k => String(k.code || '').toUpperCase()))))
+      .catch(() => setKuponlar(null))
+  }, [storeId])
 
   const save = async () => {
     setBusy(true)
@@ -716,6 +728,11 @@ export default function TemaEditorPage() {
                 )}
               </Section>
 
+              <Section title="Kampanya Araçları" icon="🎡">
+                <KampanyaAraclari theme={theme} set={set} kuponlar={kuponlar}
+                  onizle={tip => iframeRef.current?.contentWindow?.postMessage({ type: `vitrin-${tip}-onizle` }, '*')} />
+              </Section>
+
               <Section title="WhatsApp Butonu" icon="💬">
                 <Toggle checked={!!theme.whatsapp?.enabled}
                   onChange={v => set('whatsapp.enabled', v)} label="Vitrinde yüzen WhatsApp butonu göster" />
@@ -875,11 +892,48 @@ export default function TemaEditorPage() {
                 </p>
                 {customCode && (
                   <>
-                    {/* Hazır parçacıklar — çark, çıkış pop-up'ı, CSS örnekleri */}
+                    {/* Çark ve çıkış pop-up'ı artık "Kampanya Araçları"nda formla ayarlanıyor;
+                        burada yalnız CSS örnekleri kaldı. Eski ham kodu aktarma aşağıda. */}
+                    {(() => {
+                      const var_ = kampanyaKoduVarMi(customCode.body_html)
+                      if (!var_.cark && !var_.cikis) return null
+                      const adlar = [var_.cark && 'İndirim çarkı', var_.cikis && 'Çıkışta yakala'].filter(Boolean).join(' ve ')
+                      return (
+                        <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-2 text-[11px] text-sky-200 space-y-1.5">
+                          <p><b>{adlar}</b> alt kodda ham kod olarak duruyor. Artık yukarıdaki
+                            <b> Kampanya Araçları</b> bölümünden formla ayarlanabiliyor.</p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            <button type="button" className="btn-ghost !py-1 text-xs"
+                              onClick={() => {
+                                const a = kampanyaKodunuAyristir(customCode.body_html)
+                                if (a.cark) set('cark', { ...theme.cark, ...a.cark })
+                                if (a.cikis) set('cikis', { ...theme.cikis, ...a.cikis })
+                                toast.info('Ayarlar aktarıldı — Kampanya Araçları\'nda kontrol edin')
+                              }}>1 · Ayarlara aktar</button>
+                            <button type="button" className="btn-ghost !py-1 text-xs disabled:opacity-40"
+                              disabled={!!draftKey}
+                              title={draftKey ? 'Taslakta kullanılamaz' : ''}
+                              onClick={() => {
+                                if (!window.confirm('Eski ham kod alt koddan kaldırılacak (aynı kod birden fazla kez eklenmişse hepsi). Kaydettiğinizde vitrinde yalnız yeni ayarlı sürüm çalışır. Devam?')) return
+                                setCustomCode(c => ({ ...c, body_html: kampanyaKodunuKaldir(c.body_html) }))
+                                toast.info('Eski kod kaldırıldı — Kaydet\'e basın')
+                              }}>2 · Eski kodu kaldır</button>
+                          </div>
+                          {draftKey && (
+                            <p className="text-amber-300">Taslakta çalışıyorsunuz: özel kod her zaman YAYINA kaydedilir.
+                              Eski kodu kaldırmayı yayındaki temada yapın, yoksa yeni ayarlar yayınlanana kadar
+                              vitrinde ikisi de olmaz.</p>
+                          )}
+                          {(theme.cark?.enabled && var_.cark) || (theme.cikis?.enabled && var_.cikis) ? (
+                            <p className="text-amber-300">⚠ Hem ayar hem eski kod açık — vitrinde iki kez çıkar. Eski kodu kaldırın.</p>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
                     <div className="space-y-1.5">
                       <span className="text-panel-muted text-xs">Hazır ekle</span>
                       <div className="flex gap-1.5 flex-wrap">
-                        {SNIPPETS.map(sn => (
+                        {SNIPPETS.filter(sn => sn.key === 'css_examples').map(sn => (
                           <button key={sn.key} type="button" title={sn.hint}
                             onClick={() => {
                               if (!window.confirm(`${sn.label} kodu eklenecek.\n\n${sn.hint}\n\nDevam?`)) return
@@ -1071,5 +1125,115 @@ function CodeArea({ label, value, onChange, rows = 6, placeholder = '' }) {
         }}
         onChange={e => onChange(e.target.value)} />
     </label>
+  )
+}
+
+// Kupon alanı + "İndirimler'de var mı" uyarısı
+function KuponAlani({ value, onChange, kuponlar, placeholder = 'KUPON KODU' }) {
+  const kod = (value || '').replace(/\s+/g, '').toUpperCase()
+  const yok = kod && kuponlar && !kuponlar.has(kod)
+  return (
+    <div>
+      <input className={`input font-mono !py-1.5 text-xs ${yok ? '!border-amber-500/60' : ''}`}
+        value={value || ''} maxLength={40} placeholder={placeholder}
+        onChange={e => onChange(e.target.value.toUpperCase())} />
+      {yok && (
+        <p className="text-[10px] text-amber-300 mt-0.5">
+          ⚠ Bu kod İndirimler'de yok ya da pasif — müşteri sepette "geçersiz" alır. Önce kuponu oluşturun.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Tema → Kampanya Araçları: indirim çarkı + çıkışta yakala (eskiden ham kod)
+function KampanyaAraclari({ theme, set, kuponlar, onizle }) {
+  const c = theme.cark || {}
+  const x = theme.cikis || {}
+  const dilimler = c.dilimler || []
+  const yazDilim = yeni => set('cark.dilimler', yeni)
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Toggle checked={!!c.enabled} onChange={v => set('cark.enabled', v)} label="🎡 İndirim çarkı" />
+        {c.enabled && (
+          <div className="space-y-2 pl-1">
+            <input className="input !py-1.5 text-xs" value={c.baslik || ''} maxLength={60}
+              onChange={e => set('cark.baslik', e.target.value)} placeholder="Başlık" />
+            <input className="input !py-1.5 text-xs" value={c.metin || ''} maxLength={140}
+              onChange={e => set('cark.metin', e.target.value)} placeholder="Alt metin (ops.)" />
+            <div className="grid grid-cols-3 gap-1.5">
+              <label className="text-[11px] text-panel-muted">Buton
+                <input className="input !py-1 text-xs mt-0.5" value={c.buton || ''} maxLength={24}
+                  onChange={e => set('cark.buton', e.target.value)} /></label>
+              <label className="text-[11px] text-panel-muted">Kaç sn sonra
+                <input className="input !py-1 text-xs mt-0.5" type="number" min="0" max="120" value={c.gecikme_sn ?? 8}
+                  onChange={e => set('cark.gecikme_sn', Number(e.target.value))} /></label>
+              <label className="text-[11px] text-panel-muted">Tekrar (gün)
+                <input className="input !py-1 text-xs mt-0.5" type="number" min="1" max="60" value={c.tekrar_gun ?? 7}
+                  onChange={e => set('cark.tekrar_gun', Number(e.target.value))} /></label>
+            </div>
+            <div className="text-[11px] text-panel-muted">Dilimler — kupon boşsa "Tekrar dene" dilimi olur</div>
+            {dilimler.map((d, i) => (
+              <div key={i} className="flex gap-1.5 items-start">
+                <input className="input !py-1.5 text-xs flex-1" value={d.yazi || ''} maxLength={24}
+                  onChange={e => yazDilim(dilimler.map((y, j) => j === i ? { ...y, yazi: e.target.value } : y))}
+                  placeholder="Dilim yazısı — örn. %10 İNDİRİM" />
+                <div className="w-36">
+                  <KuponAlani value={d.kod} kuponlar={kuponlar} placeholder="KUPON (ops.)"
+                    onChange={v => yazDilim(dilimler.map((y, j) => j === i ? { ...y, kod: v } : y))} />
+                </div>
+                <button type="button" disabled={dilimler.length <= 2}
+                  onClick={() => yazDilim(dilimler.filter((_, j) => j !== i))}
+                  className="px-1 pt-1 text-red-300 disabled:opacity-30">×</button>
+              </div>
+            ))}
+            {dilimler.length < 8 && (
+              <button type="button" className="btn-ghost !py-1 text-xs w-full"
+                onClick={() => yazDilim([...dilimler, { yazi: '', kod: '' }])}>+ Dilim ekle</button>
+            )}
+            {!dilimler.some(d => d.kod) && (
+              <p className="text-[11px] text-amber-300">Hiçbir dilimde kupon yok — çark vitrinde gösterilmez.</p>
+            )}
+            <button type="button" className="btn-ghost !py-1.5 text-xs w-full" onClick={() => onizle('cark')}>
+              👁 Önizlemede göster
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-panel-border pt-3">
+        <Toggle checked={!!x.enabled} onChange={v => set('cikis.enabled', v)} label="🚪 Çıkışta yakala (exit-intent)" />
+        {x.enabled && (
+          <div className="space-y-2 pl-1">
+            <p className="text-[11px] text-panel-muted">
+              Masaüstünde ziyaretçi sekmeyi kapatmak için imleci yukarı götürünce, mobilde belirlediğiniz
+              süre sonra indirim teklifi çıkar.
+            </p>
+            <input className="input !py-1.5 text-xs" value={x.baslik || ''} maxLength={60}
+              onChange={e => set('cikis.baslik', e.target.value)} placeholder="Başlık" />
+            <input className="input !py-1.5 text-xs" value={x.metin || ''} maxLength={200}
+              onChange={e => set('cikis.metin', e.target.value)} placeholder="Metin — örn. Bu siparişe özel %10 indirim" />
+            <KuponAlani value={x.kupon} kuponlar={kuponlar} onChange={v => set('cikis.kupon', v)} />
+            <div className="grid grid-cols-2 gap-1.5">
+              <input className="input !py-1.5 text-xs" value={x.buton || ''} maxLength={30}
+                onChange={e => set('cikis.buton', e.target.value)} placeholder="Buton" />
+              <input className="input !py-1.5 text-xs" value={x.vazgec || ''} maxLength={40}
+                onChange={e => set('cikis.vazgec', e.target.value)} placeholder="Vazgeç yazısı" />
+              <label className="text-[11px] text-panel-muted">Tekrar (gün)
+                <input className="input !py-1 text-xs mt-0.5" type="number" min="1" max="60" value={x.tekrar_gun ?? 3}
+                  onChange={e => set('cikis.tekrar_gun', Number(e.target.value))} /></label>
+              <label className="text-[11px] text-panel-muted">Mobilde kaç sn sonra
+                <input className="input !py-1 text-xs mt-0.5" type="number" min="5" max="600" value={x.mobil_gecikme_sn ?? 45}
+                  onChange={e => set('cikis.mobil_gecikme_sn', Number(e.target.value))} /></label>
+            </div>
+            {!x.kupon && <p className="text-[11px] text-amber-300">Kupon boş — vitrinde gösterilmez.</p>}
+            <button type="button" className="btn-ghost !py-1.5 text-xs w-full" onClick={() => onizle('cikis')}>
+              👁 Önizlemede göster
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

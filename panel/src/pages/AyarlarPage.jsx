@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast'
 import SaveBar from '../components/SaveBar'
 import { passkeySupported, registerPasskey } from '../lib/webauthn'
 import { mutlak } from '../lib/taban'
+import PikselRehberi, { pikselUyarisi } from '../components/PikselRehberi'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
@@ -546,10 +547,16 @@ export default function AyarlarPage() {
           <Field label="Meta Pixel ID">
             <input className="input mt-1 font-mono text-xs" value={cfg.meta_pixel_id || ''}
               onChange={set('meta_pixel_id')} placeholder="123456789012345" />
+            {pikselUyarisi('meta', cfg.meta_pixel_id) && (
+              <span className="block text-[10px] text-amber-300 mt-0.5">⚠ {pikselUyarisi('meta', cfg.meta_pixel_id)}</span>
+            )}
           </Field>
           <Field label="GA4 Ölçüm ID">
             <input className="input mt-1 font-mono text-xs" value={cfg.ga4_id || ''}
               onChange={set('ga4_id')} placeholder="G-XXXXXXXXXX" />
+            {pikselUyarisi('ga4', cfg.ga4_id) && (
+              <span className="block text-[10px] text-amber-300 mt-0.5">⚠ {pikselUyarisi('ga4', cfg.ga4_id)}</span>
+            )}
           </Field>
           <Field label="TikTok Pixel ID">
             <input className="input mt-1 font-mono text-xs" value={cfg.tiktok_pixel_id || ''}
@@ -567,6 +574,9 @@ export default function AyarlarPage() {
           <Field label="CAPI erişim jetonu">
             <input className="input mt-1 font-mono text-xs" value={cfg.meta_capi_token || ''}
               onChange={set('meta_capi_token')} placeholder="EAAG..." />
+            {pikselUyarisi('capi', cfg.meta_capi_token) && (
+              <span className="block text-[10px] text-amber-300 mt-0.5">⚠ {pikselUyarisi('capi', cfg.meta_capi_token)}</span>
+            )}
           </Field>
           <Field label="Test olay kodu (ops. — yalnız test ederken doldurun)">
             <input className="input mt-1 font-mono text-xs !w-52" value={cfg.meta_test_event_code || ''}
@@ -576,6 +586,9 @@ export default function AyarlarPage() {
             ⚠️ Test kodu doluyken olaylar yalnız "Olayları Test Et" ekranına düşer —
             doğrulama bitince bu alanı boşaltıp kaydedin.
           </p>
+        </div>
+        <div className="border-t border-panel-border pt-3 mt-1">
+          <PikselRehberi cfg={cfg} />
         </div>
       </Section>
       )}

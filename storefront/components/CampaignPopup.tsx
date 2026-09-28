@@ -82,7 +82,7 @@ export default function CampaignPopup({ onizleme, gorselBoyut = 100, ustBaslik, 
       aria-label={ustBaslik || baslik || "Kampanya"}
       onMouseDown={(e) => e.target === e.currentTarget && kapat()}
       className="fixed inset-0 z-[120] flex items-center justify-center p-4
-        bg-black/55 backdrop-blur-[3px] popup-perde"
+        bg-black/60 popup-perde"
     >
       <div className={`popup-kart relative w-full max-h-[calc(100%-2rem)] overflow-y-auto
         rounded-3xl shadow-2xl ${gorselUrl ? "max-w-3xl" : "max-w-md"}`}

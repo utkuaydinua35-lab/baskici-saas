@@ -3,9 +3,22 @@
 // Oklu yatay şerit — ürün, hikâye kartı vb. için ortak. Çocuklar sunucuda
 // render edilir; burası yalnız kaydırma davranışını ekler.
 //  • Oklar yalnız taşma varken görünür (masaüstü); dokunmatikte parmakla kayar.
-//  • autoplaySec > 0 ise bir kart ilerler, sona gelince başa döner. Üzerine
-//    gelince / dokununca durur; hareket azaltma tercihinde hiç çalışmaz.
+//  • autoplaySec > 0 ise bir kart ilerler, sona gelince başa döner.
+//
+// DOKUNMATİK TUZAKLARI (iPhone'da "dokununca kilitleniyor, duruyor kalıyor"):
+//  1. Fareyle üstüne gelince durdurma onMouseEnter ile yapılıyordu. iOS
+//     dokunuşta sahte mouseenter üretir ama mouseleave GÖNDERMEZ → tek
+//     dokunuştan sonra otomatik ilerleme KALICI olarak duruyordu. Artık
+//     durdurma yalnız pointerType === "mouse" iken.
+//  2. Otomatik yumuşak kaydırma sürerken parmak değince tarayıcı ikisini
+//     çekiştiriyordu. Dokunuşta süren animasyon kesilir, son etkileşimden
+//     ETKILESIM_BEKLE ms geçmeden otomatik ilerleme çalışmaz.
+//  3. Ok görünürlüğü her kaydırma karesinde yeni nesneyle state'e yazılıp
+//     bileşeni baştan çizdiriyordu. Artık kare başına bir ölçüm (rAF) ve
+//     yalnız DEĞİŞİNCE güncelleme.
 import { useCallback, useEffect, useRef, useState } from "react";
+
+const ETKILESIM_BEKLE = 5000;
 
 export default function Carousel({
   children,
@@ -18,14 +31,19 @@ export default function Carousel({
 }) {
   const track = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: true });
-  const paused = useRef(false);
+  const fareUstunde = useRef(false);
+  const sonEtkilesim = useRef(0);
+  const olcumKaresi = useRef<number | null>(null);
 
   const measure = useCallback(() => {
-    const el = track.current;
-    if (!el) return;
-    setEdges({
-      start: el.scrollLeft <= 4,
-      end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4,
+    if (olcumKaresi.current != null) return;
+    olcumKaresi.current = requestAnimationFrame(() => {
+      olcumKaresi.current = null;
+      const el = track.current;
+      if (!el) return;
+      const start = el.scrollLeft <= 4;
+      const end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+      setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
     });
   }, []);
 
@@ -39,6 +57,7 @@ export default function Carousel({
   }, []);
 
   const go = useCallback((dir: 1 | -1) => {
+    sonEtkilesim.current = Date.now();
     track.current?.scrollBy({ left: dir * step(), behavior: "smooth" });
   }, [step]);
 
@@ -51,6 +70,7 @@ export default function Carousel({
     return () => {
       el.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
+      if (olcumKaresi.current != null) cancelAnimationFrame(olcumKaresi.current);
     };
   }, [measure]);
 
@@ -59,21 +79,33 @@ export default function Carousel({
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const t = setInterval(() => {
       const el = track.current;
-      if (!el || paused.current || document.hidden) return;
+      if (!el || fareUstunde.current || document.hidden) return;
+      if (Date.now() - sonEtkilesim.current < ETKILESIM_BEKLE) return;
+      // Ekranda değilse boşuna kaydırma (pil, kaydırma çekişmesi)
+      const r = el.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return;
       const sonda = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
       el.scrollTo({ left: sonda ? 0 : el.scrollLeft + step(), behavior: "smooth" });
     }, autoplaySec * 1000);
     return () => clearInterval(t);
   }, [autoplaySec, step]);
 
-  const dur = (v: boolean) => () => { paused.current = v; };
+  // Dokunma/kalem: süren otomatik animasyonu kes, bir süre otomatiği beklet
+  const dokundu = () => {
+    sonEtkilesim.current = Date.now();
+    const el = track.current;
+    if (el) el.scrollTo({ left: el.scrollLeft, behavior: "instant" as ScrollBehavior });
+  };
 
   return (
     <div className="relative" aria-label={ariaLabel} role={ariaLabel ? "region" : undefined}
-      onMouseEnter={dur(true)} onMouseLeave={dur(false)}
-      onTouchStart={dur(true)} onTouchEnd={dur(false)}>
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") fareUstunde.current = true; }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") fareUstunde.current = false; }}
+      onPointerDown={(e) => { if (e.pointerType !== "mouse") dokundu(); }}
+      onTouchEnd={() => { sonEtkilesim.current = Date.now(); }}
+      onWheel={() => { sonEtkilesim.current = Date.now(); }}>
       <div ref={track}
-        className="serit-gizli flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-1">
+        className="serit-gizli flex gap-4 overflow-x-auto snap-x snap-mandatory overscroll-x-contain pb-1">
         {children}
       </div>
       {!edges.start && (

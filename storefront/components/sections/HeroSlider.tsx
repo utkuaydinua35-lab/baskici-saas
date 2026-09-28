@@ -131,7 +131,7 @@ export default function HeroSlider({
                     )}
                     {slide.cta2_text && (
                       <Link href={slide.cta2_url || "/urunler"}
-                        className="btn-r inline-block border border-white text-white px-7 py-3 font-semibold backdrop-blur-sm bg-white/5 hover:bg-white/15 transition">
+                        className="btn-r inline-block border border-white text-white px-7 py-3 font-semibold bg-black/20 hover:bg-white/15 transition">
                         {slide.cta2_text}
                       </Link>
                     )}
@@ -146,11 +146,11 @@ export default function HeroSlider({
       {count > 1 && (
         <>
           <button onClick={() => go(index - 1)} aria-label="Önceki"
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur transition">
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/25 hover:bg-black/40 text-white transition">
             ‹
           </button>
           <button onClick={() => go(index + 1)} aria-label="Sonraki"
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur transition">
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/25 hover:bg-black/40 text-white transition">
             ›
           </button>
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">

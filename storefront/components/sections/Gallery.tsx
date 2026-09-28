@@ -57,7 +57,7 @@ export default function Gallery({
         )}
         {o.etiket ? (
           <span className="pointer-events-none absolute left-2.5 top-2.5 max-w-[85%] truncate rounded-full
-            bg-black/45 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+            bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white">
             {o.etiket}
           </span>
         ) : null}

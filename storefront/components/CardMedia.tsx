@@ -32,10 +32,13 @@ export default function CardMedia({
   };
 
   return (
+    // Yalnız gerçek fare: iOS dokunuşta sahte mouseenter üretip mouseleave
+    // göndermiyor → 2. görsel/video takılı kalıyor, üstelik içerik değiştiği
+    // için Safari ilk dokunuşu yutup ürüne ancak ikinci dokunuşta gidiyordu.
     <div
       className="kart-medya aspect-square bg-zinc-100 overflow-hidden hover-zoom relative"
-      onMouseEnter={enter}
-      onMouseLeave={leave}
+      onPointerEnter={(e) => { if (e.pointerType === "mouse") enter(); }}
+      onPointerLeave={(e) => { if (e.pointerType === "mouse") leave(); }}
     >
       {cover ? (
         // Liste: onlarca kart. Varyantlar statik; srcset ile telefon 400,

@@ -1190,7 +1190,7 @@ export default function TasarlaPage() {
 
       {/* Mobil alt çubuk: ana eylemler parmak erişiminde sabit dursun */}
       <div data-tur="kaydet"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white
         border-t border-zinc-200 px-3 py-2 flex gap-2">
         <button onClick={() => kaydet("draft")} disabled={yukleniyor}
           className="flex-1 py-3 rounded-xl border border-zinc-300 text-sm disabled:opacity-40">

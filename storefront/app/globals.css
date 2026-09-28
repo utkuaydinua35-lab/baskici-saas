@@ -36,7 +36,10 @@ body {
 
 /* Ürün kartı görsel yakınlaşması — html[data-hover-zoom] ile tema kapatabilir */
 html[data-hover-zoom="1"] .hover-zoom img { transition: transform 0.4s ease; }
-html[data-hover-zoom="1"] .hover-zoom:hover img { transform: scale(1.05); }
+/* Yalnız gerçek farede — dokunmatikte :hover dokunuşla yapışıp kart büyük kalırdı */
+@media (hover: hover) and (pointer: fine) {
+  html[data-hover-zoom="1"] .hover-zoom:hover img { transform: scale(1.05); }
+}
 
 /* Erişilebilirlik: hareket azaltma tercihinde animasyonlar kapanır */
 @media (prefers-reduced-motion: reduce) {
@@ -115,8 +118,14 @@ html[data-card="minimal"] .urun-kart-fiyat > span:first-child { font-weight: 700
    dikişsiz döngü. Üstüne gelince durur. Hareket azaltma tercihinde animasyon
    kapanır ve elle kaydırılabilir olur. */
 @keyframes akan-serit { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-.akan-serit { animation: akan-serit var(--akan-sure, 40s) linear infinite; }
-.akan-serit:hover { animation-play-state: paused; }
+/* will-change: şerit kendi katmanında kayar (GPU) — her karede sayfa yeniden
+   boyanmaz. "Üstüne gelince dur" YALNIZ gerçek farede: dokunmatikte :hover
+   dokunuşla yapışır ve şerit durup kalırdı (iPhone'da görüldü). */
+.akan-serit { animation: akan-serit var(--akan-sure, 40s) linear infinite;
+  will-change: transform; backface-visibility: hidden; }
+@media (hover: hover) and (pointer: fine) {
+  .akan-serit:hover { animation-play-state: paused; }
+}
 @media (prefers-reduced-motion: reduce) {
   .akan-serit { animation: none; }
   .akan-kap { overflow-x: auto; }

@@ -256,8 +256,11 @@ export default function Header({
   );
 
   return (
-    <header className={`${SABIT_SINIFI[sabit] ?? SABIT_SINIFI.hep} z-40 backdrop-blur border-b border-zinc-200 ${center ? "" : "bg-white/90"}`}
-      style={center ? { background: "color-mix(in srgb, var(--c-bg) 92%, transparent)" } : undefined}>
+    // backdrop-blur YOK: sabit header'ın altından akan şeritler ve kaydırılan
+    // içerik geçer; bulanıklık her karede yeniden hesaplanıp mobilde kaydırmayı
+    // takıltır. Yerine neredeyse opak zemin (görünüm aynı).
+    <header className={`${SABIT_SINIFI[sabit] ?? SABIT_SINIFI.hep} z-40 border-b border-zinc-200 ${center ? "" : "bg-white/[.97]"}`}
+      style={center ? { background: "color-mix(in srgb, var(--c-bg) 97%, transparent)" } : undefined}>
       {center ? (
         <div className="mx-auto max-w-6xl px-4 py-2 sm:pt-5 sm:pb-3">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">

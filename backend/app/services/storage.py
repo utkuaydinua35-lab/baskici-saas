@@ -53,6 +53,35 @@ def ensure_storage_root() -> None:
     STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
+# Hazır tema şablonlarının örnek görselleri (tüm mağazalar ortak kullanır).
+# Kaynak repoda (app/sablon_gorselleri/<tema>/), vitrin /storage/sablon/...
+# adresinden okur — mağaza görselleri gibi duyarlı varyantlarıyla (-400/-800/
+# -1280) sunulsun diye başlangıçta depoya kopyalanır. Yalnız eksik ya da
+# değişmiş dosya yazılır; her açılışta iş yapmaz.
+SABLON_KAYNAK = Path(__file__).resolve().parent.parent / "sablon_gorselleri"
+
+
+def sablon_gorsellerini_kur() -> int:
+    from app.services.images import responsive_variants
+
+    yazilan = 0
+    if not SABLON_KAYNAK.is_dir():
+        return 0
+    for kaynak in SABLON_KAYNAK.rglob("*"):
+        if not kaynak.is_file() or kaynak.suffix.lower() not in (".jpg", ".jpeg", ".png"):
+            continue
+        hedef = STORAGE_ROOT / "sablon" / kaynak.relative_to(SABLON_KAYNAK)
+        veri = kaynak.read_bytes()
+        if hedef.is_file() and hedef.stat().st_size == len(veri):
+            continue
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        hedef.write_bytes(veri)
+        for w, v, ext in responsive_variants(veri):
+            (hedef.parent / f"{hedef.stem}-{w}.{ext}").write_bytes(v)
+        yazilan += 1
+    return yazilan
+
+
 def _tenant_design_dir(tenant_id) -> Path:
     return STORAGE_ROOT / "tenants" / str(tenant_id) / "designs"
 

@@ -144,6 +144,10 @@ def main() -> int:
         {"icon": "eposta", "title": "Destek", "text": "destek@bernzcompany.com",
          "url": "mailto:destek@bernzcompany.com"},
     ]
+    # Kategori kartları: görseli olmayan koleksiyonlara tasarımdaki sırayla
+    sec["fz-kategori"]["yedek_gorseller"] = [g["kategori-kendi-kilifini-tasarla.png"],
+                                             g["kategori-koleksiyon.webp"], g["kategori-android.webp"],
+                                             g["anatomic-heart.jpg"]]
     sec["fz-kurdele"]["items"] = [
         {"text": "KENDİ KILIFINI TASARLA", "buyuk": True}, {"text": "BERNZ SPECIAL", "buyuk": False},
         {"text": "Tarzını yanında taşı", "buyuk": False}, {"text": "SIRA DIŞI TASARIMLAR", "buyuk": True},

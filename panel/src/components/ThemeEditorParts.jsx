@@ -44,7 +44,7 @@ export const SECTION_TYPES = {
 export const SECTION_DEFAULTS = {
   hero_slider: { slides: [], autoplay_sec: 5, radius_scope: 'both', radius_pct: 50, align: 'center', height: 'normal',
     stil: 'kaplama', panel_renk: '#efefef' },
-  featured_collections: { eyebrow: '', title: 'Koleksiyonlar', subtitle: '', slugs: [], layout: 'grid', limit: 4 },
+  featured_collections: { eyebrow: '', title: 'Koleksiyonlar', subtitle: '', slugs: [], layout: 'grid', limit: 4, yedek_gorseller: [] },
   products_grid: { eyebrow: '', title: 'Öne Çıkanlar', subtitle: '', collection: null, limit: 8, layout: 'grid', sekmeler: [] },
   featured_products: { eyebrow: '', title: 'Öne Çıkan Ürünler', subtitle: '', slugs: [], layout: 'grid' },
   rich_text: { title: '', body: '' },
@@ -321,8 +321,20 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           </label>
         )}
         <p className="text-[11px] text-panel-muted">
-          Büyük kartlarda koleksiyonun görseli ve açıklaması görünür — Koleksiyonlar sayfasından ekleyin.
+          Kartlarda koleksiyonun görseli ve açıklaması görünür — Koleksiyonlar sayfasından ekleyin.
         </p>
+        <div className="space-y-1.5">
+          <span className="text-panel-muted text-xs">Yedek görseller — görseli olmayan koleksiyon kartlarına sırayla konur</span>
+          {(s.yedek_gorseller || []).map((url, i) => (
+            <AssetField key={`${url}-${i}`} label={`${i + 1}. yedek`} current={url}
+              onUrl={u => patch({ yedek_gorseller: s.yedek_gorseller.map((x, j) => j === i ? u : x) })}
+              onClear={() => patch({ yedek_gorseller: s.yedek_gorseller.filter((_, j) => j !== i) })} />
+          ))}
+          {(s.yedek_gorseller || []).length < 12 && (
+            <AssetField label="+ Yedek görsel ekle" current={null}
+              onUrl={u => patch({ yedek_gorseller: [...(s.yedek_gorseller || []), u] })} onClear={() => {}} />
+          )}
+        </div>
       </>
     )
   }

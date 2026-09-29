@@ -42,7 +42,8 @@ export default async function HomePage() {
             return (
               <FeaturedCollections key={section.id} eyebrow={s.eyebrow} title={s.title}
                 subtitle={s.subtitle} slugs={s.slugs ?? []}
-                layout={s.layout === "showcase" || s.layout === "kartlar" ? s.layout : "grid"} limit={s.limit} />
+                layout={s.layout === "showcase" || s.layout === "kartlar" ? s.layout : "grid"} limit={s.limit}
+                yedekGorseller={s.yedek_gorseller ?? []} />
             );
           case "products_grid":
             return (

@@ -15,7 +15,10 @@ export default async function FeaturedCollections({
   slugs,
   layout = "grid",
   limit = 4,
+  yedekGorseller = [],
 }: {
+  // Görseli olmayan koleksiyon kartına sırayla konan görseller
+  yedekGorseller?: string[];
   eyebrow?: string;
   title?: string;
   subtitle?: string;
@@ -30,6 +33,12 @@ export default async function FeaturedCollections({
       : all.slice(0, limit)
   ).filter((c): c is NonNullable<typeof c> => !!c);
   if (picked.length === 0) return null;
+  // Koleksiyonun kendi görseli yoksa şablonun/mağazanın yedek görseli
+  let y = 0;
+  const kartlar = picked.map((c) => ({
+    ...c,
+    image_url: c.image_url || (yedekGorseller.length ? yedekGorseller[y++ % yedekGorseller.length] : null),
+  }));
 
   if (layout === "kartlar") {
     return (
@@ -37,7 +46,7 @@ export default async function FeaturedCollections({
         <SectionHeading eyebrow={eyebrow} title={title || "Kategoriler"} subtitle={subtitle}
           href="/urunler" linkText="Tümünü gör →" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-          {picked.map((c, i) => (
+          {kartlar.map((c, i) => (
             <Reveal key={c.slug} delay={(i % 4) * 70}>
               <Link href={`/koleksiyon/${c.slug}`}
                 className="group relative block aspect-[1/1.2] sm:aspect-[1/1.1] rounded-[14px] sm:rounded-[18px] overflow-hidden bg-zinc-100"
@@ -74,7 +83,7 @@ export default async function FeaturedCollections({
       <section className="mx-auto max-w-6xl px-4 py-12">
         <SectionHeading eyebrow={eyebrow} title={title || "Koleksiyonlar"} subtitle={subtitle} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {picked.map((c, i) => (
+          {kartlar.map((c, i) => (
             <Reveal key={c.slug} delay={(i % 2) * 90}>
               <Link href={`/koleksiyon/${c.slug}`}
                 className="group relative block aspect-[4/5] sm:aspect-[15/16] rounded-2xl overflow-hidden"
@@ -110,7 +119,7 @@ export default async function FeaturedCollections({
     <section className="mx-auto max-w-6xl px-4 py-10">
       <SectionHeading eyebrow={eyebrow} title={title || "Koleksiyonlar"} subtitle={subtitle} />
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {picked.map((c) => (
+        {kartlar.map((c) => (
           <Link
             key={c.slug}
             href={`/koleksiyon/${c.slug}`}

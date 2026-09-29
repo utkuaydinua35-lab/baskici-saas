@@ -42,8 +42,10 @@ SECTION_DEFAULTS: dict[str, dict] = {
     # Bölüm başlığı üçlüsü (eyebrow/title/subtitle) — "SENİN İÇİN SEÇTİK /
     # Çok Satanlar / En sevilen tasarımlar" kalıbı. Boş alan gösterilmez.
     # layout: grid (4'lü küçük kart) | showcase (2'li büyük, numaralı, açıklamalı)
+    # yedek_gorseller: görseli OLMAYAN koleksiyon kartına sırayla konan görseller
+    # (koleksiyonun kendi görseli varsa o kullanılır)
     "featured_collections": {"eyebrow": "", "title": "Koleksiyonlar", "subtitle": "",
-                             "slugs": [], "layout": "grid", "limit": 4},
+                             "slugs": [], "layout": "grid", "limit": 4, "yedek_gorseller": []},
     # layout: grid | carousel (oklu yatay şerit)
     # layout sekmeli: üstte koleksiyon hapları (Tümü + sekmeler) ve sıralama;
     # hap seçilince o koleksiyonun ürünleri gösterilir (sayfa yenilenmeden)
@@ -124,6 +126,10 @@ CIZGI_IKONLAR = {"kargo", "konum", "iade", "eposta", "destek", "guvenli", "hediy
                  "yildiz", "kalp", "saat", "telefon", "kutu"}
 MAX_LIST_ITEMS = 8
 MAX_GALLERY_IMAGES = 12
+
+# Hazır şablonların ortak örnek görselleri (app/sablon_gorselleri → depo;
+# storage.sablon_gorsellerini_kur). Marka içermeyenler — mağaza değiştirir.
+FZ = "/storage/sablon/fuzyon"
 
 # Değeri sabit bir kümeye kısıtlanan ayarlar: (bölüm tipi, anahtar) → izinliler.
 # İlki varsayılandır. Panel/elle düzenlenmiş config'ten gelen tanımsız değer
@@ -414,13 +420,14 @@ THEME_PRESETS: dict[str, dict] = {
     # önerici; sekmeli ürünler; koyu editoryal pano; fotoğraflı yorumlar;
     # Instagram ızgarası; numaralı adımlar; canlı kılıf önizleme; iki
     # sütunlu SSS. Sayfa boyunca kaydırdıkça çizilen halkalı akış çizgisi ve
-    # telefonda alt çubuk. {magaza} yazan yerlere mağaza adı gelir. Görsel
-    # alanları BOŞ gelir; uydurma müşteri yorumu yoktur.
+    # telefonda alt çubuk. {magaza} yazan yerlere mağaza adı gelir. Tasarımın
+    # MARKASIZ görselleri örnek olarak gelir (FZ); BERNZ logolu ürün
+    # fotoğrafları yalnız scripts/fuzyon_bernz_taslak.py ile. Uydurma yorum yok.
     "fuzyon": {
         "label": "Füzyon",
         "description": "Beyaz, editoryal ve hareketli: serif başlıklar, bölünmüş hero, "
                        "çapraz akan kurdeleler, stil önerici, canlı kılıf önizleme ve "
-                       "kaydırdıkça çizilen akış çizgisi. Görselleri siz eklersiniz.",
+                       "kaydırdıkça çizilen akış çizgisi. Örnek görsellerle gelir.",
         "theme": {
             "colors": {"primary": "#191919", "accent": "#3d49ee", "bg": "#ffffff"},
             "font": "editoryal",
@@ -441,18 +448,18 @@ THEME_PRESETS: dict[str, dict] = {
                 {"id": "fz-hero", "type": "hero_slider",
                  "settings": {"stil": "bolunmus", "panel_renk": "#efefef", "autoplay_sec": 6,
                               "radius_scope": "both", "radius_pct": 50, "slides": [
-                     {"image": None, "eyebrow": "KİŞİYE ÖZEL BASKI",
+                     {"image": f"{FZ}/hero-1.jpg", "eyebrow": "KİŞİYE ÖZEL BASKI",
                       "title": "Fotoğrafın,\nkılıfın olsun.",
                       "subtitle": "Görselini yükle, telefon modelini seç. Gerisini biz halledelim.",
                       "cta_text": "KENDİ KILIFINI OLUŞTUR", "cta_url": "/tasarla",
                       "cta2_text": "ya da hazır tasarımlara göz at", "cta2_url": "/urunler",
                       "gorsel_kip": "sigdir"},
-                     {"image": None, "eyebrow": "KOLEKSİYONLAR",
+                     {"image": f"{FZ}/hero-2.jpg", "eyebrow": "KOLEKSİYONLAR",
                       "title": "Her tarza\nbir kılıf.",
                       "subtitle": "Serilerimizden sana uyan tasarımı seç.",
                       "cta_text": "KOLEKSİYONU KEŞFET", "cta_url": "/urunler",
                       "cta2_text": "", "cta2_url": "", "gorsel_kip": "sigdir"},
-                     {"image": None, "eyebrow": "EDİTÖRÜN SEÇİMİ",
+                     {"image": f"{FZ}/koleksiyon.jpg", "eyebrow": "EDİTÖRÜN SEÇİMİ",
                       "title": "Editörün\nseçimi.",
                       "subtitle": "Sakin tonlarda, güçlü dokulu bir tasarım.",
                       "cta_text": "ÜRÜNÜ İNCELE", "cta_url": "/urunler",
@@ -470,7 +477,9 @@ THEME_PRESETS: dict[str, dict] = {
                       "text": "Sorularına hızlı yanıt", "url": ""},
                  ]}},
                 {"id": "fz-kategori", "type": "featured_collections",
-                 "settings": {"title": "Kategoriler", "slugs": [], "layout": "kartlar", "limit": 4}},
+                 "settings": {"title": "Kategoriler", "slugs": [], "layout": "kartlar", "limit": 4,
+                              "yedek_gorseller": [f"{FZ}/kendi-kilifini-tasarla.jpg", f"{FZ}/koleksiyon.jpg",
+                                                  f"{FZ}/android.jpg", f"{FZ}/hero-1.jpg"]}},
                 {"id": "fz-kurdele", "type": "kurdele",
                  "settings": {"palet": "neon", "sembol": "✦", "items": [
                      {"text": "KENDİ KILIFINI TASARLA", "buyuk": True},
@@ -502,7 +511,8 @@ THEME_PRESETS: dict[str, dict] = {
                  "settings": {"stil": "koyu", "eyebrow": "İMZA SERİ", "title": "İmza tasarımımız",
                               "body": "Serimizin en sevilen tasarımını yakından tanı.",
                               "cta_text": "Koleksiyonu keşfet", "cta_url": "/urunler",
-                              "image": None, "image_side": "left", "gorsel_notu": ""}},
+                              "image": f"{FZ}/kendi-kilifini-tasarla.jpg", "image_side": "left",
+                              "gorsel_notu": ""}},
                 {"id": "fz-yorumlar", "type": "testimonials",
                  "settings": {"stil": "fotografli", "eyebrow": "MÜŞTERİ FOTOĞRAFLARI",
                               "title": "Siparişlerden gelen fotoğraflar",
@@ -510,7 +520,9 @@ THEME_PRESETS: dict[str, dict] = {
                               "items": [], "alt_not": "Daha fazlası Instagram'da."}},
                 {"id": "fz-instagram", "type": "gallery",
                  "settings": {"eyebrow": "INSTAGRAM", "title": "Instagram'dan", "subtitle": "",
-                              "ogeler": [], "images": [], "aspect": "story", "mode": "izgara",
+                              "ogeler": [{"url": f"{FZ}/{ad}.jpg"} for ad in (
+                                  "kendi-kilifini-tasarla", "koleksiyon", "hero-1", "android", "instagram-dikey")],
+                              "images": [], "aspect": "story", "mode": "izgara",
                               "baglanti": "", "baglanti_metni": "Takip et"}},
                 {"id": "fz-adimlar", "type": "adimlar", "akis": True,
                  "settings": {"eyebrow": "KİŞİYE ÖZEL", "title": "Kendi kılıfını\n3 adımda tasarla.",
@@ -725,6 +737,9 @@ def _normalize_sections(sections: list) -> list:
                     settings["limit"] = min(12, max(1, int(settings.get("limit") or 4)))
                 except (TypeError, ValueError):
                     settings["limit"] = 4
+                settings["yedek_gorseller"] = [
+                    u for u in (_metin(x, 500) for x in (settings.get("yedek_gorseller") or [])[:12])
+                    if u.startswith("/storage/") or u.startswith("https://")]
         elif stype == "products_grid":
             try:
                 settings["limit"] = min(24, max(1, int(settings.get("limit") or 8)))

@@ -66,6 +66,7 @@ export interface ThemeSection {
     stil?: string;               // bölüm tipine göre (backend _SECTION_ENUMS)
     panel_renk?: string;
     sekmeler?: string[];
+    yedek_gorseller?: string[];
     gorsel_notu?: string;
     eposta?: string;
     alt_not?: string;

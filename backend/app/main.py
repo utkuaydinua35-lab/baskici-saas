@@ -78,6 +78,12 @@ async def lifespan(app: FastAPI):
     storage_service.ensure_storage_root()
     print(f"[baskici] storage root: {storage_service.STORAGE_ROOT}")
     try:
+        n = storage_service.sablon_gorsellerini_kur()
+        if n:
+            print(f"[baskici] şablon görselleri kuruldu: {n}")
+    except Exception as e:  # görsel kurulamadıysa uygulama yine açılsın
+        print(f"[baskici] şablon görselleri kurulamadı: {e}")
+    try:
         start_scheduler()
         print("[baskici] scheduler started (hourly sync)")
     except Exception as e:

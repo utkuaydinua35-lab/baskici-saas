@@ -59,6 +59,15 @@ def main() -> int:
     kontrol("mağaza adı yer tutucusu (vitrin doldurur)",
             any(i["text"] == "{magaza}" for i in t["sections"][3]["settings"]["items"]), True)
     kontrol("bölüm sınırı 16", MAX_SECTIONS, 16)
+    kontrol("örnek görseller şablonda (hero, kategori yedeği, imza, Instagram)",
+            (bool(t["sections"][0]["settings"]["slides"][0]["image"]),
+             len(t["sections"][2]["settings"]["yedek_gorseller"]),
+             t["sections"][6]["settings"]["image"].startswith("/storage/sablon/fuzyon/"),
+             len(t["sections"][8]["settings"]["ogeler"])), (True, 4, True, 5))
+    from app.services.storage import SABLON_KAYNAK
+    adlar = {s_.split("/")[-1] for s_ in [t["sections"][0]["settings"]["slides"][i]["image"] for i in range(3)]
+             + t["sections"][2]["settings"]["yedek_gorseller"]}
+    kontrol("şablon görsel dosyaları repoda", sorted(a for a in adlar if not (SABLON_KAYNAK / "fuzyon" / a).is_file()), [])
 
     print("Temizlik")
     s = bolum("icon_bar", {"stil": "serit", "items": [
@@ -67,6 +76,9 @@ def main() -> int:
         {"icon": "eposta", "title": "C", "url": "mailto:a@b.co"},
         {"icon": "x", "title": "D", "url": "//kotu.site"}]})["settings"]
     kontrol("ikon bağlantıları güvenli", [i["url"] for i in s["items"]], ["", "/iade", "mailto:a@b.co", ""])
+    kontrol("yedek görseller yalnız depo/https", bolum("featured_collections", {"yedek_gorseller": [
+        "/storage/a.jpg", "javascript:x", "https://x.co/b.jpg", "/baska/c.jpg"]})["settings"]["yedek_gorseller"],
+        ["/storage/a.jpg", "https://x.co/b.jpg"])
     kontrol("tanımsız stil → varsayılan", bolum("icon_bar", {"stil": "bilinmez"})["settings"]["stil"], "kart")
     s = bolum("stil_onerici", {"secenekler": [
         {"etiket": "Sakin", "renk": "red", "zemin": "#e5e8ed", "urun": "u1", "kelime": "SANAT.UZUN.KELIME.X"},

@@ -37,6 +37,13 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,   // "X-Powered-By: Next.js" sürüm bilgisi sızdırmasın
+  experimental: {
+    // CSS sayfanın içinde gelir (~20 KB sıkıştırılmış). Ayrı .css dosyası
+    // ilk görüntüyü bekleten bir istek daha demekti (telefonda ~470 ms,
+    // Lighthouse "oluşturmayı engelleyen kaynak"). Ziyaretçilerin çoğu reklamdan
+    // İLK KEZ geldiği için önbellekli dosyanın kazancı yok denecek kadar az.
+    inlineCss: true,
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

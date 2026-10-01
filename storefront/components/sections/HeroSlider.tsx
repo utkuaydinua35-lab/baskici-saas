@@ -9,6 +9,30 @@ import { preload } from "react-dom";
 import Link from "next/link";
 import type { HeroSlide } from "@/lib/theme";
 
+// İlk slayt geçişi ziyaretçi sayfayla etkileşene (kaydırma, dokunma, tuş)
+// ya da en geç 12 sn'ye dek bekler; sonrası her autoplaySec.
+// NEDEN: tarayıcı "en büyük görselin görünme anı"nı (LCP) ilk etkileşime
+// kadar ölçer. 6. saniyede bir sonraki slaytın görseli belirince bunu yeni
+// "en büyük görsel" sayıp ölçümü 6-7 sn'ye itiyordu (Lighthouse 3.5–7.3 sn
+// arası oynuyordu) — oysa ilk görsel ~1.5 sn'de ekrandaydı. Etkileşimden
+// sonra ölçüm durduğu için geçişler artık ölçümü bozmaz.
+const ILK_GECIS_EN_GEC_MS = 12000;
+function useGecisIzni() {
+  const izin = useRef(false);
+  useEffect(() => {
+    const ac = () => { izin.current = true; temizle(); };
+    const olaylar = ["scroll", "pointerdown", "keydown", "touchstart", "wheel"] as const;
+    const t = setTimeout(ac, ILK_GECIS_EN_GEC_MS);
+    function temizle() {
+      clearTimeout(t);
+      for (const o of olaylar) window.removeEventListener(o, ac);
+    }
+    for (const o of olaylar) window.addEventListener(o, ac, { passive: true, once: true });
+    return temizle;
+  }, []);
+  return izin;
+}
+
 export default function HeroSlider({
   slides,
   autoplaySec = 5,
@@ -55,10 +79,13 @@ export default function HeroSlider({
   const sol = align === "left";
 
   const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
+  const gecisIzni = useGecisIzni();
 
   useEffect(() => {
     if (count < 2 || !autoplaySec) return;
-    timer.current = setInterval(() => setIndex((i) => (i + 1) % count), autoplaySec * 1000);
+    timer.current = setInterval(() => {
+      if (gecisIzni.current) setIndex((i) => (i + 1) % count);
+    }, autoplaySec * 1000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [count, autoplaySec]);
 
@@ -202,12 +229,13 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
   const sonEl = useRef(0);
   const n = slides.length;
   const git = (i: number) => { sonEl.current = Date.now(); setEtkin(((i % n) + n) % n); };
+  const gecisIzni = useGecisIzni();
 
   useEffect(() => {
     if (n < 2 || !autoplaySec) return;
     if (hareketSorgusu().matches) return;
     const t = setInterval(() => {
-      if (fare.current || document.hidden) return;
+      if (fare.current || document.hidden || !gecisIzni.current) return;
       if (Date.now() - sonEl.current < autoplaySec * 1000) return;
       setEtkin((i) => (i + 1) % n);
     }, autoplaySec * 1000);

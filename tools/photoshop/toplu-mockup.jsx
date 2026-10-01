@@ -242,18 +242,22 @@ function ciktiAdi(ayar, tasarim, sablon, cokSablon) {
   return ad;
 }
 
-function webIcinKaydet(doc, dosya, ayar) {
-  var o = new ExportOptionsSaveForWeb();
+function gorseliKaydet(doc, dosya, ayar) {
+  // PNG: "Web için kaydet" yerine normal kaydetme — tam çözünürlük, şeffaflık
+  // korunur, büyük tuvalde (4000x3000) ölçek sürprizi yok.
   if (ayar.FORMAT === "png") {
-    o.format = SaveDocumentType.PNG;
-    o.PNG8 = false;
-    o.transparency = true;
-  } else {
-    o.format = SaveDocumentType.JPEG;
-    o.quality = ayar.JPG_KALITE;
-    o.optimized = true;
-    o.includeProfile = false;
+    var po = new PNGSaveOptions();
+    po.compression = 6;
+    po.interlaced = false;
+    doc.saveAs(dosya, po, true, Extension.LOWERCASE);
+    return;
   }
+  // JPG: Web için kaydet — küçük dosya, katalog/pazar yeri için yeterli
+  var o = new ExportOptionsSaveForWeb();
+  o.format = SaveDocumentType.JPEG;
+  o.quality = ayar.JPG_KALITE;
+  o.optimized = true;
+  o.includeProfile = false;
   doc.exportDocument(dosya, ExportType.SAVEFORWEB, o);
 }
 
@@ -354,19 +358,32 @@ function calistir(ayar) {
                              AnchorPosition.MIDDLECENTER);
           }
 
-          if (ayar.ZEMIN_RENK) zeminKatmaniEkle(doc, ayar.ZEMIN_RENK)
-          doc.flatten();
+          if (ayar.ZEMIN_RENK) {
+            zeminKatmaniEkle(doc, ayar.ZEMIN_RENK);
+            doc.flatten();
+          }
+          // ⚠ Zemin rengi YOKSA düzleştirme de YOK: flatten şeffaflığı beyazla
+          // doldurur, şeffaf PNG isteyen akış bozulurdu.
 
-          // Çıktı ölçüsü (uzun kenar)
-          if (doc.width.as("px") >= doc.height.as("px")) {
-            doc.resizeImage(new UnitValue(ayar.CIKTI_PX, "px"), null, 72, ResampleMethod.BICUBICSHARPER);
-          } else {
-            doc.resizeImage(null, new UnitValue(ayar.CIKTI_PX, "px"), 72, ResampleMethod.BICUBICSHARPER);
+          // Çıktı ölçüsü (uzun kenar). 0 = DOKUNMA — şablonun ham çözünürlüğü
+          // korunur. ⚠ Bu koruma şart: resizeImage(0) Photoshop'ta 1 piksele
+          // iniyor ve bütün çıktılar 1x1 olarak kaydediliyordu.
+          if (ayar.CIKTI_PX > 0) {
+            if (doc.width.as("px") >= doc.height.as("px")) {
+              doc.resizeImage(new UnitValue(ayar.CIKTI_PX, "px"), null, 72, ResampleMethod.BICUBICSHARPER);
+            } else {
+              doc.resizeImage(null, new UnitValue(ayar.CIKTI_PX, "px"), 72, ResampleMethod.BICUBICSHARPER);
+            }
           }
 
-          webIcinKaydet(doc, ciktiDosya, ayar);
-          sonuc.yazilan++
-          sonuc.satirlar.push("OK: " + ad);
+          var cw = Math.round(doc.width.as("px")), ch = Math.round(doc.height.as("px"));
+          gorseliKaydet(doc, ciktiDosya, ayar);
+          sonuc.yazilan++;
+          // Ölçü günlüğe yazılır: yanlış ölçekleme (ör. 1x1) sessiz kalmasın
+          sonuc.satirlar.push("OK: " + ad + "  (" + cw + "x" + ch + ")");
+          if (cw < 200 || ch < 200) {
+            sonuc.satirlar.push("   ⚠ ÇOK KÜÇÜK — CIKTI_PX ayarına bak");
+          }
         } catch (e) {
           sonuc.hata++
           sonuc.satirlar.push("HATA: " + ad + " → " + e.message);
@@ -385,6 +402,7 @@ function calistir(ayar) {
   try {
     var log = new File(cKlasor.fsName + "/toplu-mockup-gunluk.txt");
     log.encoding = "UTF-8";
+    log.lineFeed = "Unix";       // varsayılan CR: günlük tek satır gibi görünüyordu
     log.open("w");
     log.write("Toplu mockup — " + new Date().toString() + "\n");
     log.write("Yazılan: " + sonuc.yazilan + "  Atlanan: " + sonuc.atlanan + "  Hata: " + sonuc.hata + "\n\n");

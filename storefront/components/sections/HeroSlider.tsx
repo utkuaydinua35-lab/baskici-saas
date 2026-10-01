@@ -2,6 +2,7 @@
 
 // Hero slayt gösterisi — otomatik geçiş + noktalar + kaydırma animasyonu.
 // 0 slayt → sade karşılama (tema rengiyle); 1 slayt → statik hero.
+import { hareketSorgusu } from "@/lib/hareket";
 import { urunGorsel } from "@/lib/gorsel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -194,7 +195,7 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
 
   useEffect(() => {
     if (n < 2 || !autoplaySec) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (hareketSorgusu().matches) return;
     const t = setInterval(() => {
       if (fare.current || document.hidden) return;
       if (Date.now() - sonEl.current < autoplaySec * 1000) return;

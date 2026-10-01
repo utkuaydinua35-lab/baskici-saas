@@ -197,7 +197,10 @@ export default function TemaEditorPage() {
       const r = await api.postForm(`/api/store-settings/${storeId}/assets`, fd)
       target(r.url)
     } catch (e) {
-      toast.error(typeof e?.detail === 'string' ? e.detail : 'Yükleme başarısız')
+      // Sebep hep görünsün: sunucu yanıtı varsa onun mesajı, yoksa bağlantı hatası
+      toast.error(typeof e?.detail === 'string' ? `Yükleme başarısız: ${e.detail}`
+        : e?.status ? `Yükleme başarısız (HTTP ${e.status})`
+        : `Yükleme başarısız — sunucuya ulaşılamadı (${e?.message || 'bağlantı hatası'}). Sayfayı yenileyip tekrar deneyin.`)
     } finally { setBusy(false) }
   }
 
@@ -911,6 +914,15 @@ export default function TemaEditorPage() {
                 <Toggle checked={!!theme.animations.sepete_ucus}
                   onChange={v => set('animations.sepete_ucus', v)}
                   label="Sepete eklenince ürün görseli sepete uçsun" />
+                <Choice label="Hareketi azaltan cihazlarda" value={theme.animations.hareket_tercihi || 'uy'}
+                  options={[['uy', 'Animasyonları kapat'], ['her_zaman', 'Yine de oynat']]}
+                  onChange={v => set('animations.hareket_tercihi', v)} />
+                <p className="text-[11px] text-panel-muted">
+                  Windows'ta "Animasyon efektleri" ya da Mac/iPhone'da "Hareketi azalt" açık olan ziyaretçiler
+                  için. Windows'ta bu ayar sık kapalı geldiğinden "Animasyonları kapat" seçiliyken pek çok
+                  Windows kullanıcısı animasyonları HİÇ görmez. "Yine de oynat"ta ziyaretçi footer'daki
+                  "Animasyonları durdur" ile kendisi durdurabilir (geniş footer'da).
+                </p>
               </Section>
 
               <Section title="Alt Bilgi (Footer)" icon="⬇️">

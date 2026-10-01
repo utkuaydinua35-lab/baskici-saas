@@ -3,10 +3,12 @@
 // `bitince` çağrılır (ör. sepet çekmecesi o zaman açılır). Yalnız Web
 // Animations API + transform/opacity (GPU). Kapalıysa, hareket azaltma
 // tercihinde ya da hedef bulunamazsa hiç beklemeden bitince() çalışır.
+import { hareketSorgusu } from "@/lib/hareket";
+
 export function sepeteUcur(kaynak: HTMLImageElement | null, bitince: () => void) {
   const html = document.documentElement;
   if (!kaynak || html.dataset.ucus !== "1" || html.classList.contains("hareketsiz")
-    || matchMedia("(prefers-reduced-motion: reduce)").matches) { bitince(); return; }
+    || hareketSorgusu().matches) { bitince(); return; }
   const r = kaynak.getBoundingClientRect();
   // Görünür sepet simgesi: telefonda alt çubuk, değilse üst menü
   const hedef = [...document.querySelectorAll<HTMLElement>("[data-sepet-hedef]")]

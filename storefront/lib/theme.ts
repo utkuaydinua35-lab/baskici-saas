@@ -118,7 +118,8 @@ export interface Theme {
   popup: { enabled: boolean; ust_baslik?: string; gorsel_boyut?: number; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
   // sepete_ucus: sepete ekleyince ürün görseli sepet simgesine uçar
-  animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean; sepete_ucus?: boolean };
+  animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean; sepete_ucus?: boolean;
+    hareket_tercihi?: "uy" | "her_zaman" };
   texts?: Record<string, string>;
   collection_pages?: Record<string, { image?: string | null; body?: string; position?: string }>;
   footer: { about: string; instagram: string };

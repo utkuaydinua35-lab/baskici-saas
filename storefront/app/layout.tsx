@@ -139,6 +139,8 @@ export default async function RootLayout({
       data-reveal={theme.animations.reveal ? "1" : "0"}
       data-hover-zoom={theme.animations.hover_zoom ? "1" : "0"}
       data-ucus={theme.animations.sepete_ucus ? "1" : "0"}
+      // "hep": işletim sisteminin "hareketi azalt" ayarı yok sayılır (lib/hareket.ts)
+      data-hareket={theme.animations.hareket_tercihi === "her_zaman" ? "hep" : "uy"}
       // Tema görünümü — globals.css bu özelliklere göre kart/başlık stilini seçer
       data-card={theme.style.card_style}
       data-heading={theme.style.heading_style}

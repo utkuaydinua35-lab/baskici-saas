@@ -16,6 +16,7 @@
 //  3. Ok görünürlüğü her kaydırma karesinde yeni nesneyle state'e yazılıp
 //     bileşeni baştan çizdiriyordu. Artık kare başına bir ölçüm (rAF) ve
 //     yalnız DEĞİŞİNCE güncelleme.
+import { hareketSorgusu } from "@/lib/hareket";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const ETKILESIM_BEKLE = 5000;
@@ -76,7 +77,7 @@ export default function Carousel({
 
   useEffect(() => {
     if (!autoplaySec) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (hareketSorgusu().matches) return;
     const t = setInterval(() => {
       const el = track.current;
       if (!el || fareUstunde.current || document.hidden) return;

@@ -9,6 +9,7 @@
 // klavye odağı içinde değilken, pencere açık değilken, hareket azaltma ve
 // "animasyonları durdur" kapalıyken. Ekran dışında rAF döngüsü DURUR.
 // Dokunmatik tuzağı (bkz. Carousel): durdurma yalnız pointerType === "mouse".
+import { hareketSorgusu } from "@/lib/hareket";
 import { useEffect, useRef, useState } from "react";
 import { urunGorsel } from "@/lib/gorsel";
 
@@ -31,7 +32,7 @@ export default function YorumSeridi({ items, ariaLabel, baslik }: {
   useEffect(() => {
     const el = kap.current, t = iz.current;
     if (!el || !t) return;
-    const hareket = matchMedia("(prefers-reduced-motion: reduce)");
+    const hareket = hareketSorgusu();
     let raf = 0, son = 0, konum: number | null = null, ekranda = false;
     const tur = () => (t.scrollWidth + (parseFloat(getComputedStyle(t).columnGap) || 0)) / 2;
     const akabilir = () => {
@@ -86,7 +87,7 @@ export default function YorumSeridi({ items, ariaLabel, baslik }: {
     const bosluk = parseFloat(getComputedStyle(t).columnGap) || 0;
     const tur = (t.scrollWidth + bosluk) / 2;
     if (yon < 0 && el.scrollLeft < kart.offsetWidth / 2) el.scrollLeft += tur;
-    el.scrollBy({ left: yon * (kart.offsetWidth + bosluk), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    el.scrollBy({ left: yon * (kart.offsetWidth + bosluk), behavior: hareketSorgusu().matches ? "auto" : "smooth" });
   };
 
   const kart = (y: Yorum, i: number, kopya: boolean) => {

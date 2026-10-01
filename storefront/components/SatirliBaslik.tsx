@@ -6,6 +6,7 @@
 // italikAlt: ilk satırdan sonrakiler <em> (italik, gri) — serif başlık kalıbı.
 // Görünüm CSS'te yalnız editoryal başlık stilinde etkin; diğer temalarda
 // satırlar düz metin gibi akar.
+import { hareketSorgusu } from "@/lib/hareket";
 import { createElement, useEffect, useRef, useState } from "react";
 
 export default function SatirliBaslik({
@@ -28,7 +29,7 @@ export default function SatirliBaslik({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!("IntersectionObserver" in window) || hareketSorgusu().matches) {
       setAcik(true);
       return;
     }

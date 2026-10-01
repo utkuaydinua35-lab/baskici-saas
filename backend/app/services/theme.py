@@ -243,7 +243,11 @@ DEFAULT_THEME: dict = {
          "settings": dict(SECTION_DEFAULTS["products_grid"])},
     ],
     # sepete_ucus: sepete ekleyince ürün görseli sepet simgesine uçar
-    "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": False},
+    # hareket_tercihi: uy (ziyaretçinin "hareketi azalt" sistem ayarına uyulur —
+    # Windows'ta "Animasyon efektleri" kapalıysa animasyonlar durur) |
+    # her_zaman (her cihazda oynar; ziyaretçi footer'dan durdurabilir)
+    "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": False,
+                   "hareket_tercihi": "uy"},
     "footer": {"about": "", "instagram": ""},
     # Üst menü linkleri (Shopify Navigation) — boşsa varsayılan menü kullanılır
     "nav_links": [],   # [{label, url}]
@@ -443,7 +447,8 @@ THEME_PRESETS: dict[str, dict] = {
                       "ust_link_metin": "Siparişlerim", "ust_link_url": "/hesap",
                       "mobil_dock": True, "ilerleme": True, "akis_cizgisi": True},
             "popup": {"enabled": False},
-            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": True},
+            "animations": {"reveal": True, "hover_zoom": True, "cart_drawer": True, "sepete_ucus": True,
+                           "hareket_tercihi": "her_zaman"},
             "sections": [
                 {"id": "fz-hero", "type": "hero_slider",
                  "settings": {"stil": "bolunmus", "panel_renk": "#efefef", "autoplay_sec": 6,
@@ -892,6 +897,10 @@ def resolve_theme(store_config: dict | None) -> dict:
         popup["gorsel_boyut"] = min(100, max(30, int(popup.get("gorsel_boyut") or 100)))
     except (TypeError, ValueError):
         popup["gorsel_boyut"] = 100
+    anim = theme.get("animations") if isinstance(theme.get("animations"), dict) else {}
+    if anim.get("hareket_tercihi") not in ("uy", "her_zaman"):
+        anim["hareket_tercihi"] = "uy"
+    theme["animations"] = anim
     theme["cark"] = _cark_temizle(theme.get("cark") or {})
     theme["cikis"] = _cikis_temizle(theme.get("cikis") or {})
     lwm = theme.get("logo_width_mobile")

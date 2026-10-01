@@ -5,7 +5,7 @@
  * yalnızca "kurulabilirlik" (installability) ve PUSH için var: ana ekrana
  * ekle + standalone mod + bildirim. İstekleri olduğu gibi ağa geçirir.
  */
-const SURUM = 'commerce-passthrough-v1'
+const SURUM = 'commerce-passthrough-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 
@@ -18,11 +18,15 @@ self.addEventListener('activate', (event) => {
   })())
 })
 
-// Geçirgen: her zaman ağdan getir. (fetch dinleyicisinin VARLIĞI
-// kurulabilirlik için yeterli.)
-self.addEventListener('fetch', (event) => {
-  event.respondWith(fetch(event.request))
-})
+// BİLEREK BOŞ — hiçbir isteği ele geçirmiyoruz (fetch dinleyicisinin
+// VARLIĞI kurulabilirlik için yeterli, yanıtlaması gerekmiyor).
+//
+// Eskiden `event.respondWith(fetch(event.request))` vardı: istek SW içinden
+// YENİDEN gönderiliyordu. Dosyalı (FormData) isteklerde bu yeniden gönderim
+// gövdeyi düşürebiliyor ya da ağ hatasıyla çöküyordu → tema editöründe görsel
+// yükleme "Yükleme başarısız" diyordu (sunucuya hiç ulaşmadan). Aynı hata bayi
+// portalında da yaşanmış ve orada düzeltilmişti (frontend/public/sw.js).
+self.addEventListener('fetch', () => {})
 
 // ── Web Push ──────────────────────────────────────────────────
 self.addEventListener('push', (event) => {

@@ -43,9 +43,9 @@ html[data-hover-zoom="1"] .hover-zoom img { transition: transform 0.4s ease; }
 
 /* Erişilebilirlik: hareket azaltma tercihinde animasyonlar kapanır */
 @media (prefers-reduced-motion: reduce) {
-  .anim-reveal, .reveal-in { animation: none; opacity: 1; transform: none; }
-  .reveal-out { opacity: 1; transform: none; }
-  .hover-zoom img { transition: none; }
+  html:not([data-hareket="hep"]) .anim-reveal, html:not([data-hareket="hep"]) .reveal-in { animation: none; opacity: 1; transform: none; }
+  html:not([data-hareket="hep"]) .reveal-out { opacity: 1; transform: none; }
+  html:not([data-hareket="hep"]) .hover-zoom img { transition: none; }
 }
 
 /* Sayfalar arası geçiş (template.tsx) — reveal toggle'ına saygılı */
@@ -55,7 +55,7 @@ html[data-hover-zoom="1"] .hover-zoom img { transition: transform 0.4s ease; }
 }
 html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .page-transition { animation: none !important; }
+  html:not([data-hareket="hep"]) .page-transition { animation: none !important; }
 }
 
 /* Mobilde sayfaya ait sabit alt eylem çubuğu varsa (ör. tasarım stüdyosu)
@@ -75,7 +75,7 @@ html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
 .popup-perde { animation: popup-perde-gir 0.25s ease-out; }
 .popup-kart  { animation: popup-kart-gir 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 @media (prefers-reduced-motion: reduce) {
-  .popup-perde, .popup-kart { animation: none; }
+  html:not([data-hareket="hep"]) .popup-perde, html:not([data-hareket="hep"]) .popup-kart { animation: none; }
 }
 
 /* ── Tema görünümü (theme.style) — <html data-*> ve --btn-r ile sürülür ── */
@@ -127,8 +127,8 @@ html[data-card="minimal"] .urun-kart-fiyat > span:first-child { font-weight: 700
   .akan-serit:hover { animation-play-state: paused; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .akan-serit { animation: none; }
-  .akan-kap { overflow-x: auto; }
+  html:not([data-hareket="hep"]) .akan-serit { animation: none; }
+  html:not([data-hareket="hep"]) .akan-kap { overflow-x: auto; }
 }
 
 /* Pop-up üst etiketi — yavaş parıltı */
@@ -137,12 +137,14 @@ html[data-card="minimal"] .urun-kart-fiyat > span:first-child { font-weight: 700
   50% { text-shadow: 0 0 10px color-mix(in srgb, var(--c-accent) 50%, transparent); opacity: 1; }
 }
 .popup-ust { animation: popup-parilti 2.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .popup-ust { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-hareket="hep"]) .popup-ust { animation: none; }
+}
 
 /* Duyuru şeridi (kayan değil modu): sıradaki duyuru yumuşakça belirir */
 @keyframes duyuru-gir { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .duyuru-gecis { animation: duyuru-gir .45s ease-out; }
-@media (prefers-reduced-motion: reduce) { .duyuru-gecis { animation: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-hareket="hep"]) .duyuru-gecis { animation: none; }
+}
 
 /* ══ Füzyon teması ══════════════════════════════════════════════════════
    Akıcılık kuralı: tüm hareketler yalnız transform/opacity (GPU katmanı);
@@ -385,11 +387,10 @@ html.hareketsiz .onizleme-kasa, html.hareketsiz .urun-kart .kart-medya { transfo
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kurdele-iz, .kenburns, .fz-suzul, .fz-metin-gir, .fz-acilis, .stil-giris, .stil-kart, .stil-suzul, .onizleme-suzul,
-  .onizleme-baski.taze, .kalp-zipla svg { animation: none; will-change: auto; }
-  .satirli .satir > span { transform: none !important; transition: none !important; }
-  .parilti-gec::after { display: none; }
-  .urun-kart .kart-medya, .onizleme-kasa { transform: none !important; }
-  .stil-suzul { transform: rotate(-5deg); }
-  .akis-katman { transition: none; }
+  html:not([data-hareket="hep"]) .kurdele-iz, html:not([data-hareket="hep"]) .kenburns, html:not([data-hareket="hep"]) .fz-suzul, html:not([data-hareket="hep"]) .fz-metin-gir, html:not([data-hareket="hep"]) .fz-acilis, html:not([data-hareket="hep"]) .stil-giris, html:not([data-hareket="hep"]) .stil-kart, html:not([data-hareket="hep"]) .stil-suzul, html:not([data-hareket="hep"]) .onizleme-suzul, html:not([data-hareket="hep"]) .onizleme-baski.taze, html:not([data-hareket="hep"]) .kalp-zipla svg { animation: none; will-change: auto; }
+  html:not([data-hareket="hep"]) .satirli .satir > span { transform: none !important; transition: none !important; }
+  html:not([data-hareket="hep"]) .parilti-gec::after { display: none; }
+  html:not([data-hareket="hep"]) .urun-kart .kart-medya, html:not([data-hareket="hep"]) .onizleme-kasa { transform: none !important; }
+  html:not([data-hareket="hep"]) .stil-suzul { transform: rotate(-5deg); }
+  html:not([data-hareket="hep"]) .akis-katman { transition: none; }
 }

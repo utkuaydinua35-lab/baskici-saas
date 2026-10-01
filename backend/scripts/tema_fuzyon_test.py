@@ -54,6 +54,10 @@ def main() -> int:
             t["sections"][0]["settings"]["slides"][0]["title"]), ("bolunmus", "Fotoğrafın,\nkılıfın olsun."))
     kontrol("uydurma müşteri yorumu yok", t["sections"][7]["settings"]["items"], [])
     kontrol("son bakılanlar SSS'den önce", tipler[-2:], ["son_bakilanlar", "faq"])
+    kontrol("hareket tercihi: şablon her_zaman, varsayılan uy, geçersiz → uy",
+            (t["animations"]["hareket_tercihi"], tur({})["animations"]["hareket_tercihi"],
+             tur({"animations": {"hareket_tercihi": "x"}})["animations"]["hareket_tercihi"]),
+            ("her_zaman", "uy", "uy"))
     kontrol("sepete uçuş açık (şablon) / kapalı (varsayılan)",
             (t["animations"]["sepete_ucus"], tur({})["animations"]["sepete_ucus"]), (True, False))
     kontrol("mağaza adı yer tutucusu (vitrin doldurur)",

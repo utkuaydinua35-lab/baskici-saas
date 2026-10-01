@@ -13,6 +13,7 @@
 //    varınca rAF DURUR (boşta döngü yok). Sekme gizliyken döngü kesilir.
 //  • Ölçüm yalnız boyut değişince (ResizeObserver, yazı tipi, yükleme).
 //  • Hareket azaltma tercihinde çizgi tam çizili durur, animasyon yok.
+import { hareketSorgusu } from "@/lib/hareket";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -32,7 +33,7 @@ export default function AkisCizgisi() {
     if (!layer || !svgEl) return;
     const paths = [...svgEl.querySelectorAll<SVGPathElement>("path")];
     const govde = paths[2];
-    const hareket = matchMedia("(prefers-reduced-motion: reduce)");
+    const hareket = hareketSorgusu();
     // Hareket azaltma ya da ziyaretçinin "Animasyonları durdur" tercihi
     const durgun = () => hareket.matches || document.documentElement.classList.contains("hareketsiz");
     let length = 0, drawn = 0, target = 0, raf = 0, olcKare = 0, entryY = 0, endY = 0, lastTime = 0;

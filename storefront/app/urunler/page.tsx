@@ -33,7 +33,7 @@ export default async function ProductsPage({
   const page = Math.max(1, Number(sayfa) || 1);
   const [data, collections] = await Promise.all([
     getProducts({
-      q, page, collection: koleksiyon, tag: etiket, model,
+      q, page, collection: koleksiyon, tag: etiket, model, kaydet: !!q,
       sort: sirala, brand: marka, minPrice: min, maxPrice: max,
     }),
     getCollections(),

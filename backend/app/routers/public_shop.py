@@ -330,6 +330,9 @@ def list_products(
     max_price: float | None = Query(None, ge=0),
     page: int = Query(1, ge=1, le=1000),
     per_page: int = Query(24, ge=1, le=60),
+    # Ürünler sayfasındaki arama kaydedilir ("müşteriler ne aradı" raporu);
+    # yazarken öneriler (header) kaydedilmez — yarım kelimelerle dolardı
+    kaydet: bool = Query(False),
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
@@ -360,16 +363,20 @@ def list_products(
             func.coalesce(satis.c.adet, 0).desc(), CatalogProduct.position)
     else:
         query = query.order_by(CatalogProduct.position, CatalogProduct.created_at.desc())
-    if q:
-        # Başlık VEYA varyant modeli eşleşsin — müşteri "iPhone 13" yazınca
-        # o modele sahip tüm ürünler listelenir (başlıkta geçmese bile)
-        variant_match = select(CatalogVariant.id).where(
-            CatalogVariant.product_id == CatalogProduct.id,
-            CatalogVariant.is_active.is_(True),
-            CatalogVariant.model_display.ilike(f"%{q}%"),
-        ).exists()
-        query = query.where(
-            CatalogProduct.title.ilike(f"%{q}%") | variant_match)
+    arama_sirasi: list | None = None
+    if q and q.strip():
+        # Türkçe harf + yazım hatası toleranslı, alakaya göre sıralı arama
+        # (services/arama.py). Diğer süzgeçler (koleksiyon, marka, fiyat)
+        # bu kümenin üstüne SQL'de uygulanır.
+        from app.services import arama
+        arama_sirasi = arama.ara(db, store, q)
+        query = query.where(CatalogProduct.id.in_(arama_sirasi or [uuid.uuid4()]))
+        if sort == "yeni" and arama_sirasi:
+            # Varsayılan sıralamada en alakalı ürün önce
+            from sqlalchemy import bindparam
+            from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
+            sira = bindparam("arama_sirasi", arama_sirasi, type_=ARRAY(PG_UUID(as_uuid=True)))
+            query = query.order_by(None).order_by(func.array_position(sira, CatalogProduct.id))
     if min_price is not None:
         query = query.where(CatalogProduct.base_price >= min_price)
     if max_price is not None:
@@ -445,6 +452,8 @@ def list_products(
         ).all() if b)
 
     brands = vitrin_cache.markalar(db, store.id, _markalari_oku)
+    if kaydet and q and page == 1 and arama_sirasi is not None:
+        _aramayi_kaydet(db, store, q, total)
     ozetler = _kart_ozetleri(db, [p_.id for p_ in items])
     bos_ozet = {"model_count": 0, "total_stock": None}
 
@@ -465,6 +474,24 @@ def list_products(
         "items": [_serialize_product_card(p, ozetler.get(p.id, bos_ozet)) for p in items],
         "facets": {"brands": brands},
     }
+
+
+def _aramayi_kaydet(db: Session, store, q: str, sonuc: int) -> None:
+    """Analitik — asla aramayı bozmaz. 90 günden eskiler ara sıra budanır."""
+    from app.models import AramaKaydi
+    from app.services import arama
+    sorgu = arama.normalize(q)[:100]
+    if len(sorgu) < 2:
+        return
+    try:
+        db.add(AramaKaydi(store_id=store.id, sorgu=sorgu, sonuc=int(sonuc)))
+        import random
+        if random.random() < 0.01:
+            from sqlalchemy import text
+            db.execute(text("DELETE FROM arama_kayitlari WHERE created_at < now() - interval '90 days'"))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
 
 @router.get("/{store_slug}/products/{product_slug}")

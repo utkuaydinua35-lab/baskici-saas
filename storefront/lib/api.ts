@@ -160,6 +160,8 @@ export function getProducts(params?: {
   slugs?: string;
   page?: number;
   perPage?: number;
+  // Arama "müşteriler ne aradı" raporuna yazılsın (yalnız ürünler sayfası)
+  kaydet?: boolean;
 }): Promise<ProductListResponse | null> {
   const qs = new URLSearchParams();
   if (params?.q) qs.set("q", params.q);
@@ -173,6 +175,7 @@ export function getProducts(params?: {
   if (params?.slugs) qs.set("slugs", params.slugs);
   if (params?.page) qs.set("page", String(params.page));
   if (params?.perPage) qs.set("per_page", String(params.perPage));
+  if (params?.kaydet && params?.q) qs.set("kaydet", "1");
   const suffix = qs.size > 0 ? `?${qs}` : "";
   return shopFetch<ProductListResponse>(`/products${suffix}`);
 }

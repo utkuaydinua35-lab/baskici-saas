@@ -221,6 +221,36 @@ def patch_settings(
     }
 
 
+@router.get("/{store_id}/arama-raporu", response_model=dict)
+def arama_raporu(
+    store_id: uuid.UUID,
+    gun: int = 30,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Vitrinde müşteriler ne aradı: sonuçsuz kalanlar (eksik tasarım/model
+    fırsatı) ve en çok arananlar, son `gun` gün."""
+    from sqlalchemy import text
+
+    store = _get_store(db, user, store_id)
+    gun = max(1, min(90, gun))
+    def liste(sart: str) -> list[dict]:
+        satirlar = db.execute(text(f"""
+            SELECT sorgu, count(*) AS adet, max(created_at) AS son, min(sonuc) AS en_az
+            FROM arama_kayitlari
+            WHERE store_id = :s AND created_at > now() - make_interval(days => :g) {sart}
+            GROUP BY sorgu ORDER BY adet DESC, son DESC LIMIT 30"""),
+            {"s": store.id, "g": gun}).all()
+        return [{"sorgu": r[0], "adet": r[1], "son": r[2].isoformat() if r[2] else None,
+                 "sonuc": r[3]} for r in satirlar]
+    toplam = db.execute(text(
+        "SELECT count(*), count(*) FILTER (WHERE sonuc = 0) FROM arama_kayitlari "
+        "WHERE store_id = :s AND created_at > now() - make_interval(days => :g)"),
+        {"s": store.id, "g": gun}).one()
+    return {"gun": gun, "toplam": toplam[0], "sonucsuz_toplam": toplam[1],
+            "sonucsuz": liste("AND sonuc = 0"), "populer": liste("")}
+
+
 @router.get("/{store_id}/readiness", response_model=dict)
 def store_readiness(
     store_id: uuid.UUID,

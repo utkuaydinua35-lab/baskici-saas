@@ -33,6 +33,23 @@ function useGecisIzni() {
   return izin;
 }
 
+// Sonraki slaytların görselleri sayfa YÜKLENDİKTEN sonra (ya da ziyaretçi
+// oka/noktaya basınca hemen) indirilir. Slaytlar üst üste durduğu için
+// tarayıcı hepsini "ekranda" sayıp ilk görselle AYNI ANDA indiriyordu (6
+// görsel ~160 KB): telefonda ilk görselin inişi 2.5 sn'ye uzuyordu. İlk
+// geçiş zaten etkileşim ya da 12 sn sonrası — görseller o zamana çoktan iner.
+function useDigerGorseller(): [boolean, () => void] {
+  const [hazir, setHazir] = useState(false);
+  useEffect(() => {
+    let t: number | undefined;
+    const ac = () => { t = window.setTimeout(() => setHazir(true), 800); };
+    if (document.readyState === "complete") ac();
+    else window.addEventListener("load", ac, { once: true });
+    return () => { window.removeEventListener("load", ac); if (t) clearTimeout(t); };
+  }, []);
+  return [hazir, () => setHazir(true)];
+}
+
 export default function HeroSlider({
   slides,
   autoplaySec = 5,
@@ -78,7 +95,11 @@ export default function HeroSlider({
   }
   const sol = align === "left";
 
-  const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
+  const [digerleri, digerleriniAc] = useDigerGorseller();
+  const go = useCallback((i: number) => {
+    digerleriniAc();
+    setIndex(((i % count) + count) % count);
+  }, [count, digerleriniAc]);
   const gecisIzni = useGecisIzni();
 
   useEffect(() => {
@@ -131,13 +152,15 @@ export default function HeroSlider({
           <div key={i} className="relative w-full shrink-0">
             {slide.image ? (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {(i === 0 || digerleri) && (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={urunGorsel(slide.image).src} alt=""
                   srcSet={urunGorsel(slide.image).srcSet || undefined}
                   sizes="(min-width: 1152px) 1152px, 100vw"
                   fetchPriority={i === 0 ? "high" : undefined}
                   loading={i === 0 ? undefined : "lazy"} decoding="async"
                   className="absolute inset-0 w-full h-full object-cover" />
+                )}
                 {/* Sola hizalı yazıda soldan koyulaşan geçiş: metin okunur,
                     görselin sağı aydınlık kalır */}
                 <div className="absolute inset-0"
@@ -228,7 +251,8 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
   const fare = useRef(false);
   const sonEl = useRef(0);
   const n = slides.length;
-  const git = (i: number) => { sonEl.current = Date.now(); setEtkin(((i % n) + n) % n); };
+  const [digerleri, digerleriniAc] = useDigerGorseller();
+  const git = (i: number) => { digerleriniAc(); sonEl.current = Date.now(); setEtkin(((i % n) + n) % n); };
   const gecisIzni = useGecisIzni();
 
   useEffect(() => {
@@ -286,7 +310,7 @@ function BolunmusHero({ slides, autoplaySec, panelRenk, roundCls, radiusPx }: {
               </div>
               <div className={`fz-acilis relative min-w-0 flex items-center justify-center overflow-hidden h-[280px] sm:h-[360px] lg:h-auto mb-14 lg:mb-0 ${
                 kapla ? "px-7 lg:px-10 lg:py-12" : ""}`}>
-                {g && (
+                {g && (i === 0 || digerleri) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={g.src} srcSet={g.srcSet || undefined}
                     sizes="(min-width: 1024px) 700px, 100vw" alt=""

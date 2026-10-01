@@ -2718,3 +2718,16 @@ class IntegrationKey(Base):
     last_used_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AramaKaydi(Base):
+    """Vitrin ürün araması (yalnız ürünler sayfası; yazarken öneriler hariç).
+    Panel Analitik → "Müşteriler ne aradı" raporu. Kişisel veri yok."""
+    __tablename__ = "arama_kayitlari"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="CASCADE"))
+    sorgu: Mapped[str] = mapped_column(String(100))
+    sonuc: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

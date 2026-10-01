@@ -88,6 +88,8 @@ export default function AnalitikPage() {
           {profit && <ProfitCard p={profit} />}
 
           <FunnelCard funnel={data.funnel} />
+
+          <AramaKarti storeId={storeId} gun={(RANGES.find(r => r.key === range) || {}).days || 30} />
         </div>
       )}
     </div>
@@ -330,6 +332,56 @@ function ProfitCard({ p }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// Vitrinde müşteriler ne aradı — sonuçsuz kalan aramalar eksik tasarım/model
+// fırsatıdır (ürün ekle ya da ürüne o kelimeyi etiket olarak yaz).
+function AramaKarti({ storeId, gun }) {
+  const [r, setR] = useState(null)
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/store-settings/${storeId}/arama-raporu?gun=${Math.min(90, gun)}`)
+      .then(setR).catch(() => setR(null))
+  }, [storeId, gun])
+  if (!r) return null
+  const liste = (satirlar, bos) => satirlar.length === 0
+    ? <p className="text-xs text-panel-muted py-3">{bos}</p>
+    : (
+      <ul className="divide-y divide-panel-border">
+        {satirlar.map(x => (
+          <li key={x.sorgu} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+            <span className="truncate">“{x.sorgu}”</span>
+            <span className="text-xs text-panel-muted shrink-0">{x.adet} kez</span>
+          </li>
+        ))}
+      </ul>
+    )
+  return (
+    <div className="card">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <h3 className="text-sm font-semibold">🔎 Müşteriler ne aradı?</h3>
+        <span className="text-xs text-panel-muted">
+          {r.toplam} arama · {r.sonucsuz_toplam} sonuçsuz (son {r.gun} gün)
+        </span>
+      </div>
+      <div className="grid md:grid-cols-2 gap-5">
+        <div>
+          <div className="text-xs font-medium text-amber-300 mb-1">Sonuç bulamadılar</div>
+          {liste(r.sonucsuz, 'Sonuçsuz arama yok 👍')}
+          {r.sonucsuz.length > 0 && (
+            <p className="text-[11px] text-panel-muted mt-2">
+              Bu kelimeler eksik tasarım ya da model fırsatı: ürün ekleyin veya ilgili ürünlere bu kelimeyi
+              etiket olarak yazın (arama etiketleri de tarar).
+            </p>
+          )}
+        </div>
+        <div>
+          <div className="text-xs font-medium text-panel-muted mb-1">En çok arananlar</div>
+          {liste(r.populer, 'Henüz arama yok.')}
+        </div>
+      </div>
     </div>
   )
 }

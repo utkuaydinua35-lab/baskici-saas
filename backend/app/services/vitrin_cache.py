@@ -65,6 +65,8 @@ def katalog_degisti() -> None:
     """Ürün/varyant/koleksiyon değişti — vitrin önbelleğini düşür (arka plan)."""
     global _SON_GONDERIM
     markalari_dusur()
+    from app.services import arama
+    arama.dusur()   # arama dizini yeniden kurulsun
     simdi = time.monotonic()
     if simdi - _SON_GONDERIM < _ARALIK_SN:
         return

@@ -13,9 +13,10 @@ katalog görseli olarak kaydeder. Amaç: **ürün büyük, zemin sakin, filigran
 3. Biter bitmez özet kutusu çıkar; ayrıntı çıktı klasöründeki
    `toplu-mockup-gunluk.txt` dosyasında.
 
-> **Yeniden çalıştırırken:** `VARSA_ATLA` açık olduğu için aynı adlı çıktılar
-> atlanır. Ayar değiştirip görselleri YENİLEMEK istiyorsan ya eski çıktıları sil
-> ya da `VARSA_ATLA: false` yap — yoksa hiçbir şey değişmemiş gibi görünür.
+> **Yeniden çalıştırırken:** klasörde aynı adlı çıktılar varsa script
+> *"Bu klasörde N görsel ZATEN VAR — üzerine yazılsın mı?"* diye sorar.
+> Ayar değiştirip görselleri yenilemek istiyorsan **Evet** de. Hayır dersen
+> yalnız eksikler üretilir (yarıda kalan işi sürdürmek için).
 
 Her **tasarım × şablon** için bir görsel üretir. Tek şablon varsa çıktı adı
 tasarım adıdır; birden fazla şablon varsa sonuna şablon adı eklenir.

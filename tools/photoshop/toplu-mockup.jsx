@@ -225,6 +225,16 @@ function zeminKatmaniEkle(doc, hex) {
   return kat;
 }
 
+function ciktiAdi(ayar, tasarim, sablon, cokSablon) {
+  var ad = ayar.AD_SABLONU
+    .replace("{tasarim}", adiUzantisiz(tasarim))
+    .replace("{sablon}", adiUzantisiz(sablon));
+  if (cokSablon && ayar.AD_SABLONU.indexOf("{sablon}") === -1) {
+    ad = ad + "_" + adiUzantisiz(sablon);
+  }
+  return ad;
+}
+
 function webIcinKaydet(doc, dosya, ayar) {
   var o = new ExportOptionsSaveForWeb();
   if (ayar.FORMAT === "png") {
@@ -263,6 +273,28 @@ function calistir(ayar) {
   if (!tasarimlar.length) throw new Error("Klasörde tasarım dosyası yok: " + decodeURI(tKlasor.fsName))
   if (!sablonlar.length) throw new Error("Klasörde .psd şablon yok: " + decodeURI(sKlasor.fsName))
 
+  // ⚠ Sessizce "hiçbir şey yapmadım" olmasın: ayar değiştirip tekrar
+  // çalıştırıldığında var olan çıktılar atlanıyor ve ekranda sanki iş bitmiş
+  // gibi görünüyordu (Yazılan: 0, Atlanan: 35). Artık baştan soruluyor.
+  if (ayar.VARSA_ATLA) {
+    var varOlan = 0;
+    for (var vs = 0; vs < sablonlar.length; vs++) {
+      for (var vt = 0; vt < tasarimlar.length; vt++) {
+        var vAd = ciktiAdi(ayar, tasarimlar[vt], sablonlar[vs], sablonlar.length > 1);
+        if (new File(cKlasor.fsName + "/" + vAd + "." + ayar.FORMAT).exists) varOlan++;
+      }
+    }
+    if (varOlan > 0) {
+      var toplam = sablonlar.length * tasarimlar.length;
+      ayar.VARSA_ATLA = !confirm(
+        "Bu klasörde " + varOlan + " görsel ZATEN VAR (toplam " + toplam + ").\n\n"
+        + "Üzerine yazılsın mı?\n\n"
+        + "Evet = hepsi yeniden üretilir (ayar değiştirdiysen bunu seç)\n"
+        + "Hayır = var olanlar atlanır, yalnız eksikler üretilir",
+        false, "Toplu mockup");
+    }
+  }
+
   var sonuc = { yazilan: 0, atlanan: 0, hata: 0, satirlar: [] }
   var eskiBirim = app.preferences.rulerUnits;
   var eskiUyari = app.displayDialogs;
@@ -273,12 +305,7 @@ function calistir(ayar) {
     for (var s = 0; s < sablonlar.length; s++) {
       for (var t = 0; t < tasarimlar.length; t++) {
         var tasarim = tasarimlar[t];
-        var ad = ayar.AD_SABLONU
-          .replace("{tasarim}", adiUzantisiz(tasarim))
-          .replace("{sablon}", adiUzantisiz(sablonlar[s]));
-        if (sablonlar.length > 1 && ayar.AD_SABLONU.indexOf("{sablon}") === -1) {
-          ad = ad + "_" + adiUzantisiz(sablonlar[s]);
-        }
+        var ad = ciktiAdi(ayar, tasarim, sablonlar[s], sablonlar.length > 1);
         var ciktiDosya = new File(cKlasor.fsName + "/" + ad + "." + ayar.FORMAT);
         if (ayar.VARSA_ATLA && ciktiDosya.exists) {
           sonuc.atlanan++
@@ -362,8 +389,13 @@ function calistir(ayar) {
 try {
   var s = calistir(AYAR);
   if (s) {
-    alert("Bitti.\n\nYazılan: " + s.yazilan + "\nAtlanan: " + s.atlanan + "\nHata: " + s.hata
-      + (s.hata ? "\n\nAyrıntı: toplu-mockup-gunluk.txt" : ""));
+    var mesaj = "Bitti.\n\nYazılan: " + s.yazilan + "\nAtlanan: " + s.atlanan + "\nHata: " + s.hata;
+    if (s.yazilan === 0 && s.atlanan > 0) {
+      mesaj += "\n\n⚠ HİÇBİR GÖRSEL ÜRETİLMEDİ: hepsi zaten vardı ve atlandı."
+             + "\nYenilemek için başlangıçtaki soruya 'Evet' de ya da eski çıktıları sil.";
+    }
+    if (s.hata) mesaj += "\n\nAyrıntı: toplu-mockup-gunluk.txt";
+    alert(mesaj);
   }
 } catch (e) {
   alert("Çalıştırılamadı:\n" + e.message);

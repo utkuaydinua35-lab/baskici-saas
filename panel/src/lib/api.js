@@ -83,6 +83,32 @@ export async function fetchYetkili(url, opts = {}) {
   return res
 }
 
+// Seçilen dosyaları göndermeden ÖNCE belleğe oku. Dosya bulut klasöründeyse
+// (Google Drive, iCloud "Mac depolamasını optimize et") seçildiği an indirilir
+// ve değişiklik tarihi değişir; Chrome "seçimden sonra değişmiş" dosyayı
+// göndermeyi reddeder (net::ERR_UPLOAD_FILE_CHANGED) ve istek sunucuya hiç
+// ulaşmadan "Failed to fetch" düşer. Bellekteki kopya bu tarihe bakmaz.
+// Okunamıyorsa (dosya indirilemedi/silindi) sebebi söyleyen bir hata atılır.
+async function bellegeAl(formData) {
+  if (!(formData instanceof FormData)) return formData
+  const kopya = new FormData()
+  for (const [ad, deger] of formData.entries()) {
+    if (typeof File !== 'undefined' && deger instanceof File) {
+      let veri
+      try {
+        veri = await deger.arrayBuffer()
+      } catch {
+        throw new ApiError(0, `“${deger.name}” dosyası okunamadı. Dosya bir bulut klasöründeyse `
+          + '(Google Drive, iCloud) önce bilgisayara indirip — ya da Masaüstüne kopyalayıp — tekrar seçin.')
+      }
+      kopya.append(ad, new Blob([veri], { type: deger.type }), deger.name)
+    } else {
+      kopya.append(ad, deger)
+    }
+  }
+  return kopya
+}
+
 export class ApiError extends Error {
   constructor(status, detail) {
     super(detail || `HTTP ${status}`)
@@ -149,7 +175,7 @@ export const api = {
     const headers = { 'Accept': 'application/json' }
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(mutlak(url), { method: 'POST', headers, body: formData })
+    const res = await fetch(mutlak(url), { method: 'POST', headers, body: await bellegeAl(formData) })
     if (res.status === 204) return null
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text().catch(() => null)

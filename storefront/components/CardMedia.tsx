@@ -9,7 +9,9 @@ export default function CardMedia({
   hoverImage,
   videoUrl,
   title,
+  oncelikli = false,
 }: {
+  oncelikli?: boolean;
   cover: string | null;
   hoverImage?: string | null;
   videoUrl?: string | null;
@@ -63,10 +65,12 @@ export default function CardMedia({
     >
       {cover ? (
         // Liste: onlarca kart. Varyantlar statik; srcset ile telefon 400,
-        // tablet 800, masaüstü 1280'i seçer. İlk kart hariç tembel yüklenir.
+        // tablet 800, masaüstü 1280'i seçer. Tembel yüklenir; açılışta ekranda
+        // olan ilk satır (oncelikli) hemen ve yüksek öncelikle istenir.
         <img src={urunGorsel(cover).src} srcSet={urunGorsel(cover).srcSet}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-          alt={title} loading="lazy" decoding="async"
+          alt={title} loading={oncelikli ? "eager" : "lazy"} decoding="async"
+          fetchPriority={oncelikli ? "high" : undefined}
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             hover && (hoverImage || useVideo) ? "opacity-0" : "opacity-100"}`} />
       ) : (

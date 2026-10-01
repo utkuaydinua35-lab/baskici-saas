@@ -5,6 +5,7 @@
 import { hareketSorgusu } from "@/lib/hareket";
 import { urunGorsel } from "@/lib/gorsel";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { preload } from "react-dom";
 import Link from "next/link";
 import type { HeroSlide } from "@/lib/theme";
 
@@ -42,6 +43,15 @@ export default function HeroSlider({
   const [index, setIndex] = useState(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const count = slides.length;
+  // İlk slayt görseli sayfanın en büyük öğesi: <head>'e önden yükleme ipucu
+  // (sunucu çiziminde basılır) — tarayıcı HTML'i ve CSS'i bitirmeyi beklemeden
+  // indirmeye başlar. Ölçüm: "yükleme gecikmesi" 1.7 sn'ydi.
+  const ilk = slides[0]?.image ? urunGorsel(slides[0].image) : null;
+  if (ilk?.src) {
+    preload(ilk.src, { as: "image", fetchPriority: "high",
+      ...(ilk.srcSet ? { imageSrcSet: ilk.srcSet,
+        imageSizes: stil === "bolunmus" ? "(min-width: 1024px) 700px, 100vw" : "(min-width: 1152px) 1152px, 100vw" } : {}) });
+  }
   const sol = align === "left";
 
   const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);

@@ -4,7 +4,11 @@ import type { ProductCard as ProductCardType } from "@/lib/api";
 import FavButton from "@/components/FavButton";
 import CardMedia from "@/components/CardMedia";
 
-export default function ProductCard({ product }: { product: ProductCardType }) {
+export default function ProductCard({ product, oncelikli = false }: {
+  product: ProductCardType;
+  // Sayfa açılışında görünen kart: görsel tembel değil, yüksek öncelikli
+  oncelikli?: boolean;
+}) {
   const price = Number(product.price);
   const compareAt = product.compare_at_price ? Number(product.compare_at_price) : null;
   const discountPct =
@@ -43,6 +47,7 @@ export default function ProductCard({ product }: { product: ProductCardType }) {
         hoverImage={product.hover_image}
         videoUrl={product.video_url}
         title={product.title}
+        oncelikli={oncelikli}
       />
       <div className="urun-kart-bilgi p-3">
         <h3 className="urun-kart-baslik text-sm font-medium text-zinc-900 line-clamp-2">{product.title}</h3>

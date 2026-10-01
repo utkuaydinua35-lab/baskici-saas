@@ -118,8 +118,10 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         </p>
       ) : (
         <div className="mt-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {items.map((p) => (
-            <ProductCard key={p.slug} product={p} />
+          {items.map((p, i) => (
+            // İlk satır ekranda açılır: tembel yüklenmez, öncelikli istenir
+            // (sayfanın en büyük öğesi — eskiden tembeldi, 5 sn gecikiyordu)
+            <ProductCard key={p.slug} product={p} oncelikli={i < 4} />
           ))}
         </div>
       )}

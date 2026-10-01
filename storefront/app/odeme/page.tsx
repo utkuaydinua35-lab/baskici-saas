@@ -192,6 +192,8 @@ export default function CheckoutPage() {
           // Meta CAPI eşleşme sinyalleri — piksel çerezleri (varsa)
           fbp: document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/)?.[1] || null,
           fbc: document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/)?.[1] || null,
+          // Ziyaretçi kimliği — CAPI Purchase'ta gezinme olaylarıyla aynı external_id
+          vid: document.cookie.match(/(?:^|;\s*)bz_vid=([^;]+)/)?.[1] || null,
         }),
       });
       const data = await res.json();

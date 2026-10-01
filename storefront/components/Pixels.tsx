@@ -4,6 +4,7 @@
 // Route değişimlerinde PageView tekrar gönderilir.
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { trackPageView } from "@/lib/track";
 
 interface Props {
   meta?: string | null;
@@ -67,7 +68,7 @@ export default function Pixels({ meta, ga4, tiktok }: Props) {
     if (firstMetaPv.current) {
       firstMetaPv.current = false;
     } else {
-      window.fbq?.("track", "PageView");
+      trackPageView();   // tarayıcı + sunucu, aynı eventID
     }
     window.gtag?.("event", "page_view", { page_path: pathname });
     // @ts-expect-error ttq.page pixel API'sinde mevcut

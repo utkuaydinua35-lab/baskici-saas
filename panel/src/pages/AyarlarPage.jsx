@@ -583,8 +583,9 @@ export default function AyarlarPage() {
               onChange={set('meta_test_event_code')} placeholder="TEST12345" />
           </Field>
           <p className="text-[11px] text-panel-muted">
-            ⚠️ Test kodu doluyken olaylar yalnız "Olayları Test Et" ekranına düşer —
-            doğrulama bitince bu alanı boşaltıp kaydedin.
+            ⚠️ Test kodu doluyken sunucu olayları yalnız "Olayları Test Et" ekranına düşer,
+            reklam raporlarına gitmez. Unutulmasın diye kod kaydedildikten <b>3 saat sonra
+            kendiliğinden devre dışı kalır</b>; yine de doğrulama bitince alanı boşaltın.
           </p>
         </div>
         <div className="border-t border-panel-border pt-3 mt-1">

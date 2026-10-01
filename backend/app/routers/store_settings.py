@@ -195,6 +195,15 @@ def patch_settings(
         else:
             config[key] = value
 
+    # Meta test kodu süreli (meta_capi.TEST_KODU_SAAT): ne zaman girildiği yazılır
+    if "meta_test_event_code" in (body.config or {}):
+        if config.get("meta_test_event_code"):
+            if (store.config or {}).get("meta_test_event_code") != config["meta_test_event_code"] \
+                    or not config.get("meta_test_event_code_at"):
+                config["meta_test_event_code_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            config.pop("meta_test_event_code_at", None)
+
     store.config = config
     flag_modified(store, "config")
     # Hangi ayarların değiştiği günlüğe düşer (gizli anahtar DEĞERLERİ yazılmaz)

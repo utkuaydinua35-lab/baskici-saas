@@ -38,8 +38,54 @@ def _h(value: str | None) -> str | None:
     return hashlib.sha256(v.encode()).hexdigest() if v else None
 
 
-# Beacon ile kabul edilen olaylar — beyaz liste dışındakiler sessizce atılır
-BEACON_OLAYLARI = {"ViewContent", "AddToCart", "InitiateCheckout"}
+# Beacon ile kabul edilen olaylar — beyaz liste dışındakiler sessizce atılır.
+# PageView: yeniden pazarlama kitleleri (site ziyaretçileri) bundan kurulur;
+# tarayıcı pikseli engellendiğinde/yüklenmeden çıkıldığında kaybolmasın.
+BEACON_OLAYLARI = {"PageView", "ViewContent", "AddToCart", "InitiateCheckout", "AddPaymentInfo"}
+
+# Test olay kodu SÜRELİ: doluyken sunucu olayları yalnız "Olayları Test Et"
+# ekranına düşer, reklam raporlarına/optimizasyona GİTMEZ. Unutulursa satışlar
+# reklamda görünmez — bu yüzden kaydedildikten TEST_KODU_SAAT saat sonra
+# kendiliğinden yok sayılır (panel kaydında meta_test_event_code_at yazılır).
+TEST_KODU_SAAT = 3
+
+
+def gecerli_test_kodu(config: dict) -> str | None:
+    kod = (config.get("meta_test_event_code") or "").strip()
+    if not kod:
+        return None
+    from datetime import datetime, timedelta, timezone
+    try:
+        zaman = datetime.fromisoformat(str(config.get("meta_test_event_code_at") or ""))
+    except ValueError:
+        return None   # zamanı bilinmeyen (eski) kod: canlı sayılır, test'e düşürülmez
+    if zaman.tzinfo is None:
+        zaman = zaman.replace(tzinfo=timezone.utc)
+    return kod if datetime.now(timezone.utc) - zaman < timedelta(hours=TEST_KODU_SAAT) else None
+
+
+def tr_telefon(tel) -> str | None:
+    """Meta'nın beklediği biçim: ülke koduyla, yalnız rakam — 905321234567.
+
+    ESKİ HATA: "9" + numara.lstrip("0") yapılıyordu → "0532…" "9532…" oluyor
+    ve Meta telefonla HİÇ eşleştiremiyordu (Purchase eşleşme kalitesi düşük).
+    """
+    d = "".join(ch for ch in str(tel or "") if ch.isdigit())
+    if d.startswith("00"):          # uluslararası önek: 0090… → 90…
+        d = d[2:]
+    if len(d) == 10 and d.startswith("5"):
+        d = "90" + d
+    elif len(d) == 11 and d.startswith("0"):
+        d = "9" + d
+    return d if len(d) >= 10 else None
+
+
+def ziyaretci_kimligi(vid: str | None) -> str | None:
+    """Birinci taraf ziyaretçi kimliği (bz_vid çerezi) → external_id.
+    Tarayıcı pikseli aynı değeri init'te verir (piksel kendisi hash'ler);
+    burada sha256'sı gönderilir — iki kaynak aynı kişiyi gösterir."""
+    v = (vid or "").strip()
+    return _h(v) if v and len(v) <= 64 else None
 
 
 def _gonder_async(pixel_id: str, token: str, body: dict, etiket: str) -> None:
@@ -86,7 +132,7 @@ def send_event(store, *, event_name: str, event_id: str, user_data: dict,
         "custom_data": custom_data or None,
     }
     body: dict = {"data": [{k: v for k, v in event.items() if v is not None}]}
-    test_code = (config.get("meta_test_event_code") or "").strip()
+    test_code = gecerli_test_kodu(config)
     if test_code:
         body["test_event_code"] = test_code
     _gonder_async(pixel_id, token, body, f"{event_name} ({event_id})")
@@ -115,8 +161,7 @@ def build_purchase_payload(store, session) -> dict | None:
     user_data = {
         k: v for k, v in {
             "em": _h(cust.get("email")),
-            "ph": _h("9" + str(cust.get("phone") or "").lstrip("0"))
-                  if cust.get("phone") else None,   # TR: 90XXXXXXXXXX biçimi
+            "ph": _h(tr_telefon(cust.get("phone"))),
             "fn": _h(cust.get("first_name")),
             "ln": _h(cust.get("last_name")),
             "client_ip_address": meta.get("ip") or None,
@@ -124,8 +169,9 @@ def build_purchase_payload(store, session) -> dict | None:
             "fbp": meta.get("fbp") or None,
             "fbc": meta.get("fbc") or None,
             # Kararlı müşteri kimliği — Meta'nın eşleşme kalitesini yükseltir.
-            # E-postanın hash'i kullanılır: müşteri kaydı olmasa da tutarlıdır.
-            "external_id": _h(cust.get("email")),
+            # Ziyaretçi kimliği (gezinme olaylarıyla AYNI) + e-posta hash'i;
+            # Meta birden çok external_id'yi liste olarak kabul eder.
+            "external_id": [x for x in (ziyaretci_kimligi(meta.get("vid")), _h(cust.get("email"))) if x] or None,
         }.items() if v
     }
 
@@ -149,7 +195,7 @@ def build_purchase_payload(store, session) -> dict | None:
         },
     }
     body: dict = {"data": [{k: v for k, v in event.items() if v is not None}]}
-    test_code = (config.get("meta_test_event_code") or "").strip()
+    test_code = gecerli_test_kodu(config)
     if test_code:
         body["test_event_code"] = test_code
     return {"pixel_id": pixel_id, "token": token, "body": body}

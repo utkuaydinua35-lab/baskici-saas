@@ -586,6 +586,7 @@ class CheckoutRequest(BaseModel):
     # taraflı Purchase'ın müşteriyle eşleşme kalitesini yükseltir
     fbp: Sinyal = None
     fbc: Sinyal = None
+    vid: Sinyal = None   # birinci taraf ziyaretçi kimliği (bz_vid) — CAPI external_id
 
 
 class ValidateCodeRequest(BaseModel):
@@ -722,6 +723,7 @@ def create_checkout(
                            or request.headers.get("user-agent") or "")[:300],
                     "fbp": body.fbp,
                     "fbc": body.fbc,
+                    "vid": body.vid,
                 },
             },
             client_ip=client_ip(request),
@@ -2452,6 +2454,7 @@ class PikselOlayi(BaseModel):
     fbp: str | None = Field(None, max_length=120)
     fbc: str | None = Field(None, max_length=400)
     eposta: str | None = Field(None, max_length=200)
+    vid: str | None = Field(None, max_length=64)   # birinci taraf ziyaretçi kimliği
 
 
 piksel_rate_limit = make_rate_limiter(max_hits=40, window=60.0)
@@ -2487,9 +2490,12 @@ def piksel_olayi(
         "fbp": body.fbp,
         "fbc": body.fbc,
         "em": meta_capi._h(body.eposta) if body.eposta else None,
-        "external_id": meta_capi._h(body.eposta) if body.eposta else None,
+        "external_id": [x for x in (meta_capi.ziyaretci_kimligi(body.vid),
+                                    meta_capi._h(body.eposta) if body.eposta else None) if x] or None,
     }
     custom: dict = {"content_type": "product"}
+    if body.olay == "PageView":
+        custom = {}
     if body.icerik:
         custom["content_ids"] = [i[:100] for i in body.icerik[:50]]
     if body.deger is not None:

@@ -174,23 +174,51 @@ export default async function RootLayout({
           {/* Meta Pixel temel kodu SSR ile basılır — Meta'nın "piksel saptandı"
               denetleyicisi JS çalıştırmadan kaynak HTML'e bakar; client-side
               enjeksiyonu göremez. init+PageView burada, route değişimleri Pixels'ta.
-              fbevents.js (110 KB) sayfa YÜKLENDİKTEN sonra indirilir: olaylar
-              fbq kuyruğunda bekler, hiçbiri kaybolmaz; ilk görüntüyle yarışmaz. */}
+              fbevents.js (110 KB) sayfa yüklendikten sonra (en geç 3.5 sn'de)
+              indirilir: olaylar fbq kuyruğunda bekler; ilk görüntüyle yarışmaz.
+              Eşleşme çerezleri (_fbc/_fbp) ve ziyaretçi kimliği beklemeden
+              yazılır, PageView sunucudan da (CAPI) gider. */}
           {payloadPixels?.meta && (
             <>
               <script dangerouslySetInnerHTML={{ __html: `
+                (function(){try{
+                  /* Reklam eşleşme çerezleri sayfa AÇILIR AÇILMAZ yazılır (Meta'nın
+                     belgelediği biçim: fb.1.<ms>.<değer>). fbevents.js sonradan
+                     yüklendiği için, reklamdan gelen ziyaretçi o yüklenmeden başka
+                     sayfaya geçerse fbclid adres çubuğundan düşüyor ve tıklama
+                     reklama BAĞLANAMIYORDU. bz_vid: birinci taraf ziyaretçi
+                     kimliği (external_id) — tarayıcı ve sunucu olaylarında aynı. */
+                  var d=document,h=location.hostname,c=function(n){var m=d.cookie.match('(?:^|; )'+n+'=([^;]*)');return m&&m[1]};
+                  var yaz=function(n,v){var p=h.split('.'),ok=false;
+                    if(p.length>2){d.cookie=n+'='+v+';path=/;max-age=7776000;SameSite=Lax;domain=.'+p.slice(-2).join('.');ok=c(n)===v}
+                    if(!ok)d.cookie=n+'='+v+';path=/;max-age=7776000;SameSite=Lax'};
+                  var t=Date.now(),fbclid=new URLSearchParams(location.search).get('fbclid');
+                  if(fbclid){var eski=c('_fbc');if(!eski||eski.split('.').slice(3).join('.')!==fbclid)yaz('_fbc','fb.1.'+t+'.'+fbclid)}
+                  if(!c('_fbp'))yaz('_fbp','fb.1.'+t+'.'+Math.floor(Math.random()*1e10));
+                  if(!c('bz_vid'))yaz('bz_vid',(crypto.randomUUID?crypto.randomUUID():t+''+Math.random()).replace(/[^a-z0-9]/gi,'').slice(0,32).toLowerCase());
+                }catch(x){}})();
                 !function(f,b,e,v,n,t,s)
                 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
                 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
                 if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                n.queue=[];var y=function(){t=b.createElement(e);t.async=!0;
+                n.queue=[];var g=0,y=function(){if(g)return;g=1;t=b.createElement(e);t.async=!0;
                 t.src=v;s=b.getElementsByTagName(e)[0];
                 s.parentNode.insertBefore(t,s)};
                 if(b.readyState==='complete')setTimeout(y,0);
-                else f.addEventListener('load',function(){setTimeout(y,0)})}(window, document,'script',
+                else{f.addEventListener('load',function(){setTimeout(y,0)});setTimeout(y,3500)}}(window, document,'script',
                 'https://connect.facebook.net/en_US/fbevents.js');
-                fbq('init', '${payloadPixels.meta.replace(/[^0-9]/g, "")}');
-                fbq('track', 'PageView');
+                (function(){
+                  var c=function(n){var m=document.cookie.match('(?:^|; )'+n+'=([^;]*)');return m&&m[1]};
+                  var vid=c('bz_vid');
+                  fbq('init', '${payloadPixels.meta.replace(/[^0-9]/g, "")}', vid?{external_id:vid}:{});
+                  /* PageView: tarayıcı + sunucu (CAPI) AYNI eventID — Meta tekilleştirir */
+                  var pv='pv_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
+                  fbq('track', 'PageView', {}, {eventID: pv});
+                  try{var g=JSON.stringify({olay:'PageView',event_id:pv,url:location.href,fbp:c('_fbp'),fbc:c('_fbc'),vid:vid});
+                    if(!(navigator.sendBeacon&&navigator.sendBeacon('/api/piksel',new Blob([g],{type:'application/json'}))))
+                      fetch('/api/piksel',{method:'POST',headers:{'Content-Type':'application/json'},body:g,keepalive:true}).catch(function(){});
+                  }catch(x){}
+                })();
               ` }} />
               <noscript>
                 {/* eslint-disable-next-line @next/next/no-img-element */}

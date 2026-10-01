@@ -51,7 +51,7 @@ function beacon(olay: string, eventId: string, veri: {
       olay, event_id: eventId, url: location.href,
       deger: veri.deger, para: veri.para || "TRY",
       icerik: veri.icerik || [], adet: veri.adet,
-      fbp: cerez("_fbp"), fbc: cerez("_fbc"),
+      fbp: cerez("_fbp"), fbc: cerez("_fbc"), vid: cerez("bz_vid"),
     });
     // sendBeacon: sayfa kapanırken bile gider ve akışı bloklamaz
     const blob = new Blob([govde], { type: "application/json" });
@@ -74,6 +74,14 @@ function ga4Items(items?: Item[]) {
   return (items || []).map((i) => ({
     item_id: i.id, item_name: i.name, price: i.price, quantity: i.quantity,
   }));
+}
+
+// Sayfa geçişi (istemci tarafı gezinme) — ilk PageView layout'taki baş
+// script'te atılır; buradaki aynı eventID ile sunucudan da gider.
+export function trackPageView() {
+  const eid = olayKimligi("pv");
+  window.fbq?.("track", "PageView", {}, { eventID: eid });
+  beacon("PageView", eid, {});
 }
 
 export function trackViewContent(item: Item) {
@@ -132,9 +140,14 @@ export function trackInitiateCheckout(data: EventData) {
 // girildiği an bizde olmadığından, ödeme sağlayıcısına yönlenme anında atılır.
 export function trackAddPaymentInfo(data: EventData) {
   const currency = data.currency || "TRY";
+  const eid = olayKimligi("api");
   window.fbq?.("track", "AddPaymentInfo", {
     value: data.value, currency, contents: contents(data.items),
-  });
+    content_ids: (data.items || []).map((i) => i.id), content_type: "product",
+  }, { eventID: eid });
+  beacon("AddPaymentInfo", eid, { deger: data.value, para: currency,
+    icerik: (data.items || []).map((i) => i.id),
+    adet: (data.items || []).reduce((s, i) => s + i.quantity, 0) || undefined });
   window.gtag?.("event", "add_payment_info", {
     currency, value: data.value, items: ga4Items(data.items),
   });

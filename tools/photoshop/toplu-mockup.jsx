@@ -33,11 +33,13 @@ var AYAR = {
   CIKTI_PX: 2000,           // uzun kenar (kare ise 2000x2000)
 
   // ── Zemin ─────────────────────────────────────────────────
-  ZEMIN_RENK: "F6F7F9",     // "" verirsen şablonun kendi zeminine dokunulmaz
-  // Zemin rengi verildiğinde şablonun KENDİ zemini gizlenir — yoksa yeni renk
-  // altta kalır ve hiçbir şey değişmez. ⚠ Kılıfın gölgesi zemin katmanının
-  // içindeyse gölge de kaybolur: o şablonlarda ZEMIN_RENK'i boş bırak.
-  ZEMINI_GIZLE: true,
+  ZEMIN_RENK: "F6F7F9",     // "" verirsen zemin rengi hiç eklenmez
+  // ⚠ VARSAYILAN: KAPALI. Şablonlarımızda "Background" adlı katman ARKA PLAN
+  // DEĞİL, KILIFIN KENDİSİ (kamera modülü, parlama, gölge oradan geliyor);
+  // gizlenince çıktı düz bir silüete dönüyordu. Zemin rengi zaten en ALTA
+  // eklenen katmandan geliyor — şablonun arkası şeffafsa başka bir şey
+  // gerekmiyor. Yalnız gerçekten FOTOĞRAF zeminli şablonlarda true yap.
+  ZEMINI_GIZLE: false,
   // Gizlenecek katmanlar (küçük harfe çevrilip ARANIR — parça eşleşme yeter)
   GIZLE: ["filigran", "watermark", "logo", "remove this", "shadow text", "yazı"],
 
@@ -51,6 +53,10 @@ var AYAR = {
   // Tasarımın konacağı katman adları (sırayla aranır, bulunan ilki kullanılır).
   TASARIM_KATMANI: ["Design Here", "Your Work Here", "design", "w1", "bc"],
   YERLESIM: "cover",        // "cover" = kadrajı doldur (taşan kırpılır) | "contain" = sığdır
+  // Smart object'in İÇİNDEKİ eski katmanlar gizlensin mi? VARSAYILAN: hayır.
+  // Bazı şablonlarda kılıfın dokusu/gölgesi smart object'in içinde duruyor;
+  // gizlemek gerçekçiliği siliyor. Eski baskı kenarlardan sızıyorsa true yap.
+  PSB_DIGER_KATMANLARI_GIZLE: false,
   // Ürün sınırını belirleyen grup (kırpma bunun sınırına göre yapılır).
   // Bulunamazsa zemin/filigran dışındaki görünür katmanların birleşimi kullanılır.
   URUN_KATMANI: ["Mockup Here", "Mockup", "Product"],
@@ -151,7 +157,7 @@ function kadrajaOturt(doc, katman, mod) {
 }
 
 /** Smart object'in İÇİNİ aç, tasarımı yerleştir, kaydedip kapat. */
-function tasarimiYerlestir(doc, soKatman, tasarimDosyasi, mod) {
+function tasarimiYerlestir(doc, soKatman, tasarimDosyasi, mod, digerleriniGizle) {
   doc.activeLayer = soKatman;
   executeAction(stringIDToTypeID("placedLayerEditContents"), undefined, DialogModes.NO);
   var psb = app.activeDocument;
@@ -182,21 +188,23 @@ function sinirBirlestir(mevcut, katman) {
           Math.max(mevcut[2], x2), Math.max(mevcut[3], y2)];
 }
 
-/** Ürünün kadrajdaki sınırı: tanımlı grup, yoksa zemin dışındaki görünür katmanlar. */
+/** Ürünün kadrajdaki sınırı: GÖRÜNÜR katmanların birleşimi.
+ *
+ * ⚠ Ada göre eleme YAPILMAZ: şablonlarımızda kılıfın fotoğrafı "Background"
+ * adlı katmanda duruyor; adına bakıp elemek kılıfı kadraj dışında bırakıyordu.
+ * Gizlenmesi gerekenler bu noktadan ÖNCE zaten gizlenmiş oluyor.
+ */
 function urunSiniri(doc, ayar) {
-  var grup = katmanBul(doc, ayar.URUN_KATMANI);
-  if (grup) {
-    var s = sinirBirlestir(null, grup);
-    if (s) return s;
-  }
   var sinir = null;
   for (var i = 0; i < doc.layers.length; i++) {
     var l = doc.layers[i];
     if (!l.visible) continue;
-    if (icerir(l.name, ayar.ZEMIN_KATMANI) || icerir(l.name, ayar.GIZLE)) continue;
     sinir = sinirBirlestir(sinir, l);
   }
-  return sinir;
+  if (sinir) return sinir;
+  // Hiçbir şey ölçülemezse adı verilen ürün grubuna düş
+  var grup = katmanBul(doc, ayar.URUN_KATMANI);
+  return grup ? sinirBirlestir(null, grup) : null;
 }
 
 function zeminKatmaniEkle(doc, hex) {
@@ -282,7 +290,8 @@ function calistir(ayar) {
           doc = app.open(sablonlar[s]);
           var so = katmanBul(doc, ayar.TASARIM_KATMANI);
           if (!so) throw new Error("Tasarım katmanı bulunamadı (" + ayar.TASARIM_KATMANI.join(" / ") + ")")
-          tasarimiYerlestir(doc, so, tasarim, ayar.YERLESIM);
+          tasarimiYerlestir(doc, so, tasarim, ayar.YERLESIM,
+                            ayar.PSB_DIGER_KATMANLARI_GIZLE);
 
           // Filigran/logo gizle — katalog görselinde baskının üstü kapanmasın.
           // Zemin rengi verildiyse şablonun kendi zemini de gizlenir (yoksa yeni

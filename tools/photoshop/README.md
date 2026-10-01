@@ -13,6 +13,10 @@ katalog görseli olarak kaydeder. Amaç: **ürün büyük, zemin sakin, filigran
 3. Biter bitmez özet kutusu çıkar; ayrıntı çıktı klasöründeki
    `toplu-mockup-gunluk.txt` dosyasında.
 
+> **Yeniden çalıştırırken:** `VARSA_ATLA` açık olduğu için aynı adlı çıktılar
+> atlanır. Ayar değiştirip görselleri YENİLEMEK istiyorsan ya eski çıktıları sil
+> ya da `VARSA_ATLA: false` yap — yoksa hiçbir şey değişmemiş gibi görünür.
+
 Her **tasarım × şablon** için bir görsel üretir. Tek şablon varsa çıktı adı
 tasarım adıdır; birden fazla şablon varsa sonuna şablon adı eklenir.
 
@@ -34,7 +38,9 @@ tasarım adıdır; birden fazla şablon varsa sonuna şablon adı eklenir.
 |---|---|
 | `ORAN` | Ürünün kadrajı doldurma oranı. 0.85 → kenarlarda rahat boşluk; 0.92 → daha "dolu" kart |
 | `KARE` | `false` yaparsan şablonun en-boy oranı korunur (kare pazar yeri için önerilir) |
-| `ZEMIN_RENK` | `""` verirsen şablonun kendi zeminine dokunulmaz (atmosferli çekimler için) |
+| `ZEMIN_RENK` | `""` verirsen zemin rengi hiç eklenmez (atmosferli çekimler için) |
+| `ZEMINI_GIZLE` | Şablonun kendi zemin katmanı gizlensin mi. **Varsayılan kapalı** — aşağıdaki tuzağa bak |
+| `PSB_DIGER_KATMANLARI_GIZLE` | Smart object'in İÇİNDEKİ eski katmanlar gizlensin mi. Varsayılan kapalı |
 | `CIKTI_PX` | Uzun kenar. Vitrin için 2000 yeter; Trendyol/HB için de uygundur |
 | `FORMAT` / `JPG_KALITE` | `"png"` şeffaflık korur ama dosya büyür. Katalog için `jpg`/80 |
 | `YERLESIM` | `cover` = baskı kılıfı doldurur (taşan kırpılır), `contain` = tamamı sığar |
@@ -49,9 +55,17 @@ tasarım adıdır; birden fazla şablon varsa sonuna şablon adı eklenir.
 - **Dosya UTF-8 BOM ile kaydedilmeli** (öyle duruyor). BOM silinirse Türkçe
   karakterler uyarı kutularında ve günlükte bozuk çıkar.
 
-- **Gölge zemin katmanının içindeyse**: `ZEMIN_RENK` verince şablonun kendi zemini
-  gizlenir, gölge de gider. O şablonlarda `ZEMIN_RENK: ""` bırak ya da
-  `ZEMINI_GIZLE: false` yap (o zaman renk değişmez).
+- **"Background" adlı katman çoğu zaman ARKA PLAN DEĞİL, KILIFIN KENDİSİDİR.**
+  `arkası boş mockup.psd` dosyasında kılıfın fotoğrafı (kamera modülü, parlama,
+  gölge) `Background` katmanında duruyor ve `Design Here` smart object'i
+  **Multiply** modunda onun üstüne biniyor; gerçekçilik oradan geliyor. Bu katman
+  gizlenirse çıktı düz bir silüete dönüşür, kamera deliği bembeyaz kalır.
+  Bu yüzden `ZEMINI_GIZLE` varsayılan olarak **kapalı**. Zemin rengi zaten en
+  alta eklenen katmandan geliyor; şablonun arkası şeffafsa başka bir şey gerekmez.
+  Yalnız gerçekten fotoğraf zeminli şablonlarda `true` yap.
+- **Baskı dosyasındaki kamera boşluğu beyaz kalıyorsa** sebep yine budur: beyaz
+  alan Multiply ile altındaki kamera fotoğrafını göstermeli; kılıf katmanı
+  gizliyse gösterecek bir şey kalmıyor.
 - **PDF tasarım desteklenmez** — Photoshop PDF açarken diyalog istiyor, toplu iş
   durur. Önce PNG'ye çevir (`sips`/Önizleme ya da panelin tasarım çıktısı).
 - **Şablondaki smart object adı farklıysa** script "Tasarım katmanı bulunamadı"

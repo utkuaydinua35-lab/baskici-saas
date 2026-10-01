@@ -28,9 +28,16 @@ var AYAR = {
   UZANTILAR: ["png", "jpg", "jpeg", "tif", "tiff", "psd"],  // PDF desteklenmez (önce PNG'ye çevir)
 
   // ── Kadraj ────────────────────────────────────────────────
-  KARE: true,               // kare kadraj (pazar yeri ve vitrin ızgarası için)
-  ORAN: 0.85,               // ürün kadrajın bu kadarını kaplasın (0.85 = %85)
-  CIKTI_PX: 2000,           // uzun kenar (kare ise 2000x2000)
+  // "sablon" = ŞABLONUN KENDİ kadrajı ve ölçüsü korunur (ör. 4000x3000) —
+  //            Photoshop'tan elle kaydetmişsin gibi, kırpma/ölçekleme YOK.
+  // "urun"   = ürüne kırpar, kadrajı ORAN'a göre kurar (kılıf kadrajı doldurur).
+  KADRAJ: "sablon",
+  KARE: true,               // yalnız KADRAJ:"urun" iken: kare kadraj
+  ORAN: 0.85,               // yalnız KADRAJ:"urun" iken: ürün kadrajın bu kadarı
+  // Uzun kenar. 0 = YENİDEN BOYUTLANDIRMA YOK — şablonun ham çözünürlüğü kalır.
+  // ⚠ Küçültmek kılıfı piksel olarak küçültür; 4000x3000'i 2000'e indirince
+  //   kılıf yarı boyuta düşüyordu. Katalog için 0 ya da 3000 iyi.
+  CIKTI_PX: 0,
 
   // ── Zemin ─────────────────────────────────────────────────
   ZEMIN_RENK: "F6F7F9",     // "" verirsen zemin rengi hiç eklenmez
@@ -44,7 +51,7 @@ var AYAR = {
   GIZLE: ["filigran", "watermark", "logo", "remove this", "shadow text", "yazı"],
 
   // ── Çıktı ─────────────────────────────────────────────────
-  FORMAT: "jpg",            // "jpg" | "png"
+  FORMAT: "png",            // "png" (kayıpsız, şeffaflık korunur) | "jpg"
   JPG_KALITE: 80,           // Web için kaydet kalitesi (0-100)
   AD_SABLONU: "{tasarim}",  // ör. "{tasarim}_{sablon}" — çok şablonda otomatik eklenir
   VARSA_ATLA: true,         // aynı adlı çıktı varsa o tasarımı atla (yarıda kalan işi sürdürür)
@@ -332,8 +339,9 @@ function calistir(ayar) {
             }
           }
 
-          // Ürünü kadraja oturt: kırp → kare/oranlı kadraj
-          var sinir = urunSiniri(doc, ayar);
+          // Ürünü kadraja oturt (yalnız KADRAJ:"urun"): kırp → kare/oranlı kadraj.
+          // KADRAJ:"sablon" iken şablonun kendi kadrajı ve ölçüsü korunur.
+          var sinir = (ayar.KADRAJ === "urun") ? urunSiniri(doc, ayar) : null;
           if (sinir) {
             doc.crop([new UnitValue(sinir[0], "px"), new UnitValue(sinir[1], "px"),
                       new UnitValue(sinir[2], "px"), new UnitValue(sinir[3], "px")]);

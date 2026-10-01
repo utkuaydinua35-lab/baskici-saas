@@ -20,10 +20,13 @@ export function urunGorsel(url: string | null | undefined): { src: string; srcSe
   const nokta = url.lastIndexOf(".");
   if (nokta < 0) return { src: url, srcSet: "" };
   const govde = url.slice(0, nokta);
-  const ext = url.slice(nokta); // ".jpg" | ".png"
   // Orijinal de en büyük aday: geniş retina ekranda hero ~2300px ister;
   // yalnız 1280'e kadar sunulursa tarayıcı onu büyütür ve görsel bulanıklaşır.
   // Orijinal ≤2048 (ürün) / ≤2560 (tema) — 2048w yaklaşık doğru bildirim.
-  const srcSet = [...GENISLIKLER.map((w) => `${govde}-${w}${ext} ${w}w`), `${url} 2048w`].join(", ");
+  // Küçük boyutlar WebP (JPEG'den ~%30 küçük). Yeni yüklemelerde baştan
+  // yazılır; eski görsellerinki ilk istekte sunucuda üretilir (main.py
+  // SafeStaticFiles). Eskiden uzantı ana dosyadan alınıyordu: ana dosyası
+  // .webp olan yüklemede varyant .jpg olduğundan srcset 404 veriyordu.
+  const srcSet = [...GENISLIKLER.map((w) => `${govde}-${w}.webp ${w}w`), `${url} 2048w`].join(", ");
   return { src: url, srcSet };
 }

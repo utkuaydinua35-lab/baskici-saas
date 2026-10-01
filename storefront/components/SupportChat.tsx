@@ -7,6 +7,9 @@
 // bilgisi ve panelden tanımlanan SSS yanıtları. Sağ altta sohbet balonu.
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+
+const DAVET_ANAHTARI = "support-davet-kapandi";
+const DAVET_SUSKUN_GUN = 7;
 import { useTexts } from "@/lib/texts";
 
 interface Faq { q: string; a: string }
@@ -40,8 +43,11 @@ export default function SupportChat({
   ]);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Karşılama baloncuğu: müşteri desteğin orada olduğunu fark etsin.
-  // Bir kez kapatılırsa o oturumda bir daha çıkmaz (rahatsız etmemek için).
+  // Kapatılınca 7 gün çıkmaz (rahatsız etmemek için). Eskiden yalnız o sekme
+  // için hatırlanıyordu VE kaydırma dinleyicisi kapatıldıktan sonra da
+  // çalışmaya devam ettiği için ilk kaydırmada balon yeniden açılıyordu.
   const [davet, setDavet] = useState(false);
+  const davetKapali = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,13 +60,22 @@ export default function SupportChat({
   //   sayfayı kaydırmış olmalı. Kaydırma "ilgileniyorum" sinyalidir; hiç
   //   kaydırmadan ayrılan ziyaretçiyi rahatsız etmenin bir karşılığı yok.
   useEffect(() => {
-    let kapatildi = false;
-    try { kapatildi = sessionStorage.getItem("support-davet") === "kapali"; } catch { /* yok */ }
-    if (kapatildi) return;
+    try {
+      const son = Number(localStorage.getItem(DAVET_ANAHTARI) || 0);
+      if (son && Date.now() - son < DAVET_SUSKUN_GUN * 864e5) return;
+      // Kapatılmasa da bir ziyarette (sekme oturumu) yalnız BİR kez gösterilir
+      if (sessionStorage.getItem("support-davet-gosterildi")) return;
+    } catch { /* yok */ }
 
     let sureDoldu = false;
     let kaydirdi = false;
-    const belki = () => { if (sureDoldu && kaydirdi) setDavet(true); };
+    const belki = () => {
+      if (!sureDoldu || !kaydirdi || davetKapali.current) return;
+      davetKapali.current = true;   // bu sayfada bir kez
+      setDavet(true);
+      try { sessionStorage.setItem("support-davet-gosterildi", "1"); } catch { /* yok */ }
+      window.removeEventListener("scroll", kaydirma);
+    };
     const z = setTimeout(() => { sureDoldu = true; belki(); }, 18000);
     const kaydirma = () => {
       if (window.scrollY > 240) { kaydirdi = true; belki(); }
@@ -70,8 +85,9 @@ export default function SupportChat({
   }, []);
 
   const davetiKapat = () => {
+    davetKapali.current = true;
     setDavet(false);
-    try { sessionStorage.setItem("support-davet", "kapali"); } catch { /* yok */ }
+    try { localStorage.setItem(DAVET_ANAHTARI, String(Date.now())); } catch { /* yok */ }
   };
 
   const push = (...m: Msg[]) => setMsgs((prev) => [...prev, ...m]);

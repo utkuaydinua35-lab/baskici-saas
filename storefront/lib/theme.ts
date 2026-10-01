@@ -115,7 +115,7 @@ export interface Theme {
     gecikme_sn: number; tekrar_gun: number; dilimler: { yazi: string; kod: string }[] };
   cikis?: { enabled: boolean; baslik: string; metin: string; kupon: string; buton: string;
     vazgec: string; tekrar_gun: number; mobil_gecikme_sn: number };
-  popup: { enabled: boolean; ust_baslik?: string; gorsel_boyut?: number; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
+  popup: { enabled: boolean; ust_baslik?: string; gorsel_boyut?: number; gorsel_boyut_mobil?: number | null; baslik: string; metin: string; kupon: string; buton: string; gorsel_url: string };
   sections: ThemeSection[];
   // sepete_ucus: sepete ekleyince ürün görseli sepet simgesine uçar
   animations: { reveal: boolean; hover_zoom: boolean; cart_drawer: boolean; sepete_ucus?: boolean;

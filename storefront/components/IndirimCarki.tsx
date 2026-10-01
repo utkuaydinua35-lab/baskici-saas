@@ -10,6 +10,7 @@
 //    ayara geçen mağazada çarkı görmüş ziyaretçiye tekrar çıkmaz.
 //  • Tema editörü önizlemesinde kendiliğinden açılmaz; editör "Önizlemede
 //    göster" deyince açılır, iz bırakmaz.
+import KuponKodu from "@/components/KuponKodu";
 import { useEffect, useRef, useState } from "react";
 
 interface Dilim { yazi: string; kod: string }
@@ -130,9 +131,7 @@ export default function IndirimCarki({
             {sonuc.kod ? (
               <>
                 <p className="font-semibold">{sonuc.yazi} kazandın! 🎉</p>
-                <code className="mt-2 inline-block select-all rounded-lg bg-zinc-100 px-3 py-1.5 font-mono tracking-wider">
-                  {sonuc.kod}
-                </code>
+                <KuponKodu kod={sonuc.kod} />
                 <a href={`/sepet?kupon=${encodeURIComponent(sonuc.kod)}`}
                   className="btn-r mt-3 block w-full py-3 text-sm font-semibold text-white"
                   style={{ background: "var(--c-primary)" }}>Sepette kullan</a>

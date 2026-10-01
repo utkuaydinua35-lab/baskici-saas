@@ -49,9 +49,11 @@ html[data-hover-zoom="1"] .hover-zoom img { transition: transform 0.4s ease; }
 }
 
 /* Sayfalar arası geçiş (template.tsx) — reveal toggle'ına saygılı */
+/* Yalnız konum: sayfa saydamdan başlasaydı tarayıcı ilk görüntüyü (LCP)
+   animasyon bitene dek saymazdı — telefonda belirgin gecikme. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
+  from { transform: translateY(8px); }
+  to { transform: none; }
 }
 html[data-reveal="1"] .page-transition { animation: page-in 0.35s ease-out; }
 @media (prefers-reduced-motion: reduce) {
@@ -214,7 +216,9 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 @keyframes parilti-gec { to { left: 150%; } }
 @media (hover: hover) and (pointer: fine) { .parilti-gec:hover::after { animation: parilti-gec .85s ease; } }
 /* Hero görseli sayfa açılışında yükselerek gelir */
-@keyframes fz-acilis { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+/* Yalnız konum — saydamlık YOK: hero görseli sayfanın en büyük öğesi (LCP);
+   saydam başlarsa tarayıcı onu animasyon bitene dek "görünmedi" sayar. */
+@keyframes fz-acilis { from { transform: translateY(18px); } to { transform: none; } }
 .fz-acilis { animation: fz-acilis 1s .1s cubic-bezier(.22,1,.36,1) both; }
 @keyframes fz-metin { from { opacity: .2; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .fz-metin-gir { animation: fz-metin .5s cubic-bezier(.22,1,.36,1) both; }

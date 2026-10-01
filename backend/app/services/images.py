@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import io
 
+import os
+import threading
+from pathlib import Path
 from PIL import Image, ImageOps
 
 # Bu boyutun altındaki ve max_px'i aşmayan görsellere dokunma (zaten optimal)
@@ -59,7 +62,38 @@ def responsive_variants(data: bytes) -> list[tuple[int, bytes, str]]:
             (kucuk if kucuk.mode == "RGB" else kucuk.convert("RGB")).save(
                 buf, format="JPEG", quality=82, optimize=True, progressive=True)
             cikti.append((w, buf.getvalue(), "jpg"))
+        # WebP eşi — vitrin srcset'i bunu ister (JPEG'den ~%30 küçük; tüm
+        # güncel tarayıcılar destekler). Saydamlık korunur.
+        cikti.append((w, webp_kodla(kucuk), "webp"))
     return cikti
+
+
+def webp_kodla(img: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    alfa = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+    (img.convert("RGBA") if alfa else img.convert("RGB")).save(buf, format="WEBP", quality=80, method=4)
+    return buf.getvalue()
+
+
+def webp_varyant_uret(kaynak: Path, hedef: Path, en: int) -> bool:
+    """Eski görsellerin WebP varyantını İLK İSTEKTE üret (bkz. main.SafeStaticFiles).
+
+    kaynak: aynı genişlikteki JPEG/PNG varyantı ya da ana görsel (gerekirse
+    küçültülür, asla büyütülmez). Yarım dosya görünmesin diye geçici dosyaya
+    yazılıp yerine taşınır (aynı anda iki istek gelirse ikisi de güvenli).
+    """
+    try:
+        img = Image.open(kaynak)
+        img.load()
+    except Exception:  # noqa: BLE001
+        return False
+    img = ImageOps.exif_transpose(img)
+    if img.size[0] > en:
+        img = img.resize((en, max(1, round(img.size[1] * en / img.size[0]))), Image.LANCZOS)
+    gecici = hedef.with_name(f".{hedef.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    gecici.write_bytes(webp_kodla(img))
+    os.replace(gecici, hedef)
+    return True
 
 
 def optimize_image(

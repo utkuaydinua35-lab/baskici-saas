@@ -15,22 +15,26 @@ import CouponFromUrl from "@/components/CouponFromUrl";
 import LockScreen from "@/components/LockScreen";
 import PreviewBridge from "@/components/PreviewBridge";
 import CopyGuard from "@/components/CopyGuard";
-import SupportChat from "@/components/SupportChat";
-import CampaignPopup from "@/components/CampaignPopup";
 import ScrollTopButton from "@/components/ScrollTopButton";
-import IndirimCarki from "@/components/IndirimCarki";
-import CikisPopup from "@/components/CikisPopup";
+import {
+  CampaignPopupErtelenmis, CikisPopupErtelenmis, IndirimCarkiErtelenmis, SupportChatErtelenmis,
+} from "@/components/Ertelenmis";
 import Presence from "@/components/Presence";
 import MobilDock from "@/components/MobilDock";
 import GenisFooter from "@/components/GenisFooter";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
 
-// Font preset'leri — hepsi değişken olarak yüklenir, tema seçileni uygular.
-const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter" });
-const poppins = Poppins({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700"], variable: "--font-poppins" });
-const playfair = Playfair_Display({ subsets: ["latin", "latin-ext"], variable: "--font-playfair" });
-const dmSans = DM_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-dm-sans" });
+// Font preset'leri — hepsi değişken olarak tanımlı, tema seçileni uygular.
+// preload: false — eskiden DÖRDÜ birden her sayfada önceden yükleniyordu
+// (~200 KB); mağaza yalnız birini kullanıyor. Telefonda bu baytlar hero
+// görseliyle yarışıp ilk görüntüyü geciktiriyordu (Lighthouse). Artık tarayıcı
+// yalnız sayfada KULLANILAN yazı tipini indirir (display: swap — metin
+// beklemeden sistem yazı tipiyle görünür, yazı tipi gelince değişir).
+const inter = Inter({ subsets: ["latin", "latin-ext"], variable: "--font-inter", preload: false });
+const poppins = Poppins({ subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700"], variable: "--font-poppins", preload: false });
+const playfair = Playfair_Display({ subsets: ["latin", "latin-ext"], variable: "--font-playfair", preload: false });
+const dmSans = DM_Sans({ subsets: ["latin", "latin-ext"], variable: "--font-dm-sans", preload: false });
 // Editoryal başlık yazı tipi — önceden yüklenmez (preload: false): onu
 // kullanmayan mağazalar bu dosyayı hiç indirmez.
 const instrument = Instrument_Serif({ subsets: ["latin", "latin-ext"], weight: "400",
@@ -169,7 +173,9 @@ export default async function RootLayout({
           <Pixels meta={payloadPixels?.meta} ga4={payloadPixels?.ga4} tiktok={payloadPixels?.tiktok} />
           {/* Meta Pixel temel kodu SSR ile basılır — Meta'nın "piksel saptandı"
               denetleyicisi JS çalıştırmadan kaynak HTML'e bakar; client-side
-              enjeksiyonu göremez. init+PageView burada, route değişimleri Pixels'ta. */}
+              enjeksiyonu göremez. init+PageView burada, route değişimleri Pixels'ta.
+              fbevents.js (110 KB) sayfa YÜKLENDİKTEN sonra indirilir: olaylar
+              fbq kuyruğunda bekler, hiçbiri kaybolmaz; ilk görüntüyle yarışmaz. */}
           {payloadPixels?.meta && (
             <>
               <script dangerouslySetInnerHTML={{ __html: `
@@ -177,9 +183,11 @@ export default async function RootLayout({
                 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
                 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
                 if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                n.queue=[];t=b.createElement(e);t.async=!0;
+                n.queue=[];var y=function(){t=b.createElement(e);t.async=!0;
                 t.src=v;s=b.getElementsByTagName(e)[0];
-                s.parentNode.insertBefore(t,s)}(window, document,'script',
+                s.parentNode.insertBefore(t,s)};
+                if(b.readyState==='complete')setTimeout(y,0);
+                else f.addEventListener('load',function(){setTimeout(y,0)})}(window, document,'script',
                 'https://connect.facebook.net/en_US/fbevents.js');
                 fbq('init', '${payloadPixels.meta.replace(/[^0-9]/g, "")}');
                 fbq('track', 'PageView');
@@ -264,26 +272,27 @@ export default async function RootLayout({
             <WhatsAppButton number={theme.whatsapp.number} message={theme.whatsapp.message} />
           )}
           {theme.popup?.enabled && (
-            <CampaignPopup onizleme={!!payload.is_preview} ustBaslik={theme.popup.ust_baslik}
+            <CampaignPopupErtelenmis onizleme={!!payload.is_preview} ustBaslik={theme.popup.ust_baslik}
               gorselBoyut={theme.popup.gorsel_boyut ?? 100}
+              gorselBoyutMobil={theme.popup.gorsel_boyut_mobil ?? null}
               baslik={theme.popup.baslik} metin={theme.popup.metin}
               kupon={theme.popup.kupon} buton={theme.popup.buton}
               gorselUrl={theme.popup.gorsel_url} />
           )}
           {theme.style.scroll_top && <ScrollTopButton />}
           {theme.cark?.enabled && (
-            <IndirimCarki onizleme={!!payload.is_preview} baslik={theme.cark.baslik}
+            <IndirimCarkiErtelenmis onizleme={!!payload.is_preview} baslik={theme.cark.baslik}
               metin={theme.cark.metin} buton={theme.cark.buton} gecikmeSn={theme.cark.gecikme_sn}
               tekrarGun={theme.cark.tekrar_gun} dilimler={theme.cark.dilimler} />
           )}
           {theme.cikis?.enabled && (
-            <CikisPopup onizleme={!!payload.is_preview} baslik={theme.cikis.baslik}
+            <CikisPopupErtelenmis onizleme={!!payload.is_preview} baslik={theme.cikis.baslik}
               metin={theme.cikis.metin} kupon={theme.cikis.kupon} buton={theme.cikis.buton}
               vazgec={theme.cikis.vazgec} tekrarGun={theme.cikis.tekrar_gun}
               mobilGecikmeSn={theme.cikis.mobil_gecikme_sn} />
           )}
           {payload.support?.enabled !== false && (
-            <SupportChat faq={payload.support?.faq ?? []}
+            <SupportChatErtelenmis faq={payload.support?.faq ?? []}
               magaza={payload.store_name}
               whatsappVisible={!!(theme.whatsapp?.enabled && theme.whatsapp.number)} />
           )}

@@ -756,15 +756,30 @@ export default function TemaEditorPage() {
                       onUrl={url => set('popup.gorsel_url', url)}
                       onClear={() => set('popup.gorsel_url', '')} />
                     {theme.popup.gorsel_url && (
+                      <>
                       <label className="block text-sm">
                         <span className="text-panel-muted text-xs">
-                          Görsel boyutu: <b>%{theme.popup.gorsel_boyut || 100}</b>
+                          🖥️ Masaüstü görsel boyutu: <b>%{theme.popup.gorsel_boyut || 100}</b>
                         </span>
                         <input type="range" min="30" max="100" step="5"
                           value={theme.popup.gorsel_boyut || 100}
                           onChange={e => set('popup.gorsel_boyut', Number(e.target.value))}
                           className="w-full mt-1 accent-emerald-600" />
                       </label>
+                      <label className="block text-sm">
+                        <span className="text-panel-muted text-xs flex items-center justify-between">
+                          <span>📱 Mobil görsel boyutu: <b>{theme.popup.gorsel_boyut_mobil ? `%${theme.popup.gorsel_boyut_mobil}` : 'masaüstüyle aynı'}</b></span>
+                          {theme.popup.gorsel_boyut_mobil && (
+                            <button type="button" onClick={() => set('popup.gorsel_boyut_mobil', null)}
+                              className="text-[11px] underline">aynı yap</button>
+                          )}
+                        </span>
+                        <input type="range" min="30" max="100" step="5"
+                          value={theme.popup.gorsel_boyut_mobil || theme.popup.gorsel_boyut || 100}
+                          onChange={e => set('popup.gorsel_boyut_mobil', Number(e.target.value))}
+                          className="w-full mt-1 accent-emerald-600" />
+                      </label>
+                      </>
                     )}
                   </>
                 )}

@@ -311,6 +311,7 @@ if _golge:
 
 
 # ─── Guvenli statik servis (SVG/HTML XSS korumasi) ────────────
+import re as _re
 from starlette.responses import Response as _Resp
 
 class SafeStaticFiles(StaticFiles):
@@ -333,7 +334,17 @@ class SafeStaticFiles(StaticFiles):
     """
     _RISKY_EXT = {"svg", "html", "htm", "xml", "xhtml", "svgz"}
 
+    # Duyarlı WebP varyantı (-400/-800/-1280.webp) yoksa İLK İSTEKTE üretilir:
+    # vitrin srcset'i WebP istiyor; yeni yüklemeler bunu baştan yazar, eski
+    # görseller (ve yanlışlıkla .webp ana dosyası olan eski yüklemeler) bu
+    # yolla kendiliğinden tamamlanır — ayrı toplu dönüştürme gerekmez.
+    _WEBP_VARYANT = _re.compile(r"^(?P<govde>[^/]+)-(?P<en>400|800|1280)\.webp$")
+
     async def get_response(self, path: str, scope):
+        ad = str(path).rsplit("/", 1)[-1]
+        m = self._WEBP_VARYANT.match(ad)
+        if m and scope.get("method") in ("GET", "HEAD"):
+            await self._webp_tamamla(str(path), m.group("govde"), int(m.group("en")))
         resp = await super().get_response(path, scope)
         ad = str(path).rsplit("/", 1)[-1]
         ext = ad.rsplit(".", 1)[-1].lower() if "." in ad else ""
@@ -349,6 +360,28 @@ class SafeStaticFiles(StaticFiles):
             resp.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
             resp.headers["Content-Type"] = "application/octet-stream"
         return resp
+
+    async def _webp_tamamla(self, path: str, govde: str, en: int) -> None:
+        import anyio
+        from pathlib import Path as _P
+        from app.services.images import webp_varyant_uret
+
+        tam, st = await anyio.to_thread.run_sync(self.lookup_path, path)
+        if st is not None:
+            return  # zaten var
+        klasor = path.rsplit("/", 1)[0] if "/" in path else ""
+        adaylar = [f"{govde}-{en}.jpg", f"{govde}-{en}.png",
+                   f"{govde}.jpg", f"{govde}.jpeg", f"{govde}.png", f"{govde}.webp"]
+        for aday in adaylar:
+            kaynak, kst = await anyio.to_thread.run_sync(
+                self.lookup_path, f"{klasor}/{aday}" if klasor else aday)
+            if kst is not None and kaynak:
+                hedef = _P(kaynak).parent / f"{govde}-{en}.webp"
+                try:
+                    await anyio.to_thread.run_sync(webp_varyant_uret, _P(kaynak), hedef, en)
+                except OSError:
+                    pass  # yazılamadıysa 404 döner, vitrin bozulmaz (tarayıcı diğer adayı seçmez ama sayfa çalışır)
+                return
 
 
 # ─── Static files (tasarım dosyaları) ─────────────────────────

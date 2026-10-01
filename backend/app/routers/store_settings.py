@@ -915,7 +915,7 @@ def list_assets(
     ogeler = []
     if d.is_dir():
         for f in d.iterdir():
-            if not f.is_file() or _re.search(r"-(400|800|1280)\.(jpg|png)$", f.name):
+            if not f.is_file() or _re.search(r"-(400|800|1280)\.(jpg|png|webp)$", f.name):
                 continue
             ext = f.suffix.lower().lstrip(".")
             tur = ("video" if ext in storage_svc.VIDEO_EXTENSIONS

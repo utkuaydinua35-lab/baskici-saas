@@ -179,16 +179,52 @@ def _cok_satan_alt(db, store):
     ).subquery("cok_satan")
 
 
-def _serialize_product_card(p: CatalogProduct) -> dict:
-    """Liste kartı — minimum alan (PII yok, iç ID'ler yalnızca gerekli olanlar)."""
-    active_variants = [v for v in p.variants if v.is_active]
-    models = sorted({v.model_display for v in active_variants})
-    # "Son N adet" rozeti: yalnızca TÜM varyantlar stok takipliyse anlamlı
-    tracked = [v for v in active_variants if v.track_stock]
-    total_stock = (
-        sum(max(v.quantity, 0) for v in tracked)
-        if active_variants and len(tracked) == len(active_variants) else None
-    )
+def _kart_ozetleri(db: Session, urun_idleri) -> dict:
+    """Ürün kartı için varyant özeti — TEK sorguda, veritabanında.
+
+    Eskiden liste her ürünün TÜM varyantlarını ORM nesnesi olarak yüklüyordu
+    (canlıda ürün başına ~300 varyant → 24'lük sayfada ~7.400 satır) ve yalnız
+    "N model için uygun" + stok rozeti için Python'da sayıyordu. Ürün listesi
+    bu yüzden her istekte 1-2 sn sürüyordu. Sonuç birebir aynı:
+      model_count = farklı aktif model sayısı
+      total_stock = aktif varyantların HEPSİ stok takipliyse stok toplamı, değilse None
+    """
+    if not urun_idleri:
+        return {}
+    aktif = CatalogVariant.is_active.is_(True)
+    satirlar = db.execute(
+        select(
+            CatalogVariant.product_id,
+            func.count(func.distinct(CatalogVariant.model_display)).filter(aktif),
+            func.count().filter(aktif),
+            func.count().filter(aktif, CatalogVariant.track_stock.is_(True)),
+            func.coalesce(func.sum(func.greatest(CatalogVariant.quantity, 0))
+                          .filter(aktif, CatalogVariant.track_stock.is_(True)), 0),
+        ).where(CatalogVariant.product_id.in_(list(urun_idleri)))
+        .group_by(CatalogVariant.product_id)
+    ).all()
+    return {
+        pid: {"model_count": int(mc or 0),
+              "total_stock": int(stok) if aktif_say and takipli == aktif_say else None}
+        for pid, mc, aktif_say, takipli, stok in satirlar
+    }
+
+
+def _serialize_product_card(p: CatalogProduct, ozet: dict | None = None) -> dict:
+    """Liste kartı — minimum alan (PII yok, iç ID'ler yalnızca gerekli olanlar).
+
+    ozet: _kart_ozetleri satırı (varyantlar YÜKLENMEDEN). Verilmezse eski yol
+    (p.variants yüklü olmalı)."""
+    if ozet is None:
+        active_variants = [v for v in p.variants if v.is_active]
+        models = {v.model_display for v in active_variants}
+        # "Son N adet" rozeti: yalnızca TÜM varyantlar stok takipliyse anlamlı
+        tracked = [v for v in active_variants if v.track_stock]
+        ozet = {
+            "model_count": len(models),
+            "total_stock": (sum(max(v.quantity, 0) for v in tracked)
+                            if active_variants and len(tracked) == len(active_variants) else None),
+        }
     return {
         "slug": p.slug,
         "title": p.title,
@@ -200,8 +236,8 @@ def _serialize_product_card(p: CatalogProduct) -> dict:
         "hover_image": f"/storage/{p.images[1].file_path}" if len(p.images) > 1 else None,
         "video_url": p.video_url,
         "tags": p.tags,
-        "model_count": len(models),
-        "total_stock": total_stock,
+        "model_count": ozet["model_count"],
+        "total_stock": ozet["total_stock"],
     }
 
 
@@ -305,7 +341,8 @@ def list_products(
             CatalogProduct.store_id == store.id,
             CatalogProduct.status == "active",
         )
-        .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+        # Varyantlar YÜKLENMEZ — kart özeti tek sorguda (_kart_ozetleri)
+        .options(selectinload(CatalogProduct.images))
     )
     if sort == "fiyat-artan":
         query = query.order_by(CatalogProduct.base_price.asc(), CatalogProduct.position)
@@ -408,6 +445,8 @@ def list_products(
         ).all() if b)
 
     brands = vitrin_cache.markalar(db, store.id, _markalari_oku)
+    ozetler = _kart_ozetleri(db, [p_.id for p_ in items])
+    bos_ozet = {"model_count": 0, "total_stock": None}
 
     response.headers["Cache-Control"] = "public, max-age=60"
     config = store.config or {}
@@ -423,7 +462,7 @@ def list_products(
         "total": total,
         "page": page,
         "per_page": per_page,
-        "items": [_serialize_product_card(p) for p in items],
+        "items": [_serialize_product_card(p, ozetler.get(p.id, bos_ozet)) for p in items],
         "facets": {"brands": brands},
     }
 
@@ -466,7 +505,7 @@ def get_product(
         CatalogProduct.store_id == store.id,
         CatalogProduct.status == "active",
         CatalogProduct.id != product.id,
-    ).options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
+    ).options(selectinload(CatalogProduct.images))
     col_ids = [c.id for c in product.collections]
     if col_ids:
         from app.models import catalog_product_collections
@@ -477,7 +516,9 @@ def get_product(
     related = db.scalars(
         related_q.order_by(CatalogProduct.position, CatalogProduct.created_at.desc()).limit(4)
     ).all()
-    detail["related"] = [_serialize_product_card(r) for r in related]
+    rel_ozet = _kart_ozetleri(db, [r.id for r in related])
+    detail["related"] = [_serialize_product_card(r, rel_ozet.get(r.id, {"model_count": 0, "total_stock": None}))
+                         for r in related]
 
     response.headers["Cache-Control"] = "public, max-age=60"
     return detail
@@ -1355,9 +1396,20 @@ def get_store_theme(
         config = preview_config
     else:
         response.headers["Cache-Control"] = "public, max-age=60"
+    tema = resolve_theme(config)
+    # Eski ham kampanya kodu (çark / "Gitmeden önce") vitrine gitmez: kapatınca
+    # tekrar tekrar açılıyordu. Tema aracı kapalıysa eski koddaki ayarlarla
+    # yeni araç açılır (kayıtlı veri değişmez — bkz. eski_kampanya_kodu).
+    from app.services import eski_kampanya_kodu
+    from app.services.theme import _cark_temizle, _cikis_temizle
+    ozel_kod, eski_cark, eski_cikis = eski_kampanya_kodu.ayikla(config.get("custom_code") or None)
+    if eski_cark and not tema["cark"]["enabled"]:
+        tema["cark"] = _cark_temizle({**tema["cark"], **eski_cark})
+    if eski_cikis and not tema["cikis"]["enabled"]:
+        tema["cikis"] = _cikis_temizle({**tema["cikis"], **eski_cikis})
     return {
         "store_name": store.name,
-        "theme": resolve_theme(config),
+        "theme": tema,
         "settings": {
             "shipping_fee": config.get("shipping_fee"),
             "free_shipping_over": config.get("free_shipping_over"),
@@ -1391,7 +1443,7 @@ def get_store_theme(
             {"slug": p_["slug"], "title": p_["title"]}
             for p_ in (config.get("pages") or [])
         ],
-        "custom_code": config.get("custom_code") or None,
+        "custom_code": ozel_kod,
         "active_promotion": _active_promotion(db, store),
         "active_promotions": _active_promotions(db, store),
         # Yayin oncesi kilit (Shopify password page) — sifrenin kendisi ASLA donmez

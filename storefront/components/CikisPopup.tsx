@@ -6,6 +6,7 @@
 // "Gördüm" kaydı eski parçacıkla AYNI anahtarda (bz_exit_seen). Başka pencere
 // açıkken (açılış pop-up'ı, çark) açılmaz. Tema önizlemesinde yalnız editör
 // "Önizlemede göster" deyince açılır.
+import KuponKodu from "@/components/KuponKodu";
 import { useEffect, useState } from "react";
 
 const ANAHTAR = "bz_exit_seen";
@@ -59,9 +60,7 @@ export default function CikisPopup({
           className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-zinc-100 text-zinc-600 hover:bg-zinc-200">✕</button>
         <h2 className="text-xl font-bold">{baslik}</h2>
         {metin ? <p className="mt-2 text-sm text-zinc-600">{metin}</p> : null}
-        <code className="mt-4 block select-all rounded-xl bg-zinc-100 py-2.5 font-mono text-lg font-bold tracking-widest">
-          {kupon}
-        </code>
+        <div className="mt-4"><KuponKodu kod={kupon} buyuk /></div>
         <a href={`/sepet?kupon=${encodeURIComponent(kupon)}`}
           className="btn-r mt-4 block w-full py-3 font-semibold text-white"
           style={{ background: "var(--c-primary)" }}>{buton}</a>

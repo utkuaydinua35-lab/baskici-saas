@@ -213,9 +213,11 @@ DEFAULT_THEME: dict = {
     # baslik/metin boşsa pop-up HİÇ gösterilmez (kapalı gibi davranır).
     # ust_baslik: başlığın üstündeki küçük etiket (örn. "✨ KAMPANYA ✨");
     # baslik'ta satır sonu korunur ("3 AL 2 ÖDE\n5 AL 3 ÖDE").
-    # gorsel_boyut: pop-up görselinin (ör. logo) genişliği, % (30-100)
+    # gorsel_boyut: pop-up görselinin (ör. logo) genişliği, % (30-100) — masaüstü;
+    # gorsel_boyut_mobil: telefonda ayrı genişlik (None = masaüstüyle aynı)
     "popup": {"enabled": False, "ust_baslik": "", "baslik": "", "metin": "", "kupon": "",
-              "buton": "Alışverişe Başla", "gorsel_url": "", "gorsel_boyut": 100},
+              "buton": "Alışverişe Başla", "gorsel_url": "", "gorsel_boyut": 100,
+              "gorsel_boyut_mobil": None},
     # ── Kampanya araçları (eskiden "Özel Kod → Hazır ekle" ile HAM KOD olarak
     # ekleniyordu; metin/kupon/süre değiştirmek için kod düzenlemek gerekiyordu
     # ve aynı kod iki kez yapıştırılabiliyordu). Artık formla ayarlanır.
@@ -897,6 +899,11 @@ def resolve_theme(store_config: dict | None) -> dict:
         popup["gorsel_boyut"] = min(100, max(30, int(popup.get("gorsel_boyut") or 100)))
     except (TypeError, ValueError):
         popup["gorsel_boyut"] = 100
+    try:
+        gbm = popup.get("gorsel_boyut_mobil")
+        popup["gorsel_boyut_mobil"] = min(100, max(30, int(gbm))) if gbm not in (None, "") else None
+    except (TypeError, ValueError):
+        popup["gorsel_boyut_mobil"] = None
     anim = theme.get("animations") if isinstance(theme.get("animations"), dict) else {}
     if anim.get("hareket_tercihi") not in ("uy", "her_zaman"):
         anim["hareket_tercihi"] = "uy"

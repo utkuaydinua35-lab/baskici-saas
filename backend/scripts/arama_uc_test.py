@@ -60,6 +60,26 @@ try:
     r = c.get(U, params={"q": "kilif", "collection": "yok-boyle-koleksiyon"}).json()
     es("diğer süzgeçlerle birleşir", 0, r["total"])
 
+    print("\n── Katalog değişince: bekletmeden eski dizin, arkada yenisi ──")
+    import time as _t
+    p = CatalogProduct(tenant_id=tenant.id, store_id=st.id, slug=f"{IZ}-9", title="Uzay Gemisi Kılıfı",
+                       status="active", base_price=Decimal("299.90"), currency="TRY", position=9)
+    db.add(p); db.commit()
+    from app.services import vitrin_cache
+    vitrin_cache.markalari_dusur(); arama.dusur()
+    r = c.get(U, params={"q": "uzay"}).json()
+    es("ilk arama eski dizinle hemen yanıtlanır", 0, r["total"])
+    for _ in range(50):
+        _t.sleep(0.1)
+        if c.get(U, params={"q": "uzay"}).json()["total"]:
+            break
+    es("yeni ürün arkadaki yenilemeden sonra bulunur", 1, c.get(U, params={"q": "uzay"}).json()["total"])
+    db.delete(p); db.commit(); arama.dusur()
+    for _ in range(50):
+        _t.sleep(0.1)
+        if not c.get(U, params={"q": "uzay"}).json()["total"]:
+            break
+
     print("\n── Kayıt ve rapor ──")
     c.get(U, params={"q": "Uzay Gemisi", "kaydet": 1})
     c.get(U, params={"q": "uzay gemisi", "kaydet": 1})

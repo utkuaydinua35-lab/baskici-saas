@@ -84,58 +84,98 @@ class _Urun:
         self.model_kelimeleri = set(model.split())
 
 
-_onbellek: dict[str, tuple[float, list[_Urun]]] = {}
+class _Dizin:
+    __slots__ = ("zaman", "urunler", "sozluk", "bayat")
+
+    def __init__(self, urunler: list[_Urun]):
+        self.zaman = time.monotonic()
+        self.urunler = urunler
+        # Mağazadaki tüm kelimeler — yazım hatası/önek bir kez burada aranır,
+        # ürün ürün değil (canlıda ürün başına karşılaştırma ~1 sn sürüyordu)
+        self.sozluk: set[str] = set()
+        for u in urunler:
+            self.sozluk |= u.ad_kelimeleri | u.ek_kelimeleri | u.model_kelimeleri
+        self.bayat = False
+
+
+_onbellek: dict[str, _Dizin] = {}
+_yenileniyor: set[str] = set()
 _kilit = threading.Lock()
 
 
 def dusur() -> None:
+    """Katalog değişti: dizin BAYAT işaretlenir, silinmez. Bir sonraki arama
+    eskisiyle hemen yanıtlanır, yenisi arkada kurulur — canlıda stok/eşitleme
+    sık güncellendiği için silmek her seferinde bir müşteriyi 3-4 sn bekletirdi."""
     with _kilit:
-        _onbellek.clear()
+        for d in _onbellek.values():
+            d.bayat = True
 
 
-def _dizin(db, store) -> list[_Urun]:
-    anahtar = str(store.id)
-    simdi = time.monotonic()
-    with _kilit:
-        kayit = _onbellek.get(anahtar)
-        if kayit and simdi - kayit[0] < _TTL_SN:
-            return kayit[1]
+def _kur(db, store_id) -> _Dizin:
     from sqlalchemy import text
     satirlar = db.execute(text("""
-        SELECT p.id, p.title, coalesce(p.tags, ''),
-               coalesce((SELECT string_agg(c.title, ' ')
-                         FROM catalog_product_collections pc
-                         JOIN catalog_collections c ON c.id = pc.collection_id AND c.is_active
-                         WHERE pc.product_id = p.id), ''),
-               coalesce((SELECT string_agg(DISTINCT v.model_display, ' | ')
-                         FROM catalog_variants v
-                         WHERE v.product_id = p.id AND v.is_active), '')
-        FROM catalog_products p
-        WHERE p.store_id = :sid AND p.status = 'active'
+        WITH p AS (
+            SELECT id, title, coalesce(tags, '') AS tags, position, created_at
+            FROM catalog_products WHERE store_id = :sid AND status = 'active'),
+        k AS (
+            SELECT pc.product_id, string_agg(c.title, ' ') AS t
+            FROM catalog_product_collections pc
+            JOIN p ON p.id = pc.product_id
+            JOIN catalog_collections c ON c.id = pc.collection_id AND c.is_active
+            GROUP BY pc.product_id),
+        m AS (
+            SELECT v.product_id, string_agg(DISTINCT v.model_display, ' | ') AS t
+            FROM catalog_variants v JOIN p ON p.id = v.product_id
+            WHERE v.is_active GROUP BY v.product_id)
+        SELECT p.id, p.title, p.tags, coalesce(k.t, ''), coalesce(m.t, '')
+        FROM p LEFT JOIN k ON k.product_id = p.id LEFT JOIN m ON m.product_id = p.id
         ORDER BY p.position, p.created_at DESC
-    """), {"sid": store.id}).all()
-    dizin = [_Urun(r[0], normalize(r[1]), normalize(f"{r[2]} {r[3]}"), normalize(r[4])) for r in satirlar]
+    """), {"sid": store_id}).all()
+    # Ürünlerin çoğu aynı model listesini taşır — bir kez normalleştir
+    norm_onbellek: dict[str, str] = {}
+
+    def n(x: str) -> str:
+        if x not in norm_onbellek:
+            norm_onbellek[x] = normalize(x)
+        return norm_onbellek[x]
+    return _Dizin([_Urun(r[0], normalize(r[1]), normalize(f"{r[2]} {r[3]}"), n(r[4])) for r in satirlar])
+
+
+def _arkada_yenile(store_id) -> None:
+    anahtar = str(store_id)
     with _kilit:
-        _onbellek[anahtar] = (simdi, dizin)
-    return dizin
+        if anahtar in _yenileniyor:
+            return
+        _yenileniyor.add(anahtar)
+
+    def is_() -> None:
+        try:
+            from app.database import SessionLocal
+            with SessionLocal() as db:
+                yeni = _kur(db, store_id)
+            with _kilit:
+                _onbellek[anahtar] = yeni
+        except Exception:  # noqa: BLE001 — eski dizinle devam
+            pass
+        finally:
+            with _kilit:
+                _yenileniyor.discard(anahtar)
+    threading.Thread(target=is_, daemon=True).start()
 
 
-def _tutar(t: str, kelimeler: set[str], onek: bool) -> bool:
-    return t in kelimeler or (onek and any(w.startswith(t) for w in kelimeler))
-
-
-def _kelime_puani(t: str, u: _Urun, bulanik: bool, onek: bool) -> float:
-    if _tutar(t, u.ad_kelimeleri, onek):
-        return 3.0
-    if _tutar(t, u.ek_kelimeleri, onek):
-        return 2.0
-    if _tutar(t, u.model_kelimeleri, onek):
-        return 1.0
-    if bulanik:
-        for kume, puan in ((u.ad_kelimeleri, 1.5), (u.ek_kelimeleri, 1.2), (u.model_kelimeleri, 0.8)):
-            if any(yakin(t, w) for w in kume):
-                return puan
-    return 0.0
+def _dizin(db, store) -> _Dizin:
+    anahtar = str(store.id)
+    with _kilit:
+        d = _onbellek.get(anahtar)
+    if d is None:
+        d = _kur(db, store.id)        # ilk kez: mecburen beklenir
+        with _kilit:
+            _onbellek[anahtar] = d
+        return d
+    if d.bayat or time.monotonic() - d.zaman > _TTL_SN:
+        _arkada_yenile(store.id)
+    return d
 
 
 def ara(db, store, sorgu: str) -> list:
@@ -144,15 +184,45 @@ def ara(db, store, sorgu: str) -> list:
     if not kelimeler:
         return []
     dizin = _dizin(db, store)
+    sozluk = dizin.sozluk
 
     son = len(kelimeler) - 1
     # Yarım kelime: son kelime (yazılmakta olan) ya da 4+ harfli kelime
-    onekler = [i == son or len(t) >= 4 for i, t in enumerate(kelimeler)]
+    tam: list[set[str]] = []
+    for i, t in enumerate(kelimeler):
+        onek = i == son or len(t) >= 4
+        tam.append({w for w in sozluk if w.startswith(t)} if onek else ({t} & sozluk))
+    bulanik_onbellek: dict[int, set[str]] = {}
 
-    def tur(bulanik: bool, hepsi: bool) -> list:
+    def bulanik(i: int) -> set[str]:
+        if i not in bulanik_onbellek:
+            bulanik_onbellek[i] = {w for w in sozluk if yakin(kelimeler[i], w)}
+        return bulanik_onbellek[i]
+
+    def puan(u: _Urun, i: int, bulanik_mi: bool) -> float:
+        e = tam[i]
+        if e:
+            if not u.ad_kelimeleri.isdisjoint(e):
+                return 3.0
+            if not u.ek_kelimeleri.isdisjoint(e):
+                return 2.0
+            if not u.model_kelimeleri.isdisjoint(e):
+                return 1.0
+        if bulanik_mi:
+            f = bulanik(i)
+            if f:
+                if not u.ad_kelimeleri.isdisjoint(f):
+                    return 1.5
+                if not u.ek_kelimeleri.isdisjoint(f):
+                    return 1.2
+                if not u.model_kelimeleri.isdisjoint(f):
+                    return 0.8
+        return 0.0
+
+    def tur(bulanik_mi: bool, hepsi: bool) -> list:
         sonuc = []
-        for sira, u in enumerate(dizin):
-            puanlar = [_kelime_puani(t, u, bulanik, onekler[i]) for i, t in enumerate(kelimeler)]
+        for sira, u in enumerate(dizin.urunler):
+            puanlar = [puan(u, i, bulanik_mi) for i in range(len(kelimeler))]
             if (all(puanlar) if hepsi else any(puanlar)):
                 sonuc.append((-sum(puanlar), sira, u.id))
         sonuc.sort()

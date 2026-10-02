@@ -32,7 +32,8 @@ URUNLER = [
     ("u6", "Lens Koruyucu (iPhone)", "aksesuar", ""),
 ]
 dizin = [arama._Urun(i, arama.normalize(a), arama.normalize(e), arama.normalize(m)) for i, a, e, m in URUNLER]
-arama._dizin = lambda db, store: dizin
+_D = arama._Dizin(dizin)
+arama._dizin = lambda db, store: _D
 ara = lambda q: arama.ara(None, None, q)  # noqa: E731
 
 print("\n── Normalleştirme ──")

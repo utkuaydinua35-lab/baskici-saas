@@ -99,7 +99,10 @@ class _Dizin:
 
 
 _onbellek: dict[str, _Dizin] = {}
-_yenileniyor: set[str] = set()
+# Mağaza başına TEK kurulum: sürmekte olan kurulumun bitiş olayı. Canlıda
+# açılıştaki ısıtma sürerken gelen ilk arama ikinci bir kurulum başlatmış,
+# ikisi işlemciyi paylaşınca ilk arama 9.8 sn sürmüştü.
+_yenileniyor: dict[str, threading.Event] = {}
 _kilit = threading.Lock()
 
 
@@ -142,12 +145,14 @@ def _kur(db, store_id) -> _Dizin:
     return _Dizin([_Urun(r[0], normalize(r[1]), normalize(f"{r[2]} {r[3]}"), n(r[4])) for r in satirlar])
 
 
-def _arkada_yenile(store_id) -> None:
+def _arkada_yenile(store_id) -> threading.Event:
+    """Arkada kurulum başlat (zaten sürüyorsa onun bitiş olayını döndür)."""
     anahtar = str(store_id)
     with _kilit:
-        if anahtar in _yenileniyor:
-            return
-        _yenileniyor.add(anahtar)
+        olay = _yenileniyor.get(anahtar)
+        if olay is not None:
+            return olay
+        olay = _yenileniyor[anahtar] = threading.Event()
 
     def is_() -> None:
         try:
@@ -160,8 +165,10 @@ def _arkada_yenile(store_id) -> None:
             pass
         finally:
             with _kilit:
-                _yenileniyor.discard(anahtar)
+                _yenileniyor.pop(anahtar, None)
+            olay.set()
     threading.Thread(target=is_, daemon=True).start()
+    return olay
 
 
 def _dizin(db, store) -> _Dizin:
@@ -169,9 +176,15 @@ def _dizin(db, store) -> _Dizin:
     with _kilit:
         d = _onbellek.get(anahtar)
     if d is None:
-        d = _kur(db, store.id)        # ilk kez: mecburen beklenir
+        # Hiç dizin yok (açılış ısıtması sürüyor ya da ilk kez): TEK kurulumu
+        # bekle — ikinci bir kurulum başlatma
+        _arkada_yenile(store.id).wait(timeout=30)
         with _kilit:
-            _onbellek[anahtar] = d
+            d = _onbellek.get(anahtar)
+        if d is None:                 # kurulum hata verdiyse son çare
+            d = _kur(db, store.id)
+            with _kilit:
+                _onbellek[anahtar] = d
         return d
     if d.bayat or time.monotonic() - d.zaman > _TTL_SN:
         _arkada_yenile(store.id)
@@ -236,14 +249,14 @@ def isit() -> None:
     (deploy) sonraki ilk müşteri aramaları 2.5 sn beklemesin (canlıda ölçüldü)."""
     def is_() -> None:
         try:
-            time.sleep(5)   # uygulama ayağa kalksın
             from sqlalchemy import select
             from app.database import SessionLocal
             from app.models import Store
             with SessionLocal() as db:
                 kimlikler = db.scalars(select(Store.id).where(Store.platform == "storefront")).all()
+            # Sırayla: mağazalar aynı anda kurulup işlemciyi paylaşmasın
             for sid in kimlikler:
-                _arkada_yenile(sid)
+                _arkada_yenile(sid).wait(timeout=60)
         except Exception:  # noqa: BLE001
             pass
     threading.Thread(target=is_, daemon=True).start()

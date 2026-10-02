@@ -1,5 +1,6 @@
 import Link from "next/link";
 import NewsletterForm from "@/components/NewsletterForm";
+import { urunGorsel } from "@/lib/gorsel";
 import HareketDugmesi from "@/components/HareketDugmesi";
 
 // Geniş footer (tema style.footer_stil = "genis") — açık zeminde logo +
@@ -40,7 +41,9 @@ export default function GenisFooter({
             <Link href="/" aria-label={`${storeName} ana sayfa`} className="inline-block">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt={storeName} className="h-auto w-[195px] sm:w-[245px] max-w-full" />
+                <img src={logoUrl} alt={storeName} srcSet={urunGorsel(logoUrl).srcSet || undefined}
+                  sizes="(min-width: 640px) 245px, 195px" loading="lazy" decoding="async"
+                  className="h-auto w-[195px] sm:w-[245px] max-w-full" />
               ) : (
                 <span className="f-baslik text-3xl">{storeName}</span>
               )}

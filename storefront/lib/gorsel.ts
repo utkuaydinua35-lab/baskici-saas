@@ -19,6 +19,8 @@ export function urunGorsel(url: string | null | undefined): { src: string; srcSe
   if (!url.startsWith("/storage/")) return { src: url, srcSet: "" };
   const nokta = url.lastIndexOf(".");
   if (nokta < 0) return { src: url, srcSet: "" };
+  // Varyant yalnız raster görsellerde var (svg/ico logo/favicon'da yok → 404 olurdu)
+  if (!/^\.(jpe?g|png|webp)$/i.test(url.slice(nokta))) return { src: url, srcSet: "" };
   const govde = url.slice(0, nokta);
   // Orijinal de en büyük aday: geniş retina ekranda hero ~2300px ister;
   // yalnız 1280'e kadar sunulursa tarayıcı onu büyütür ve görsel bulanıklaşır.

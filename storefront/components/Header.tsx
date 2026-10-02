@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
+import { urunGorsel } from "@/lib/gorsel";
 
 interface NavCollection {
   slug: string;
@@ -160,8 +161,12 @@ export default function Header({
       center ? "text-xl sm:text-2xl justify-center" : "text-lg"}`}>
       {logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        // Mobil ve masaüstü genişliği ayrı: CSS değişkeni + sm: kırılımı
+        // Mobil ve masaüstü genişliği ayrı: CSS değişkeni + sm: kırılımı.
+        // srcset: logo 135-185 px gösteriliyor ama ASIL dosya (ör. 35 KB)
+        // iniyordu — üstelik ilk görselle aynı yüksek öncelikte (Lighthouse).
         <img src={logoUrl} alt={siteName}
+          srcSet={urunGorsel(logoUrl).srcSet || undefined}
+          sizes={`(min-width: 640px) ${logoWidth}px, ${logoWidthMobile ?? logoWidth}px`}
           className="h-auto object-contain w-[var(--logo-m)] sm:w-[var(--logo-d)]"
           style={{
             "--logo-d": `${logoWidth}px`,

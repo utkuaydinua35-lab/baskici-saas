@@ -1850,57 +1850,40 @@ _PRINT_STATUSES = {"bekliyor", "basildi", "eksik_var", "hatali_basildi"}
 
 @router.get("/print/total-missing")
 def total_missing(
+    siparisler: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Tum (basilmamis) kaliplarin stok eksiklerini model bazinda topla."""
+    """ŞU AN PANELDE duran, HENÜZ BASILMAMIŞ kalıplarda gereken ama rafta
+    olmayan boş kılıflar — model × varyasyon bazında.
+
+    Kapsam services/kalip_kapsam.py'de (ekranda görünen liste ile aynı):
+    içinde kılıf olan, taslak(1) ve tamamlandı(5) dışındaki, 'basıldı'
+    işaretlenmemiş kalıplar. Eskiden yalnız print_status'e bakılıyordu; taslak
+    ve aylar önce tamamlanmış kalıplar da listeyi şişiriyordu.
+
+    siparisler=true: kalıba HİÇ girmeyen ürünlerin (aksesuar vb.) açık
+    siparişlerden doğan eksikleri de eklenir. Varsayılan KAPALI — bu liste
+    "kalıplarda ne gerekiyor" sorusunu yanıtlıyor.
+    """
     from app.services import stock as stock_svc
-    from collections import defaultdict
 
-    molds = db.scalars(
-        select(Mold).where(Mold.tenant_id == user.tenant_id).options(selectinload(Mold.items))
-    ).all()
+    # Hesap services/stock.kalip_stok_eksigi'nde: ihtiyaç ÖNCE toplanır, stok
+    # BİR KEZ düşülür (kalıp başına karşılaştırmak aynı kılıfı iki kalıba birden
+    # sayıyordu). Kapsam: services/kalip_kapsam.panelde_basilmamis.
+    items, kapsamdaki = stock_svc.kalip_stok_eksigi(db, user.tenant_id)
 
-    agg = defaultdict(lambda: {"total_missing": 0, "ihtiyac": 0, "mevcut": 0,
-                               "mold_count": 0, "not_in_system": False})
-    mold_set = defaultdict(set)
-    for mo in molds:
-        if mo.print_status == "basildi":
-            continue
-        res = stock_svc.analyze_mold_stock(db, user.tenant_id, mo)
-        for ms in res["missing_stock"]:
-            key = (ms["variation"], ms["model"])
-            agg[key]["total_missing"] += ms["missing"]
-            # İhtiyaç ve raftaki adet de dönsün: "-12" tek başına stok eksi
-            # sanılıyordu. Eksik = ihtiyaç - mevcut; ikisini de göstermek
-            # sayının nereden geldiğini belirsiz bırakmıyor.
-            agg[key]["ihtiyac"] += ms.get("need") or 0
-            agg[key]["mevcut"] = ms.get("in_stock") or 0   # aynı stok kalemi
-            if ms.get("not_in_system"):
-                agg[key]["not_in_system"] = True
-            mold_set[key].add(str(mo.id))
+    siparis_eksik = stock_svc.siparis_stok_eksigi(db, user.tenant_id) if siparisler else []
 
-    items = []
-    for (var, model), v in agg.items():
-        items.append({
-            "variation": var, "model": model,
-            "total_missing": v["total_missing"],
-            "ihtiyac": v["ihtiyac"],
-            "mevcut": v["mevcut"],
-            "mold_count": len(mold_set[(var, model)]),
-            "not_in_system": v["not_in_system"],
-        })
-    # Kalıba girmeyen ürünler (aksesuar / işleme girmeden gönderilenler) kalıp
-    # analizinde hiç görünmüyor; açık siparişlerdeki eksikleri ayrıca eklenir.
-    siparis_eksik = stock_svc.siparis_stok_eksigi(db, user.tenant_id)
-
-    items.sort(key=lambda x: (-x["total_missing"], x["model"] or ""))
     items.extend(siparis_eksik)
     return {
         "items": items,
         "total_models": len(items),
         "total_missing": sum(i["total_missing"] for i in items),
         "siparis_kalem_sayisi": len(siparis_eksik),
+        # Hesabın HANGİ kalıplardan çıktığı ekranda yazsın
+        "kalip_sayisi": kapsamdaki,
+        "siparisler_dahil": bool(siparisler),
     }
 
 
@@ -1917,13 +1900,12 @@ def required_models(
         select(Mold).where(Mold.tenant_id == user.tenant_id).options(selectinload(Mold.items))
     ).all()
 
+    from app.services import kalip_kapsam
+
     agg: dict = defaultdict(lambda: {"count": 0, "molds": set()})
     for mo in molds:
-        if mo.print_status == "basildi":
-            continue
-        st = mo.current_stage
-        # Baskıcı panelindeki ile aynı aralık: taslak(1) ve teslim(>=5) hariç
-        if not (st is None or (1 < st < 5)):
+        # Ekranda görünen liste ile AYNI ölçüt (services/kalip_kapsam)
+        if not kalip_kapsam.panelde_basilmamis(mo):
             continue
         for it in mo.items:
             model = (it.model or "").strip() or "(model belirtilmemiş)"

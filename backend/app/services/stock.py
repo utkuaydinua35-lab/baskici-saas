@@ -15,7 +15,7 @@ import uuid
 from collections import Counter
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import StockItem, StockMovement
 from app.services import phone_models as pm
@@ -406,6 +406,59 @@ def _model_eslesenleri(adaylar: list, nmodel: str) -> list:
         if any(_norm_model(mm) == nmodel
                for mm in (x.models if x.models else ([x.model] if x.model else [])))
     ]
+
+
+def kalip_stok_eksigi(db: Session, tenant_id) -> tuple[list[dict], int]:
+    """Panelde duran, BASILMAMIŞ kalıplarda gereken ama rafta olmayan boş kılıflar.
+
+    Döner: (satırlar, hesaba giren kalıp sayısı)
+
+    ⚠ İHTİYAÇ ÖNCE TOPLANIR, STOK BİR KEZ DÜŞÜLÜR. Eskiden her kalıp AYRI AYRI
+    stokla karşılaştırılıyordu: rafta 1 kılıf varken ikisi de 1'er isteyen iki
+    kalıbın İKİSİ de "stok yeterli" sayılıyor, eksik hiç görünmüyordu. Aynı
+    kılıf iki kalıba birden sayılamaz.
+    """
+    from collections import defaultdict
+
+    from app.models import Mold
+    from app.services import kalip_kapsam
+
+    molds = db.scalars(
+        select(Mold).where(Mold.tenant_id == tenant_id).options(selectinload(Mold.items))
+    ).all()
+
+    ihtiyac: Counter = Counter()
+    kaliplar: dict = defaultdict(set)
+    kapsamdaki = 0
+    for mo in molds:
+        if not kalip_kapsam.panelde_basilmamis(mo):
+            continue
+        kapsamdaki += 1
+        for it in mo.items:
+            if not (it.model or "").strip():
+                continue
+            anahtar = (mo.variation, it.model)
+            ihtiyac[anahtar] += 1
+            kaliplar[anahtar].add(str(mo.id))
+
+    out = []
+    for (var, model), adet in ihtiyac.items():
+        si = _find_bos_kilif(db, tenant_id, var, model)
+        mevcut = (si.quantity or 0) if si else 0
+        eksik = adet - mevcut
+        if eksik <= 0:
+            continue
+        out.append({
+            "kaynak": "kalip",
+            "variation": var, "model": model,
+            "ihtiyac": adet, "mevcut": mevcut,
+            "total_missing": eksik,
+            "mold_count": len(kaliplar[(var, model)]),
+            # Stokta "0" değil, KAYIT yok — sayımda hiç açılmamış demektir
+            "not_in_system": si is None,
+        })
+    out.sort(key=lambda x: (-x["total_missing"], x["model"] or ""))
+    return out, kapsamdaki
 
 
 def siparis_stok_eksigi(db: Session, tenant_id) -> list[dict]:

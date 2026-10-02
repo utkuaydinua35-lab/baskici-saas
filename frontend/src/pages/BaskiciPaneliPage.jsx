@@ -109,10 +109,13 @@ export default function BaskiciPaneliPage() {
     finally { setBusyStatus(s => ({ ...s, [mold.id]: false })) }
   }
 
-  const loadTotalMissing = async () => {
+  // Varsayılan: YALNIZ panelde duran, basılmamış kalıplarda gerekenler.
+  // siparisler=true → kalıba hiç girmeyen ürünlerin (aksesuar) açık sipariş
+  // ihtiyacı da eklenir; bu ayrı bir soru olduğu için isteğe bağlı.
+  const loadTotalMissing = async (siparisler = false) => {
     setTmBusy(true)
     try {
-      const r = await api.get('/api/molds/print/total-missing')
+      const r = await api.get(`/api/molds/print/total-missing${siparisler ? '?siparisler=true' : ''}`)
       setTotalMissing(r)
     } catch { toast.error('Toplam eksik hesaplanamadı') }
     finally { setTmBusy(false) }
@@ -157,7 +160,7 @@ export default function BaskiciPaneliPage() {
         <div className="flex gap-2">
           <a href="/stok" className="btn-secondary !text-sm whitespace-nowrap">🗃️ Stok</a>
           <button onClick={loadRequiredModels} disabled={rmBusy} className="btn-secondary !text-sm whitespace-nowrap">{rmBusy ? '…' : '📋 Gerekli Modeller'}</button>
-          <button onClick={loadTotalMissing} disabled={tmBusy} className="btn-secondary !text-sm whitespace-nowrap">{tmBusy ? '…' : '📊 Toplam Eksik'}</button>
+          <button onClick={() => loadTotalMissing(false)} disabled={tmBusy} className="btn-secondary !text-sm whitespace-nowrap">{tmBusy ? '…' : '📊 Toplam Eksik'}</button>
           <button onClick={clearPrinted} disabled={clearBusy} className="!text-sm px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 border border-rose-500/25 whitespace-nowrap">{clearBusy ? '…' : '🗑️ Basılanları Temizle'}</button>
           <button onClick={analyzeAll} className="btn-secondary !text-sm whitespace-nowrap">⚡ Tümünü Analiz Et</button>
         </div>
@@ -219,15 +222,25 @@ export default function BaskiciPaneliPage() {
             </div>
             {totalMissing.items.length === 0 ? (
               <EmptyState dar ikon="✅" baslik="Hiç stok eksiği yok"
-                aciklama="Panel kalıpları ve açık siparişlerdeki aksesuarlar için stok yeterli." />
+                aciklama="Panelde duran basılmamış kalıplarda gereken her model rafta var." />
             ) : (
               <>
                 <div className="text-xs text-gray-500 mb-3">
-                  {totalMissing.total_models} satır · toplam {totalMissing.total_missing} adet EKSİK
-                  (rafta olması gereken değil, <b>alınması gereken</b> adet)
+                  Panelde duran <b>{totalMissing.kalip_sayisi ?? '—'} basılmamış kalıpta</b> gereken
+                  ama rafta olmayanlar · {totalMissing.total_models} satır ·
+                  toplam <b>{totalMissing.total_missing} adet</b> alınmalı
                   {totalMissing.siparis_kalem_sayisi > 0 &&
                     ` · ${totalMissing.siparis_kalem_sayisi}'i aksesuar/işlemsiz ürün`}
                 </div>
+                {/* Kalıba hiç girmeyen ürünler (aksesuar) ayrı bir soru — isteyen açar */}
+                <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+                  <input type="checkbox" className="accent-accent"
+                    checked={!!totalMissing.siparisler_dahil} disabled={tmBusy}
+                    onChange={e => loadTotalMissing(e.target.checked)} />
+                  <span className="text-[11px] text-gray-400">
+                    Açık siparişlerdeki aksesuar/işlemsiz ürünleri de göster (kalıba girmeyenler)
+                  </span>
+                </label>
                 <div className="space-y-1.5">
                   {totalMissing.items.map((it, i) => (
                     <div key={i} className="flex items-center gap-2 bg-brand-input/40 rounded-lg px-3 py-2">

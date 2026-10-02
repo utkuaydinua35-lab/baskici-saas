@@ -84,6 +84,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # görsel kurulamadıysa uygulama yine açılsın
         print(f"[baskici] şablon görselleri kurulamadı: {e}")
     try:
+        from app.services import arama
+        arama.isit()   # vitrin arama dizinleri arkada kurulur
+    except Exception as e:  # noqa: BLE001
+        print(f"[baskici] arama dizini ısıtılamadı: {e}")
+    try:
         start_scheduler()
         print("[baskici] scheduler started (hourly sync)")
     except Exception as e:

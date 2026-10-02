@@ -229,3 +229,21 @@ def ara(db, store, sorgu: str) -> list:
         return [x[2] for x in sonuc]
 
     return tur(False, True) or tur(True, True) or tur(True, False)
+
+
+def isit() -> None:
+    """Açılışta vitrin mağazalarının dizinini ARKADA kur — yeniden başlatmadan
+    (deploy) sonraki ilk müşteri aramaları 2.5 sn beklemesin (canlıda ölçüldü)."""
+    def is_() -> None:
+        try:
+            time.sleep(5)   # uygulama ayağa kalksın
+            from sqlalchemy import select
+            from app.database import SessionLocal
+            from app.models import Store
+            with SessionLocal() as db:
+                kimlikler = db.scalars(select(Store.id).where(Store.platform == "storefront")).all()
+            for sid in kimlikler:
+                _arkada_yenile(sid)
+        except Exception:  # noqa: BLE001
+            pass
+    threading.Thread(target=is_, daemon=True).start()

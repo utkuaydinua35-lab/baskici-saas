@@ -18,7 +18,7 @@
     "paket:win": "npm run paket:bayi:win && npm run paket:studio:win"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
+    "electron": "^44.5.1",
     "electron-builder": "^25.1.8"
   },
   "bernzProfil": "bayi"

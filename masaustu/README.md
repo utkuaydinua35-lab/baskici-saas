@@ -5,7 +5,7 @@ Tek Electron kabuğu, **iki profil** (`kaynak/profiller.js`):
 | Profil | Uygulama | Açtığı panel | Bildirim kaynağı |
 |---|---|---|---|
 | `bayi` | **BERNZ Bayi** (turkuaz simge) | `/bayii` bayi paneli | kargoya verilen siparişler + atölye mesajları |
-| `studio` | **BERNZ Stüdyo** (mor simge) | yönetim paneli | panelin kendi bildirimleri |
+| `studio` | **BERNZ Studio** (mor simge) | yönetim paneli | panelin kendi bildirimleri |
 
 Kod ortak: pencere, bildirim yoklaması, menü ve güvenlik ayarları tek yerde.
 Profil paketleme sırasında `package.json`'a gömülür (electron-builder
@@ -83,6 +83,29 @@ dosyalarını listeler — ikisi aynı klasörde durabilir.
 
 Kurala uymayan dosyalar listelenmez (klasöre düşen rastgele bir dosya bayiye
 "kurulum" diye gösterilmesin).
+
+## İki kural (yanıp öğrenildi)
+
+**1. Ürün adı ASCII olmalı.** `productName: "BERNZ Stüdyo"` ile paketlenen
+uygulama macOS'ta açılışta **SIGTRAP ile çöküyor** (uygulama paketi ve
+çalıştırılabilir dosya adındaki "ü" Electron'un çerçeve/yardımcı süreç
+yollarını bozuyor). Aynı paketleme ASCII adla (`BERNZ Studio`) sorunsuz açıldı
+— ikisini yan yana derleyip doğruladık. Pencere başlığı, menü ve bildirim
+metinleri Türkçe kalabilir; dosya sistemine yazılan ad ASCII olmalı.
+
+**2. `identity: null` + `hardenedRuntime: false`.** Anahtar zincirinde bir
+"Apple Development" sertifikası varsa electron-builder onu kendiliğinden bulup
+imzalıyor. Geliştirme sertifikası dağıtım için değildir: provisioning profile
+olmadan JIT izinleri reddedilir. Dağıtım imzasız olduğu sürece ad-hoc imza
+doğrusu. (Bu tek başına çökmenin sebebi değildi ama paketi dağıtılamaz
+yapıyordu.)
+
+Çökme yaşarsan tanı tek satır — uygulamayı doğrudan çalıştır, çıkış kodu 133
+(128+SIGTRAP) ise açılamıyor demektir:
+
+```bash
+BERNZ_SMOKE=1 "cikti/studio/mac-arm64/BERNZ Studio.app/Contents/MacOS/BERNZ Studio"; echo $?
+```
 
 ## İmzalama (şu an YOK)
 

@@ -70,6 +70,32 @@ def mesajlar(dealer_id: uuid.UUID, limit: int = Query(200, le=500),
             "bayi": {"id": str(d.id), "ad": d.name, "telefon": d.phone, "eposta": d.email}}
 
 
+@router.get("/{dealer_id}/siparisler", response_model=dict)
+def bayinin_siparisleri(dealer_id: uuid.UUID, limit: int = Query(200, le=500),
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Yanıta sipariş iliştirmek için bu bayinin siparişleri (yeniden eskiye).
+
+    Süzgeç bayi portalındaki ile AYNI (_bayinin_sql_suzgeci) — iki yerde iki
+    farklı "bu bayinin siparişi" tanımı olmasın.
+    """
+    from app.routers.bayii_portal import _bayinin_sql_suzgeci
+    from app.stages import stage_label
+
+    d = _bayi(db, dealer_id, user)
+    satirlar = db.scalars(
+        select(Order).where(_bayinin_sql_suzgeci(d))
+        .order_by(Order.created_at_platform.desc().nullslast(), Order.id.desc())
+        .limit(limit)
+    ).all()
+    return {"items": [{
+        "id": str(o.id),
+        "order_number": o.order_number,
+        "musteri": o.customer_name,
+        "tarih": o.created_at_platform.isoformat() if o.created_at_platform else None,
+        "asama_adi": stage_label(o.current_stage or 1),
+    } for o in satirlar]}
+
+
 @router.post("/{dealer_id}", response_model=dict)
 def yaz(dealer_id: uuid.UUID, body: MesajIn,
         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -86,7 +112,7 @@ def yaz(dealer_id: uuid.UUID, body: MesajIn,
                       order=order, aciliyet=body.aciliyet,
                       gonderen_ad=(user.full_name or user.email))
     db.commit()
-    return bs.ser_mesaj(m)
+    return bs.ser_mesaj(m, avatarlar=bs.avatarlar(db, d))
 
 
 @router.post("/{dealer_id}/okundu", response_model=dict)

@@ -463,12 +463,12 @@ _AUTH_SINIF = {
     ("POST", "/api/auth/2fa/disable"): "kapali",
     ("GET", "/api/auth/profiles"): "kapali",
     ("POST", "/api/auth/select-profile"): "kapali",
-    ("GET", "/api/auth/passkey"): "kapali",
+    ("GET", "/api/auth/passkey"): "acik",    # kendi anahtarlarini listeler
     ("GET", "/api/auth/passkey/only"): "kapali",
-    ("POST", "/api/auth/passkey/only"): "kapali",
-    ("POST", "/api/auth/passkey/register/begin"): "kapali",
-    ("POST", "/api/auth/passkey/register/finish"): "kapali",
-    ("DELETE", "/api/auth/passkey/{cred_id}"): "kapali",
+    ("POST", "/api/auth/passkey/only"): "kapali",   # cihaz kaybinda kilitlenme riski
+    ("POST", "/api/auth/passkey/register/begin"): "acik",   # kendi gecis anahtarini kaydeder
+    ("POST", "/api/auth/passkey/register/finish"): "acik",
+    ("DELETE", "/api/auth/passkey/{cred_id}"): "acik",   # kendi anahtarini siler
 }
 from app.auth.dependencies import get_current_user as _gcu  # noqa: E402
 from app.main import app as _app  # noqa: E402

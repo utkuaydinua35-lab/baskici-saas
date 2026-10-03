@@ -20,6 +20,36 @@ export const BASLANGIC_SURUMU = 5
 // tur: yeni | iyilestirme | duzeltme
 export const GUNCELLEMELER = [
   {
+    surum: 10,
+    tarih: '2026-10-04',
+    baslik: 'Uygulama kurulumu, logon ve parolasız giriş',
+    ozet: 'Uygulamayı kendi bilgisayarına nasıl kuracağını adım adım anlattık. Sohbete kendi logonu ekleyebilir, parola yerine geçiş anahtarıyla girebilirsin.',
+    degisiklikler: [
+      { tur: 'yeni', metin: 'Menüdeki “Uygulama” sayfasından kurulum dosyasını indir — Windows ve Mac için ayrı ayrı, adım adım anlatım.' },
+      { tur: 'yeni', metin: 'Kendi logonu yükleyebilirsin; sohbette mesajlarının yanında görünür.' },
+      { tur: 'yeni', metin: 'Geçiş anahtarı: parola yazmadan, parmak izi ya da yüz tanımayla giriş. Panelin ana ekranından tek tıkla kurulur.' },
+      { tur: 'iyilestirme', metin: 'Sohbet yenilendi: mesajların yanında logo, gün ayracı, saat ve “iletildi / görüldü” işareti.' },
+      { tur: 'iyilestirme', metin: 'Sipariş eklerken artık arama yapabilirsin — müşteri adı ya da tarihle bul, sipariş numarasını bilmene gerek yok.' },
+    ],
+    tanitim: [
+      {
+        baslik: 'Windows’a kurulum',
+        metin: 'Uygulama sayfasından .exe dosyasını indir, çift tıkla. “Windows bilgisayarınızı korudu” uyarısı çıkarsa Ek bilgi → Yine de çalıştır. Kurulum tek tıkla biter, yönetici şifresi istemez.',
+        gorsel: 'winKurulum',
+      },
+      {
+        baslik: 'Mac’e kurulum',
+        metin: 'Uygulama sayfasından .dmg dosyasını indir, çift tıkla ve logoyu Uygulamalar klasörüne sürükle. İlk açılışta simgeye sağ tık → Aç → Aç (yalnız bir kez).',
+        gorsel: 'macKurulum',
+      },
+      {
+        baslik: 'Parola yazmadan gir',
+        metin: 'Panelin ana ekranındaki “Geçiş anahtarı oluştur” düğmesine bas. Bundan sonra girişte parmak izin, yüz tanıman ya da bilgisayarının şifresi yeterli. Anahtar yalnız senin cihazında durur.',
+        gorsel: 'gecisAnahtari',
+      },
+    ],
+  },
+  {
     surum: 9,
     tarih: '2026-10-03',
     baslik: 'Atölyeyle sohbet + masaüstü uygulaması',

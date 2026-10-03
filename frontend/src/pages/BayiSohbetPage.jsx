@@ -10,11 +10,8 @@ import { api, fetchYetkili } from '../lib/api'
 import { mutlak } from '../lib/taban'
 import { useToast } from '../components/Toast'
 import EmptyState from '../components/EmptyState'
+import { Avatar, Balon, GunAyraci, SiparisSecici, gunlereBol } from '../components/SohbetParcalari'
 
-const ACILIYET_ROZET = {
-  acil: { ad: 'ACİL', sinif: 'bg-amber-500/20 text-amber-300' },
-  cok_acil: { ad: 'ÇOK ACİL', sinif: 'bg-red-500/20 text-red-300' },
-}
 const YENILE_MS = 20000
 
 function zaman(iso) {
@@ -31,6 +28,8 @@ export default function BayiSohbetPage() {
   const [metin, setMetin] = useState('')
   const [gorsel, setGorsel] = useState(null)
   const [gonderiliyor, setGonderiliyor] = useState(false)
+  const [siparisler, setSiparisler] = useState([])
+  const [siparisId, setSiparisId] = useState('')
   const [params, setParams] = useSearchParams()
   const toast = useToast()
   const navigate = useNavigate()
@@ -66,6 +65,14 @@ export default function BayiSohbetPage() {
   }, [listeyiYukle, toast])
 
   useEffect(() => { if (secili) sohbetiYukle(secili) }, [secili, sohbetiYukle])
+  // Yanıtta sipariş eki: bu bayinin siparişleri (numara bilmeye gerek yok)
+  useEffect(() => {
+    if (!secili) { setSiparisler([]); return }
+    setSiparisId('')
+    api.get(`/api/bayi-sohbet/${secili}/siparisler`)
+      .then(d => setSiparisler(d.items || []))
+      .catch(() => setSiparisler([]))
+  }, [secili])
   useEffect(() => {
     if (!secili) return
     const t = setInterval(() => sohbetiYukle(secili, true), YENILE_MS)
@@ -93,8 +100,9 @@ export default function BayiSohbetPage() {
     try {
       await api.post(`/api/bayi-sohbet/${secili}`, {
         body: metin.trim() || null, image_url: gorsel?.url || null,
+        order_id: siparisId || null,
       })
-      setMetin(''); setGorsel(null)
+      setMetin(''); setGorsel(null); setSiparisId('')
       if (dosyaRef.current) dosyaRef.current.value = ''
       await sohbetiYukle(secili, true)
       listeyiYukle()
@@ -125,6 +133,7 @@ export default function BayiSohbetPage() {
               className={`w-full text-left px-3 py-2.5 border-b border-brand-border/60 transition-colors ${
                 secili === b.dealer_id ? 'bg-accent/10' : 'hover:bg-brand-input/50'}`}>
               <div className="flex items-center gap-2">
+                <Avatar url={b.logo_url} ad={b.dealer_ad} boyut={22} />
                 <span className="text-sm text-gray-100 truncate flex-1">{b.dealer_ad}</span>
                 {b.acil_bekliyor && (
                   <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">ACİL</span>
@@ -153,6 +162,7 @@ export default function BayiSohbetPage() {
           ) : (
             <>
               <div className="px-4 py-2.5 border-b border-brand-border flex items-center gap-2">
+                <Avatar url={veri?.sohbet?.logo_url} ad={veri?.bayi?.ad} boyut={26} />
                 <span className="text-sm font-medium text-gray-100">{veri?.bayi?.ad || '—'}</span>
                 {veri?.bayi?.telefon && (
                   <a href={`https://wa.me/9${String(veri.bayi.telefon).replace(/\D/g, '')}`}
@@ -164,8 +174,15 @@ export default function BayiSohbetPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: '55vh' }}>
-                {(veri?.mesajlar || []).map(m => (
-                  <Balon key={m.id} m={m} onSiparis={(id) => navigate(`/orders/${id}`)} />
+                {gunlereBol(veri?.mesajlar || []).map(grup => (
+                  <div key={grup.gun} className="space-y-3">
+                    <GunAyraci gun={grup.gun} />
+                    {grup.mesajlar.map(m => (
+                      <Balon key={m.id} m={m} benimMi={m.gonderen === 'atolye'}
+                             ad={m.gonderen === 'atolye' ? 'Atölye' : (veri?.bayi?.ad || 'Bayi')}
+                             onSiparis={(id) => navigate(`/orders/${id}`)} />
+                    ))}
+                  </div>
                 ))}
                 {veri && veri.mesajlar.length === 0 && (
                   <div className="text-center text-sm text-gray-500 py-10">Henüz mesaj yok.</div>
@@ -192,6 +209,7 @@ export default function BayiSohbetPage() {
                          onChange={e => gorselSec(e.target.files?.[0])} className="hidden" id="yonetim-sohbet-gorsel" />
                   <label htmlFor="yonetim-sohbet-gorsel"
                          className="btn-secondary !text-xs !py-1.5 cursor-pointer">📎 Görsel</label>
+                  <SiparisSecici siparisler={siparisler} secili={siparisId} onSec={setSiparisId} />
                   <button onClick={gonder} disabled={gonderiliyor || (!metin.trim() && !gorsel?.url)}
                           className="btn-primary !text-sm ml-auto disabled:opacity-40">
                     {gonderiliyor ? 'Gönderiliyor…' : 'Gönder'}
@@ -201,35 +219,6 @@ export default function BayiSohbetPage() {
             </>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-function Balon({ m, onSiparis }) {
-  const bizim = m.gonderen === 'atolye'
-  const rozet = ACILIYET_ROZET[m.aciliyet]
-  return (
-    <div className={`flex ${bizim ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[80%] rounded-2xl px-3 py-2 border ${
-        bizim ? 'bg-accent/10 border-accent/25' : 'bg-brand-input/60 border-brand-border'}`}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[11px] text-gray-400">{m.gonderen_ad || (bizim ? 'Atölye' : 'Bayi')}</span>
-          {rozet && <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${rozet.sinif}`}>{rozet.ad}</span>}
-        </div>
-        {m.order_no && (
-          <button onClick={() => m.order_id && onSiparis(m.order_id)} disabled={!m.order_id}
-            className="text-[11px] text-accent hover:underline mb-1 disabled:no-underline disabled:text-gray-500">
-            🧾 {m.order_no} siparişi{m.order_id ? ' →' : ' (silinmiş)'}
-          </button>
-        )}
-        {m.image_url && (
-          <a href={m.image_url} target="_blank" rel="noreferrer">
-            <img src={m.image_url} alt="" className="rounded-lg max-h-56 mb-1.5 border border-brand-border" />
-          </a>
-        )}
-        {m.body && <div className="text-sm text-gray-100 whitespace-pre-line break-words">{m.body}</div>}
-        <div className="text-[10px] text-gray-600 mt-1 text-right">{zaman(m.created_at)}</div>
       </div>
     </div>
   )

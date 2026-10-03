@@ -1402,6 +1402,9 @@ class Dealer(Base):
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Bayinin kendi logosu — sohbette mesajlarin yaninda gorunur (bayi kendi
+    # yukler). Sunucudaki /storage yolu.
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Cari bakiye: pozitif = bayi bize borclu (alacagimiz), negatif = biz bayiye borcluyuz
     balance: Mapped[float] = mapped_column(Numeric(12, 2), default=0, server_default=text("0"))

@@ -146,6 +146,42 @@ try:
        next(x for x in c.get("/api/bayi-sohbet", headers=HY).json()["items"]
             if x["dealer_id"] == str(bayi_a.id))["okunmamis_atolye"])
 
+    print("\n── Logo, tik durumu ve sipariş arama ──")
+    # Bayi logosu: yükle → sohbette avatar olarak görünür → kaldırılabilir
+    import io
+    from PIL import Image
+    tampon = io.BytesIO()
+    Image.new("RGB", (64, 64), (120, 40, 200)).save(tampon, "PNG")
+    r = c.post("/api/bayii/logo", headers=HA,
+               files={"file": ("logo.png", tampon.getvalue(), "image/png")})
+    es("logo yüklendi", 200, r.status_code)
+    logo = r.json()["logo_url"]
+    es("logo /storage altında", True, logo.startswith("/storage/"))
+    d = c.get("/api/bayii/sohbet", headers=HA).json()
+    es("mesajın yanında bayi logosu", logo,
+       next(m["avatar"] for m in d["mesajlar"] if m["gonderen"] == "bayi"))
+    es("yönetim listesinde de logo", logo,
+       next(x["logo_url"] for x in c.get("/api/bayi-sohbet", headers=HY).json()["items"]
+            if x["dealer_id"] == str(bayi_a.id)))
+    # İletildi / görüldü
+    r = c.post("/api/bayii/sohbet", headers=HA, json={"body": "tik sınaması"})
+    es("yeni mesaj: iletildi", "iletildi", r.json()["durum"])
+    c.post(f"/api/bayi-sohbet/{bayi_a.id}/okundu", headers=HY)
+    d = c.get("/api/bayii/sohbet", headers=HA).json()
+    es("yönetim okuyunca: görüldü", "goruldu",
+       next(m["durum"] for m in d["mesajlar"] if m["body"] == "tik sınaması"))
+    # Yönetim tarafı sipariş arama listesi
+    r = c.get(f"/api/bayi-sohbet/{bayi_a.id}/siparisler", headers=HY)
+    kalem = next(x for x in r.json()["items"] if x["id"] == str(sip_a.id))
+    es("sipariş listesi müşteri adı ve tarih taşır", ("Ayşe", True),
+       (kalem["musteri"], bool(kalem["tarih"])))
+    es("aşama adı yazılı", True, bool(kalem["asama_adi"]))
+    es("başka bayinin siparişi listede yok", 0,
+       len([x for x in r.json()["items"] if x["id"] == str(sip_b.id)]))
+    es("logo kaldırılabilir", (200, None),
+       (c.delete("/api/bayii/logo", headers=HA).status_code,
+        c.get("/api/bayii/sohbet", headers=HA).json()["sohbet"]["logo_url"]))
+
     print("\n── Masaüstü uygulamasının olay akışı ──")
     r = c.get("/api/bayii/bildirimler", headers=HA)
     es("ilk açılış: olay YOK, yalnız sunucu saati", (200, []),

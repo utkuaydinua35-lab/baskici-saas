@@ -8,18 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, fetchYetkili } from '../../lib/api'
 import { mutlak } from '../../lib/taban'
-import { tarihYaz } from '../../lib/bayii'
 import { Hata, Iskelet } from '../../components/BayiParcalar'
+import { Balon, GunAyraci, SiparisSecici, gunlereBol } from '../../components/SohbetParcalari'
 
 const ACILIYETLER = [
   { deger: 'normal', ad: 'Normal', sinif: 'bg-brand-input text-gray-300 border-brand-border' },
   { deger: 'acil', ad: 'Acil', sinif: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
   { deger: 'cok_acil', ad: 'Çok acil', sinif: 'bg-red-500/15 text-red-300 border-red-500/30' },
 ]
-const ACILIYET_ROZET = {
-  acil: { ad: 'ACİL', sinif: 'bg-amber-500/20 text-amber-300' },
-  cok_acil: { ad: 'ÇOK ACİL', sinif: 'bg-red-500/20 text-red-300' },
-}
 const YENILE_MS = 20000      // açık ekranda yeni mesajlar kendiliğinden gelsin
 
 export default function BayiSohbetPage() {
@@ -109,7 +105,15 @@ export default function BayiSohbetPage() {
             <div className="text-center text-sm text-gray-500 py-10">
               Henüz mesaj yok — ilk mesajı sen yaz.
             </div>
-          ) : mesajlar.map((m) => <Balon key={m.id} m={m} />)}
+          ) : gunlereBol(mesajlar).map((grup) => (
+            <div key={grup.gun} className="space-y-3">
+              <GunAyraci gun={grup.gun} />
+              {grup.mesajlar.map((m) => (
+                <Balon key={m.id} m={m} benimMi={m.gonderen === 'bayi'}
+                       ad={m.gonderen === 'bayi' ? 'Sen' : 'Atölye'} />
+              ))}
+            </div>
+          ))}
           <div ref={altRef} />
         </div>
 
@@ -146,15 +150,7 @@ export default function BayiSohbetPage() {
             <label htmlFor="sohbet-gorsel"
                    className="btn-secondary !text-xs !py-1.5 cursor-pointer whitespace-nowrap">📎 Görsel</label>
 
-            <select value={siparisId} onChange={e => setSiparisId(e.target.value)}
-                    className="input !text-xs !py-1.5 max-w-[180px]">
-              <option value="">Sipariş ekle…</option>
-              {siparisler.slice(0, 50).map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.order_number} · {s.asama_adi || ''}
-                </option>
-              ))}
-            </select>
+            <SiparisSecici siparisler={siparisler} secili={siparisId} onSec={setSiparisId} />
 
             <div className="flex gap-1">
               {ACILIYETLER.map(a => (
@@ -177,34 +173,6 @@ export default function BayiSohbetPage() {
             </p>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-function Balon({ m }) {
-  const benim = m.gonderen === 'bayi'
-  const rozet = ACILIYET_ROZET[m.aciliyet]
-  return (
-    <div className={`flex ${benim ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 border ${
-        benim ? 'bg-accent/10 border-accent/25' : 'bg-brand-input/60 border-brand-border'}`}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-[11px] text-gray-400">{benim ? 'Sen' : (m.gonderen_ad || 'Atölye')}</span>
-          {rozet && (
-            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${rozet.sinif}`}>{rozet.ad}</span>
-          )}
-        </div>
-        {m.order_no && (
-          <div className="text-[11px] text-accent mb-1">🧾 {m.order_no} siparişi</div>
-        )}
-        {m.image_url && (
-          <a href={m.image_url} target="_blank" rel="noreferrer">
-            <img src={m.image_url} alt="" className="rounded-lg max-h-56 mb-1.5 border border-brand-border" />
-          </a>
-        )}
-        {m.body && <div className="text-sm text-gray-100 whitespace-pre-line break-words">{m.body}</div>}
-        <div className="text-[10px] text-gray-600 mt-1 text-right">{tarihYaz(m.created_at)}</div>
       </div>
     </div>
   )

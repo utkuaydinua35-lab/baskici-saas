@@ -5,6 +5,8 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { paraYaz, tarihYaz } from '../../lib/bayii'
 import { Bos, DurumRozet, Hata, Iskelet, Sayac } from '../../components/BayiParcalar'
+import BayiGecisAnahtari from '../../components/BayiGecisAnahtari'
+import BayiLogo from '../../components/BayiLogo'
 
 const SAYAC_KUTULARI = [
   { anahtar: 'onay_bekleyen', ad: 'Onay bekleyen', renk: '#fbbf24',
@@ -40,6 +42,9 @@ export default function BayiPanelPage() {
     <div className="space-y-6">
       <Hata mesaj={hata} tekrar={yukle} />
 
+      {/* Parolasız giriş teklifi — kurulunca ya da "daha sonra" denince gizlenir */}
+      <BayiGecisAnahtari />
+
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">
@@ -53,6 +58,9 @@ export default function BayiPanelPage() {
           Yeni sipariş
         </Link>
       </div>
+
+      <BayiLogo logoUrl={veri?.bayi?.logo_url} ad={ad}
+                onDegisti={(u) => setVeri(v => v ? { ...v, bayi: { ...v.bayi, logo_url: u } } : v)} />
 
       {/* Cari kart */}
       <div className="card relative overflow-hidden bayi-sira" style={{ '--gecikme': '0ms' }}>

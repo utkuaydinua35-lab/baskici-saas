@@ -302,7 +302,85 @@ function MasaustuUygulama() {
   )
 }
 
+/** Windows kurulumu: indir → çift tık → SmartScreen uyarısını geç. */
+function WinKurulum() {
+  return (
+    <Sahne>
+      <div className="h-full grid grid-cols-2 gap-3 items-center">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-accent/15 border border-accent/30">
+            <span className="text-sm">⬇️</span>
+            <span className="text-[10px] text-white">BERNZ-Bayi-Kurulum.exe</span>
+          </div>
+          <div className="text-[9px] text-gray-500 pl-1">1. İndir · 2. Çift tıkla</div>
+        </div>
+        <div className="relative rounded-lg bg-white/8 border border-white/15 p-2">
+          <div className="text-[9px] text-gray-300 mb-1">Windows bilgisayarınızı korudu</div>
+          <div className="h-1 w-20 rounded bg-white/15 mb-2" />
+          <div className="flex gap-1.5">
+            <span className="text-[8px] px-1.5 py-1 rounded bg-white/10 text-gray-300">Ek bilgi</span>
+            <span className="relative text-[8px] px-1.5 py-1 rounded bg-accent text-white">
+              Yine de çalıştır
+              <Dokun className="w-7 h-7 -right-2 -top-2" />
+            </span>
+          </div>
+        </div>
+      </div>
+    </Sahne>
+  )
+}
+
+/** Mac kurulumu: dmg penceresinde logoyu Uygulamalar'a sürükle. */
+function MacKurulum() {
+  return (
+    <Sahne>
+      <div className="h-full rounded-xl bg-white/6 border border-white/12 p-3 flex items-center justify-between">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-xl bg-accent/25 border border-accent/40 grid place-items-center text-lg">⚡</div>
+          <div className="text-[9px] text-gray-400 mt-1">BERNZ Bayi</div>
+        </div>
+        <div className="flex-1 mx-2 relative">
+          <div className="h-px w-full bg-white/20" />
+          <span className="absolute -top-2 right-0 text-[10px] text-gray-300">➜</span>
+          <div className="text-[8px] text-gray-500 text-center mt-1.5">sürükle</div>
+        </div>
+        <div className="relative text-center">
+          <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 grid place-items-center text-lg">📁</div>
+          <div className="text-[9px] text-gray-400 mt-1">Uygulamalar</div>
+          <Dokun className="w-9 h-9 -right-1 -top-1" />
+        </div>
+      </div>
+      <div className="absolute inset-x-4 bottom-2 text-[8.5px] text-gray-500 text-center">
+        İlk açılışta: simgeye sağ tık → Aç → Aç
+      </div>
+    </Sahne>
+  )
+}
+
+/** Geçiş anahtarı: parola yerine parmak izi. */
+function GecisAnahtari() {
+  return (
+    <Sahne>
+      <div className="h-full flex items-center justify-center gap-4">
+        <div className="text-center opacity-50">
+          <div className="w-14 h-9 rounded-lg bg-white/8 border border-white/15 grid place-items-center text-[9px] text-gray-400">••••••</div>
+          <div className="text-[8.5px] text-gray-600 mt-1">parola</div>
+        </div>
+        <span className="text-gray-500 text-sm">→</span>
+        <div className="relative text-center">
+          <div className="w-14 h-14 rounded-2xl bg-accent/20 border border-accent/40 grid place-items-center text-2xl">🔐</div>
+          <div className="text-[8.5px] text-accent mt-1">parmak izi / yüz</div>
+          <Dokun className="w-10 h-10 -right-1 -bottom-1" />
+        </div>
+      </div>
+    </Sahne>
+  )
+}
+
 const GORSELLER = {
+  winKurulum: WinKurulum,
+  macKurulum: MacKurulum,
+  gecisAnahtari: GecisAnahtari,
   sohbet: Sohbet,
   masaustu: MasaustuUygulama,
   hbKanal: HbKanal,

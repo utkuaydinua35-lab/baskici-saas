@@ -286,7 +286,8 @@ def ozet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
     kargoda = _say(Order.current_stage >= 8)
     toplam = _say()
     return {
-        "bayi": {"ad": d.name, "para_birimi": (d.currency or "TRY").upper()},
+        "bayi": {"ad": d.name, "para_birimi": (d.currency or "TRY").upper(),
+                 "logo_url": d.logo_url},
         "cari": {
             "bakiye": float(d.balance or 0),
             "bakiye_usd": float(d.balance_usd or 0),
@@ -352,7 +353,7 @@ def sohbet_yaz(body: SohbetMesajIn, d: Dealer = Depends(_bayi),
                       image_url=body.image_url, order=order, aciliyet=body.aciliyet,
                       gonderen_ad=(user.full_name or d.name))
     db.commit()
-    return bs.ser_mesaj(m)
+    return bs.ser_mesaj(m, avatarlar=bs.avatarlar(db, d))
 
 
 @router.post("/sohbet/gorsel", response_model=dict, dependencies=[_izin])
@@ -457,6 +458,31 @@ def bildirimler(since: str | None = None, d: Dealer = Depends(_bayi),
             })
     olaylar.sort(key=lambda x: x["at"])
     return {"sunucu_saati": imlec, "olaylar": olaylar}
+
+
+@router.post("/logo", response_model=dict, dependencies=[_izin])
+def logo_yukle(file: UploadFile = File(...), d: Dealer = Depends(_bayi),
+               db: Session = Depends(get_db)):
+    """Bayi kendi logosunu yükler — sohbette mesajlarının yanında görünür."""
+    veri = file.file.read(3 * 1024 * 1024 + 1)
+    if len(veri) > 3 * 1024 * 1024:
+        raise HTTPException(413, "Logo çok büyük (en fazla 3 MB)")
+    if not veri:
+        raise HTTPException(400, "Boş dosya")
+    ext = storage.get_extension(file.filename or "")
+    if ext not in ("png", "jpg", "jpeg", "webp"):
+        raise HTTPException(415, "Yalnızca PNG, JPG veya WEBP")
+    d.logo_url = storage.save_logo(d.tenant_id, f"bayi-{d.id}", veri, ext)
+    db.commit()
+    return {"logo_url": d.logo_url}
+
+
+@router.delete("/logo", response_model=dict, dependencies=[_izin])
+def logo_kaldir(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    """Logoyu kaldır — yanlış dosya yüklenirse geri dönülebilsin."""
+    d.logo_url = None
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/uygulama", response_model=dict, dependencies=[_izin])

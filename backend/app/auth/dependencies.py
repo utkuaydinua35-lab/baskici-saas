@@ -47,6 +47,11 @@ def _unauthorized(detail: str = "Authentication required") -> HTTPException:
 BAYI_IZINLI_ONEKLER = (
     "/api/bayii/",        # portalin kendi uclari
     "/api/push/",         # kendi cihazina bildirim aboneligi
+    # Gecis anahtari (passkey) KENDI hesabi icin: kaydet, listele, sil.
+    # Bayiler parolayla ugrasmasin diye aciliyor; riskli olan "yalniz passkey
+    # ile giris" (/only) BAYI_YASAK_TAM'da KAPALI kalir — cihazini kaybeden
+    # bayi hesabina hic giremezdi.
+    "/api/auth/passkey/",
 )
 # ⚠ /api/auth/ ARTIK ONEKLE ACIK DEGIL. Eskiden "/api/auth/" tumuyle bayiye
 # aciktı ve yalnız iki uç yasak listesindeydi: yarın /api/auth altina eklenen
@@ -63,6 +68,7 @@ BAYI_IZINLI_TAM = (
     "/api/auth/verify-password",  # bayi ayarlarinda sifre dogrulama
     "/api/auth/change-password",  # kendi sifresi
     "/api/auth/refresh",          # oturumu tazele (bayi de kullanir)
+    "/api/auth/passkey",          # KENDI gecis anahtarlarini listeler (sonda / yok)
 )
 # Varsayilan RED zaten kapatiyor; burada acikca durmalari, biri onegi geri
 # acarsa bu ikisinin YINE kapali kalmasi icin. Profil degistirme personel
@@ -70,6 +76,8 @@ BAYI_IZINLI_TAM = (
 BAYI_YASAK_TAM = (
     "/api/auth/profiles",
     "/api/auth/select-profile",
+    # "Yalniz passkey ile giris": cihaz kaybinda bayi hesabina giremez olurdu
+    "/api/auth/passkey/only",
 )
 
 

@@ -135,11 +135,19 @@ def _bildir(db: Session, dealer: Dealer, m: BayiSohbetMesaji) -> None:
             pass
 
 
-def ser_mesaj(m: BayiSohbetMesaji) -> dict:
+def ser_mesaj(m: BayiSohbetMesaji, *, avatarlar: dict | None = None) -> dict:
+    """avatarlar: {"bayi": url, "atolye": url} — WhatsApp gibi mesajın yanında.
+
+    `durum`: iletildi | goruldu. Karşı taraf okuyunca çift tik olur; kendi
+    mesajının nereye vardığını görmek sohbetin en çok sorulan sorusu.
+    """
+    avatarlar = avatarlar or {}
     return {
         "id": str(m.id),
         "gonderen": m.gonderen,
         "gonderen_ad": m.gonderen_ad,
+        "avatar": avatarlar.get(m.gonderen),
+        "durum": "goruldu" if m.okundu else "iletildi",
         "body": m.body,
         "image_url": m.image_url,
         "order_id": str(m.order_id) if m.order_id else None,
@@ -150,16 +158,27 @@ def ser_mesaj(m: BayiSohbetMesaji) -> dict:
     }
 
 
+def avatarlar(db: Session, dealer: Dealer) -> dict:
+    """Sohbette gösterilecek küçük görseller: bayinin logosu, atölyenin markası."""
+    from app.models import Tenant
+    t = db.get(Tenant, dealer.tenant_id)
+    return {
+        "bayi": getattr(dealer, "logo_url", None),
+        "atolye": getattr(t, "logo_url", None) if t is not None else None,
+    }
+
+
 def mesajlari_getir(db: Session, dealer: Dealer, *, limit: int = 200,
                     since: datetime | None = None) -> list[dict]:
     sohbet = sohbet_bul(db, dealer, olustur=False)
     if sohbet is None:
         return []
+    av = avatarlar(db, dealer)
     q = select(BayiSohbetMesaji).where(BayiSohbetMesaji.sohbet_id == sohbet.id)
     if since is not None:
         q = q.where(BayiSohbetMesaji.created_at > since)
     satirlar = db.scalars(q.order_by(BayiSohbetMesaji.created_at.desc()).limit(limit)).all()
-    return [ser_mesaj(m) for m in reversed(satirlar)]
+    return [ser_mesaj(m, avatarlar=av) for m in reversed(satirlar)]
 
 
 def ser_sohbet(s: BayiSohbet | None, dealer: Dealer) -> dict:
@@ -172,4 +191,5 @@ def ser_sohbet(s: BayiSohbet | None, dealer: Dealer) -> dict:
         "okunmamis_atolye": (s.okunmamis_atolye or 0) if s else 0,
         "okunmamis_bayi": (s.okunmamis_bayi or 0) if s else 0,
         "acil_bekliyor": bool(s.acil_bekliyor) if s else False,
+        "logo_url": getattr(dealer, "logo_url", None),
     }

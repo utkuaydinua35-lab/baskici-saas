@@ -42,6 +42,9 @@ scp masaustu/cikti/BERNZ-Bayi-Kurulum-1.0.0.exe baskici@91.132.49.107:/home/bask
 
 Klasör yoksa bir kez: `mkdir -p ~/baskici-saas/backend/uploads/uygulama`.
 
+İndirme yükü backend'e binmesin diye nginx bu klasörü DOĞRUDAN servis eder —
+blok ve kurulum adımları `deploy/nginx-uygulama-indirme.conf` dosyasında.
+
 Beklenen dosya adları:
 
 | Dosya | Ne |

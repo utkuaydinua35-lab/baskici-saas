@@ -244,7 +244,67 @@ function Katalog() {
   )
 }
 
+/** Sohbet: iki balon + aciliyet rozeti + ek düğmeleri. */
+function Sohbet() {
+  return (
+    <Sahne>
+      <div className="h-full flex flex-col justify-end gap-2">
+        <div className="self-start max-w-[72%] rounded-2xl rounded-bl-md bg-white/8 border border-white/10 px-3 py-2">
+          <div className="text-[9px] text-gray-400 mb-0.5">Atölye</div>
+          <div className="h-1.5 w-28 rounded bg-white/25" />
+          <div className="h-1.5 w-20 rounded bg-white/15 mt-1" />
+        </div>
+        <div className="self-end max-w-[78%] rounded-2xl rounded-br-md bg-accent/15 border border-accent/30 px-3 py-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded bg-red-500/25 text-red-300">ÇOK ACİL</span>
+            <span className="text-[8px] text-accent">🧾 #1042 siparişi</span>
+          </div>
+          <div className="h-1.5 w-32 rounded bg-white/30" />
+          <div className="h-10 w-16 rounded-lg bg-white/10 border border-white/15 mt-1.5 grid place-items-center text-[10px]">📷</div>
+        </div>
+        <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex-1 h-7 rounded-lg bg-white/6 border border-white/10" />
+          <div className="h-7 px-2 rounded-lg bg-white/8 border border-white/10 grid place-items-center text-[10px]">📎</div>
+          <div className="relative h-7 px-2.5 rounded-lg bg-accent grid place-items-center text-[10px] text-white">
+            Gönder
+            <Dokun className="w-8 h-8 -right-2 -top-2" />
+          </div>
+        </div>
+      </div>
+    </Sahne>
+  )
+}
+
+/** Masaüstü uygulaması: pencere + köşede bildirim. */
+function MasaustuUygulama() {
+  return (
+    <Sahne>
+      <div className="relative h-full">
+        <div className="absolute inset-x-2 top-2 bottom-6 rounded-xl bg-white/6 border border-white/12 overflow-hidden">
+          <div className="h-5 bg-white/8 border-b border-white/10 flex items-center gap-1 px-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400/70" />
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400/70" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/70" />
+            <span className="text-[8px] text-gray-400 ml-1">BERNZ Bayi</span>
+          </div>
+          <div className="p-2 space-y-1.5">
+            <div className="h-1.5 w-24 rounded bg-white/25" />
+            <div className="h-1.5 w-32 rounded bg-white/12" />
+            <div className="h-1.5 w-20 rounded bg-white/12" />
+          </div>
+        </div>
+        <div className="absolute right-1 bottom-0 w-[58%] rounded-lg bg-white/12 border border-white/20 px-2 py-1.5 tanitim-sec">
+          <div className="text-[9px] text-white">🚚 #1042 kargoya verildi</div>
+          <div className="text-[8px] text-gray-400">Takip no: 1234567890</div>
+        </div>
+      </div>
+    </Sahne>
+  )
+}
+
 const GORSELLER = {
+  sohbet: Sohbet,
+  masaustu: MasaustuUygulama,
   hbKanal: HbKanal,
   hbKod: HbKod,
   hbEtiket: HbEtiket,

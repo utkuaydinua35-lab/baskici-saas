@@ -18,6 +18,9 @@ from app.config import get_settings
 # backend/uploads/support  (app/services/uploads.py → parents[2] = backend)
 UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "uploads"
 SUPPORT_DIR = UPLOAD_ROOT / "support"
+# Bayi sohbeti AYRI klasörde: destek görselleri 14 günde siliniyor, bayiyle
+# konuşma geçmişi kalıcı olmalı (sipariş tartışmasının kanıtı orada).
+SOHBET_DIR = UPLOAD_ROOT / "bayi-sohbet"
 
 MAX_BYTES = 5 * 1024 * 1024  # 5MB
 RETENTION_DAYS = 14
@@ -26,6 +29,7 @@ _REL_PREFIX = "support/"
 
 def ensure_upload_root() -> None:
     SUPPORT_DIR.mkdir(parents=True, exist_ok=True)
+    SOHBET_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _sniff_ext(data: bytes) -> str | None:
@@ -39,8 +43,12 @@ def _sniff_ext(data: bytes) -> str | None:
     return None
 
 
-def save_image(file: UploadFile) -> str:
-    """Yüklenen görseli doğrula + kaydet. Göreli yol döndürür (support/<uuid>.<ext>)."""
+def save_image(file: UploadFile, klasor: str = "support") -> str:
+    """Yüklenen görseli doğrula + kaydet. Göreli yol döndürür (<klasor>/<uuid>.<ext>).
+
+    klasor="bayi-sohbet" verilince dosya kalıcı klasöre yazılır (temizlik yalnız
+    `support` klasörünü budar).
+    """
     ensure_upload_root()
     data = file.file.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
@@ -50,9 +58,10 @@ def save_image(file: UploadFile) -> str:
     ext = _sniff_ext(data)
     if not ext:
         raise HTTPException(415, "Yalnızca JPG, PNG veya WEBP görseller yüklenebilir.")
+    hedef = SOHBET_DIR if klasor == "bayi-sohbet" else SUPPORT_DIR
     fname = f"{uuid.uuid4().hex}.{ext}"
-    (SUPPORT_DIR / fname).write_bytes(data)
-    return f"{_REL_PREFIX}{fname}"
+    (hedef / fname).write_bytes(data)
+    return f"{hedef.name}/{fname}"
 
 
 def public_url(rel_path: str) -> str:

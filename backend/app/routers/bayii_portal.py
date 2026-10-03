@@ -319,6 +319,146 @@ def siparis_detay(order_id: uuid.UUID, d: Dealer = Depends(_bayi),
     return _ser(db, _siparis(db, d, order_id), detay=True)
 
 
+# ─── Atölye ile sohbet ───────────────────────────────────────
+# Kurallar services/bayi_sohbet.py'de — yönetim paneli AYNI servisi kullanıyor.
+class SohbetMesajIn(BaseModel):
+    body: str | None = Field(None, max_length=4000)
+    image_url: str | None = Field(None, max_length=500)
+    order_id: uuid.UUID | None = None      # "şu siparişten bahsediyorum"
+    aciliyet: str = "normal"               # normal | acil | cok_acil
+
+
+@router.get("/sohbet", response_model=dict, dependencies=[_izin])
+def sohbet(d: Dealer = Depends(_bayi), db: Session = Depends(get_db), limit: int = 200):
+    """Bayinin atölyeyle konuşması + okunmamış sayısı."""
+    from app.services import bayi_sohbet as bs
+    sh = bs.sohbet_bul(db, d, olustur=False)
+    return {"mesajlar": bs.mesajlari_getir(db, d, limit=min(limit, 500)),
+            "sohbet": bs.ser_sohbet(sh, d)}
+
+
+@router.post("/sohbet", response_model=dict, dependencies=[_izin])
+def sohbet_yaz(body: SohbetMesajIn, d: Dealer = Depends(_bayi),
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Bayi mesaj yazar: metin, görsel, sipariş eki, aciliyet."""
+    from app.services import bayi_sohbet as bs
+    if not (body.body or "").strip() and not body.image_url:
+        raise HTTPException(400, "Boş mesaj gönderilemez")
+    order = None
+    if body.order_id is not None:
+        # ⚠ Sipariş eki BAŞKA BAYİNİN siparişi olamaz — _siparis zaten doğruluyor
+        order = _siparis(db, d, body.order_id)
+    m = bs.mesaj_ekle(db, d, gonderen=bs.BAYI, body=body.body,
+                      image_url=body.image_url, order=order, aciliyet=body.aciliyet,
+                      gonderen_ad=(user.full_name or d.name))
+    db.commit()
+    return bs.ser_mesaj(m)
+
+
+@router.post("/sohbet/gorsel", response_model=dict, dependencies=[_izin])
+def sohbet_gorsel(file: UploadFile = File(...), d: Dealer = Depends(_bayi)):
+    """Sohbete görsel yükle — URL döner, mesaj gövdesine eklenir."""
+    from app.services import uploads as uploads_service
+    rel = uploads_service.save_image(file, klasor="bayi-sohbet")
+    return {"url": uploads_service.public_url(rel)}
+
+
+@router.post("/sohbet/okundu", response_model=dict, dependencies=[_izin])
+def sohbet_okundu(d: Dealer = Depends(_bayi), db: Session = Depends(get_db)):
+    from app.services import bayi_sohbet as bs
+    sayi = bs.okundu_isaretle(db, d, taraf=bs.BAYI)
+    db.commit()
+    return {"ok": True, "okundu": sayi}
+
+
+@router.get("/bildirimler", response_model=dict, dependencies=[_izin])
+def bildirimler(since: str | None = None, d: Dealer = Depends(_bayi),
+                db: Session = Depends(get_db)):
+    """Masaüstü uygulamasının sorduğu olay akışı: `since`dan BERİ ne oldu?
+
+    Neden çekme (polling) usulü: masaüstü uygulaması Electron kabuğu ve orada
+    tarayıcı Web Push altyapısı YOK (push servisi, sertifika, VAPID zinciri
+    çalışmıyor). Uygulama 60 saniyede bir bunu sorar, yeni olayları işletim
+    sisteminin bildirimi olarak gösterir. Sunucuda yeni tablo gerekmiyor:
+    olaylar zaten var olan kayıtlardan türetiliyor.
+
+    since YOKSA olay dönmez, yalnız sunucu saati döner — uygulama ilk açılışta
+    geçmişi bildirim yağmuruna çevirmesin, oradan ileriye bakar.
+    """
+    from datetime import timedelta
+
+    from app.models import BayiSohbet, BayiSohbetMesaji
+
+    simdi = datetime.now(UTC)
+    # ⚠ İMLEÇ 5 SANİYE GERİDEN VERİLİR. Postgres'te `now()` İŞLEM BAŞLANGIÇ
+    # saatidir: bu istek sırasında süren bir işlem, commit edince imlecin
+    # GERİSİNDE bir created_at ile yazılır ve olay sonsuza dek kaçardı.
+    # Tekrar gösterim riski yok: uygulama gösterdiği olay kimliklerini tutuyor.
+    imlec = (simdi - timedelta(seconds=5)).isoformat()
+    if not since:
+        return {"sunucu_saati": imlec, "olaylar": []}
+    ham = since.strip().replace("Z", "+00:00")
+    baslangic = None
+    # ⚠ "+00:00" sorgu dizesinde BOŞLUĞA çözülür (+ işareti URL'de boşluk demek).
+    # Kodlamayı unutan istemci yüzünden uç 400 dönüyordu; ikinci deneme bunu
+    # geri çevirir.
+    for aday in (ham, ham.replace(" ", "+")):
+        try:
+            baslangic = datetime.fromisoformat(aday)
+            break
+        except ValueError:
+            continue
+    if baslangic is None:
+        raise HTTPException(400, "Geçersiz 'since' zamanı")
+    if baslangic.tzinfo is None:
+        baslangic = baslangic.replace(tzinfo=UTC)
+    # Çok eski bir zaman gelirse (uygulama günlerce kapalı kaldı) son 24 saat
+    baslangic = max(baslangic, simdi - timedelta(hours=24))
+
+    olaylar = []
+    # 1) Kargoya verilen siparişler — bayinin kendi siparişleri
+    satirlar = db.execute(
+        select(OrderStatusHistory, Order)
+        .join(Order, Order.id == OrderStatusHistory.order_id)
+        .where(OrderStatusHistory.tenant_id == d.tenant_id,
+               OrderStatusHistory.action == "kargoya_verildi",
+               OrderStatusHistory.created_at > baslangic,
+               _bayinin_sql_suzgeci(d))
+        .order_by(OrderStatusHistory.created_at)
+        .limit(50)
+    ).all()
+    for h, o in satirlar:
+        takip = (o.kargo_info or {}).get("takip_no")
+        olaylar.append({
+            "id": f"kargo-{h.id}",
+            "tur": "kargo",
+            "baslik": f"🚚 {o.order_number} kargoya verildi",
+            "govde": (f"Takip no: {takip}" if takip else "Siparişin kargoya teslim edildi."),
+            "at": h.created_at.isoformat() if h.created_at else simdi.isoformat(),
+            "link": f"/bayii/siparis/{o.id}",
+        })
+    # 2) Atölyeden gelen sohbet mesajları
+    sohbet = db.scalar(select(BayiSohbet).where(BayiSohbet.dealer_id == d.id))
+    if sohbet is not None:
+        for m in db.scalars(
+            select(BayiSohbetMesaji)
+            .where(BayiSohbetMesaji.sohbet_id == sohbet.id,
+                   BayiSohbetMesaji.gonderen == "atolye",
+                   BayiSohbetMesaji.created_at > baslangic)
+            .order_by(BayiSohbetMesaji.created_at).limit(50)
+        ).all():
+            olaylar.append({
+                "id": f"sohbet-{m.id}",
+                "tur": "sohbet",
+                "baslik": "💬 Atölyeden mesaj",
+                "govde": (m.body or "")[:200] or ("📎 Görsel" if m.image_url else "Yeni mesaj"),
+                "at": m.created_at.isoformat() if m.created_at else simdi.isoformat(),
+                "link": "/bayii/sohbet",
+            })
+    olaylar.sort(key=lambda x: x["at"])
+    return {"sunucu_saati": imlec, "olaylar": olaylar}
+
+
 @router.get("/cari", response_model=dict, dependencies=[_izin])
 def cari(d: Dealer = Depends(_bayi), db: Session = Depends(get_db), limit: int = 100):
     hareketler = db.scalars(

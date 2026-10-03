@@ -2292,6 +2292,80 @@ class DeviceToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BayiSohbet(Base):
+    """Bayi ile atölye arasındaki sohbet — BAYİ BAŞINA TEK konuşma.
+
+    Müşteri desteğinden (SupportThread) ayrı duruyor: orada konuşma bir SİPARİŞE
+    bağlı ve karşı taraf anonim müşteri; burada taraflar belli (bayi ↔ atölye) ve
+    konuşma süreklidir. Sipariş gerektiğinde mesaja EK olarak bağlanır.
+
+    Okunmamış sayaçları ve son mesaj özeti burada tutuluyor: liste ekranı her
+    bayi için mesaj tablosunu taramasın.
+    """
+    __tablename__ = "bayi_sohbetleri"
+    __table_args__ = (
+        UniqueConstraint("dealer_id", name="uq_bayi_sohbet_dealer"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="CASCADE"), index=True
+    )
+
+    son_mesaj_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    son_mesaj_ozet: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    son_gonderen: Mapped[str | None] = mapped_column(String(10), nullable=True)   # bayi | atolye
+
+    okunmamis_atolye: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+    okunmamis_bayi: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
+    # Okunmamışlar arasında acil/çok acil var mı — listede kırmızı rozet
+    acil_bekliyor: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    mesajlar: Mapped[list["BayiSohbetMesaji"]] = relationship(
+        back_populates="sohbet", cascade="all, delete-orphan",
+        order_by="BayiSohbetMesaji.created_at",
+    )
+
+
+class BayiSohbetMesaji(Base):
+    """Sohbetteki tek mesaj: metin, görsel, sipariş eki ve aciliyet."""
+    __tablename__ = "bayi_sohbet_mesajlari"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sohbet_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bayi_sohbetleri.id", ondelete="CASCADE"), index=True
+    )
+    gonderen: Mapped[str] = mapped_column(String(10))            # bayi | atolye
+    # Kim yazdı (bayi tarafında kullanıcı adı, atölyede personel adı). Kullanıcı
+    # silinse de mesajda kalsın diye ANLIK KOPYA.
+    gonderen_ad: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Sipariş eki: "şu siparişten bahsediyorum". Sipariş silinirse bağ kopar ama
+    # numara mesajda kalır (konuşmanın anlamı kaybolmasın).
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    order_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    aciliyet: Mapped[str] = mapped_column(
+        String(10), default="normal", server_default=text("'normal'"), nullable=False
+    )  # normal | acil | cok_acil
+
+    okundu: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    sohbet: Mapped["BayiSohbet"] = relationship(back_populates="mesajlar")
+
+
 class ModelDegisimTalebi(Base):
     """Müşteriye WhatsApp'tan gönderilen 'telefon modelini değiştir' bağlantısı.
 

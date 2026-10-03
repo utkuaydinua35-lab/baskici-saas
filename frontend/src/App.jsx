@@ -53,6 +53,7 @@ const DestekPage = lazyWithReload(() => import('./pages/DestekPage'))
 const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
 const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
 const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
+const BayiSohbetYonetimPage = lazyWithReload(() => import('./pages/BayiSohbetPage'))
 const DealerDashboardPage = lazyWithReload(() => import('./pages/DealerDashboardPage'))
 const BayiSiparisleriPage = lazyWithReload(() => import('./pages/BayiSiparisleriPage'))
 const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
@@ -68,6 +69,7 @@ const BayiSiparislerPage = lazyWithReload(() => import('./pages/bayii/BayiSipari
 const BayiSiparisDetayPage = lazyWithReload(() => import('./pages/bayii/BayiSiparisDetayPage'))
 const BayiYeniSiparisPage = lazyWithReload(() => import('./pages/bayii/BayiYeniSiparisPage'))
 const BayiCariPage = lazyWithReload(() => import('./pages/bayii/BayiCariPage'))
+const BayiSohbetPage = lazyWithReload(() => import('./pages/bayii/BayiSohbetPage'))
 const BayiYeniliklerPage = lazyWithReload(() => import('./pages/bayii/BayiYeniliklerPage'))
 
 function PageLoader() {
@@ -97,6 +99,7 @@ export default function App() {
             <Route path="/bayii/siparis/:id" element={<BayiSiparisDetayPage />} />
             <Route path="/bayii/yeni" element={<BayiYeniSiparisPage />} />
             <Route path="/bayii/cari" element={<BayiCariPage />} />
+            <Route path="/bayii/sohbet" element={<BayiSohbetPage />} />
             <Route path="/bayii/yenilikler" element={<BayiYeniliklerPage />} />
           </Route>
         </Route>
@@ -125,6 +128,7 @@ export default function App() {
             <Route path="/aksesuarlar" element={<AccessoriesPage />} />
             <Route path="/couple" element={<CoupleProductsPage />} />
             <Route path="/bayiler" element={<DealersPage />} />
+            <Route path="/bayi-sohbet" element={<BayiSohbetYonetimPage />} />
             <Route path="/bayiler/:id" element={<DealerDashboardPage />} />
             <Route path="/bayi-siparisleri" element={<BayiSiparisleriPage />} />
             <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />

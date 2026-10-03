@@ -17,6 +17,8 @@ const MENU = [
   { yol: '/bayii/siparisler', ad: 'Siparişlerim', ikon: 'M4 6h16M4 12h16M4 18h10' },
   { yol: '/bayii/yeni', ad: 'Yeni Sipariş', ikon: 'M12 5v14M5 12h14' },
   { yol: '/bayii/cari', ad: 'Cari Hesap', ikon: 'M3 7h18v10H3zM3 11h18' },
+  { yol: '/bayii/sohbet', ad: 'Sohbet', sohbet: true,
+    ikon: 'M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.7L3 21l1.8-5A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z' },
   { yol: '/bayii/yenilikler', ad: 'Yenilikler', yenilik: true,
     ikon: 'M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3ZM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z' },
 ]
@@ -88,6 +90,19 @@ export default function BayiLayout() {
   }, [])
   const yeni = goruldu === undefined ? 0 : yeniSayisi(goruldu)
 
+  // Sohbette okunmamış mesaj sayısı — menüde rozet olarak görünür.
+  // 30 sn'de bir tazelenir; sekme arkadayken de yeni mesaj fark edilsin.
+  const [okunmamisSohbet, setOkunmamisSohbet] = useState(0)
+  useEffect(() => {
+    let durdu = false
+    const bak = () => api.get('/api/bayii/sohbet?limit=1')
+      .then((d) => { if (!durdu) setOkunmamisSohbet(d?.sohbet?.okunmamis_bayi || 0) })
+      .catch(() => {})
+    bak()
+    const t = setInterval(bak, 30000)
+    return () => { durdu = true; clearInterval(t) }
+  }, [konum.pathname])
+
   useEffect(() => { setMenuAcik(false) }, [konum.pathname])
   useEffect(() => {
     if (!menuAcik) return
@@ -129,6 +144,7 @@ export default function BayiLayout() {
                       <Ikon d={m.ikon} />
                       {m.ad}
                       {m.yenilik && <YeniRozet sayi={yeni} />}
+                      {m.sohbet && <YeniRozet sayi={okunmamisSohbet} />}
                     </span>
                   )}
                 </NavLink>

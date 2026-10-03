@@ -20,6 +20,35 @@ export const BASLANGIC_SURUMU = 5
 // tur: yeni | iyilestirme | duzeltme
 export const GUNCELLEMELER = [
   {
+    surum: 9,
+    tarih: '2026-10-03',
+    baslik: 'Atölyeyle sohbet + masaüstü uygulaması',
+    ozet: 'Artık panelden doğrudan bize yazabilir, görsel ve sipariş ekleyebilir, acil durumu işaretleyebilirsin. Bilgisayarına kurduğun uygulamayla kargo bildirimleri de ayağına gelir.',
+    degisiklikler: [
+      { tur: 'yeni', metin: 'Menüde “Sohbet”: bize doğrudan yaz, anında yanıt al. Okunmamış mesaj sayısı menüde görünür.' },
+      { tur: 'yeni', metin: 'Mesaja görsel ekleyebilir, “şu siparişten bahsediyorum” diye sipariş iliştirebilirsin.' },
+      { tur: 'yeni', metin: 'Aciliyet işareti: “Acil” ya da “Çok acil” seçersen mesaj bize anında bildirim olarak düşer.' },
+      { tur: 'yeni', metin: 'Windows ve Mac için BERNZ Bayi uygulaması: siparişin kargoya verildiğinde ve biz yazdığımızda bilgisayarında bildirim görürsün.' },
+    ],
+    tanitim: [
+      {
+        baslik: 'Bize doğrudan yaz',
+        metin: 'Menüden Sohbet’e gir. Yazdığın mesaj bize anında ulaşır; yanıt gelince menüdeki rozetten görürsün.',
+        gorsel: 'sohbet',
+      },
+      {
+        baslik: 'Görsel, sipariş ve aciliyet',
+        metin: '📎 ile fotoğraf ekle, listeden siparişi seç, gerçekten acil bir durumda “Acil” işaretle — acil mesajlar telefonumuza bildirim olarak düşer.',
+        gorsel: 'sohbet',
+      },
+      {
+        baslik: 'Bilgisayarına kur, bildirim al',
+        metin: 'Uygulamayı kurduğunda sipariş kargoya verilince ve biz sana yazınca bilgisayarında bildirim çıkar. Kurulum linkini biz göndereceğiz.',
+        gorsel: 'masaustu',
+      },
+    ],
+  },
+  {
     surum: 8,
     tarih: '2026-09-18',
     baslik: 'Oturum artık ortada düşmüyor',

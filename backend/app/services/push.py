@@ -93,7 +93,7 @@ class _DeadSubscription(Exception):
 # YENI TETIKLEYICI EKLERKEN buraya bakin; scripts/bildirim_hedef_test.py
 # kullanimdaki tum adresleri sabitliyor.
 _STUDIO_ONEKLERI = (
-    "/orders", "/bayii", "/bayiler", "/bayi-siparisleri", "/destek",
+    "/orders", "/bayii", "/bayiler", "/bayi-siparisleri", "/bayi-sohbet", "/destek",
     "/kalip", "/paketleme", "/aski", "/designs", "/kisiye-ozel",
     "/stok", "/telafiler", "/pipeline", "/platform", "/denetim", "/stores",
     "/urun-studyosu", "/varyantli-urunler", "/aksesuarlar", "/couple",

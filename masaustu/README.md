@@ -37,9 +37,11 @@ npm run paket:mac           # iki profil birden (mac)
 npm run paket:win           # iki profil birden (windows)
 ```
 
-> Windows paketini **Windows'ta**, Mac paketini **Mac'te** üretmek gerekir
-> (çapraz derleme imzasız işlerde sorun çıkarıyor). Mac'te üretilen `.dmg`
-> hem Apple Silicon hem Intel için ayrı dosya olarak çıkar.
+> **Windows paketi de Mac'te üretilebiliyor** — Wine GEREKMİYOR; electron-builder
+> NSIS'i ve rcedit'i kendi taşınabilir araçlarıyla çalıştırıyor (ilk çalıştırmada
+> Windows için Electron ikilisini indirir, birkaç dakika sürer). Wine yalnız
+> `signtool` ile İMZALAMA için gerekir; imzasız üretimde atlanıyor.
+> Mac paketi Mac'te üretilmeli ve Apple Silicon + Intel için iki ayrı dosya çıkar.
 
 ## Bayiye yayınlama
 

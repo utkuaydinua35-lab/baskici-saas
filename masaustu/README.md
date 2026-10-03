@@ -1,7 +1,15 @@
-# BERNZ Bayi — masaüstü uygulaması
+# BERNZ masaüstü uygulamaları
 
-Bayi panelini kendi penceresinde açan Electron kabuğu. Kargo ve sohbet
-bildirimlerini işletim sisteminin bildirimi olarak gösterir.
+Tek Electron kabuğu, **iki profil** (`kaynak/profiller.js`):
+
+| Profil | Uygulama | Açtığı panel | Bildirim kaynağı |
+|---|---|---|---|
+| `bayi` | **BERNZ Bayi** (turkuaz simge) | `/bayii` bayi paneli | kargoya verilen siparişler + atölye mesajları |
+| `studio` | **BERNZ Stüdyo** (mor simge) | yönetim paneli | panelin kendi bildirimleri |
+
+Kod ortak: pencere, bildirim yoklaması, menü ve güvenlik ayarları tek yerde.
+Profil paketleme sırasında `package.json`'a gömülür (electron-builder
+`extraMetadata.bernzProfil`), çalışırken oradan okunur.
 
 - **Windows:** tek tıkla kurulan `.exe` (NSIS, kullanıcı hesabına kurar, yönetici
   şifresi istemez), masaüstü + başlat menüsü kısayolu.
@@ -12,16 +20,21 @@ bildirimlerini işletim sisteminin bildirimi olarak gösterir.
 ```bash
 cd masaustu
 npm install
-npm run basla                       # canlı paneli açar
+npm run basla                       # bayi profili, canlı panel
+npm run basla:studio                # yönetim profili
 BERNZ_PANEL_URL=http://localhost:5174/bayii npm run basla   # yerel panel
+BERNZ_SMOKE=1 npm run basla         # duman testi: açılır, yüklenir, kapanır
 ```
 
 ## Paket üretme
 
 ```bash
-npm run paket:win     # cikti/BERNZ-Bayi-Kurulum-1.0.0.exe
-npm run paket:mac     # cikti/BERNZ-Bayi-1.0.0-arm64.dmg + x64
-npm run paket         # ikisi birden
+npm run paket:bayi:mac      # cikti/bayi/BERNZ-Bayi-1.0.0-arm64.dmg (+x64)
+npm run paket:bayi:win      # cikti/bayi/BERNZ-Bayi-Kurulum-1.0.0.exe
+npm run paket:studio:mac    # cikti/studio/BERNZ-Studyo-1.0.0-arm64.dmg (+x64)
+npm run paket:studio:win    # cikti/studio/BERNZ-Studyo-Kurulum-1.0.0.exe
+npm run paket:mac           # iki profil birden (mac)
+npm run paket:win           # iki profil birden (windows)
 ```
 
 > Windows paketini **Windows'ta**, Mac paketini **Mac'te** üretmek gerekir
@@ -34,10 +47,17 @@ npm run paket         # ikisi birden
 kopyalanır; bayi panelindeki **Uygulama** sayfası (`/bayii/uygulama`) o klasörü
 okur. Veritabanı kaydı yok — kopyalamak yayınlamaktır.
 
+⚠ `baskici@91.132.49.107` ile GİTMEZ: Mac'teki SSH anahtarı sunucuda **root**'a
+tanımlı, `baskici` Linux kullanıcısına değil — parola sorar ve geçemezsin.
+SSH takma adı `baskici` zaten root'a bakıyor (`~/.ssh/config`). Dosyalar önce
+root olarak `/tmp`'ye gider, sonra doğru sahiplikle yerine taşınır:
+
 ```bash
-# Mac'ten sunucuya (dosya adlarını DEĞİŞTİRME — sayfa addan sürüm/mimari çözüyor)
-scp masaustu/cikti/BERNZ-Bayi-1.0.0-*.dmg baskici@91.132.49.107:/home/baskici/baskici-saas/backend/uploads/uygulama/
-scp masaustu/cikti/BERNZ-Bayi-Kurulum-1.0.0.exe baskici@91.132.49.107:/home/baskici/baskici-saas/backend/uploads/uygulama/
+# Dosya adlarını DEĞİŞTİRME — sayfa addan profil/sürüm/mimari çözüyor
+scp masaustu/cikti/bayi/BERNZ-Bayi-*.dmg masaustu/cikti/studio/BERNZ-Studyo-*.dmg baskici:/tmp/
+ssh baskici 'install -o baskici -g baskici -m 644 /tmp/BERNZ-*.dmg \
+  /home/baskici/baskici-saas/backend/uploads/uygulama/ && rm -f /tmp/BERNZ-*.dmg \
+  && ls -lh /home/baskici/baskici-saas/backend/uploads/uygulama/'
 ```
 
 Klasör yoksa bir kez: `mkdir -p ~/baskici-saas/backend/uploads/uygulama`.
@@ -49,9 +69,15 @@ Beklenen dosya adları:
 
 | Dosya | Ne |
 |---|---|
-| `BERNZ-Bayi-<sürüm>-arm64.dmg` | macOS, Apple Silicon |
-| `BERNZ-Bayi-<sürüm>-x64.dmg` | macOS, Intel |
-| `BERNZ-Bayi-Kurulum-<sürüm>.exe` | Windows |
+| `BERNZ-Bayi-<sürüm>-arm64.dmg` | bayi · macOS, Apple Silicon |
+| `BERNZ-Bayi-<sürüm>-x64.dmg` | bayi · macOS, Intel |
+| `BERNZ-Bayi-Kurulum-<sürüm>.exe` | bayi · Windows |
+| `BERNZ-Studyo-<sürüm>-arm64.dmg` | yönetim · macOS, Apple Silicon |
+| `BERNZ-Studyo-<sürüm>-x64.dmg` | yönetim · macOS, Intel |
+| `BERNZ-Studyo-Kurulum-<sürüm>.exe` | yönetim · Windows |
+
+Bayi sayfası yalnız `BERNZ-Bayi-*`, yönetim ayarları yalnız `BERNZ-Studyo-*`
+dosyalarını listeler — ikisi aynı klasörde durabilir.
 
 Kurala uymayan dosyalar listelenmez (klasöre düşen rastgele bir dosya bayiye
 "kurulum" diye gösterilmesin).
@@ -79,9 +105,15 @@ Electron'da tarayıcı Web Push altyapısı yok (VAPID/servis çalışanı zinci
 orada işlemiyor). Bu yüzden kabuk, 60 saniyede bir sunucuya sorar:
 
 ```
-GET /api/bayii/bildirimler?since=<son görülen zaman>
+GET <profilin bildirim ucu>?since=<son görülen zaman>
 → { sunucu_saati, olaylar: [{ id, tur, baslik, govde, at, link }] }
+
+bayi   → /api/bayii/bildirimler      (kargo + sohbet)
+studio → /api/notifications/akis     (panel bildirimleri)
 ```
+
+İki uç AYNI sözleşmeyi konuşur; kabuk tek kod. Alan adları ayrışırsa
+`scripts/masaustu_akis_test.py` kırmızı yanar.
 
 - Olaylar var olan kayıtlardan türetiliyor; sunucuda yeni tablo yok.
   `tur`: `kargo` (sipariş kargoya verildi) · `sohbet` (atölyeden mesaj).

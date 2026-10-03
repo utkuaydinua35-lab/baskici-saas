@@ -6,9 +6,12 @@ kendisi — yeni sürümü oraya kopyalamak yayınlamak için yeterli, panelde a
 bir şey güncellenmez.
 
 Dosya adı kuralı (electron-builder bu adlarla üretiyor):
-    BERNZ-Bayi-<surum>-arm64.dmg      → macOS (Apple Silicon)
-    BERNZ-Bayi-<surum>-x64.dmg        → macOS (Intel)
-    BERNZ-Bayi-Kurulum-<surum>.exe    → Windows
+    BERNZ-Bayi-<surum>-arm64.dmg        → bayi, macOS (Apple Silicon)
+    BERNZ-Bayi-<surum>-x64.dmg          → bayi, macOS (Intel)
+    BERNZ-Bayi-Kurulum-<surum>.exe      → bayi, Windows
+    BERNZ-Studyo-<surum>-arm64.dmg      → yönetim, macOS (Apple Silicon)
+    BERNZ-Studyo-<surum>-x64.dmg        → yönetim, macOS (Intel)
+    BERNZ-Studyo-Kurulum-<surum>.exe    → yönetim, Windows
 """
 from __future__ import annotations
 
@@ -19,8 +22,18 @@ from app.services.uploads import UPLOAD_ROOT, public_url
 
 UYGULAMA_DIR = UPLOAD_ROOT / "uygulama"
 
-_MAC = re.compile(r"^BERNZ-Bayi-(?P<surum>[\d.]+)-(?P<mimari>arm64|x64)\.dmg$", re.I)
-_WIN = re.compile(r"^BERNZ-Bayi-Kurulum-(?P<surum>[\d.]+)\.exe$", re.I)
+# Profil başına dosya adı kalıbı. Bayi ve yönetim kurulumları AYNI klasörde
+# durur; listeler birbirine karışmasın diye ad üzerinden ayrılır.
+KALIPLAR = {
+    "bayi": (
+        re.compile(r"^BERNZ-Bayi-(?P<surum>[\d.]+)-(?P<mimari>arm64|x64)\.dmg$", re.I),
+        re.compile(r"^BERNZ-Bayi-Kurulum-(?P<surum>[\d.]+)\.exe$", re.I),
+    ),
+    "studio": (
+        re.compile(r"^BERNZ-Studyo-(?P<surum>[\d.]+)-(?P<mimari>arm64|x64)\.dmg$", re.I),
+        re.compile(r"^BERNZ-Studyo-Kurulum-(?P<surum>[\d.]+)\.exe$", re.I),
+    ),
+}
 
 MIMARI_ETIKET = {
     "arm64": "Apple Silicon (M1/M2/M3/M4)",
@@ -33,20 +46,21 @@ def _boyut_yaz(bayt: int) -> str:
     return f"{mb:.0f} MB" if mb >= 10 else f"{mb:.1f} MB"
 
 
-def kurulumlar() -> list[dict]:
-    """Yayındaki kurulum dosyaları — yeniden eskiye."""
+def kurulumlar(profil: str = "bayi") -> list[dict]:
+    """Yayındaki kurulum dosyaları — yeniden eskiye. profil: bayi | studio"""
     if not UYGULAMA_DIR.exists():
         return []
+    mac_kalip, win_kalip = KALIPLAR.get(profil, KALIPLAR["bayi"])
     out = []
     for p in UYGULAMA_DIR.iterdir():
         if not p.is_file():
             continue
-        m = _MAC.match(p.name)
+        m = mac_kalip.match(p.name)
         platform, mimari = None, None
         if m:
             platform, mimari = "mac", m.group("mimari").lower()
         else:
-            m = _WIN.match(p.name)
+            m = win_kalip.match(p.name)
             if m:
                 platform, mimari = "windows", "x64"
         if not m:
@@ -66,8 +80,8 @@ def kurulumlar() -> list[dict]:
     return out
 
 
-def son_surum(kayitlar: list[dict] | None = None) -> str | None:
-    kayitlar = kayitlar if kayitlar is not None else kurulumlar()
+def son_surum(kayitlar: list[dict] | None = None, profil: str = "bayi") -> str | None:
+    kayitlar = kayitlar if kayitlar is not None else kurulumlar(profil)
     surumler = {k["surum"] for k in kayitlar}
     if not surumler:
         return None

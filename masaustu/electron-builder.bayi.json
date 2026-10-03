@@ -1,0 +1,30 @@
+{
+  "extends": null,
+  "appId": "com.bernzcompany.bayi",
+  "productName": "BERNZ Bayi",
+  "directories": { "output": "cikti/bayi", "buildResources": "kaynak/varliklar" },
+  "files": ["kaynak/**/*", "package.json"],
+  "extraMetadata": { "bernzProfil": "bayi" },
+  "mac": {
+    "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+    "category": "public.app-category.business",
+    "icon": "kaynak/varliklar/icon-bayi.icns",
+    "artifactName": "BERNZ-Bayi-${version}-${arch}.${ext}"
+  },
+  "dmg": {
+    "title": "BERNZ Bayi",
+    "contents": [
+      { "x": 150, "y": 190, "type": "file" },
+      { "x": 430, "y": 190, "type": "link", "path": "/Applications" }
+    ]
+  },
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "kaynak/varliklar/icon-bayi.ico",
+    "artifactName": "BERNZ-Bayi-Kurulum-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": true, "perMachine": false, "allowToChangeInstallationDirectory": false,
+    "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "BERNZ Bayi"
+  }
+}

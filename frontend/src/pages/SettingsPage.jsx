@@ -209,9 +209,83 @@ function AccountTab() {
         </div>
       </div>
       <NotificationsCard />
+      <MasaustuUygulamaKarti />
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
       {show2fa && <TwoFactorModal enabled={twoFaOn} onClose={() => setShow2fa(false)} onChanged={refresh} />}
       {showPasskey && <PasskeyModal onClose={() => setShowPasskey(false)} />}
+    </div>
+  )
+}
+
+// Masaüstü uygulaması (BERNZ Stüdyo) — kurulum dosyaları + kurulum adımları.
+// Kaynak sunucudaki uploads/uygulama klasörü; dosya yoksa kart kendini gizler.
+function MasaustuUygulamaKarti() {
+  const [veri, setVeri] = useState(null)
+  const [sistem, setSistem] = useState(() =>
+    /Windows/i.test(navigator.userAgent) ? 'windows' : 'mac')
+  // Uygulamanın İÇİNDE miyiz (kabuk preload'u koyar)
+  const kabukta = typeof window !== 'undefined' && !!window.bernzMasaustu
+
+  useEffect(() => {
+    api.get('/api/masaustu/kurulumlar?profil=studio').then(setVeri).catch(() => setVeri({ kurulumlar: [] }))
+  }, [])
+
+  if (!veri || !(veri.kurulumlar || []).length) return null
+  const dosyalar = (sistem === 'mac' ? veri.mac : veri.windows) || []
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">🖥️ Masaüstü uygulaması</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Paneli ayrı bir pencerede kullan; yeni sipariş, bayi mesajı ve uyarılar
+        bilgisayarına bildirim olarak düşsün.
+      </p>
+
+      {kabukta && (
+        <div className="text-xs text-emerald-300 mb-3">
+          ✓ Uygulamayı kullanıyorsun · sürüm {window.bernzMasaustu?.surum}
+          {veri.son_surum && veri.son_surum !== window.bernzMasaustu?.surum &&
+            ` · yeni sürüm: ${veri.son_surum}`}
+        </div>
+      )}
+
+      <div className="flex gap-2 mb-3">
+        {[['windows', '🪟 Windows'], ['mac', '🍎 Mac']].map(([k, ad]) => (
+          <button key={k} onClick={() => setSistem(k)}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              sistem === k ? 'bg-accent text-white border-accent'
+                           : 'bg-brand-input/50 text-gray-300 border-brand-border'}`}>{ad}</button>
+        ))}
+      </div>
+
+      {dosyalar.length === 0 ? (
+        <div className="text-xs text-gray-500">Bu sistem için kurulum henüz yayınlanmadı.</div>
+      ) : (
+        <div className="space-y-2">
+          {dosyalar.map(d => (
+            <a key={d.dosya} href={d.url} download
+               className="flex items-center gap-3 px-3 py-2 rounded-xl border border-accent/30 bg-accent/10 hover:bg-accent/15">
+              <span>⬇️</span>
+              <span className="min-w-0">
+                <span className="block text-sm text-gray-100">{d.mimari_etiket || 'İndir'} · sürüm {d.surum}</span>
+                <span className="block text-[11px] text-gray-500">{d.dosya} · {d.boyut}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      <ol className="text-[12px] text-gray-400 space-y-1 list-decimal list-inside mt-3">
+        {(sistem === 'mac' ? [
+          '.dmg dosyasına çift tıkla, logoyu Uygulamalar klasörüne sürükle.',
+          'İlk açılışta simgeye sağ tık → Aç → Aç (uygulama imzasız; yalnız bir kez).',
+          'Açılışta bildirim iznini ver.',
+        ] : [
+          '.exe dosyasına çift tıkla — tek tıkla kurulur, yönetici şifresi istemez.',
+          '"Windows bilgisayarınızı korudu" çıkarsa: Ek bilgi → Yine de çalıştır.',
+          'Açılışta bildirim iznini ver.',
+        ]).map((a, i) => <li key={i}>{a}</li>)}
+      </ol>
     </div>
   )
 }

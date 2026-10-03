@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, func as sql_func, select, update
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,62 @@ def list_notifications(
         )
     ) or 0
     return {"items": [_serialize(n) for n in items], "unread_count": unread}
+
+
+@router.get("/akis", response_model=dict)
+def akis(since: str | None = None, user: User = Depends(get_current_user),
+         db: Session = Depends(get_db)):
+    """Masaüstü uygulamasının sorduğu olay akışı: `since`dan BERİ ne düştü?
+
+    Bayi tarafındaki /api/bayii/bildirimler ile AYNI sözleşme (id, tur, baslik,
+    govde, at, link + sunucu_saati) — masaüstü kabuğu iki profilde de aynı kodu
+    kullanıyor. Kaynak: panelin kendi bildirim kayıtları.
+
+    since YOKSA olay dönmez, yalnız imleç döner: uygulama ilk açılışta geçmişi
+    bildirim yağmuruna çevirmesin.
+
+    ⚠ İMLEÇ 5 SANİYE GERİDEN: Postgres'te now() işlem başlangıç saatidir; o an
+    süren bir işlem imlecin gerisinde bir created_at ile yazılıp sonsuza dek
+    kaçabilirdi. Tekrar gösterimi uygulama olay kimlikleriyle önler.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    simdi = datetime.now(UTC)
+    imlec = (simdi - timedelta(seconds=5)).isoformat()
+    if not since:
+        return {"sunucu_saati": imlec, "olaylar": []}
+    ham = since.strip().replace("Z", "+00:00")
+    baslangic = None
+    # "+00:00" sorgu dizesinde boşluğa çözülür — ikinci deneme onu geri çevirir
+    for aday in (ham, ham.replace(" ", "+")):
+        try:
+            baslangic = datetime.fromisoformat(aday)
+            break
+        except ValueError:
+            continue
+    if baslangic is None:
+        raise HTTPException(400, "Geçersiz 'since' zamanı")
+    if baslangic.tzinfo is None:
+        baslangic = baslangic.replace(tzinfo=UTC)
+    baslangic = max(baslangic, simdi - timedelta(hours=24))
+
+    satirlar = db.scalars(
+        select(Notification).where(
+            Notification.tenant_id == user.tenant_id,
+            Notification.created_at > baslangic,
+        ).order_by(Notification.created_at).limit(50)
+    ).all()
+    return {
+        "sunucu_saati": imlec,
+        "olaylar": [{
+            "id": f"bildirim-{n.id}",
+            "tur": n.kind or "bilgi",
+            "baslik": n.title,
+            "govde": (n.body or "")[:200],
+            "at": n.created_at.isoformat() if n.created_at else imlec,
+            "link": n.link,
+        } for n in satirlar],
+    }
 
 
 @router.post("/sync-all", response_model=None)

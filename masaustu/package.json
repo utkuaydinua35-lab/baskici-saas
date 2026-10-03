@@ -2,51 +2,24 @@
   "name": "bernz-bayi",
   "productName": "BERNZ Bayi",
   "version": "1.0.0",
-  "description": "BERNZ Company bayi paneli — masaüstü uygulaması",
+  "description": "BERNZ Company masaüstü kabuğu — bayi ve yönetim paneli",
   "author": "BERNZ COMPANY",
   "license": "UNLICENSED",
   "private": true,
   "main": "kaynak/main.js",
   "scripts": {
     "basla": "electron .",
-    "paket:mac": "electron-builder --mac",
-    "paket:win": "electron-builder --win",
-    "paket": "electron-builder --mac --win"
+    "basla:studio": "BERNZ_PROFIL=studio electron .",
+    "paket:bayi:mac": "electron-builder --mac --config electron-builder.bayi.json",
+    "paket:bayi:win": "electron-builder --win --config electron-builder.bayi.json",
+    "paket:studio:mac": "electron-builder --mac --config electron-builder.studio.json",
+    "paket:studio:win": "electron-builder --win --config electron-builder.studio.json",
+    "paket:mac": "npm run paket:bayi:mac && npm run paket:studio:mac",
+    "paket:win": "npm run paket:bayi:win && npm run paket:studio:win"
   },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
   },
-  "build": {
-    "appId": "com.bernzcompany.bayi",
-    "productName": "BERNZ Bayi",
-    "directories": { "output": "cikti", "buildResources": "kaynak/varliklar" },
-    "files": ["kaynak/**/*", "package.json"],
-    "mac": {
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
-      "category": "public.app-category.business",
-      "icon": "kaynak/varliklar/icon.icns",
-      "artifactName": "BERNZ-Bayi-${version}-${arch}.${ext}"
-    },
-    "dmg": {
-      "title": "BERNZ Bayi",
-      "contents": [
-        { "x": 150, "y": 190, "type": "file" },
-        { "x": 430, "y": 190, "type": "link", "path": "/Applications" }
-      ]
-    },
-    "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "icon": "kaynak/varliklar/icon.ico",
-      "artifactName": "BERNZ-Bayi-Kurulum-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "BERNZ Bayi"
-    }
-  }
+  "bernzProfil": "bayi"
 }

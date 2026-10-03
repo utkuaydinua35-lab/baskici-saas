@@ -36,6 +36,8 @@ DOSYALAR = [
     "BERNZ-Bayi-9.9.9-x64.dmg",
     "BERNZ-Bayi-Kurulum-9.9.9.exe",
     "BERNZ-Bayi-10.0.0-arm64.dmg",
+    "BERNZ-Studyo-9.9.9-arm64.dmg",  # yönetim kurulumu — bayiye GÖRÜNMEMELİ
+    "BERNZ-Studyo-Kurulum-9.9.9.exe",
     "okuma-notu.txt",               # kurala uymayan — listelenmemeli
 ]
 
@@ -96,6 +98,24 @@ try:
     es("mac ve windows ayrı listelenir", True,
        len(r.json()["mac"]) >= 3 and len(r.json()["windows"]) >= 1)
     es("yetkisiz kullanıcı göremez", 403, c.get("/api/bayii/uygulama", headers=HY).status_code)
+    es("bayi listesinde YÖNETİM kurulumu yok", 0,
+       len([k for k in r.json()["kurulumlar"] if "Studyo" in k["dosya"]]))
+
+    print("\n── Yönetim profili ──")
+    yonetici = db.scalar(select(User).where(User.tenant_id == tenant.id,
+                                           User.role.in_(["owner", "yonetici"]),
+                                           User.dealer_id.is_(None)).limit(1))
+    HA = {"Authorization": "Bearer " + create_access_token(
+        user_id=str(yonetici.id), tenant_id=str(tenant.id), email=yonetici.email, expires_minutes=30)}
+    r = c.get("/api/masaustu/kurulumlar?profil=studio", headers=HA)
+    es("yönetim kurulumları listelenir", 200, r.status_code)
+    adlar = {k["dosya"] for k in r.json()["kurulumlar"]}
+    es("yalnız Studyo dosyaları", True,
+       "BERNZ-Studyo-9.9.9-arm64.dmg" in adlar and not any("Bayi" in a for a in adlar))
+    es("geçersiz profil → 400", 400,
+       c.get("/api/masaustu/kurulumlar?profil=xx", headers=HA).status_code)
+    es("bayi yönetim ucuna giremez", 403,
+       c.get("/api/masaustu/kurulumlar?profil=studio", headers=H).status_code)
 finally:
     for p in yazilan:
         try: p.unlink()

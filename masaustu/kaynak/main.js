@@ -1,14 +1,17 @@
 /**
- * BERNZ Bayi — masaüstü kabuğu (Windows + macOS).
+ * BERNZ masaüstü kabuğu (Windows + macOS) — İKİ PROFİL, TEK KOD.
  *
- * NE YAPAR: bayi panelini kendi penceresinde açar ve arka planda sunucuya
- * "benim için yeni olay var mı?" diye sorar; kargo ve sohbet olaylarını
- * işletim sisteminin bildirimi olarak gösterir.
+ *   bayi   → BERNZ Bayi   : bayi paneli, kargo ve sohbet bildirimleri
+ *   studio → BERNZ Stüdyo : yönetim paneli, panelin kendi bildirimleri
+ *
+ * NE YAPAR: profilin panelini kendi penceresinde açar ve arka planda sunucuya
+ * "benim için yeni olay var mı?" diye sorar; gelen olayları işletim sisteminin
+ * bildirimi olarak gösterir (bkz. kaynak/profiller.js).
  *
  * NEDEN ÇEKME (polling), Web Push DEĞİL: Electron'da tarayıcı push servisi
  * yok — VAPID/servis çalışanı zinciri burada çalışmıyor. Çekme usulü hem
  * basit hem de güvenli: sunucuda yeni altyapı gerekmiyor, olaylar var olan
- * kayıtlardan türetiliyor (GET /api/bayii/bildirimler?since=...).
+ * kayıtlardan türetiliyor (profilin bildirim ucu, ?since=... ile).
  *
  * OTURUM: panel kendi JWT'sini localStorage'da tutuyor. Kabuk onu pencereden
  * OKUR (yazmaz); oturum yoksa yoklama yapılmaz.
@@ -22,15 +25,16 @@ let pencere = null
 let yoklamaZaman = null
 
 // Windows'ta bildirimlerin uygulama adıyla görünmesi için şart
-if (process.platform === 'win32') app.setAppUserModelId('com.bernzcompany.bayi')
+if (process.platform === 'win32') app.setAppUserModelId(AYAR.PROFIL.appId)
 
 function pencereOlustur() {
   pencere = new BrowserWindow({
     width: 1280, height: 860, minWidth: 960, minHeight: 600,
-    title: 'BERNZ Bayi',
+    title: AYAR.UYGULAMA_ADI,
     backgroundColor: '#0b0d12',          // panel koyu tema — beyaz parlama olmasın
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'varliklar', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+    icon: path.join(__dirname, 'varliklar',
+      `icon-${bayiProfili() ? 'bayi' : 'studio'}.${process.platform === 'win32' ? 'ico' : 'png'}`),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -68,6 +72,11 @@ function pencereOlustur() {
   })
 }
 
+/** Bayi profili mi (metinler ona göre değişiyor). */
+function bayiProfili() {
+  return AYAR.PROFIL === require('./profiller').PROFILLER.bayi
+}
+
 function ayniSite(url) {
   try {
     return new URL(url).origin === new URL(AYAR.PANEL_URL).origin
@@ -99,7 +108,7 @@ async function yokla() {
   if (!jeton) return AYAR.TOKEN_BEKLEME_MS      // oturum yok — sık sık bak, hafif
   const taban = new URL(AYAR.PANEL_URL).origin
   const since = durum.sonGorulen()
-  const adres = `${taban}/api/bayii/bildirimler${since ? `?since=${encodeURIComponent(since)}` : ''}`
+  const adres = `${taban}${AYAR.BILDIRIM_UCU}${since ? `?since=${encodeURIComponent(since)}` : ''}`
   try {
     const yanit = await fetch(adres, { headers: { Authorization: `Bearer ${jeton}` } })
     if (yanit.status === 401) return AYAR.TOKEN_BEKLEME_MS   // oturum düştü
@@ -120,7 +129,7 @@ async function yokla() {
 function bildirimGoster(olay) {
   if (!Notification.isSupported()) return
   const b = new Notification({
-    title: olay.baslik || 'BERNZ Bayi',
+    title: olay.baslik || AYAR.UYGULAMA_ADI,
     body: olay.govde || '',
     silent: false,
   })
@@ -145,8 +154,11 @@ async function bildirimIzniIste() {
     type: 'info',
     title: 'Bildirimler',
     message: 'Bildirimleri açalım mı?',
-    detail: 'Siparişin kargoya verildiğinde ve atölye sana mesaj yazdığında '
-      + 'bilgisayarında bildirim görürsün. İstersen sonra kapatabilirsin.',
+    detail: bayiProfili()
+      ? 'Siparişin kargoya verildiğinde ve atölye sana mesaj yazdığında '
+        + 'bilgisayarında bildirim görürsün. İstersen sonra kapatabilirsin.'
+      : 'Yeni sipariş, bayi mesajı ve panel uyarıları bilgisayarında bildirim '
+        + 'olarak görünür. İstersen sonra kapatabilirsin.',
     buttons: ['Bildirimleri aç', 'Şimdi değil'],
     defaultId: 0, cancelId: 1,
   })
@@ -154,7 +166,7 @@ async function bildirimIzniIste() {
     durum.bildirimAcikYaz(true)
     new Notification({
       title: 'Bildirimler açık',
-      body: 'Kargo ve mesaj bildirimleri buraya düşecek.',
+      body: 'Bildirimler buraya düşecek.',
     }).show()                              // macOS izin kutusunu bu tetikler
   } else {
     durum.bildirimAcikYaz(false)

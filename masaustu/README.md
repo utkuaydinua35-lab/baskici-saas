@@ -28,6 +28,31 @@ npm run paket         # ikisi birden
 > (çapraz derleme imzasız işlerde sorun çıkarıyor). Mac'te üretilen `.dmg`
 > hem Apple Silicon hem Intel için ayrı dosya olarak çıkar.
 
+## Bayiye yayınlama
+
+Üretilen kurulum dosyaları sunucuda `backend/uploads/uygulama/` klasörüne
+kopyalanır; bayi panelindeki **Uygulama** sayfası (`/bayii/uygulama`) o klasörü
+okur. Veritabanı kaydı yok — kopyalamak yayınlamaktır.
+
+```bash
+# Mac'ten sunucuya (dosya adlarını DEĞİŞTİRME — sayfa addan sürüm/mimari çözüyor)
+scp masaustu/cikti/BERNZ-Bayi-1.0.0-*.dmg baskici@91.132.49.107:/home/baskici/baskici-saas/backend/uploads/uygulama/
+scp masaustu/cikti/BERNZ-Bayi-Kurulum-1.0.0.exe baskici@91.132.49.107:/home/baskici/baskici-saas/backend/uploads/uygulama/
+```
+
+Klasör yoksa bir kez: `mkdir -p ~/baskici-saas/backend/uploads/uygulama`.
+
+Beklenen dosya adları:
+
+| Dosya | Ne |
+|---|---|
+| `BERNZ-Bayi-<sürüm>-arm64.dmg` | macOS, Apple Silicon |
+| `BERNZ-Bayi-<sürüm>-x64.dmg` | macOS, Intel |
+| `BERNZ-Bayi-Kurulum-<sürüm>.exe` | Windows |
+
+Kurala uymayan dosyalar listelenmez (klasöre düşen rastgele bir dosya bayiye
+"kurulum" diye gösterilmesin).
+
 ## İmzalama (şu an YOK)
 
 Paketler imzasız dağıtılıyor. Bayiye söylenecekler:

@@ -459,6 +459,23 @@ def bildirimler(since: str | None = None, d: Dealer = Depends(_bayi),
     return {"sunucu_saati": imlec, "olaylar": olaylar}
 
 
+@router.get("/uygulama", response_model=dict, dependencies=[_izin])
+def uygulama(d: Dealer = Depends(_bayi)):
+    """Masaüstü uygulamasının indirilebilir kurulumları.
+
+    Kayıt veritabanında DEĞİL, dosya klasöründe: yeni sürümü sunucudaki
+    uploads/uygulama/ içine kopyalamak yayınlamaya yeter.
+    """
+    from app.services import bayi_uygulama as bu
+    kayitlar = bu.kurulumlar()
+    return {
+        "kurulumlar": kayitlar,
+        "son_surum": bu.son_surum(kayitlar),
+        "mac": [k for k in kayitlar if k["platform"] == "mac"],
+        "windows": [k for k in kayitlar if k["platform"] == "windows"],
+    }
+
+
 @router.get("/cari", response_model=dict, dependencies=[_izin])
 def cari(d: Dealer = Depends(_bayi), db: Session = Depends(get_db), limit: int = 100):
     hareketler = db.scalars(

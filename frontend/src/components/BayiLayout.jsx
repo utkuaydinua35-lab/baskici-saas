@@ -19,6 +19,9 @@ const MENU = [
   { yol: '/bayii/cari', ad: 'Cari Hesap', ikon: 'M3 7h18v10H3zM3 11h18' },
   { yol: '/bayii/sohbet', ad: 'Sohbet', sohbet: true,
     ikon: 'M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.7L3 21l1.8-5A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z' },
+  // Uygulamanın İÇİNDE bu menü anlamsız — kabukta gizlenir (aşağıda süzülüyor)
+  { yol: '/bayii/uygulama', ad: 'Uygulama', masaustu: true,
+    ikon: 'M4 5h16v11H4zM2 20h20M9 16l-1 4M15 16l1 4' },
   { yol: '/bayii/yenilikler', ad: 'Yenilikler', yenilik: true,
     ikon: 'M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3ZM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z' },
 ]
@@ -40,6 +43,9 @@ function Ikon({ d }) {
     </svg>
   )
 }
+
+// Uygulama kabuğunun içinde miyiz (masaustu/kaynak/preload.js bunu koyar)
+const kabukta = typeof window !== 'undefined' && !!window.bernzMasaustu
 
 export default function BayiLayout() {
   const { user, tenant, logout } = useAuth()
@@ -134,7 +140,7 @@ export default function BayiLayout() {
             </div>
 
             <nav ref={seritRef} className="hidden md:flex items-center gap-1 ml-6 relative">
-              {MENU.map((m) => (
+              {MENU.filter((m) => !(m.masaustu && kabukta)).map((m) => (
                 <NavLink key={m.yol} to={m.yol} end={m.tam}
                   className={({ isActive }) =>
                     `bayi-sekme ${isActive ? 'bayi-sekme-aktif' : ''}`}>
@@ -185,13 +191,14 @@ export default function BayiLayout() {
 
           {menuAcik && (
             <nav className="md:hidden pb-3 grid gap-1 animate-fadein">
-              {MENU.map((m) => (
+              {MENU.filter((m) => !(m.masaustu && kabukta)).map((m) => (
                 <NavLink key={m.yol} to={m.yol} end={m.tam}
                   className={({ isActive }) =>
                     `flex items-center gap-2.5 px-3 py-3 rounded-xl text-sm transition-colors ${
                       isActive ? 'bg-accent/15 text-white' : 'text-gray-400 hover:bg-white/5'}`}>
                   <Ikon d={m.ikon} />{m.ad}
                   {m.yenilik && <span className="ml-auto"><YeniRozet sayi={yeni} /></span>}
+                  {m.sohbet && <span className="ml-auto"><YeniRozet sayi={okunmamisSohbet} /></span>}
                 </NavLink>
               ))}
               <div className="border-t border-white/5 mt-1 pt-1">

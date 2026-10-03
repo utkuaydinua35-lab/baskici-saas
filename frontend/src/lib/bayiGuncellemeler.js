@@ -29,6 +29,7 @@ export const GUNCELLEMELER = [
       { tur: 'yeni', metin: 'Mesaja görsel ekleyebilir, “şu siparişten bahsediyorum” diye sipariş iliştirebilirsin.' },
       { tur: 'yeni', metin: 'Aciliyet işareti: “Acil” ya da “Çok acil” seçersen mesaj bize anında bildirim olarak düşer.' },
       { tur: 'yeni', metin: 'Windows ve Mac için BERNZ Bayi uygulaması: siparişin kargoya verildiğinde ve biz yazdığımızda bilgisayarında bildirim görürsün.' },
+      { tur: 'yeni', metin: 'Menüdeki “Uygulama” sayfasından kurulumu kendin indirebilirsin — Windows’ta tek tık, Mac’te logoyu Uygulamalar’a sürükle.' },
     ],
     tanitim: [
       {
@@ -43,7 +44,7 @@ export const GUNCELLEMELER = [
       },
       {
         baslik: 'Bilgisayarına kur, bildirim al',
-        metin: 'Uygulamayı kurduğunda sipariş kargoya verilince ve biz sana yazınca bilgisayarında bildirim çıkar. Kurulum linkini biz göndereceğiz.',
+        metin: 'Menüden “Uygulama” sayfasına gir, bilgisayarına uygun dosyayı indir. Windows’ta tek tıkla kurulur, Mac’te logoyu Uygulamalar’a sürüklersin. Kurduktan sonra sipariş kargoya verilince ve biz sana yazınca bildirim çıkar.',
         gorsel: 'masaustu',
       },
     ],

@@ -98,7 +98,18 @@ yollarını bozuyor). Aynı paketleme ASCII adla (`BERNZ Studio`) sorunsuz açı
 — ikisini yan yana derleyip doğruladık. Pencere başlığı, menü ve bildirim
 metinleri Türkçe kalabilir; dosya sistemine yazılan ad ASCII olmalı.
 
-**2. `identity: null` + `hardenedRuntime: false`.** Anahtar zincirinde bir
+**2. Paketlemeden sonra AD-HOC İMZA ŞART** (`afterPack: kaynak/imzala.js`).
+`identity: null` ile electron-builder imzalamayı tümüyle atlıyor; paket
+yeniden adlandırıldığı için (Electron.app → BERNZ Studio.app) içerideki eski
+imza tutmuyor ve macOS indirilen uygulamaya **"hasar görmüş, Çöp Sepeti'ne
+taşıyın"** diyor. Yerelde çalışması yanıltıcı: Gatekeeper yalnız KARANTİNALI
+(internetten inen) dosyada devreye girer. Doğrulama:
+
+```bash
+codesign --verify --deep --strict "<app>"   # "valid on disk" demeli
+```
+
+**3. `identity: null` + `hardenedRuntime: false`.** Anahtar zincirinde bir
 "Apple Development" sertifikası varsa electron-builder onu kendiliğinden bulup
 imzalıyor. Geliştirme sertifikası dağıtım için değildir: provisioning profile
 olmadan JIT izinleri reddedilir. Dağıtım imzasız olduğu sürece ad-hoc imza
@@ -116,8 +127,12 @@ BERNZ_SMOKE=1 "cikti/studio/mac-arm64/BERNZ Studio.app/Contents/MacOS/BERNZ Stud
 
 Paketler imzasız dağıtılıyor. Bayiye söylenecekler:
 
-- **macOS:** ilk açılışta "doğrulanamayan geliştirici" uyarısı çıkar →
-  Uygulamalar klasöründe simgeye **sağ tık → Aç** → **Aç**. Bir kez yapılır.
+- **macOS:** uygulama ad-hoc imzalı (notarize DEĞİL). İlk açılışta
+  "geliştirici doğrulanamadı" uyarısı çıkar: **Sistem Ayarları → Gizlilik ve
+  Güvenlik → Yine de Aç**. (Sağ tık → Aç bazı sürümlerde yeterli.)
+  macOS sürümüne göre engel sürerse karantina bayrağını kaldırmak kesin çözüm:
+  `xattr -dr com.apple.quarantine "/Applications/BERNZ Studio.app"`
+  Bayilere terminal yazdırmamak için tek gerçek çözüm notarization — aşağıya bak.
 - **Windows:** SmartScreen "bilgisayarınız korundu" der → **Ek bilgi** →
   **Yine de çalıştır**. Bir kez yapılır.
 

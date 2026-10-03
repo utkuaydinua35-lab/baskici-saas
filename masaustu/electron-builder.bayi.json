@@ -51,5 +51,6 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "BERNZ Bayi"
-  }
+  },
+  "afterPack": "kaynak/imzala.js"
 }

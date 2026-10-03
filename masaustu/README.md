@@ -54,11 +54,16 @@ tanımlı, `baskici` Linux kullanıcısına değil — parola sorar ve geçemezs
 SSH takma adı `baskici` zaten root'a bakıyor (`~/.ssh/config`). Dosyalar önce
 root olarak `/tmp`'ye gider, sonra doğru sahiplikle yerine taşınır:
 
+⚠ Desenleri `*.dmg` / `*.exe` diye yaz. `BERNZ-Bayi-1.0.0-*` gibi bir desen
+kurulum dosyasını (`BERNZ-Bayi-Kurulum-1.0.0.exe`) KAPSAMAZ — sessizce yalnız
+DMG'ler gider.
+
 ```bash
 # Dosya adlarını DEĞİŞTİRME — sayfa addan profil/sürüm/mimari çözüyor
-scp masaustu/cikti/bayi/BERNZ-Bayi-*.dmg masaustu/cikti/studio/BERNZ-Studyo-*.dmg baskici:/tmp/
-ssh baskici 'install -o baskici -g baskici -m 644 /tmp/BERNZ-*.dmg \
-  /home/baskici/baskici-saas/backend/uploads/uygulama/ && rm -f /tmp/BERNZ-*.dmg \
+scp masaustu/cikti/bayi/*.dmg masaustu/cikti/bayi/*.exe \
+    masaustu/cikti/studio/*.dmg masaustu/cikti/studio/*.exe baskici:/tmp/
+ssh baskici 'install -o baskici -g baskici -m 644 /tmp/BERNZ-*.dmg /tmp/BERNZ-*.exe \
+  /home/baskici/baskici-saas/backend/uploads/uygulama/ && rm -f /tmp/BERNZ-* \
   && ls -lh /home/baskici/baskici-saas/backend/uploads/uygulama/'
 ```
 

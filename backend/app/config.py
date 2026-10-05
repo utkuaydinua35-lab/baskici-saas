@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     # Destek görsellerinin servis edildiği public taban URL
     support_public_base_url: str = Field("https://siparistakip.bernzcompany.com", alias="SUPPORT_PUBLIC_BASE_URL")
 
+    # Büyük dosya indirmelerini nginx'e devret (X-Accel-Redirect). Açıkken
+    # 250 MB'lık bir indirme uvicorn worker'ını meşgul etmez. nginx'te
+    # `/_dahili_aktarim/` internal location tanımlı OLMADAN açma — indirmeler
+    # 404 olur (bkz. deploy/nginx-aktarim.conf).
+    nginx_x_accel: bool = Field(False, alias="NGINX_X_ACCEL")
+
     # KURULUMUN markası — panel giriş ekranı, passkey/authenticator diyalogu
     # ve personel bildirimlerinde görünür. MÜŞTERİ yüzeyinde kullanılmaz:
     # orada marka her zaman MAĞAZANIN kendi adıdır (store.name).

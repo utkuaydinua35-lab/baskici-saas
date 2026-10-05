@@ -274,6 +274,27 @@ def _tasarim_temizlik_job() -> None:
         db.close()
 
 
+def _aktarim_temizlik_job() -> None:
+    """Süresi dolmuş aktarım dosyalarını sil (24 saat).
+
+    Saatte bir koşar: 24 saatte bir koşsaydı bir dosya en kötü 48 saat
+    diskte kalırdı.
+    """
+    from app.database import SessionLocal
+    from app.services import dosya_aktarimi
+
+    db = SessionLocal()
+    try:
+        sonuc = dosya_aktarimi.temizle(db)
+        if sonuc["silinen"] or sonuc["oksuz"]:
+            logger.info("[aktarim-temizlik] %s kayit (%s MB), %s oksuz dosya",
+                        sonuc["silinen"], sonuc["mb"], sonuc["oksuz"])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[aktarim-temizlik] hata: %s", str(e)[:200])
+    finally:
+        db.close()
+
+
 def _stage_job():
     logger.info("[scheduler] asama otomasyonu basliyor")
     db = SessionLocal()
@@ -309,6 +330,8 @@ def start_scheduler():
     # Kargolanan siparislerin JPG/PNG tasarim dosyalarini 48 saat sonra sil.
     # Kurallar ve korumalar services/tasarim_temizlik'te; uretimdeki hicbir
     # dosyaya dokunmaz.
+    _scheduler.add_job(_aktarim_temizlik_job, "interval", hours=1,
+                       id="aktarim_temizlik", max_instances=1, coalesce=True)
     _scheduler.add_job(_tasarim_temizlik_job, "interval", hours=6,
                        id="tasarim_temizlik", max_instances=1, coalesce=True)
     # Asama otomasyonu — her 10 dk (zaman bazli gecisler)

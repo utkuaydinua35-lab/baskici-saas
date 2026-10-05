@@ -2295,6 +2295,39 @@ class DeviceToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DosyaAktarimi(Base):
+    """Cihazlar arası geçici dosya aktarımı (yalnız yönetim paneli).
+
+    Mac'ten Windows'a, telefondan panele… bir dosyayı hızlıca taşımak için.
+    KALICI DEPO DEĞİL: her kayıt 24 saat sonra dosyasıyla birlikte silinir
+    (scheduler), yoksa sunucu diski sessizce dolar.
+
+    Dosyanın kendisi uploads/aktarim/<token>.<uzanti> olarak durur; token
+    tahmin edilemez (indirme yetkisi ayrıca denetlenir, token yalnız dosya
+    adlarının çakışmaması ve asıl adın sızmaması için).
+    """
+    __tablename__ = "dosya_aktarimlari"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # Kim yükledi — kullanıcı silinse de listede görünsün diye anlık kopya
+    yukleyen: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    dosya_adi: Mapped[str] = mapped_column(String(300))      # kullanıcının gördüğü ad
+    yol: Mapped[str] = mapped_column(String(500))            # uploads altında göreli yol
+    boyut: Mapped[int] = mapped_column(BigInteger, default=0, server_default=text("0"), nullable=False)
+    tur: Mapped[str | None] = mapped_column(String(120), nullable=True)   # content-type
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    # Bu andan sonra dosya da kayıt da silinir
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class BayiSohbet(Base):
     """Bayi ile atölye arasındaki sohbet — BAYİ BAŞINA TEK konuşma.
 

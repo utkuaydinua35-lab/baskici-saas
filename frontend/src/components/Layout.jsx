@@ -572,6 +572,7 @@ const NAV = [
     { to: '/paketleme', label: 'Paketleme', icon: '🏷️', perm: 'paketleme' },
     { to: '/destek', label: 'Destek', icon: '🎧', perm: 'destek' },
     { to: '/telafiler', label: 'Telafiler', icon: '♻️', perm: 'siparisler' },
+    { to: '/aktarim', label: 'Dosya Aktarımı', icon: '📤', perm: 'dashboard' },
   ] },
   { label: 'Bayi', icon: '🤝', items: [
     { to: '/bayiler', label: 'Bayiler', icon: '🤝', perm: 'bayii' },

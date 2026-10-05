@@ -54,6 +54,7 @@ const AccessoriesPage = lazyWithReload(() => import('./pages/AccessoriesPage'))
 const CoupleProductsPage = lazyWithReload(() => import('./pages/CoupleProductsPage'))
 const DealersPage = lazyWithReload(() => import('./pages/DealersPage'))
 const BayiSohbetYonetimPage = lazyWithReload(() => import('./pages/BayiSohbetPage'))
+const AktarimPage = lazyWithReload(() => import('./pages/AktarimPage'))
 const DealerDashboardPage = lazyWithReload(() => import('./pages/DealerDashboardPage'))
 const BayiSiparisleriPage = lazyWithReload(() => import('./pages/BayiSiparisleriPage'))
 const AuditPage = lazyWithReload(() => import('./pages/AuditPage'))
@@ -131,6 +132,7 @@ export default function App() {
             <Route path="/couple" element={<CoupleProductsPage />} />
             <Route path="/bayiler" element={<DealersPage />} />
             <Route path="/bayi-sohbet" element={<BayiSohbetYonetimPage />} />
+            <Route path="/aktarim" element={<AktarimPage />} />
             <Route path="/bayiler/:id" element={<DealerDashboardPage />} />
             <Route path="/bayi-siparisleri" element={<BayiSiparisleriPage />} />
             <Route path="/kisiye-ozel" element={<KisiyeOzelPage />} />

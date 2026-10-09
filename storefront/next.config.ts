@@ -44,6 +44,25 @@ const nextConfig: NextConfig = {
     // İLK KEZ geldiği için önbellekli dosyanın kazancı yok denecek kadar az.
     inlineCss: true,
   },
+  // Shopify'dan kalan sabit adresler (ürün/koleksiyon: app/products, app/collections).
+  // Sorgu dizesi (fbclid, utm_*, q) Next tarafından hedefe aynen taşınır.
+  async redirects() {
+    return [
+      { source: "/collections", destination: "/urunler", permanent: true },
+      { source: "/search", destination: "/urunler", permanent: true },
+      { source: "/cart", destination: "/sepet", permanent: true },
+      { source: "/account", destination: "/hesap", permanent: true },
+      { source: "/account/:yol*", destination: "/hesap", permanent: true },
+      { source: "/policies/privacy-policy", destination: "/gizlilik", permanent: true },
+      { source: "/policies/refund-policy", destination: "/iade", permanent: true },
+      { source: "/policies/terms-of-service", destination: "/mesafeli-satis", permanent: true },
+      { source: "/policies/:yol*", destination: "/iade", permanent: true },
+      { source: "/pages/gizlilik-politikasi", destination: "/gizlilik", permanent: true },
+      { source: "/pages/mesafeli-satis-sozlesmesi", destination: "/mesafeli-satis", permanent: true },
+      { source: "/pages/:yol(iade.*|degisim.*)", destination: "/iade", permanent: true },
+      { source: "/blogs/:yol*", destination: "/blog", permanent: true },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

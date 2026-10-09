@@ -12,8 +12,8 @@ WorkingDirectory=/home/baskici/baskici-saas/storefront
 Environment=NODE_ENV=production
 Environment=PORT=3001
 Environment=STORE_SLUG=bernz
-Environment=DEFAULT_HOSTS=magaza.bernzcompany.com,localhost,127.0.0.1
-Environment=NEXT_PUBLIC_SITE_URL=https://magaza.bernzcompany.com
+Environment=DEFAULT_HOSTS=bernzcompany.com,www.bernzcompany.com,magaza.bernzcompany.com,localhost,127.0.0.1
+Environment=NEXT_PUBLIC_SITE_URL=https://bernzcompany.com
 Environment=BACKEND_URL=http://127.0.0.1:8000
 ExecStart=/usr/bin/npm run start -- -p 3001
 Restart=always

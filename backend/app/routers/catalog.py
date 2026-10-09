@@ -113,6 +113,8 @@ class ProductUpdate(BaseModel):
     # Sepette 'bunu da ekleyin' önerileri — ürün slug listesi (en fazla 6)
     cross_sell_slugs: list[str] | None = None
     models_per_item: int | None = Field(None, ge=1, le=2)
+    # Couple: her kılıfın model seçicisinin başlığı ("McQueen için model", "Sally için model")
+    model_basliklari: list[str] | None = Field(None, max_length=2)
     video_url: str | None = Field(None, max_length=500)
 
 
@@ -296,6 +298,7 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "custom_fields": p.custom_fields or [],
         "cross_sell_slugs": p.cross_sell_slugs or [],
         "models_per_item": p.models_per_item or 1,
+        "model_basliklari": p.model_basliklari or [],
         "video_url": p.video_url,
         "publish_at": p.publish_at.isoformat() if p.publish_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -350,22 +353,24 @@ def list_products(
     # Sadece ad/slug isteyen çağrılar (çapraz satış seçici gibi) varyant ve
     # görsel bilgisine hiç ihtiyaç duymaz — yüzlerce ürünlü katalogda bu
     # ayrım sayfanın saniyelerce beklemesini önler
+    # Ürün başına ilk görsel (kapak) — tüm görselleri yüklemeden (tek sorgu)
+    kapaklar = dict(db.execute(
+        select(CatalogImage.product_id, CatalogImage.file_path)
+        .where(CatalogImage.product_id.in_(pids))
+        .distinct(CatalogImage.product_id)
+        .order_by(CatalogImage.product_id, CatalogImage.position, CatalogImage.id)
+    ).all())
     if slim:
+        # Kapak dahil: çapraz satış seçicisi ürünleri görseliyle listeler
         return [{"id": str(p.id), "slug": p.slug, "title": p.title,
-                 "status": p.status, "base_price": str(p.base_price)}
+                 "status": p.status, "base_price": str(p.base_price),
+                 "cover_image": f"/storage/{kapaklar[p.id]}" if p.id in kapaklar else None}
                 for p in products]
 
     counts = dict(db.execute(
         select(CatalogVariant.product_id, sql_func.count(CatalogVariant.id))
         .where(CatalogVariant.product_id.in_(pids))
         .group_by(CatalogVariant.product_id)
-    ).all())
-    # Ürün başına ilk görsel (kapak) — tüm görselleri yüklemeden
-    kapaklar = dict(db.execute(
-        select(CatalogImage.product_id, CatalogImage.file_path)
-        .where(CatalogImage.product_id.in_(pids))
-        .distinct(CatalogImage.product_id)
-        .order_by(CatalogImage.product_id, CatalogImage.position, CatalogImage.id)
     ).all())
     return [
         _serialize_product(
@@ -440,6 +445,9 @@ def update_product(
         updates["description"] = sanitize_rich_text(updates["description"])
     if "custom_fields" in updates:
         updates["custom_fields"] = _clean_custom_fields(updates["custom_fields"])
+    if "model_basliklari" in updates:
+        updates["model_basliklari"] = [
+            (b or "").strip()[:60] for b in (updates["model_basliklari"] or [])][:2] or None
     if "studio_overlays" in updates:
         # JSONB'ye UUID nesnesi yazılamaz — metne çevrilir
         updates["studio_overlays"] = [str(x) for x in (updates["studio_overlays"] or [])]
@@ -1213,6 +1221,7 @@ def duplicate_product(
         tags=src.tags, position=src.position,
         variant_set_id=src.variant_set_id,
         custom_fields=src.custom_fields,
+        model_basliklari=src.model_basliklari,
         models_per_item=src.models_per_item,
     )
     db.add(copy)

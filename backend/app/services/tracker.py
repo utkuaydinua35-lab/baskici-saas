@@ -20,7 +20,6 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.adapters.shopify import ShopifyAdapter
 from app.config import get_settings
 from app.models import LineItem, Mold, MoldItem, Order, Store, TrackerOrderStage
 
@@ -58,44 +57,74 @@ def decide_stage(*, cancelled, delivered, fulfilled_or_tracking, in_mold, min_mo
 
 
 def resolve_tracker_store(db: Session) -> Store | None:
+    """Takibin ait olduğu mağaza (kiracıyı belirler). Shopify mağazası pasif
+    ya da silinmiş olsa da çalışır — sorgu artık yerel veritabanından."""
     domain = get_settings().tracker_shop_domain
-    stores = db.scalars(
-        select(Store).where(Store.platform == "shopify", Store.is_active.is_(True))
-    ).all()
+    stores = db.scalars(select(Store).where(Store.platform == "shopify")).all()
     for s in stores:
         if (s.config or {}).get("store_url") == domain:
             return s
-    return stores[0] if stores else None
+    aktif = [s for s in stores if s.is_active]
+    if aktif:
+        return aktif[0]
+    return db.scalar(select(Store).where(
+        Store.platform == "storefront", Store.is_active.is_(True)).limit(1))
 
 
-def fetch_order_for_tracking(store: Store, order_number: str, email: str) -> dict | None:
-    adapter = ShopifyAdapter(store)
+def fetch_order_for_tracking(db: Session, store: Store, order_number: str, email: str) -> dict | None:
+    """Sipariş no + e-posta eşleşmesi — YEREL veritabanından.
+
+    Eskiden Shopify API'sine soruyordu: Shopify kapanınca (2026-10) vitrinden
+    gelen siparişler hiç bulunamıyordu ("Siparişim nerede" yeni siparişleri
+    sorgulamıyor). Senkron edilmiş eski Shopify siparişleri ve vitrin
+    siparişleri aynı tabloda — kiracının TÜM mağazalarında aranır."""
+    from sqlalchemy import func
+
     clean = order_number.lstrip("#").strip()
     email_n = email.lower().strip()
-    r = adapter.session.get(
-        f"{adapter._base_url()}/orders.json",
-        headers=adapter._headers(),
-        params={
-            "name": f"#{clean}",
-            "email": email_n,
-            "status": "any",
-            "fields": (
-                "id,name,order_number,email,created_at,updated_at,"
-                "financial_status,fulfillment_status,fulfillments,"
-                "line_items,shipping_address,note,cancel_reason,cancelled_at"
-            ),
-        },
-        timeout=12,
+    if not clean or not email_n:
+        return None
+    o = db.scalar(
+        select(Order).where(
+            Order.tenant_id == store.tenant_id,
+            or_(Order.order_number == clean, Order.name == f"#{clean}"),
+            func.lower(Order.customer_email) == email_n,
+        ).order_by(Order.created_at_platform.desc().nulls_last()).limit(1)
     )
-    if r.status_code != 200:
-        return None
-    orders = r.json().get("orders", [])
-    if not orders:
-        return None
-    order = orders[0]
-    if (order.get("email") or "").lower() != email_n:
-        return None
-    return order
+    return siparis_sozlugu(o) if o else None
+
+
+def siparis_sozlugu(o: Order) -> dict:
+    """Yerel siparişi takip sayfasının beklediği (Shopify biçimli) sözlüğe çevirir."""
+    gonderiler = []
+    for g in (o.shipments or []):
+        if g.takip_no:
+            gonderiler.append({"tracking_number": g.takip_no, "tracking_url": g.takip_url,
+                               "tracking_company": g.kargo_firma})
+    ki = o.kargo_info or {}
+    if ki.get("takip_no") and not any(g["tracking_number"] == ki["takip_no"] for g in gonderiler):
+        gonderiler.insert(0, {"tracking_number": ki["takip_no"], "tracking_url": ki.get("takip_url"),
+                              "tracking_company": ki.get("handler_name")})
+    if (o.current_stage or 0) >= 9:
+        for g in gonderiler:
+            g["shipment_status"] = "delivered"
+    iptal = o.cancelled_at or (datetime.now(timezone.utc) if o.is_iptal else None)
+    return {
+        "id": o.external_id,
+        "_yerel_id": o.id,
+        "name": o.name or f"#{o.order_number}",
+        "order_number": o.order_number,
+        "email": (o.customer_email or "").lower(),
+        "created_at": o.created_at_platform.isoformat() if o.created_at_platform else None,
+        "financial_status": o.financial_status,
+        "fulfillment_status": o.fulfillment_status,
+        "cancelled_at": iptal.isoformat() if iptal else None,
+        "fulfillments": gonderiler,
+        "line_items": [
+            {"name": li.title, "quantity": li.quantity, "variant_title": li.variant_title or ""}
+            for li in (o.line_items or [])
+        ],
+    }
 
 
 def extract_tracking_info(order: dict) -> dict:
@@ -174,10 +203,15 @@ def compute_stage(db: Session, store: Store, live_order: dict, info: dict) -> st
     min_mold_stage = None
     hours_since = _hours_since(_parse_iso(info.get("created_at")))
 
-    o = db.scalar(
+    o = db.get(Order, live_order["_yerel_id"]) if live_order.get("_yerel_id") else db.scalar(
         select(Order).where(Order.store_id == store.id, Order.external_id == info["shopify_order_id"])
     )
     if o:
+        # Paneldeki aşama: 8 kargoda, 9 teslim (vitrin siparişlerinde Shopify fulfillment yok)
+        if (o.current_stage or 0) >= 9:
+            delivered = True
+        elif (o.current_stage or 0) >= 8:
+            fulfilled_or_tracking = True
         if o.created_at_platform:
             hours_since = _hours_since(o.created_at_platform)
         stages = _mold_stages_for_order(db, o)

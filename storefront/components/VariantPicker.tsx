@@ -16,56 +16,21 @@ const OTHER = "Diğer";
 export default function VariantPicker({ product }: { product: ProductDetail }) {
   const { addItem, setDrawerOpen } = useCart();
   const t = useTexts();
-  const [brand, setBrand] = useState<string>("");
-  const [modelKey, setModelKey] = useState<string>("");
-  const [variation, setVariation] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
-  // Couple: ikinci kılıfın model seçimi (aynı varyant listesinden)
+  // Couple: iki kılıfın her biri için marka → model → renk
   const isCouple = (product.models_per_item ?? 1) >= 2;
-  const [secondId, setSecondId] = useState<string>("");
+  const birinci = useModelSecimi(product.variants);
+  const ikinci = useModelSecimi(product.variants);
+  const { activeBrand, modelKey, selected, needsVariation } = birinci;
+  // Başlıklar panelden ürün başına ("McQueen için model" / "Sally için model")
+  const basliklar = product.model_basliklari ?? [];
+  const baslik1 = basliklar[0]?.trim() || (isCouple ? "1. Kılıfın Modeli" : "Telefon Modeli");
+  const baslik2 = basliklar[1]?.trim() || "2. Kılıfın Modeli";
   // Kişiye özel alanlar {key: value}
   const fields = product.custom_fields ?? [];
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<string | null>(null);
-
-  // Markalar (varyantlardan; null → "Diğer")
-  const brands = useMemo(() => {
-    const set = new Set<string>();
-    for (const v of product.variants) set.add(v.brand || OTHER);
-    // "Diğer" her zaman sona
-    return [...set].sort((a, b) =>
-      a === OTHER ? 1 : b === OTHER ? -1 : a.localeCompare(b, "tr"));
-  }, [product.variants]);
-  const singleBrand = brands.length <= 1;
-  const activeBrand = singleBrand ? brands[0] ?? "" : brand;
-
-  // Seçili markanın modelleri
-  const models = useMemo(() => {
-    const seen = new Map<string, string>(); // model_key -> model_display
-    for (const v of product.variants) {
-      if ((v.brand || OTHER) !== activeBrand) continue;
-      if (!seen.has(v.model_key)) seen.set(v.model_key, v.model_display);
-    }
-    return [...seen.entries()];
-  }, [product.variants, activeBrand]);
-
-  const variations = useMemo(() => {
-    if (!modelKey) return [];
-    const set = new Set<string | null>();
-    for (const v of product.variants) {
-      if (v.model_key === modelKey) set.add(v.variation);
-    }
-    return [...set];
-  }, [product.variants, modelKey]);
-
-  const selected = useMemo(
-    () =>
-      product.variants.find(
-        (v) => v.model_key === modelKey && (variations.length <= 1 || v.variation === variation),
-      ) ?? null,
-    [product.variants, modelKey, variation, variations],
-  );
 
   // Seçilen ek seçeneklerin ücreti — YALNIZ gösterim; ödemede sunucu ürün
   // tanımından yeniden hesaplar (services/checkout).
@@ -77,13 +42,10 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   }, 0);
   const birim = (Number(selected ? selected.price : product.price) + ekUcret).toFixed(2);
   const price = birim;
-  const needsVariation = variations.length > 1 && variation === null;
-  const secondVariant = isCouple
-    ? product.variants.find((v) => v.id === secondId) ?? null
-    : null;
+  const secondVariant = isCouple ? ikinci.selected : null;
   const missingCustom = fields.some((f) => f.required && !(custom[f.key] || "").trim());
   const canAdd = !!selected && !needsVariation && selected.in_stock
-    && (!isCouple || (!!secondVariant && secondVariant.in_stock))
+    && (!isCouple || (!!secondVariant && secondVariant.in_stock && !ikinci.needsVariation))
     && !missingCustom && !uploading;
 
   // Galeriye haber ver: seçilen varyanta bağlı görsel varsa öne gelsin
@@ -96,12 +58,6 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   }, [selected]);
 
   const maxQty = Math.min(20, selected?.max_qty ?? 20);
-
-  const pickBrand = (b: string) => {
-    setBrand(b);
-    setModelKey("");
-    setVariation(null);
-  };
 
   const add = () => {
     if (!selected) return;
@@ -143,91 +99,22 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
         )}
       </div>
 
-      {!singleBrand && (
-        <div>
-          <span className="block text-sm font-medium mb-1.5">Telefon Markası</span>
-          <div className="flex gap-2 flex-wrap">
-            {brands.map((b) => (
-              <button
-                key={b}
-                onClick={() => pickBrand(b)}
-                className={`px-3.5 py-1.5 rounded-full border text-sm transition ${
-                  activeBrand === b
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-300 hover:border-zinc-500"
-                }`}
-              >
-                {b}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {activeBrand && (
-        <div>
-          <label className="block text-sm font-medium mb-1.5" htmlFor="model-select">
-            Telefon Modeli
-          </label>
-          <select
-            id="model-select"
-            value={modelKey}
-            onChange={(e) => {
-              setModelKey(e.target.value);
-              setVariation(null);
-            }}
-            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm bg-white"
-          >
-            <option value="">Modelinizi seçin…</option>
-            {models.map(([key, display]) => (
-              <option key={key} value={key}>
-                {display}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {modelKey && variations.length > 1 && (
-        <div>
-          <span className="block text-sm font-medium mb-1.5">Kılıf Rengi</span>
-          <div className="flex gap-2 flex-wrap">
-            {variations.map((v) => (
-              <button
-                key={v ?? "std"}
-                onClick={() => setVariation(v)}
-                className={`px-3 py-1.5 rounded-full border text-sm transition ${
-                  variation === v
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-300 hover:border-zinc-500"
-                }`}
-              >
-                {v ?? "Standart"}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isCouple && (
-        <div>
-          <label className="block text-sm font-medium mb-1.5" htmlFor="second-model">
-            2. Kılıfın Modeli <span className="text-zinc-400 font-normal">(set 2 kılıf içerir)</span>
-          </label>
-          <select
-            id="second-model"
-            value={secondId}
-            onChange={(e) => setSecondId(e.target.value)}
-            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm bg-white"
-          >
-            <option value="">İkinci modeli seçin…</option>
-            {product.variants.filter((v) => v.in_stock).map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.model_display}{v.variation ? ` · ${v.variation}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+      {isCouple ? (
+        <>
+          <fieldset className="space-y-3 rounded-2xl border border-zinc-200 p-3.5">
+            <legend className="px-1.5 text-sm font-semibold">{baslik1}</legend>
+            <ModelAdimlari s={birinci} baslik="Telefon Modeli" kimlik="model-select" />
+          </fieldset>
+          <fieldset className="space-y-3 rounded-2xl border border-zinc-200 p-3.5">
+            <legend className="px-1.5 text-sm font-semibold">{baslik2}</legend>
+            <ModelAdimlari s={ikinci} baslik="Telefon Modeli" kimlik="second-model" />
+            {ikinci.selected && !ikinci.selected.in_stock && (
+              <p className="text-xs text-amber-700">Bu model şu an stokta yok — başka bir model seçin.</p>
+            )}
+          </fieldset>
+        </>
+      ) : (
+        <ModelAdimlari s={birinci} baslik={baslik1} kimlik="model-select" />
       )}
 
       {fields.map((f) => (
@@ -398,5 +285,141 @@ function StockAlertForm({ variantId }: { variantId: string }) {
         <p className="text-xs text-red-600">Kayıt alınamadı — lütfen tekrar deneyin.</p>
       )}
     </div>
+  );
+}
+
+// Marka → model → renk seçimi — couple ürünlerde HER kılıf için ayrı ayrı.
+// Eskiden ikinci kılıf düz bir listeydi (önce Apple modelleri dizildiği için
+// müşteri "2. kılıf hep Apple" sanıyordu); artık ilkiyle aynı adımlar.
+type Varyant = ProductDetail["variants"][number];
+
+function useModelSecimi(variants: Varyant[]) {
+  const [brand, setBrand] = useState<string>("");
+  const [modelKey, setModelKey] = useState<string>("");
+  const [variation, setVariation] = useState<string | null>(null);
+
+  // Markalar (varyantlardan; null → "Diğer")
+  const brands = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of variants) set.add(v.brand || OTHER);
+    // "Diğer" her zaman sona
+    return [...set].sort((a, b) =>
+      a === OTHER ? 1 : b === OTHER ? -1 : a.localeCompare(b, "tr"));
+  }, [variants]);
+  const singleBrand = brands.length <= 1;
+  const activeBrand = singleBrand ? brands[0] ?? "" : brand;
+
+  // Seçili markanın modelleri
+  const models = useMemo(() => {
+    const seen = new Map<string, string>(); // model_key -> model_display
+    for (const v of variants) {
+      if ((v.brand || OTHER) !== activeBrand) continue;
+      if (!seen.has(v.model_key)) seen.set(v.model_key, v.model_display);
+    }
+    return [...seen.entries()];
+  }, [variants, activeBrand]);
+
+  const variations = useMemo(() => {
+    if (!modelKey) return [];
+    const set = new Set<string | null>();
+    for (const v of variants) {
+      if (v.model_key === modelKey) set.add(v.variation);
+    }
+    return [...set];
+  }, [variants, modelKey]);
+
+  const selected = useMemo(
+    () =>
+      variants.find(
+        (v) => v.model_key === modelKey && (variations.length <= 1 || v.variation === variation),
+      ) ?? null,
+    [variants, modelKey, variation, variations],
+  );
+
+  const pickBrand = (b: string) => {
+    setBrand(b);
+    setModelKey("");
+    setVariation(null);
+  };
+  const pickModel = (k: string) => {
+    setModelKey(k);
+    setVariation(null);
+  };
+  const needsVariation = variations.length > 1 && variation === null;
+
+  return { brands, singleBrand, activeBrand, models, modelKey, variations, variation,
+    setVariation, selected, pickBrand, pickModel, needsVariation };
+}
+
+type ModelSecimi = ReturnType<typeof useModelSecimi>;
+
+function ModelAdimlari({ s, baslik, kimlik }: { s: ModelSecimi; baslik: string; kimlik: string }) {
+  return (
+    <>
+      {!s.singleBrand && (
+        <div>
+          <span className="block text-sm font-medium mb-1.5">Telefon Markası</span>
+          <div className="flex gap-2 flex-wrap">
+            {s.brands.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => s.pickBrand(b)}
+                className={`px-3.5 py-1.5 rounded-full border text-sm transition ${
+                  s.activeBrand === b
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-300 hover:border-zinc-500"
+                }`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {s.activeBrand && (
+        <div>
+          <label className="block text-sm font-medium mb-1.5" htmlFor={kimlik}>
+            {baslik}
+          </label>
+          <select
+            id={kimlik}
+            value={s.modelKey}
+            onChange={(e) => s.pickModel(e.target.value)}
+            className="w-full rounded-xl border border-zinc-300 px-3 py-2.5 text-sm bg-white"
+          >
+            <option value="">Modelinizi seçin…</option>
+            {s.models.map(([key, display]) => (
+              <option key={key} value={key}>
+                {display}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {s.modelKey && s.variations.length > 1 && (
+        <div>
+          <span className="block text-sm font-medium mb-1.5">Kılıf Rengi</span>
+          <div className="flex gap-2 flex-wrap">
+            {s.variations.map((v) => (
+              <button
+                key={v ?? "std"}
+                type="button"
+                onClick={() => s.setVariation(v)}
+                className={`px-3 py-1.5 rounded-full border text-sm transition ${
+                  s.variation === v
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-300 hover:border-zinc-500"
+                }`}
+              >
+                {v ?? "Standart"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

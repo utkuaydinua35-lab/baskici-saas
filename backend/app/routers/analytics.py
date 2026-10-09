@@ -179,6 +179,26 @@ def analytics_summary(
     }
 
 
+@router.get("/rapor")
+def analytics_rapor(
+    start: date = Query(...),
+    end: date = Query(...),
+    karsilastir: str = Query("onceki", pattern="^(onceki|gecen_yil|yok)$"),
+    kanal: str = Query("perakende", pattern="^(perakende|vitrin|hepsi)$"),
+    user: User = Depends(require_permission("dashboard")),
+    db: Session = Depends(get_db),
+):
+    """Panel ana sayfası — aralık + karşılaştırma, oturum/dönüşüm, şehir,
+    en çok satan, birlikte satılan, kaynak, huni (bkz. services/rapor)."""
+    if end < start:
+        raise HTTPException(422, "Bitiş tarihi başlangıçtan önce olamaz")
+    if (end - start).days > MAX_RANGE_DAYS:
+        raise HTTPException(422, f"Aralık en fazla {MAX_RANGE_DAYS} gün olabilir")
+    from app.services import rapor as _rapor
+    return _rapor.rapor(db, user.tenant_id, bas=start, bit=end,
+                        karsilastir=karsilastir, kanal=kanal)
+
+
 # ─── Kâr marjı raporu ────────────────────────────────────────
 # Shopify'da yalnız "Ürün maliyeti" (COGS) girilir; burada gerçek net kâra
 # ulaşmak için komisyon, kargo ve paketleme de düşülür. Maliyet kaynağı:

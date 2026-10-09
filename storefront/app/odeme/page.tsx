@@ -69,7 +69,8 @@ export default function CheckoutPage() {
 
   const kabaKargo = shipCfg == null ? null
     : (coupon?.freeShipping || autoQuote?.freeShipping) ? 0
-    : shipCfg.freeOver > 0 && subtotal >= shipCfg.freeOver ? 0
+    // Eşik İNDİRİMLİ tutara bakar (sunucuyla aynı — 3 al 2 öde sonrası)
+    : shipCfg.freeOver > 0 && subtotal - discountAmt >= shipCfg.freeOver ? 0
     : shipCfg.fee;
   const estShipping = sunucuKargo ?? kabaKargo;
   const estTotal = sunucuToplam

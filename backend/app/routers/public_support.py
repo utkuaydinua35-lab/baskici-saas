@@ -1,7 +1,7 @@
 """
 Public destek endpoint'leri — AUTH YOK (müşteriye açık).
 
-Güvenlik: her istekte sipariş no + e-posta Shopify'dan doğrulanır (anonim/sahte
+Güvenlik: her istekte sipariş no + e-posta yerel siparişlerden doğrulanır (anonim/sahte
 mesaj olmaz). Rate-limit + 12 saat mesaj kuralı uygulanır.
 
 - POST /support/thread   → siparişe ait mesajları getir (müşteri cevabı görür)
@@ -38,7 +38,7 @@ def _verify_order(db: Session, order_number: str, email: str) -> dict:
     store = tk.resolve_tracker_store(db)
     if not store:
         raise HTTPException(503, "Servis şu an kullanılamıyor.")
-    order = tk.fetch_order_for_tracking(store, order_number, email)
+    order = tk.fetch_order_for_tracking(db, store, order_number, email)
     if not order:
         raise HTTPException(404, "Sipariş bulunamadı. Sipariş numarası ve e-posta eşleşmiyor.")
     info = tk.extract_tracking_info(order)

@@ -55,6 +55,33 @@
         "cd panel && VITE_API_TABAN=http://localhost:8000 npx vite --port 5177 --strictPort"
       ],
       "port": 5177
+    },
+    {
+      "name": "api-test",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd backend && .venv/bin/uvicorn app.main:app --port 8011"
+      ],
+      "port": 8011
+    },
+    {
+      "name": "panel-test",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd panel && PROXY_HEDEF=http://localhost:8011 npx vite --port 5186 --strictPort"
+      ],
+      "port": 5186
+    },
+    {
+      "name": "vitrin-test",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd storefront && STORE_SLUG=bernz BACKEND_URL=http://127.0.0.1:8011 npx next dev -p 3013"
+      ],
+      "port": 3013
     }
   ]
 }

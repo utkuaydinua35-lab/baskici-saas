@@ -20,11 +20,17 @@ export async function POST(req: NextRequest) {
         // "XX"/"T1" = Cloudflare bilinmiyor/Tor diyor; onları boş geçiyoruz.
         "X-Visitor-Country":
           (req.headers.get("cf-ipcountry") || "").toUpperCase().slice(0, 2),
+        // Kendi alan adımızdan gelen yönlendiren "doğrudan" sayılsın
+        "X-Vitrin-Host": (req.headers.get("host") || "").slice(0, 100),
       },
       body: JSON.stringify({
         key: String(body.key || "").slice(0, 64),
         path: String(body.path || "").slice(0, 300),
         cart_items: Math.max(0, Math.min(200, Number(body.cart_items) || 0)),
+        ref: body.ref ? String(body.ref).slice(0, 300) : null,
+        utm: body.utm ? String(body.utm).slice(0, 60) : null,
+        tik: ["fbclid", "gclid", "ttclid"].includes(body.tik) ? body.tik : null,
+        mobil: typeof body.mobil === "boolean" ? body.mobil : null,
       }),
       cache: "no-store",
     });

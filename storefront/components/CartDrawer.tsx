@@ -14,10 +14,12 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
   const { items, subtotal, coupon, drawerOpen, setDrawerOpen, setQuantity, removeItem } = useCart();
   const t = useTexts();
   const freeOver = Number(freeShippingOver || 0);
-  const remaining = freeOver > 0 ? Math.max(0, freeOver - subtotal) : 0;
   // Otomatik kampanya (3 al 2 öde vb.) çekmecede de görünmeli —
   // yoksa müşteri ödemeye kadar indirimi göremez, kafası karışır
   const autoQuote = useAutoQuote(items, coupon);
+  // Eşik İNDİRİMLİ tutara bakar (sunucuyla aynı)
+  const indirimli = Math.max(0, subtotal - (autoQuote?.discount || 0));
+  const remaining = freeOver > 0 ? Math.max(0, freeOver - indirimli) : 0;
 
   // Açıkken body scroll kilidi + ESC ile kapatma
   useEffect(() => {
@@ -109,7 +111,7 @@ export default function CartDrawer({ freeShippingOver }: { freeShippingOver?: st
                 <div className="h-1.5 rounded-full bg-zinc-100 overflow-hidden">
                   <div
                     className="h-full bg-emerald-500 transition-all duration-500"
-                    style={{ width: `${Math.min(100, (subtotal / freeOver) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (indirimli / freeOver) * 100)}%` }}
                   />
                 </div>
               </div>

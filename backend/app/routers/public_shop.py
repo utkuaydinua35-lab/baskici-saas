@@ -256,6 +256,7 @@ def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
         "studio_moduller": (_studio_overlay_moduller(db, store, p)
                             if db is not None and store is not None else []),
         "models_per_item": p.models_per_item or 1,
+        "model_basliklari": p.model_basliklari or [],
         "video_url": p.video_url,
         "description": p.description,
         "seo_title": p.seo_title,
@@ -651,7 +652,7 @@ def validate_discount_code(
 
     dc = plan.primary
     discount = plan.total
-    shipping = Decimal("0") if plan.free_shipping else base_shipping
+    shipping = checkout_svc.kargo_ucreti(store, items_total, plan)
     extra = [r for r in plan.breakdown() if r["code"] != (body.code or "").strip().upper()]
     return {
         "valid": True,
@@ -701,8 +702,7 @@ def checkout_quote(
         sum(i.quantity for i in body.items), snapshot)
     discount = plan.total
     dc = plan.primary
-    if plan.free_shipping:
-        shipping = Decimal("0")
+    shipping = checkout_svc.kargo_ucreti(store, items_total, plan)
     return {
         "valid": True,
         "items_total": str(items_total),
@@ -2398,6 +2398,11 @@ class PresenceIn(BaseModel):
     key: str = Field(..., min_length=8, max_length=64)
     path: str | None = Field(None, max_length=300)
     cart_items: int = Field(0, ge=0, le=200)
+    # Oturum raporu (services/oturum): yalnız oturumun İLK ping'inde kullanılır
+    ref: str | None = Field(None, max_length=300)       # document.referrer
+    utm: str | None = Field(None, max_length=60)        # utm_source
+    tik: str | None = Field(None, pattern="^(fbclid|gclid|ttclid)$")  # reklam tıklama kimliği türü
+    mobil: bool | None = None
 
 
 presence_rate_limit = make_rate_limiter(max_hits=12, window=60.0)
@@ -2457,6 +2462,12 @@ def presence_ping(
     if new_stage != row.stage:
         row.stage = new_stage
         row.stage_at = now
+    # Oturum (Shopify "Oturumlar") — panel ana sayfası ve dönüşüm oranı
+    from app.services import oturum
+    oturum.kaydet(
+        db, store, ziyaretci=key, yol=body.path, sepet=body.cart_items, now=now,
+        ulke=row.country, ref=body.ref, utm=body.utm, tik=body.tik, mobil=body.mobil,
+        kendi_host=(request.headers.get("x-vitrin-host") or "").split(":")[0].lower() or None)
     db.commit()
     return {"ok": True}
 
@@ -2622,17 +2633,18 @@ def support_order_status(
 
     store = _resolve_store(db, store_slug)
     email = body.email.strip().lower()
-    orders = db.scalars(
-        select(Order).where(
-            Order.store_id == store.id,
-            sql_func.lower(Order.customer_email) == email,
-        ).order_by(Order.created_at_platform.desc().nulls_last()).limit(3)
-    ).all()
+    q = select(Order).where(
+        Order.store_id == store.id,
+        sql_func.lower(Order.customer_email) == email,
+    )
     if body.order_no:
-        num = body.order_no.strip().lstrip("#")
         # Numara VERİLDİYSE eşleşme şart — eşleşmiyorsa hiçbir şey gönderme.
-        orders = [o for o in orders
-                  if str(o.order_number or "") == num or (o.name or "").lstrip("#") == num]
+        # Süzme SORGUDA: eskiden son 3 sipariş alınıp sonra süzülüyordu,
+        # 4. ve daha eski bir sipariş numarasıyla sorgu hiç bulamıyordu.
+        num = body.order_no.strip().lstrip("#")
+        q = q.where(or_(Order.order_number == num, Order.name == f"#{num}"))
+    orders = db.scalars(
+        q.order_by(Order.created_at_platform.desc().nulls_last()).limit(3)).all()
 
     sessions = db.execute(
         select(CheckoutSession.order_id, CheckoutSession.lookup_token).where(

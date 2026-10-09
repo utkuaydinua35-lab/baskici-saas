@@ -81,6 +81,8 @@ export interface ProductDetail {
     thumb_url: string; kilif_key: string | null;
   }[];
   models_per_item?: number;
+  /** Couple: kılıf başına model seçici başlığı (panelden) */
+  model_basliklari?: string[];
   video_url?: string | null;
   description: string | null;
   seo_title: string | null;

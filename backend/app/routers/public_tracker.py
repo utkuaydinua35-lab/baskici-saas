@@ -56,7 +56,7 @@ def track_order(
     if not store:
         raise HTTPException(503, "Takip servisi şu an kullanılamıyor.")
 
-    order = tk.fetch_order_for_tracking(store, payload.order_number, str(payload.email))
+    order = tk.fetch_order_for_tracking(db, store, payload.order_number, str(payload.email))
     if not order:
         raise HTTPException(
             404,

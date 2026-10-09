@@ -115,6 +115,9 @@ function CartInner({
   // Otomatik kampanya tutarı (örn. 3 al 2 öde) — sunucudan gerçek hesap;
   // "uygulanıyor" der ama tutar görünmezse müşteri indirime inanmaz.
   const autoQuote = useAutoQuote(items, coupon);
+  // Ücretsiz kargo eşiği İNDİRİMLİ tutara bakar (sunucu da öyle hesaplar):
+  // 3 al 2 öde ile 1050 → 700 TL olan sepet 950 eşiğini geçmiş sayılmamalı
+  const indirimli = Math.max(0, subtotal - (autoQuote?.discount || 0));
 
   if (items.length === 0) {
     return (
@@ -285,9 +288,9 @@ function CartInner({
             {formatPrice(minAmount - subtotal)} daha ekleyin.
           </p>
         )}
-        {!belowMin && freeOver > 0 && subtotal < freeOver && (
+        {!belowMin && freeOver > 0 && indirimli < freeOver && !autoQuote?.freeShipping && (
           <p className="mt-2 text-xs text-emerald-700">
-            🚚 {formatPrice(freeOver - subtotal)} daha ekleyin, kargo ücretsiz olsun!
+            🚚 {formatPrice(freeOver - indirimli)} daha ekleyin, kargo ücretsiz olsun!
           </p>
         )}
         {belowMin ? (

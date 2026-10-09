@@ -48,6 +48,16 @@ def _shipping_fee(store: Store, items_total: Decimal) -> Decimal:
     return fee
 
 
+def kargo_ucreti(store: Store, items_total: Decimal, plan: "DiscountPlan") -> Decimal:
+    """Ödenecek kargo — TEK KAYNAK. Ücretsiz kargo eşiği İNDİRİMLİ ürün
+    toplamına bakar (Shopify davranışı). Eskiden indirimsiz toplama bakıyordu:
+    3 al 2 öde ile 1050 TL'lik sepet 700 TL'ye indiği hâlde 950 TL eşiğini
+    geçmiş sayılıp kargo bedava gidiyordu (canlıda, 2026-10)."""
+    if plan.free_shipping:
+        return Decimal("0")
+    return _shipping_fee(store, items_total - plan.total)
+
+
 def validate_and_snapshot(
     db: Session, store: Store, items: list[dict],
 ) -> tuple[list[dict], Decimal]:
@@ -599,7 +609,7 @@ def create_session(
         if limit_doldu_mu(db, _uygulanan, (customer or {}).get("email")):
             raise CheckoutError("Kuponun kullanım limiti doldu")
 
-    shipping = Decimal("0") if free_shipping else _shipping_fee(store, items_total)
+    shipping = kargo_ucreti(store, items_total, plan)
 
     session = CheckoutSession(
         tenant_id=store.tenant_id,

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -1700,6 +1701,8 @@ class CatalogProduct(Base):
     models_per_item: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1")
     )
+    # Couple: kılıf başına model seçici başlığı — boşsa "1. kılıfın modeli" vb.
+    model_basliklari: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # Ürün videosu: YouTube linki veya mp4 URL'i (galeriye eklenir)
     video_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
@@ -1909,6 +1912,37 @@ class StorefrontPresence(Base):
     # Ulaşılan EN İLERİ huni aşaması (geri gitmez) — "nerede vazgeçti" analizi
     stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
     stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VitrinOturum(Base):
+    """Vitrin oturumu — Shopify'daki "Oturumlar" ölçüsü (dönüşüm oranının paydası).
+
+    Bir ziyaretçinin 30 dk hareketsiz kalmadan sürdürdüğü ziyaret = bir oturum.
+    Presence ping'inden beslenir. StorefrontPresence ziyaretçi başına TEK satır
+    tutar ve 7 günde budanır — geçmişe dönük oturum/kaynak raporu ondan
+    çıkmaz. Kişisel veri yok: rastgele ziyaretçi anahtarı, ülke kodu, kaynak."""
+    __tablename__ = "vitrin_oturumlari"
+    __table_args__ = (
+        Index("ix_vitrin_oturum_magaza_zaman", "store_id", "basladi"),
+        Index("ix_vitrin_oturum_ziyaretci", "store_id", "ziyaretci", "son"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    ziyaretci: Mapped[str] = mapped_column(String(64))
+    basladi: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    son: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    giris_yolu: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    son_yol: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    sayfa_sayisi: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    # instagram | facebook | meta_reklam | google | google_reklam | tiktok | diger | dogrudan
+    kaynak: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    cihaz: Mapped[str | None] = mapped_column(String(10), nullable=True)   # mobil | masaustu
+    ulke: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    urun_gordu: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    sepete_ekledi: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    odemeye_gecti: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class DiscountCode(Base):

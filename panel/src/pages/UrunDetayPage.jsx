@@ -354,6 +354,9 @@ export default function UrunDetayPage() {
           👫 Çift kılıf seti (couple) — müşteri <b>2 telefon modeli</b> seçer,
           üretime iki kalem düşer
         </label>
+        {(p.models_per_item || 1) >= 2 && (
+          <ModelBasliklari product={p} onChanged={reloadMeta} setMsg={setMsg} />
+        )}
         <CustomFieldsEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
 
@@ -744,6 +747,54 @@ function VariantTable({ product, basePrice, onChanged, setMsg }) {
   )
 }
 
+
+// Ürün küçük resmi — 400px WebP varyantı (yoksa sunucu ilk istekte üretir)
+function KucukGorsel({ url, buyuk = false }) {
+  const boyut = buyuk ? 'w-9 h-9' : 'w-5 h-5'
+  if (!url) return <span className={`${boyut} shrink-0 rounded-md bg-panel-input`} />
+  const kucuk = /\.(jpe?g|png|webp)$/i.test(url) ? url.replace(/\.[^.]+$/, '-400.webp') : url
+  return (
+    <img src={kucuk} alt="" loading="lazy" decoding="async"
+      onError={e => { if (e.currentTarget.src !== url) e.currentTarget.src = url }}
+      className={`${boyut} shrink-0 rounded-md object-cover bg-panel-input`} />
+  )
+}
+
+// Couple: müşterinin gördüğü iki model seçicisinin başlığı (ürüne özel)
+function ModelBasliklari({ product, onChanged, setMsg }) {
+  const [b, setB] = useState(product.model_basliklari || [])
+  const [dirty, setDirty] = useState(false)
+  useEffect(() => { setB(product.model_basliklari || []); setDirty(false) }, [product.id])
+  const set = (i, v) => { setB(x => { const y = [x[0] || '', x[1] || '']; y[i] = v; return y }); setDirty(true) }
+  const save = async (deger) => {
+    try {
+      await api.patch(`/api/catalog/products/${product.id}`, { model_basliklari: deger })
+      setMsg({ ok: true, text: 'Model başlıkları kaydedildi' })
+      setDirty(false); onChanged()
+    } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
+  }
+  return (
+    <div className="rounded-xl bg-panel-input px-3 py-2.5 space-y-2">
+      <p className="text-[11px] text-panel-muted">
+        Ürün sayfasında iki model seçicisinin başlığı. Boş bırakılırsa
+        "1. Kılıfın Modeli" / "2. Kılıfın Modeli" yazar. Örn. <i>McQueen için model</i>, <i>Sally için model</i>.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <input className="input" maxLength={60} value={b[0] || ''} placeholder="1. Kılıfın Modeli"
+          onChange={e => set(0, e.target.value)} />
+        <input className="input" maxLength={60} value={b[1] || ''} placeholder="2. Kılıfın Modeli"
+          onChange={e => set(1, e.target.value)} />
+      </div>
+      <div className="flex gap-2">
+        {dirty && <button onClick={() => save(b)} className="btn-primary !py-1 text-xs">Kaydet</button>}
+        {(product.model_basliklari || []).some(Boolean) && (
+          <button onClick={() => save([])} className="btn-ghost !py-1 text-xs">Varsayılana dön</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Kişiye özel alanlar — müşteriden checkout'ta istenecek girdiler.
 // Sepette "bunu da ekleyin" — bu ürün sepetteyken önerilecek ürünler.
 // Boş bırakılırsa sistem birlikte satılanlardan otomatik seçer.
@@ -776,9 +827,11 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
     } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
   }
 
-  const results = q.trim()
-    ? all.filter(p => p.title.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 8)
-    : []
+  // Arama boşken de tüm ürünler listelenir; liste kendi içinde kayar
+  // (eskiden yalnız ilk 8 eşleşme görünüyordu, gerisine ulaşılamıyordu)
+  const aranan = q.trim().toLocaleLowerCase('tr')
+  const results = all.filter(p => !picked.includes(p.slug)
+    && (!aranan || p.title.toLocaleLowerCase('tr').includes(aranan)))
   const bySlug = Object.fromEntries(all.map(p => [p.slug, p]))
 
   return (
@@ -796,6 +849,7 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
           {picked.map(slug => (
             <span key={slug}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 text-xs">
+              <KucukGorsel url={bySlug[slug]?.cover_image} />
               {bySlug[slug]?.title?.slice(0, 30) || slug}
               <button onClick={() => toggle(slug)} className="hover:text-red-300">×</button>
             </span>
@@ -806,17 +860,21 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
         <>
           <input className="input" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Ürün ara ve ekle…" />
-          {results.length > 0 && (
-            <div className="space-y-1">
+          {results.length > 0 ? (
+            <div className="max-h-80 overflow-y-auto overscroll-contain space-y-0.5 rounded-xl border border-panel-border p-1">
               {results.map(p => (
-                <button key={p.id} onClick={() => { toggle(p.slug); setQ('') }}
-                  className="w-full flex items-center gap-2 text-left text-sm px-3 py-1.5 rounded-lg hover:bg-panel-input">
+                <button key={p.id} onClick={() => toggle(p.slug)}
+                  className="w-full flex items-center gap-2.5 text-left text-sm px-2 py-1.5 rounded-lg hover:bg-panel-input">
+                  <KucukGorsel url={p.cover_image} buyuk />
                   <span className="truncate">{p.title}</span>
-                  <span className="ml-auto text-xs text-panel-muted">+ ekle</span>
+                  <span className="ml-auto shrink-0 text-xs text-panel-muted">+ ekle</span>
                 </button>
               ))}
             </div>
+          ) : (
+            <p className="text-xs text-panel-muted px-1">{aranan ? 'Eşleşen ürün yok' : 'Ürünler yükleniyor…'}</p>
           )}
+          <p className="text-[11px] text-panel-muted">{results.length} ürün · en fazla 6 seçilebilir</p>
         </>
       )}
     </section>

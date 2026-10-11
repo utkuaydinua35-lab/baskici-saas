@@ -295,12 +295,15 @@ html[data-card="yumusak"] .urun-kart-fiyat { margin-top: 0; flex-direction: colu
 .onizleme-aralik { accent-color: #edf83d; }
 @keyframes onizleme-suzul { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
 .onizleme-suzul { animation: onizleme-suzul 7s ease-in-out infinite; }
-.onizleme-kasa { --rx: 4deg; --ry: -9deg; border-radius: 46px; transform: perspective(1300px) rotateX(var(--rx)) rotateY(var(--ry));
+.onizleme-kasa { --rx: 4deg; --ry: -9deg; --kose: 46px; border-radius: var(--kose); transform: perspective(1300px) rotateX(var(--rx)) rotateY(var(--ry));
   box-shadow: 0 50px 80px #0009, 0 0 0 1px #ffffff14; transition: transform .7s cubic-bezier(.22,1,.36,1), border-radius .45s; }
 .onizleme-kasa.suruklen { transition: border-radius .45s; }
 @keyframes baski-gir { from { opacity: 0; filter: blur(10px); } }
 .onizleme-baski.taze { animation: baski-gir .8s cubic-bezier(.22,1,.36,1); }
-.onizleme-kasa[data-sekil="samsung"] { border-radius: 34px; }
+.onizleme-kasa[data-sekil="samsung"] { --kose: 34px; }
+/* Baskının köşeleri BURADA kesilir (bkz. KilifOnizleme). clip-path kasanın
+   kendisine konmaz: dış gölgeyi de keserdi. */
+.onizleme-kirp { border-radius: var(--kose); overflow: hidden; clip-path: inset(0 round var(--kose)); transition: clip-path .45s, border-radius .45s; }
 .onizleme-kasa::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   box-shadow: inset 0 0 0 6px #121212, inset 0 0 0 7px #ffffff26, inset 0 0 22px #0007; }
 .onizleme-baski { background: radial-gradient(circle at 22% 16%, #edf83d, transparent 46%), radial-gradient(circle at 86% 42%, #ffb3cf, transparent 52%), radial-gradient(circle at 28% 86%, #9fa8ff, transparent 56%), #f4efe6;

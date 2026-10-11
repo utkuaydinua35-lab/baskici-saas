@@ -161,9 +161,15 @@ export default function KilifOnizleme({
               }}
               onPointerUp={(e) => { surukle.current = null; e.currentTarget.classList.remove("suruklen"); }}
               onPointerCancel={(e) => { surukle.current = null; e.currentTarget.classList.remove("suruklen"); }}>
-              <div ref={baski} key={taze} className={`onizleme-baski absolute inset-0 ${foto ? "dolu" : ""} ${taze ? "taze" : ""}`}
-                style={foto ? { backgroundImage: `url("${foto}")` } : undefined}>
-                {!foto && <span className="absolute inset-x-0 top-[56%] text-center text-[11px] font-semibold tracking-[5px] text-black/25">FOTOĞRAFIN</span>}
+              {/* Kırpma katmanı: baskı kendi GPU katmanında (will-change) ve kasa 3B
+                  döndürülmüş olduğundan telefonlarda overflow+border-radius köşeleri
+                  KIRPMIYORDU — görsel yuvarlak çerçeveden kare taşıyordu. clip-path
+                  her tarayıcıda keser. */}
+              <div className="onizleme-kirp absolute inset-0">
+                <div ref={baski} key={taze} className={`onizleme-baski absolute inset-0 ${foto ? "dolu" : ""} ${taze ? "taze" : ""}`}
+                  style={foto ? { backgroundImage: `url("${foto}")` } : undefined}>
+                  {!foto && <span className="absolute inset-x-0 top-[56%] text-center text-[11px] font-semibold tracking-[5px] text-black/25">FOTOĞRAFIN</span>}
+                </div>
               </div>
               <div className="onizleme-kamera" aria-hidden><i /><i /><i /><b /></div>
               <div className="onizleme-parilti" aria-hidden />

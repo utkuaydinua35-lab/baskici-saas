@@ -107,8 +107,12 @@ export default function Layout() {
           kaydıkça arkası her karede 40px yeniden bulanıklaştırılıyordu —
           kaydırmadaki takılmanın bir kaynağı. Telefonda zemin neredeyse opak.
           box-content: çentik dolgusu 48px'lik yüksekliğin İÇİNDEN yemesin. */}
+      {/* Üst bar OPAK, bulanıklık YOK. Eskiden masaüstünde yarı saydam +
+          backdrop-blur idi: altındaki aurora sürekli hareket ettiği için
+          filtre her karede yeniden hesaplanıyor, menüde "karıncalanma /
+          dalgalanma" olarak görünüyordu (2026-10, özellikle Windows). */}
       <header className="box-content h-12 pt-[env(safe-area-inset-top)] shrink-0 flex items-center gap-3 px-3 text-white sticky top-0 z-40
-        bg-[#070c2b]/95 lg:bg-[#060b28]/75 lg:backdrop-blur-xl border-b border-panel-border">
+        bg-[#070c2b] border-b border-panel-border">
         {/* Mobil menü düğmesi */}
         <button onClick={() => (menuOpen ? menuKapat() : setMenuOpen(true))} aria-label="Menü" aria-expanded={menuOpen}
           className="lg:hidden w-10 h-10 rounded-lg border border-panel-border flex items-center justify-center text-panel-muted active:bg-white/10">
@@ -173,7 +177,7 @@ export default function Layout() {
             Mobilde yükseklik 100vh DEĞİL top+bottom: iOS Safari'de 100vh alt
             araç çubuğunun arkasına uzanıp en alttaki "Ayarlar"ı gizliyordu. */}
         <aside aria-label="Menü" className={`w-56 shrink-0 border-r border-panel-border flex flex-col
-          bg-[#070c2b]/[0.97] lg:bg-[#060b28]/55
+          bg-[#070c2b]
           fixed lg:sticky top-[calc(3rem_+_1px_+_env(safe-area-inset-top))] bottom-0 lg:bottom-auto
           lg:h-[calc(100vh_-_3rem_-_1px_-_env(safe-area-inset-top))] z-30
           transition-transform duration-200 lg:translate-x-0

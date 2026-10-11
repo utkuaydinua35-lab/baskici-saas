@@ -2439,6 +2439,9 @@ def presence_ping(
     store = _resolve_store(db, store_slug)
     now = datetime.now(timezone.utc)
     key = body.key.strip()[:64]
+    # Aynı ziyaretçinin eşzamanlı ping'leri sıraya girer (işlem sonunda bırakılır):
+    # yoksa ikisi birden "oturum yok" görüp İKİ oturum açar, sayım şişer.
+    db.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"{store.id}:{key}"))))
     row = db.scalar(select(StorefrontPresence).where(
         StorefrontPresence.store_id == store.id,
         StorefrontPresence.session_key == key,
@@ -2446,9 +2449,24 @@ def presence_ping(
     if row is None:
         row = StorefrontPresence(
             tenant_id=store.tenant_id, store_id=store.id,
-            session_key=key, first_seen=now,
+            session_key=key, first_seen=now, last_seen=now,
         )
         db.add(row)
+        # İlk iki ping aynı anda gelebilir (sayfa açılışı + sepet sayımı):
+        # ikisi de "satır yok" görüp eklemeye çalışıyor, biri benzersizlik
+        # kısıtına takılıp 500 veriyordu (canlı günlükte, 2026-10). Satırı
+        # hemen yaz; çakışırsa diğer isteğin yazdığını oku.
+        from sqlalchemy.exc import IntegrityError
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            row = db.scalar(select(StorefrontPresence).where(
+                StorefrontPresence.store_id == store.id,
+                StorefrontPresence.session_key == key,
+            ))
+            if row is None:      # çakışma değil, başka bir kısıt: gizleme
+                raise
     row.last_seen = now
     row.last_path = (body.path or "")[:300] or None
     row.cart_items = body.cart_items

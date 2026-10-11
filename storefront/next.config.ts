@@ -74,6 +74,8 @@ const nextConfig: NextConfig = {
       },
       // RFC 9116 güvenlik bildirim dosyası — mağazanın kendi e-postasıyla
       { source: "/.well-known/security.txt", destination: "/api/security-txt" },
+      // app/favicon.ico Next'te özel dosya adı (klasör olarak rota açılmıyor)
+      { source: "/favicon.ico", destination: "/api/simge" },
     ];
   },
 };

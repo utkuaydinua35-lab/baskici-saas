@@ -1,3 +1,4 @@
+import { waBaglanti } from '../lib/whatsapp'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
@@ -267,7 +268,7 @@ function AbandonedDetail({ id, storefrontUrl, onClose }) {
                   </a>
                 )}
                 {d.customer.phone && (
-                  <a href={`https://wa.me/9${d.customer.phone.replace(/\D/g, '')}`}
+                  <a href={waBaglanti(d.customer.phone)}
                     target="_blank" rel="noreferrer"
                     className="block text-xs text-emerald-300 hover:underline">
                     💬 WhatsApp: {d.customer.phone}

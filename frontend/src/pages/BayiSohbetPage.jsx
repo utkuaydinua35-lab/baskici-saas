@@ -4,6 +4,7 @@
  * Sol: bayi listesi (acil olan ve okunmamışı olan üstte). Sağ: konuşma.
  * Bayi tarafı pages/bayii/BayiSohbetPage.jsx; ikisi de aynı uçları kullanır.
  */
+import { waBaglanti } from '../lib/whatsapp'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, fetchYetkili } from '../lib/api'
@@ -165,7 +166,7 @@ export default function BayiSohbetPage() {
                 <Avatar url={veri?.sohbet?.logo_url} ad={veri?.bayi?.ad} boyut={26} />
                 <span className="text-sm font-medium text-gray-100">{veri?.bayi?.ad || '—'}</span>
                 {veri?.bayi?.telefon && (
-                  <a href={`https://wa.me/9${String(veri.bayi.telefon).replace(/\D/g, '')}`}
+                  <a href={waBaglanti(veri.bayi.telefon)}
                      target="_blank" rel="noreferrer"
                      className="text-[11px] text-emerald-300/90 hover:underline">WhatsApp</a>
                 )}

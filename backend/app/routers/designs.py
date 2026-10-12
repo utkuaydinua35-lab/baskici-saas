@@ -19,13 +19,13 @@ from fastapi import (
 from fastapi.responses import Response
 from sqlalchemy import desc, func as sql_func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
 from app.services import tasarim_kapsam
-from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store, User
+from app.models import CatalogProduct, Design, KisiyeOzelProduct, LineItem, Order, Store, User
 from app.services import storage
 
 router = APIRouter(prefix="/api/designs", tags=["designs"],
@@ -246,6 +246,28 @@ def list_shopify_products(
     db: Session = Depends(get_db),
 ):
     store = _get_store(db, store_id, user.tenant_id)
+    if (store.platform or "").lower() == "storefront":
+        # VİTRİN: ürünler kendi veritabanımızda, çekilecek dış API yok.
+        # Bu uç aksesuar/kişiye özel işaretleme ekranlarını besler — vitrin
+        # ürünleri burada dönmezse o ekranlar vitrin mağazasında boş kalır.
+        q = (
+            select(CatalogProduct)
+            .options(selectinload(CatalogProduct.images))
+            .where(CatalogProduct.store_id == store.id)
+        )
+        if search:
+            q = q.where(CatalogProduct.title.ilike(f"%{search.strip()}%"))
+        urunler = db.scalars(q.order_by(CatalogProduct.title).limit(500)).all()
+        items = [{
+            "id": str(u.id),
+            "title": u.title,
+            "image_url": (f"/storage/{u.images[0].file_path}" if u.images else ""),
+            "status": u.status,
+            "product_type": "",
+            "tags": u.tags or "",
+            "handle": u.slug,
+        } for u in urunler]
+        return {"items": items, "count": len(items)}
     try:
         adapter = get_adapter(store)
         products = adapter.get_all_products(limit=250, search=search)

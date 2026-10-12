@@ -185,6 +185,18 @@ try:
     es("kod aramasıyla bulunuyor", True, any(x["code"] == f"{IZ}-C1" for x in r2["items"]))
     r3 = c.get(f"/api/catalog/products/{u_cift.id}/tasarim-onerisi", headers=H).json()
     es("belirsizde öneri verilmiyor", None, r3["oneri"])
+
+    print("\n── Aksesuar/kişiye özel işaretleme ekranı vitrini görüyor ──")
+    # Bu uç Shopify'da platform API'sine gider; vitrinde ürünler bizim
+    # veritabanımızda — dönmezse o ekranlar vitrin mağazasında boş kalır
+    # (baskısız kılıfı aksesuar işaretlemek imkânsız hale geliyordu).
+    r4 = c.get(f"/api/designs/_meta/products?store_id={vitrin.id}", headers=H)
+    kimlikler = {x["id"] for x in r4.json().get("items", [])}
+    es("vitrin ürünleri listelenebiliyor", (200, True),
+       (r4.status_code, str(u_yok.id) in kimlikler))
+    r5 = c.get(f"/api/designs/_meta/products?store_id={vitrin.id}"
+               f"&search=baskısız", headers=H).json()
+    es("başlık aramasıyla süzülüyor", [str(u_yok.id)], [x["id"] for x in r5["items"]])
 finally:
     db.rollback()
     ids = [x for (x,) in db.execute(select(Store.id).where(Store.slug.like(f"{IZ}-%"))).all()]

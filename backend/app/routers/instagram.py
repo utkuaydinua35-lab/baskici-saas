@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user, require_permission
 from app.config import get_settings
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.models import Design, InstagramPost, Store, User
 from app.services import storage, instagram_content
 from app.services import mockup as mockup_svc
@@ -431,7 +432,7 @@ def chat(body: ChatIn, user: User = Depends(get_current_user), db: Session = Dep
     try:
         # Tasarım kataloğu (AI görsel için kod seçsin)
         designs = db.scalars(select(Design).where(
-            Design.store_id == store.id, Design.tenant_id == user.tenant_id).order_by(Design.code).limit(80)).all()
+            tasarim_kapsam.kosul(db, store.id), Design.tenant_id == user.tenant_id).order_by(Design.code).limit(80)).all()
         by_code = {(d.code or "").upper(): d for d in designs if d.code}
         katalog = "\n".join(f"- {d.code}: {d.name or ''}".strip() for d in designs[:80]) or "(katalog boş)"
         lr = _learning(store)
@@ -683,7 +684,7 @@ def gen_one(db, tenant_id, store: Store, kind: str, style: str, scheduled_for=No
     if not caption:  # campaign ya da persona başarısız -> ürün mockup'ı
         used = "campaign"
         design = db.scalar(select(Design).where(
-            Design.store_id == store.id, Design.tenant_id == tenant_id).order_by(sql_func.random()).limit(1))
+            tasarim_kapsam.kosul(db, store.id), Design.tenant_id == tenant_id).order_by(sql_func.random()).limit(1))
         subj = (getattr(design, "name", None) or "") or "yeni telefon kılıfı tasarımı"
         gen = instagram_content.generate_caption(brand=store.name, subject=subj, kind=kind)
         if gen:

@@ -19,6 +19,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.auth.dependencies import get_current_user, require_any_permission
 
 from app.database import get_db
+from app.services import tasarim_kapsam
 
 from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, MoldTemplate, Order, User
 
@@ -1573,7 +1574,7 @@ def assignable_designs(
     mo = _get_mold(db, mold_id, user.tenant_id)
     d_q = select(Design).where(Design.tenant_id == user.tenant_id).order_by(Design.code)
     if mo.store_id:
-        d_q = d_q.where(Design.store_id == mo.store_id)
+        d_q = d_q.where(tasarim_kapsam.kosul(db, mo.store_id))
     designs = db.scalars(d_q).all()
     return {
         "items": [

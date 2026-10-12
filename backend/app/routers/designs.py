@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.models import Design, KisiyeOzelProduct, LineItem, Order, Store, User
 from app.services import storage
 
@@ -92,7 +93,8 @@ def list_designs(
 ):
     _get_store(db, store_id, user.tenant_id)
 
-    q = select(Design).where(Design.store_id == store_id)
+    # Paylaşımlı mağazalarda diğer kanalın tasarımları da listelenir
+    q = select(Design).where(tasarim_kapsam.kosul(db, store_id))
 
     if search:
         like = f"%{search.lower()}%"
@@ -133,12 +135,31 @@ def list_designs(
     q = q.order_by(desc(Design.created_at)).limit(per_page).offset((page - 1) * per_page)
     rows = db.scalars(q).all()
 
+    # Paylaşımlı mağazalarda hangi tasarımın HANGİ mağazadan geldiği ekranda
+    # yazsın; yoksa "bu kod bende miydi?" sorusu çıkıyor.
+    magaza_adlari = {}
+    paylasimli = tasarim_kapsam.paylasimli_mi(db, store_id)
+    if paylasimli:
+        magaza_adlari = {
+            str(i): a for (i, a) in db.execute(
+                select(Store.id, Store.name).where(
+                    Store.id.in_(tasarim_kapsam.paylasilan_idler(db, store_id)))).all()
+        }
+
+    def _ser(d):
+        out = _serialize(d)
+        if paylasimli:
+            out["magaza_adi"] = magaza_adlari.get(str(d.store_id))
+            out["baska_magazadan"] = str(d.store_id) != str(store_id)
+        return out
+
     return {
-        "items": [_serialize(d) for d in rows],
+        "items": [_ser(d) for d in rows],
         "total": total,
         "page": page,
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if total else 0,
+        "paylasimli": paylasimli,
     }
 
 
@@ -149,15 +170,15 @@ def stats(
     db: Session = Depends(get_db),
 ):
     _get_store(db, store_id, user.tenant_id)
-    base = select(Design).where(Design.store_id == store_id)
+    base = select(Design).where(tasarim_kapsam.kosul(db, store_id))
     total = db.scalar(select(sql_func.count()).select_from(base.subquery())) or 0
-    standart = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.is_kisiye_ozel.is_(False))) or 0
-    ozel = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.is_kisiye_ozel.is_(True))) or 0
-    with_product = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.product_id.isnot(None))) or 0
-    cmyk_done = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.cmyk_hazirlanmis.is_(True))) or 0
-    birincil = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.birincil_renk.isnot(None))) or 0
-    ikincil = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.ikincil_renk.isnot(None))) or 0
-    ucuncu = db.scalar(select(sql_func.count()).where(Design.store_id == store_id, Design.ucuncu_renk.isnot(None))) or 0
+    standart = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.is_kisiye_ozel.is_(False))) or 0
+    ozel = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.is_kisiye_ozel.is_(True))) or 0
+    with_product = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.product_id.isnot(None))) or 0
+    cmyk_done = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.cmyk_hazirlanmis.is_(True))) or 0
+    birincil = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.birincil_renk.isnot(None))) or 0
+    ikincil = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.ikincil_renk.isnot(None))) or 0
+    ucuncu = db.scalar(select(sql_func.count()).where(tasarim_kapsam.kosul(db, store_id), Design.ucuncu_renk.isnot(None))) or 0
 
     return {
         "total": total, "standart": standart, "ozel": ozel,
@@ -194,7 +215,7 @@ def unmatched_products(
     matched = set(
         str(p) for (p,) in db.execute(
             select(Design.product_id).where(
-                Design.store_id == store_id,
+                tasarim_kapsam.kosul(db, store_id),
                 Design.product_id.isnot(None),
             )
         ).all()

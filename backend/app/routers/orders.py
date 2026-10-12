@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.adapters import get_adapter
 from app.auth.dependencies import get_current_user, require_any_permission, require_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.services.order_scope import acik_mi as _acik_mi
 from app.services import activity
 from app.models import (LineItem, Mold, MoldItem, Order, OrderStatusHistory, Store,
@@ -1651,7 +1652,7 @@ def store_designs(
     from app.services import storage as _storage
     designs = db.scalars(
         select(Design)
-        .where(Design.store_id == store_id, Design.tenant_id == user.tenant_id)
+        .where(tasarim_kapsam.kosul(db, store_id), Design.tenant_id == user.tenant_id)
         .order_by(Design.code)
     ).all()
     return {

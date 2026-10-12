@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.models import CoupleProduct, Design, Store, User
 from app.services import storage
 
@@ -90,7 +91,8 @@ def upsert_couple(
     # tasarimlar bu magazaya mi ait — dogrula
     for did in (body.design_id_1, body.design_id_2):
         if did:
-            d = db.scalar(select(Design).where(Design.id == did, Design.store_id == body.store_id))
+            d = db.scalar(select(Design).where(Design.id == did,
+                                               tasarim_kapsam.kosul(db, body.store_id)))
             if not d:
                 raise HTTPException(400, "Tasarım bu mağazaya ait değil")
     existing = db.scalar(

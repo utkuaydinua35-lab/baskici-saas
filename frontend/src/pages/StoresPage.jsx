@@ -161,6 +161,9 @@ export default function StoresPage({ embedded = false }) {
                     ))}
                   </div>
 
+                  {/* Tasarım paylaşımı — aynı işletmenin iki kanalı tek havuzu kullansın */}
+                  <TasarimPaylasimi store={store} tumStores={stores} onSaved={loadData} />
+
                   {/* Vitrin alan adı — kurulumda yanlış yazılırsa buradan düzeltilir */}
                   {store.platform === 'storefront' && <AlanAdiEditor store={store} onSaved={loadData} />}
 
@@ -219,6 +222,55 @@ export default function StoresPage({ embedded = false }) {
           onSaved={() => { setShowAddDialog(false); loadData() }}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * Tasarım paylaşımı — aynı atölyedeki mağazalar tek tasarım havuzunu kullansın.
+ *
+ * Aynı işletmenin iki kanalı olabiliyor (eski Shopify mağazası + kendi vitrini);
+ * tasarımlar mağazaya bağlı olduğu için vitrin tarafında "bu mağazada o kodlu
+ * tasarım yok" çıkıyordu. İşaretlenen mağazalar birbirinin tasarımlarını görür.
+ *
+ * Bayi mağazaları KASITLI olarak dışarıda: onların kendi kodlu katalogları ana
+ * mağazaya karışmamalı. Bu yüzden paylaşım işaretlenerek açılıyor.
+ */
+function TasarimPaylasimi({ store, tumStores, onSaved }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const acik = !!store.tasarim_grubu
+  // Bayi mağazalarında bu seçenek hiç görünmesin
+  if (store.platform === 'bayii') return null
+
+  const ortaklar = (tumStores || []).filter(
+    s => s.id !== store.id && s.tasarim_grubu && s.tasarim_grubu === store.tasarim_grubu)
+
+  const degistir = async (e) => {
+    const yeni = e.target.checked
+    setBusy(true)
+    try {
+      await api.patch(`/api/stores/${store.id}`, { tasarim_grubu: yeni ? 'ortak' : '' })
+      toast.success(yeni ? 'Tasarımlar ortak havuza alındı' : 'Paylaşım kapatıldı')
+      onSaved()
+    } catch (e2) { toast.error(e2?.detail || 'Kaydedilemedi') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="mt-3">
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" checked={acik} disabled={busy} onChange={degistir}
+               className="accent-accent" />
+        <span className="text-xs text-gray-300">🎨 Tasarımlar ortak</span>
+      </label>
+      <p className="text-[10px] text-gray-600 mt-0.5">
+        {acik
+          ? (ortaklar.length
+              ? `${ortaklar.map(s => s.name).join(', ')} ile aynı tasarım havuzunu kullanıyor.`
+              : 'İşaretli tek mağaza bu — ortak olması için diğer mağazayı da işaretle.')
+          : 'İşaretlenen mağazalar birbirinin tasarımlarını görür ve kullanır (bayiler hariç).'}
+      </p>
     </div>
   )
 }

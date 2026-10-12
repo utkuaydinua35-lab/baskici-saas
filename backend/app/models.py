@@ -266,6 +266,14 @@ class Store(Base):
     badge_color: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # TASARIM PAYLAŞIMI: aynı atölyede, aynı grup adını taşıyan mağazalar
+    # birbirinin tasarımlarını görür ve kullanır. Aynı işletmenin iki kanalı
+    # (Shopify mağazası + kendi vitrini) tek tasarım havuzunu paylaşsın diye.
+    # Boş (None) = paylaşım yok, mağaza yalnız kendi tasarımlarını görür —
+    # bayi mağazalarının kendi katalogları karışmamalı, bu yüzden OPT-IN.
+    # Ölçüt tek yerde: services/tasarim_kapsam.py
+    tasarim_grubu: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

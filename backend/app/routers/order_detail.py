@@ -15,6 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.adapters.shopify import ShopifyAdapter
 from app.models import Design, KisiyeOzelProduct, LineItem, Mold, MoldItem, Order, OrderStatusHistory, User
 from app.services import (activity, kargo_takip, mold_planner,
@@ -1589,11 +1590,12 @@ def urun_degisikligi_karar(
         kod = (body.tasarim_kodu or "").strip()
         if not kod:
             raise HTTPException(status_code=400, detail="Tasarım kodu gir")
+        # Paylaşımlı mağazalarda diğer kanalın tasarımı da atanabilir
         design = db.scalar(select(Design).where(
-            Design.tenant_id == user.tenant_id, Design.store_id == order.store_id,
+            Design.tenant_id == user.tenant_id, tasarim_kapsam.kosul(db, order.store_id),
             Design.code == kod))
         if design is None:
-            raise HTTPException(status_code=404, detail=f"Bu mağazada {kod} kodlu tasarım yok")
+            raise HTTPException(status_code=404, detail=f"{kod} kodlu tasarım bulunamadı")
         if getattr(design, "baski_dosyasi_yok", False):
             raise HTTPException(status_code=409, detail=f"{kod} tasarımının baskı dosyası yok")
         uds.tasarimi_bagla(li, design, kim)

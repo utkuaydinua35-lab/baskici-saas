@@ -479,6 +479,13 @@ function DesignCard({ design, onEdit, onDelete, onCmyk }) {
       <div className="p-2">
         <div className="flex items-center justify-between gap-1">
           <div className="font-mono text-xs text-accent truncate flex-1">{design.code}</div>
+          {/* Ortak havuzda: tasarım hangi mağazadan geliyor */}
+          {design.baska_magazadan && (
+            <span className="text-[9px] px-1 rounded bg-sky-500/15 text-sky-300 shrink-0 truncate max-w-[72px]"
+                  title={`${design.magaza_adi} mağazasından (ortak tasarım havuzu)`}>
+              {design.magaza_adi}
+            </span>
+          )}
           <span className="text-[9px] uppercase text-gray-500 bg-gray-700/30 px-1 rounded shrink-0">
             {ext}
           </span>

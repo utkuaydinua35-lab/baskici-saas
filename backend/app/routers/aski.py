@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_any_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.services.order_scope import acik_siparis_filtresi
 from app.models import (
     AskiItem, Design, LineItem, Order, OrderStatusHistory, Store, User,
@@ -215,7 +216,7 @@ def create_aski(
 
     design = db.scalar(select(Design).where(
         Design.id == body.design_id,
-        Design.store_id == body.store_id,
+        tasarim_kapsam.kosul(db, body.store_id),
         Design.tenant_id == user.tenant_id,
     ))
     if not design:

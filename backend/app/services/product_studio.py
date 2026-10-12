@@ -162,7 +162,11 @@ def next_design_code(db: Session, store_id, prefix: str, reserved=None) -> str:
     """Marka öneki + sıralı numara ile benzersiz tasarım kodu (örn B777, B778).
     Mevcut '{prefix}<sayı>' kodlarının + reserved'in en büyüğü + 1; hiç yoksa {prefix}777."""
     prefix = (prefix or "X").upper()
-    rows = list(db.scalars(select(Design.code).where(Design.store_id == store_id)).all())
+    # Paylaşımlı mağazalarda kod havuzu ORTAK: aynı kod iki mağazada
+    # üretilirse "hangi B123?" sorusu çıkar.
+    from app.services import tasarim_kapsam
+    rows = list(db.scalars(select(Design.code).where(
+        tasarim_kapsam.kosul(db, store_id))).all())
     if reserved:
         rows += list(reserved)
     mx = 776

@@ -54,6 +54,9 @@ class StoreCreate(BaseModel):
 
 class StoreUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
+    # Tasarım paylaşımı: aynı grup adını taşıyan mağazalar birbirinin
+    # tasarımlarını görür. "" / None → paylaşım kapalı.
+    tasarim_grubu: str | None = Field(None, max_length=50)
     config: dict[str, Any] | None = None
     badge_color: str | None = None
     is_active: bool | None = None
@@ -69,6 +72,7 @@ class StoreResponse(BaseModel):
     config: dict[str, Any]
     badge_color: str | None
     is_active: bool
+    tasarim_grubu: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -259,6 +263,8 @@ def update_store(
         store.badge_color = req.badge_color
     if req.is_active is not None:
         store.is_active = req.is_active
+    if req.tasarim_grubu is not None:
+        store.tasarim_grubu = (req.tasarim_grubu or "").strip() or None
 
     if req.config is not None:
         merged = dict(store.config or {})

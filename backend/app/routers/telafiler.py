@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
+from app.services import tasarim_kapsam
 from app.models import Design, LineItem, Order, OrderStatusHistory, Store, User
 from app.stages import all_stages_payload, is_valid_stage, progress_percent, stage_info
 
@@ -479,7 +480,7 @@ def create_manual_telafi(
         design = None
         if li.design_id:
             design = db.scalar(select(Design).where(
-                Design.id == li.design_id, Design.store_id == body.store_id,
+                Design.id == li.design_id, tasarim_kapsam.kosul(db, body.store_id),
                 Design.tenant_id == user.tenant_id))
             if not design:
                 raise HTTPException(status_code=400, detail=f"Urun #{pos+1}: tasarim bulunamadi")

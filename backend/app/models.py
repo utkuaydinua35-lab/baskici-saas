@@ -1737,6 +1737,17 @@ class CatalogProduct(Base):
     tags: Mapped[str | None] = mapped_column(String(500), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
+    # ÜRETİM BAĞI — bu vitrin ürünü basılırken hangi tasarım kullanılacak.
+    # Shopify ürünlerinde bağ Design.product_id üzerinden kurulur; vitrinde
+    # product_id bu tablonun UUID'sidir, yani o eşleşme matematiksel olarak
+    # kurulamaz. Bu yüzden bağ AÇIKÇA burada tutulur.
+    # Boşsa: kalıp planlayıcı "ürün tasarıma bağlanmamış" der (aksesuar veya
+    # kişiye özel ürün değilse). services/katalog_tasarim.py tek kaynaktır.
+    design_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("designs.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -1751,6 +1762,8 @@ class CatalogProduct(Base):
     collections: Mapped[list[CatalogCollection]] = relationship(
         secondary="catalog_product_collections", back_populates="products"
     )
+    # Baskı tasarımı (ortak havuzdan başka mağazanın tasarımı da olabilir)
+    design: Mapped[Design | None] = relationship("Design", lazy="selectin")
 
 
 class CatalogVariant(Base):

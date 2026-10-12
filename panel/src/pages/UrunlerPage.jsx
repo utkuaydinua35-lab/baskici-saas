@@ -142,6 +142,7 @@ export default function UrunlerPage() {
           <button onClick={() => setShowSets(true)} className="btn-ghost text-xs">🧩 Varyant Setleri</button>
           <button onClick={exportCsv} className="btn-ghost text-xs">⬇ Dışa Aktar</button>
           <button onClick={() => setShowImport(true)} className="btn-ghost text-xs">⬆ İçe Aktar</button>
+          <TasarimEslestirDugmesi storeId={storeId} onDone={load} />
         </div>
       </div>
 
@@ -1345,5 +1346,82 @@ function StokTakibiModal({ storeId, ids, onClose, onDone }) {
         </div>
       </div>
     </Modal>
+  )
+}
+
+// ── Baskı tasarımı toplu eşleştirme ──
+// Vitrin ürününün baskı tasarımı ÜRÜNDE açıkça tutulur (bkz. backend
+// services/katalog_tasarim.py). Bu düğme, başlığı tasarımla BİREBİR uyan
+// ürünleri tek seferde bağlar; şüpheli olanlara dokunmaz — yanlış tasarımla
+// üretim yapmaktansa ürün elle bağlanır.
+function TasarimEslestirDugmesi({ storeId, onDone }) {
+  const [rapor, setRapor] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  const kuruCalistir = async () => {
+    if (!storeId) return
+    setBusy(true)
+    try {
+      const r = await api.post('/api/catalog/products/tasarim-eslestir',
+        { store_id: storeId, uygula: false })
+      setRapor(r)
+    } catch { toast.error('Eşleştirme çalıştırılamadı') }
+    finally { setBusy(false) }
+  }
+
+  const uygula = async () => {
+    setBusy(true)
+    try {
+      const r = await api.post('/api/catalog/products/tasarim-eslestir',
+        { store_id: storeId, uygula: true })
+      toast.success(`${r.baglandi} ürün tasarımına bağlandı`)
+      setRapor(null)
+      await onDone?.()
+    } catch { toast.error('Eşleştirme uygulanamadı') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <>
+      <button onClick={kuruCalistir} disabled={busy} className="btn-ghost text-xs">
+        🖨️ Tasarımları Eşleştir
+      </button>
+      {rapor && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+             onClick={() => setRapor(null)}>
+          <div className="bg-panel-card border border-panel-border rounded-2xl p-5 w-full
+            max-w-lg space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold">Baskı tasarımı eşleştirme</h3>
+            <p className="text-sm text-panel-muted">
+              Başlığı bir tasarımla birebir uyan ürünler bağlanır. Zaten bağlı
+              olanlara ve şüphelilere dokunulmaz.
+            </p>
+            <ul className="text-sm space-y-1">
+              <li>✅ Bağlanacak: <b className="text-emerald-300">{rapor.baglandi}</b></li>
+              <li>🔗 Zaten bağlı: {rapor.zaten_bagli}</li>
+              <li>⚠ Birden fazla adayla eşleşen (elle): {rapor.belirsiz}</li>
+              <li>➖ Eşleşmeyen (elle): {rapor.eslesmeyen}</li>
+              <li className="text-panel-muted">Toplam {rapor.toplam} ürün</li>
+            </ul>
+            {!!rapor.ornekler?.length && (
+              <div className="text-[11px] text-panel-muted max-h-32 overflow-y-auto
+                bg-panel-input rounded-xl p-2 space-y-0.5">
+                {rapor.ornekler.map((o, i) => (
+                  <div key={i} className="truncate">{o.tasarim} → {o.urun}</div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setRapor(null)} className="btn-ghost text-xs">Vazgeç</button>
+              <button onClick={uygula} disabled={busy || !rapor.baglandi}
+                className="btn-primary text-xs">
+                {rapor.baglandi} ürünü bağla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

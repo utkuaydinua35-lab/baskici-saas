@@ -19,7 +19,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.auth.dependencies import get_current_user, require_any_permission
 
 from app.database import get_db
-from app.services import tasarim_kapsam
+from app.services import katalog_tasarim, tasarim_kapsam
 
 from app.models import Design, LineItem, Mold, MoldItem, MoldStatusHistory, MoldTemplate, Order, User
 
@@ -1540,6 +1540,9 @@ def assignable_line_items(
             if mo.store_id:
                 _dq = _dq.where(Design.store_id == mo.store_id)
             design = db.scalar(_dq.limit(1))
+            if not design:
+                _os = li.order.store_id if li.order else mo.store_id
+                design = katalog_tasarim.tasarim_bul(db, _os, li.product_id)
         if not design:
             continue
 
@@ -1727,6 +1730,8 @@ def assign_slot(
             if target_store:
                 d_q = d_q.where(Design.store_id == target_store)
             design = db.scalar(d_q)
+            if not design and target_store:
+                design = katalog_tasarim.tasarim_bul(db, target_store, li.product_id)
         if not design:
             raise HTTPException(400, "Bu kalem için tasarım bulunamadı")
 

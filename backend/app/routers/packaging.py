@@ -23,6 +23,7 @@ from app.models import (
     AccessoryProduct, CoupleProduct, Dealer, Design, LineItem, Mold, MoldItem, Order,
     Notification, OrderStatusHistory, Store, User,
 )
+from app.services import katalog_tasarim
 from app.services import basit_kargo, hepsiburada as hb, label_pdf, packaging as pkg, storage, surat
 from app import stages as stage_defs
 
@@ -772,6 +773,9 @@ def _design_for_line_item(db, order, li, mi, adapter=None, kisiye_ids=None):
                 Design.product_id == li.product_id,
             ).limit(1)
         )
+    if not d and li.product_id:
+        # Vitrin ürünü: açık katalog bağı (bkz. services/katalog_tasarim.py)
+        d = katalog_tasarim.tasarim_bul(db, order.store_id, li.product_id)
     if d and d.file_path:
         return storage.get_thumbnail_url(d.file_path, d.file_format)
     return None

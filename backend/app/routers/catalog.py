@@ -26,7 +26,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, select, update as sa_update
+from sqlalchemy import func, or_, select, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.dependencies import require_permission
@@ -35,11 +35,12 @@ from app.models import (
     CatalogImage,
     CatalogProduct,
     CatalogVariant,
+    Design,
     PhoneModel,
     Store,
     User,
 )
-from app.services import activity, smart_collections
+from app.services import activity, katalog_tasarim, smart_collections, tasarim_kapsam
 from app.services import storage as storage_svc
 from app.services.sanitize import sanitize_rich_text
 
@@ -116,6 +117,10 @@ class ProductUpdate(BaseModel):
     # Couple: her kılıfın model seçicisinin başlığı ("McQueen için model", "Sally için model")
     model_basliklari: list[str] | None = Field(None, max_length=2)
     video_url: str | None = Field(None, max_length=500)
+    # ÜRETİM BAĞI — bu ürün basılırken kullanılacak tasarım. null = bağı kaldır.
+    # Shopify ürünlerinde bağ product_id ile kendiliğinden kurulur; vitrinde
+    # kurulamaz, bkz. services/katalog_tasarim.py
+    design_id: uuid.UUID | None = None
 
 
 class VariantCreate(BaseModel):
@@ -300,11 +305,16 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "models_per_item": p.models_per_item or 1,
         "model_basliklari": p.model_basliklari or [],
         "video_url": p.video_url,
+        "design_id": str(p.design_id) if p.design_id else None,
         "publish_at": p.publish_at.isoformat() if p.publish_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
     if full:
+        _d = p.design
         data.update({
+            "design_kodu": _d.code if _d else None,
+            "design_adi": _d.name if _d else None,
+            "design_magaza_id": str(_d.store_id) if _d else None,
             "description": p.description,
             "seo_title": p.seo_title,
             "seo_description": p.seo_description,
@@ -448,6 +458,15 @@ def update_product(
     if "model_basliklari" in updates:
         updates["model_basliklari"] = [
             (b or "").strip()[:60] for b in (updates["model_basliklari"] or [])][:2] or None
+    if "design_id" in updates and updates["design_id"]:
+        # Tasarım bu mağazanın görebildiği havuzda mı? (ortak havuz dahil,
+        # bkz. services/tasarim_kapsam.py) Başka atölyenin tasarımı bağlanamaz.
+        _d = db.scalar(select(Design).where(
+            Design.id == updates["design_id"],
+            tasarim_kapsam.kosul(db, product.store_id),
+        ))
+        if _d is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Tasarım bulunamadı")
     if "studio_overlays" in updates:
         # JSONB'ye UUID nesnesi yazılamaz — metne çevrilir
         updates["studio_overlays"] = [str(x) for x in (updates["studio_overlays"] or [])]
@@ -474,6 +493,88 @@ def update_product(
                         entity_label=product.title, detail=degisen)
     db.commit()
     return _serialize_product(product, full=True)
+
+
+class TasarimEslestirRequest(BaseModel):
+    store_id: uuid.UUID
+    uygula: bool = False        # False = kuru çalışma, hiçbir şey yazılmaz
+    uzerine_yaz: bool = False   # True = elle bağlanmış ürünlerin bağını da değiştir
+
+
+@router.post("/products/tasarim-eslestir", response_model=dict)
+def tasarim_eslestir(
+    body: TasarimEslestirRequest,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Başlığı tasarımla BİREBİR eşleşen vitrin ürünlerini tasarımına bağlar.
+
+    Birden fazla tasarımla eşleşenler ve hiç eşleşmeyenler elle bağlanmak
+    üzere bırakılır — yanlış tasarımla üretim yapmaktansa eksik kalsın.
+    """
+    store = _get_storefront_store(db, user.tenant_id, body.store_id)
+    rapor = katalog_tasarim.toplu_eslestir(
+        db, store.id, uygula=body.uygula, uzerine_yaz=body.uzerine_yaz
+    )
+    if body.uygula and rapor["baglandi"]:
+        activity.record(db, user, "urun_tasarim_eslestir", store_id=store.id,
+                        detail=f"{rapor['baglandi']} ürün tasarımına bağlandı")
+        db.commit()
+    return rapor
+
+
+@router.get("/products/{product_id}/tasarim-onerisi", response_model=dict)
+def tasarim_onerisi(
+    product_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ürün başlığıyla birebir eşleşen tasarım önerisi (tek adaysa)."""
+    product = _get_product(db, user.tenant_id, product_id)
+    d = katalog_tasarim.oneri(db, product)
+    if d is None:
+        return {"oneri": None}
+    return {"oneri": {"id": str(d.id), "code": d.code, "name": d.name}}
+
+
+@router.get("/products/{product_id}/tasarim-ara", response_model=dict)
+def tasarim_ara(
+    product_id: uuid.UUID,
+    q: str | None = None,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Ürüne bağlanabilecek tasarımlar (kod/ad araması, en çok 50 sonuç).
+
+    Kapsam ortak tasarım havuzudur — başka mağazanın tasarımı da çıkabilir
+    (bkz. services/tasarim_kapsam.py).
+    """
+    product = _get_product(db, user.tenant_id, product_id)
+    sq = select(Design).where(tasarim_kapsam.kosul(db, product.store_id))
+    ara = (q or "").strip()
+    if ara:
+        kalip = f"%{ara}%"
+        sq = sq.where(or_(Design.code.ilike(kalip), Design.name.ilike(kalip),
+                          Design.product_title.ilike(kalip)))
+    else:
+        # Arama yoksa önce başlık önerisi gelsin
+        _o = katalog_tasarim.oneri(db, product)
+        if _o is not None:
+            sq = sq.where(Design.id != _o.id)
+    items = db.scalars(sq.order_by(Design.created_at.desc()).limit(50)).all()
+    def _ser(d):
+        return {
+            "id": str(d.id), "code": d.code, "name": d.name,
+            "store_id": str(d.store_id),
+            "baska_magazadan": d.store_id != product.store_id,
+            "thumbnail_url": (storage_svc.get_thumbnail_url(d.file_path, d.file_format)
+                              if d.file_path else None),
+        }
+    _o = katalog_tasarim.oneri(db, product) if not ara else None
+    return {
+        "oneri": _ser(_o) if _o is not None else None,
+        "items": [_ser(d) for d in items],
+    }
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import AccessoryProduct, CoupleProduct, Design, KisiyeOzelProduct, LineItem, Order, Store
-from app.services import placement_rules as pr, storage
+from app.services import katalog_tasarim, placement_rules as pr, storage
 
 
 def extract_phone_model(line_item: LineItem) -> str | None:
@@ -342,6 +342,10 @@ def plan_molds(
         if _mv:
             variant_designs.setdefault((d.store_id, pid), []).append((_mv.casefold(), d))
 
+    # Vitrin ürünleri: bağ product_id ile kurulamaz (UUID vs Shopify kimliği),
+    # catalog_products.design_id'de ACIKCA tutulur. bkz. services/katalog_tasarim.py
+    katalog_design = katalog_tasarim.bag_haritasi(db, tenant_id, store_id)
+
     # Couple (cift kilif) urunleri: (store_id, product_id) -> CoupleProduct
     couple_q = (
         select(CoupleProduct)
@@ -608,6 +612,9 @@ def plan_molds(
                     if design is None:
                         _vid = str(li.variant_id) if getattr(li, "variant_id", None) else None
                         design = design_by_key.get((order_store_id, pid, _vid)) or design_by_key.get((order_store_id, pid, None))
+                    if design is None:
+                        # Vitrin ürünü: açık katalog bağı
+                        design = katalog_design.get((order_store_id, pid))
                 if design is None:
                     add_eksik("urun_tasarima_baglanmamis", li, order, model)
                     continue

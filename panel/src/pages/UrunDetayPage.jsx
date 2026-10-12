@@ -340,6 +340,8 @@ export default function UrunDetayPage() {
           </div>
         </section>
 
+      <BaskiTasarimi product={p} onChanged={reloadMeta} setMsg={setMsg} />
+
       <section className="card space-y-3">
         <h2 className="text-sm font-semibold">🎨 Kişiye Özel Alanlar ve Set Ürünü</h2>
         <label className="flex items-center gap-2 text-sm">
@@ -415,6 +417,103 @@ export default function UrunDetayPage() {
         <VariantTable product={p} basePrice={form.base_price} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
     </div>
+  )
+}
+
+// ── Baskı tasarımı: ürün basılırken hangi tasarım kullanılacak ──
+// Shopify ürünlerinde bu bağ ürün kimliğiyle kendiliğinden kurulur; vitrin
+// ürünlerinde kurulamaz (kimlik uzayları farklı), bu yüzden burada seçilir.
+// Bağ boşsa kalıp planlayıcı "tasarım eksik" der ve ürün kalıba girmez.
+function BaskiTasarimi({ product, onChanged, setMsg }) {
+  const [acik, setAcik] = useState(false)
+  const [ara, setAra] = useState('')
+  const [veri, setVeri] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const yukle = async (q = '') => {
+    try {
+      const r = await api.get(`/api/catalog/products/${product.id}/tasarim-ara`
+        + (q ? `?q=${encodeURIComponent(q)}` : ''))
+      setVeri(r)
+    } catch { setVeri({ items: [] }) }
+  }
+  useEffect(() => { if (acik) yukle(ara) }, [acik])
+  useEffect(() => {
+    if (!acik) return
+    const t = setTimeout(() => yukle(ara), 300)
+    return () => clearTimeout(t)
+  }, [ara])
+
+  const bagla = async (design_id) => {
+    setBusy(true)
+    try {
+      await api.patch(`/api/catalog/products/${product.id}`, { design_id })
+      setMsg({ ok: true, text: design_id ? 'Tasarım bağlandı' : 'Tasarım bağı kaldırıldı' })
+      setAcik(false)
+      await onChanged()
+    } catch { setMsg({ ok: false, text: 'Tasarım bağlanamadı' }) }
+    finally { setBusy(false) }
+  }
+
+  const bagli = product.design_id
+  return (
+    <section className="card space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h2 className="text-sm font-semibold">🖨️ Baskı tasarımı</h2>
+        <button className="btn-ghost text-xs" onClick={() => setAcik(v => !v)}>
+          {acik ? 'Kapat' : bagli ? 'Değiştir' : 'Tasarım seç'}
+        </button>
+      </div>
+      {bagli ? (
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-300
+            border border-emerald-500/30 text-xs font-mono">{product.design_kodu}</span>
+          <span className="text-panel-muted text-xs">{product.design_adi}</span>
+          <button disabled={busy} className="text-xs text-rose-300 hover:underline"
+            onClick={() => bagla(null)}>bağı kaldır</button>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-300">
+          ⚠ Tasarım bağlı değil — bu ürün sipariş edilince kalıp planlayıcı
+          “tasarım eksik” der. Baskısız/aksesuar ürünlerde bu normaldir.
+        </p>
+      )}
+      {acik && (
+        <div className="space-y-2">
+          {veri?.oneri && (
+            <div className="flex items-center gap-2 text-xs bg-panel-input rounded-xl px-3 py-2 flex-wrap">
+              <span className="text-panel-muted">Başlığa birebir uyan tasarım:</span>
+              <span className="font-mono text-emerald-300">{veri.oneri.code}</span>
+              <span className="text-panel-muted truncate max-w-[16rem]">{veri.oneri.name}</span>
+              <button disabled={busy} className="btn-ghost text-xs"
+                onClick={() => bagla(veri.oneri.id)}>Bunu bağla</button>
+            </div>
+          )}
+          <input className="input" value={ara} onChange={e => setAra(e.target.value)}
+            placeholder="Tasarım kodu veya adı ara (B967, archangel…)" />
+          <div className="max-h-72 overflow-y-auto divide-y divide-panel-border rounded-xl
+            border border-panel-border">
+            {(veri?.items || []).map(d => (
+              <button key={d.id} disabled={busy} onClick={() => bagla(d.id)}
+                className="w-full flex items-center gap-3 px-3 py-2 text-left
+                  hover:bg-panel-input transition">
+                {d.thumbnail_url
+                  ? <img src={d.thumbnail_url} alt="" className="w-10 h-10 rounded object-cover" />
+                  : <span className="w-10 h-10 rounded bg-panel-input" />}
+                <span className="font-mono text-xs text-panel-muted">{d.code}</span>
+                <span className="text-xs truncate flex-1">{d.name}</span>
+                {d.baska_magazadan && (
+                  <span className="text-[10px] text-sky-300 whitespace-nowrap">ortak havuz</span>
+                )}
+              </button>
+            ))}
+            {veri && !(veri.items || []).length && (
+              <p className="px-3 py-4 text-xs text-panel-muted">Sonuç yok</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 

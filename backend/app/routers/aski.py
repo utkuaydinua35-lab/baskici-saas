@@ -29,7 +29,7 @@ from app.services.order_scope import acik_siparis_filtresi
 from app.models import (
     AskiItem, Design, LineItem, Order, OrderStatusHistory, Store, User,
 )
-from app.services import storage
+from app.services import katalog_tasarim, storage
 
 router = APIRouter(prefix="/api/aski", tags=["aski"],
     dependencies=[Depends(require_any_permission("stok", "siparisler"))],
@@ -92,11 +92,15 @@ def _resolve_design_for_aski(li: LineItem, store_id, db: Session) -> Design | No
         if d:
             return d
     if li.product_id:
-        return db.scalar(
+        d = db.scalar(
             select(Design)
             .where(Design.store_id == store_id, Design.product_id == li.product_id)
             .limit(1)
         )
+        if d:
+            return d
+        # Vitrin ürünü: açık katalog bağı
+        return katalog_tasarim.tasarim_bul(db, store_id, li.product_id)
     return None
 
 

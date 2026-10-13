@@ -104,7 +104,7 @@ export function bosBolumNedeni(sec) {
       if (!s.ends_at) return 'bitiş zamanı yok'
       return new Date(s.ends_at) > new Date() ? null : 'süresi doldu'
     case 'kurdele': return dolu(s.items, 'text') ? null : 'yazı eklenmedi'
-    case 'stil_onerici': return (s.secenekler || []).some(o => o?.etiket && o?.urun) ? null : 'ürün seçilmedi'
+    case 'stil_onerici': return (s.secenekler || []).some(o => o?.etiket && (o?.urun || o?.urunler?.length)) ? null : 'ürün seçilmedi'
     case 'adimlar': return dolu(s.items, 'title') ? null : 'adım eklenmedi'
     default: return null
   }
@@ -834,11 +834,34 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
               <button onClick={() => patch({ secenekler: sec_.filter((_, j) => j !== i) })}
                 className="text-red-300 hover:text-red-300 px-1">×</button>
             </div>
-            <select className="input !py-1.5 text-xs" value={o.urun || ''}
-              onChange={e => patchOpt(i, { urun: e.target.value })}>
-              <option value="">Gösterilecek ürünü seçin…</option>
-              {products.map(pr => <option key={pr.slug} value={pr.slug}>{pr.title}</option>)}
-            </select>
+            {/* Bir tarzda BİRDEN ÇOK ürün: vitrinde sırayla dönerek önerilir.
+                Eski temalarda yalnız tek `urun` var — listeye çevrilir. */}
+            {(() => {
+              const liste = o.urunler?.length ? o.urunler : (o.urun ? [o.urun] : [])
+              const yaz = (yeni) => patchOpt(i, { urunler: yeni, urun: yeni[0] || '' })
+              return (
+                <div className="space-y-1">
+                  {liste.map((slug, k) => (
+                    <div key={slug} className="flex items-center gap-1.5 text-xs bg-panel-input rounded-lg px-2 py-1">
+                      <span className="text-panel-muted w-4">{k + 1}.</span>
+                      <span className="truncate flex-1">{products.find(pr => pr.slug === slug)?.title || slug}</span>
+                      <button title="Yukarı" disabled={k === 0} className="disabled:opacity-30 px-1"
+                        onClick={() => { const y = [...liste]; [y[k - 1], y[k]] = [y[k], y[k - 1]]; yaz(y) }}>↑</button>
+                      <button title="Kaldır" className="text-red-300 px-1"
+                        onClick={() => yaz(liste.filter((_, j) => j !== k))}>×</button>
+                    </div>
+                  ))}
+                  {liste.length < 12 && (
+                    <select className="input !py-1.5 text-xs" value=""
+                      onChange={e => e.target.value && yaz([...liste, e.target.value])}>
+                      <option value="">{liste.length ? '+ Bu tarza bir ürün daha ekle…' : 'Gösterilecek ürünü seçin…'}</option>
+                      {products.filter(pr => !liste.includes(pr.slug)).map(pr =>
+                        <option key={pr.slug} value={pr.slug}>{pr.title}</option>)}
+                    </select>
+                  )}
+                </div>
+              )
+            })()}
             <div className="grid grid-cols-[1fr_auto] gap-1.5 items-center">
               <input className="input !py-1.5 text-xs" value={o.kelime || ''} maxLength={14}
                 onChange={e => patchOpt(i, { kelime: e.target.value })} placeholder="Arka plandaki büyük kelime — örn. SANAT." />
@@ -849,12 +872,18 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
               onChange={e => patchOpt(i, { neden: e.target.value })} placeholder="Kısa açıklama — örn. Sakin renkler, güçlü bir bakış." />
           </div>
         ))}
-        {sec_.length < 6 && (
-          <button onClick={() => patch({ secenekler: [...sec_, { etiket: '', renk: '#888888', kelime: '', neden: '', urun: '', zemin: '#e5e8ed' }] })}
-            className="btn-ghost !py-1 text-xs">+ Seçenek Ekle</button>
+        {sec_.length < 10 && (
+          <button onClick={() => patch({ secenekler: [...sec_, { etiket: '', renk: '#888888', kelime: '', neden: '', urun: '', urunler: [], zemin: '#e5e8ed' }] })}
+            className="btn-ghost !py-1 text-xs">+ Tarz Ekle</button>
         )}
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={s.otomatik !== false}
+            onChange={e => patch({ otomatik: e.target.checked })} />
+          Öneriler kendi kendine değişsin (ziyaretçi dokununca bir süre durur)
+        </label>
         <p className="text-[11px] text-panel-muted">
-          Ziyaretçi bir tarz seçince o tarza bağlı ürün sahnede belirir. Ürünü seçilmeyen seçenek görünmez.
+          Her tarza istediğiniz kadar ürün ekleyin (en çok 12): vitrinde sırayla önerilir, bitince sıradaki
+          tarza geçer. Ürünü olmayan tarz görünmez.
         </p>
       </>
     )
@@ -905,8 +934,13 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
           onChange={e => patch({ logo_yazi: e.target.value })} placeholder="Kılıfın altındaki yazı — örn. {magaza}" />
         <input className="input" value={s.not || ''} maxLength={140}
           onChange={e => patch({ not: e.target.value })} placeholder="Önizleme altındaki küçük not (ops.)" />
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={s.yuzey_goster === true}
+            onChange={e => patch({ yuzey_goster: e.target.checked })} />
+          “Yüzey: Parlak / Mat” seçeneğini göster (bu ürün seçeneğini sunmuyorsanız kapalı kalsın)
+        </label>
         <p className="text-[11px] text-panel-muted">
-          Ziyaretçi fotoğrafını seçip kılıfın üstünde sürükler, yakınlaştırır; iPhone/Samsung ve parlak/mat
+          Ziyaretçi fotoğrafını seçip kılıfın üstünde sürükler, yakınlaştırır; iPhone/Samsung
           arasında geçer. Fotoğraf yalnız ziyaretçinin cihazında kalır, sunucuya yüklenmez.
           <b> {'{magaza}'}</b> yazan yere mağaza adınız gelir.
         </p>

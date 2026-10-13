@@ -562,6 +562,14 @@ export default function TemaEditorPage() {
                   onChange={v => set('style.header_layout', v)} />
                 {theme.style?.header_layout === 'vitrin' && (
                   <div className="space-y-1.5 border border-panel-border rounded-xl p-2.5">
+                    <Choice label="Masaüstü menüsü" value={theme.style?.masaustu_menu || 'satir'}
+                      options={[['satir', 'Bağlantılar yan yana (logo altında)'],
+                        ['dugme', '“Koleksiyonlar” düğmesi + arama çubuğu']]}
+                      onChange={v => set('style.masaustu_menu', v)} />
+                    <p className="text-[10px] text-panel-muted">
+                      Telefonda her iki seçenekte de koyu menü düğmesi ve arama çubuğu kalır;
+                      telefon menüsünün içeriğini aşağıdaki “Telefon Menüsü”nden düzenleyin.
+                    </p>
                     <input className="input !py-1.5 text-xs" value={theme.style?.ust_not || ''} maxLength={40}
                       onChange={e => set('style.ust_not', e.target.value)}
                       placeholder="Logonun solundaki küçük yazı (ops.) — örn. SIRA DIŞI TASARIMLAR" />
@@ -666,9 +674,60 @@ export default function TemaEditorPage() {
                     }}
                     onRemove={() => set('nav_links', theme.nav_links.filter((_, j) => j !== i))} />
                 ))}
-                {(theme.nav_links || []).length < 8 && (
+                {(theme.nav_links || []).length < 12 && (
                   <button onClick={() => set('nav_links', [...(theme.nav_links || []), { label: '', url: '' }])}
                     className="btn-ghost !py-1 text-xs">+ Link Ekle</button>
+                )}
+              </Section>
+
+              <Section title="Telefon Menüsü" icon="📱">
+                <p className="text-[11px] text-panel-muted -mt-1">
+                  Telefonda koyu ☰ düğmesine basınca açılan liste. Üst menüden <b>ayrı</b> düzenlenir;
+                  boş bırakılırsa üst menü kullanılır. “Çizgi” ile grupları ayırın. En altta her zaman
+                  <b> Oturum Aç</b> düğmesi durur.
+                </p>
+                {(theme.mobil_menu || []).map((l, i) => {
+                  const liste = theme.mobil_menu
+                  const tasi = (dir) => {
+                    const arr = [...liste]; const j = i + dir
+                    if (j < 0 || j >= arr.length) return
+                    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+                    set('mobil_menu', arr)
+                  }
+                  return l.type === 'ayrac' ? (
+                    <div key={i} className="flex items-center gap-1.5 px-2">
+                      <div className="flex-1 border-t-2 border-panel-border" />
+                      <span className="text-[10px] text-panel-muted">çizgi</span>
+                      <button onClick={() => tasi(-1)} disabled={i === 0}
+                        className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↑</button>
+                      <button onClick={() => tasi(1)} disabled={i === liste.length - 1}
+                        className="w-6 h-6 rounded-lg border border-panel-border text-xs disabled:opacity-30">↓</button>
+                      <button onClick={() => set('mobil_menu', liste.filter((_, j) => j !== i))}
+                        className="text-red-300 px-1">×</button>
+                    </div>
+                  ) : (
+                    <NavLinkRow key={i} link={l} index={i} count={liste.length}
+                      collections={collections} products={products} pages={pages}
+                      onChange={patch => set('mobil_menu', liste.map((x, j) => j === i ? { ...x, ...patch } : x))}
+                      onMove={tasi}
+                      onRemove={() => set('mobil_menu', liste.filter((_, j) => j !== i))} />
+                  )
+                })}
+                {(theme.mobil_menu || []).length < 24 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={() => set('mobil_menu', [...(theme.mobil_menu || []), { label: '', url: '' }])}
+                      className="btn-ghost !py-1 text-xs">+ Bağlantı Ekle</button>
+                    <button onClick={() => set('mobil_menu', [...(theme.mobil_menu || []), { type: 'ayrac' }])}
+                      className="btn-ghost !py-1 text-xs">+ Çizgi Ekle</button>
+                    {(theme.mobil_menu || []).length === 0 && (theme.nav_links || []).length > 0 && (
+                      <button onClick={() => set('mobil_menu', (theme.nav_links || []).map(x => ({ ...x })))}
+                        className="btn-ghost !py-1 text-xs">Üst menüden kopyala</button>
+                    )}
+                    {(theme.mobil_menu || []).length > 0 && (
+                      <button onClick={() => window.confirm('Telefon menüsü temizlensin mi? (Üst menü kullanılır)') && set('mobil_menu', [])}
+                        className="text-xs text-red-300 px-2">Temizle</button>
+                    )}
+                  </div>
                 )}
               </Section>
 

@@ -15,6 +15,8 @@ interface NavCollection {
   title: string;
 }
 
+export interface MenuOgesi { label?: string; url?: string; type?: string; slugs?: string[] }
+
 // Menüdeki açılır koleksiyon listesi — panelden elle seçilen koleksiyonlar.
 // Çok öğede mega-menü gibi çok sütuna yayılır.
 function CollectionsDropdown({ label, items }: { label: string; items: NavCollection[] }) {
@@ -64,6 +66,8 @@ export default function Header({
   cartDrawer,
   collections = [],
   navLinks = [],
+  mobilMenu = [],
+  masaustuMenu = "satir",
   layout = "left",
   ustNot = "",
   ustLinkMetin = "",
@@ -85,7 +89,11 @@ export default function Header({
   sabit?: "hep" | "mobil" | "masaustu" | "yok";
   cartDrawer?: boolean;
   collections?: NavCollection[];
-  navLinks?: { label: string; url?: string; type?: string; slugs?: string[] }[];
+  navLinks?: MenuOgesi[];
+  /** Telefon menüsü — üst menüden ayrı düzenlenir; boşsa üst menü kullanılır */
+  mobilMenu?: MenuOgesi[];
+  /** vitrin düzeninde masaüstü menüsü: satir (yan yana bağlantılar) | dugme */
+  masaustuMenu?: "satir" | "dugme";
 }) {
   const { count, setDrawerOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -123,7 +131,8 @@ export default function Header({
   const aktif = (url?: string) =>
     !!url && !url.startsWith("http") &&
     (url === "/" ? pathname === "/" : pathname === url || pathname.startsWith(`${url}/`));
-  const navLinkCls = (url?: string) => center
+  const satirMenu = layout === "vitrin" && masaustuMenu === "satir";
+  const navLinkCls = (url?: string) => (center || satirMenu)
     ? `px-3 py-1.5 rounded-full whitespace-nowrap transition ${
         aktif(url) ? "bg-zinc-900 text-white" : "hover:text-zinc-900"}`
     : "hover:text-zinc-900 py-2 whitespace-nowrap";
@@ -185,7 +194,7 @@ export default function Header({
       {navLinks.length > 0 ? (
         navLinks.map((l, li) => (
           l.type === "collections" ? (
-            <CollectionsDropdown key={`cm-${li}`} label={l.label}
+            <CollectionsDropdown key={`cm-${li}`} label={l.label || "Koleksiyonlar"}
               items={(l.slugs || [])
                 .map((s) => collections.find((c) => c.slug === s))
                 .filter((c): c is NavCollection => !!c)} />
@@ -282,10 +291,18 @@ export default function Header({
     return (
       <header className={`${SABIT_SINIFI[sabit] ?? SABIT_SINIFI.hep} z-40 bg-white`}>
         <div className="mx-auto max-w-6xl px-4">
-          <div className="grid grid-cols-[.6fr_auto_1fr] sm:grid-cols-[1fr_auto_1fr] items-center gap-3 h-[84px] sm:h-[104px]">
-            <div className="min-w-0">
-              {ustNot && (
+          {/* Sütunlar İKİ YANDA EŞİT (1fr | logo | 1fr): logo tam ortada.
+              Eskiden telefonda sol sütun dardı (.6fr) ve logo sola kayıyordu. */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 h-[84px] sm:h-[104px]">
+            <div className="min-w-0 flex items-center gap-4">
+              {satirMenu && <span className="hidden sm:block"><SearchBox ikonOnly /></span>}
+              {ustNot && !satirMenu && (
                 <Link href="/urunler" className="block text-[7px] sm:text-[10px] tracking-[.12em] sm:tracking-[.2em] leading-relaxed text-zinc-500 uppercase max-w-[70px] sm:max-w-none">
+                  {ustNot}
+                </Link>
+              )}
+              {ustNot && satirMenu && (
+                <Link href="/urunler" className="sm:hidden block text-[7px] tracking-[.12em] leading-relaxed text-zinc-500 uppercase max-w-[70px]">
                   {ustNot}
                 </Link>
               )}
@@ -298,12 +315,30 @@ export default function Header({
                   ? <a href={ustLinkUrl} target="_blank" rel="noopener noreferrer" className="hidden md:inline text-xs text-zinc-500 hover:text-zinc-900">{ustLinkMetin}</a>
                   : <Link href={ustLinkUrl} className="hidden md:inline text-xs text-zinc-500 hover:text-zinc-900">{ustLinkMetin}</Link>
               )}
+              {satirMenu && (
+                <Link href="/hesap" aria-label="Hesabım" className="hidden sm:inline-flex p-2 -m-2 hover:text-zinc-500">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <circle cx="12" cy="8" r="3.5" />
+                    <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+                  </svg>
+                </Link>
+              )}
               {sepetDugmesi}
             </div>
           </div>
-          <div className="relative flex gap-2.5 sm:gap-5 pb-4 sm:pb-5">
-            <KoleksiyonMenusu navLinks={navLinks} collections={collections} autoCollections={autoCollections}
-              hasLinkTo={hasLinkTo} hasCollectionsMenu={hasCollectionsMenu} />
+          {/* MASAÜSTÜ (satır menü): bağlantılar yan yana, etkin sayfa siyah hap,
+              koleksiyonlar açılır liste. Eskiden tek bir "Koleksiyonlar" düğmesi
+              vardı ve içinde her şey (Siparişim Nerede dahil) karışık duruyordu. */}
+          {satirMenu && (
+            <nav aria-label="Ana menü"
+              className="hidden sm:flex flex-wrap items-center justify-center gap-x-1 gap-y-1 pb-4 text-[15px] text-zinc-700">
+              {navItems}
+            </nav>
+          )}
+          {/* TELEFON (ve "düğme" masaüstü): koyu menü düğmesi + arama çubuğu */}
+          <div className={`relative flex gap-2.5 sm:gap-5 pb-4 sm:pb-5 ${satirMenu ? "sm:hidden" : ""}`}>
+            <KoleksiyonMenusu navLinks={navLinks} mobilMenu={mobilMenu} collections={collections}
+              autoCollections={autoCollections} hasLinkTo={hasLinkTo} hasCollectionsMenu={hasCollectionsMenu} />
             <AramaCubugu />
           </div>
         </div>
@@ -593,8 +628,9 @@ function FavHeaderLink() {
 
 // Koyu "Koleksiyonlar ☰" düğmesi + altında açılan menü kartı. Mobilde yalnız
 // ikon görünür; kart iki boyutta da aynı (soldan kayan çekmece gerekmez).
-function KoleksiyonMenusu({ navLinks, collections, autoCollections, hasLinkTo, hasCollectionsMenu }: {
-  navLinks: { label: string; url?: string; type?: string; slugs?: string[] }[];
+function KoleksiyonMenusu({ navLinks, mobilMenu = [], collections, autoCollections, hasLinkTo, hasCollectionsMenu }: {
+  navLinks: MenuOgesi[];
+  mobilMenu?: MenuOgesi[];
   collections: NavCollection[];
   autoCollections: NavCollection[];
   hasLinkTo: (path: string) => boolean;
@@ -613,39 +649,81 @@ function KoleksiyonMenusu({ navLinks, collections, autoCollections, hasLinkTo, h
     return () => { document.removeEventListener("pointerdown", dis); document.removeEventListener("keydown", esc); };
   }, [acik]);
 
-  const satir = "block py-3.5 text-[15px] text-zinc-800 border-b border-zinc-100 last:border-b-0 hover:text-zinc-500";
+  const ozel = mobilMenu.length > 0;
+  // Giriş durumu yalnız menü AÇILINCA sorulur (her sayfada istek atılmasın)
+  const [girisli, setGirisli] = useState(false);
+  useEffect(() => {
+    if (!acik) return;
+    let iptal = false;
+    fetch("/api/account", { cache: "no-store" })
+      .then((r) => { if (!iptal) setGirisli(r.ok); })
+      .catch(() => {});
+    return () => { iptal = true; };
+  }, [acik]);
+  const satir = "block py-3.5 text-[15px] text-zinc-800 border-b border-zinc-100 hover:text-zinc-500";
   const baslik = "pt-4 pb-1 text-[10px] uppercase tracking-[.14em] text-zinc-400";
   return (
     <div ref={kap} className="shrink-0">
-      <button type="button" onClick={() => setAcik((a) => !a)} aria-expanded={acik} aria-label="Koleksiyonları aç"
+      <button type="button" onClick={() => setAcik((a) => !a)} aria-expanded={acik} aria-label="Menüyü aç"
         className="h-full flex items-center justify-between gap-3 w-[46px] sm:w-[240px] rounded-[10px] bg-zinc-900 text-white px-3 sm:px-[22px] py-3 sm:py-[15px] text-left text-sm">
         <span className="hidden sm:inline">Koleksiyonlar</span>
         <span aria-hidden className="text-xl leading-none w-5 text-center">{acik ? "×" : "☰"}</span>
       </button>
       {acik && (
-        <nav aria-label="Koleksiyon menüsü"
+        <nav aria-label="Menü"
           className="absolute left-0 top-full z-50 mt-1 w-[min(330px,92vw)] max-h-[70vh] overflow-y-auto rounded-xl border border-zinc-100 bg-white px-6 py-3 shadow-[0_15px_40px_#0002]">
-          {navLinks.map((l, li) => l.type === "collections" ? (
-            <div key={`v-cm-${li}`}>
-              <div className={baslik}>{l.label}</div>
-              {(l.slugs || []).map((s2) => collections.find((c) => c.slug === s2))
-                .filter((c): c is NavCollection => !!c)
-                .map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
-            </div>
-          ) : l.url?.startsWith("http") ? (
-            <a key={`v-${li}`} href={l.url} target="_blank" rel="noopener noreferrer" className={satir}>{l.label}</a>
-          ) : (
-            <Link key={`v-${li}`} href={l.url || "/"} className={satir}>{l.label}</Link>
-          ))}
-          {navLinks.length === 0 && <Link href="/urunler" className={satir}>Tüm ürünler</Link>}
-          {!hasCollectionsMenu && autoCollections.length > 0 && (
+          {ozel ? (
+            // PANELDEN DÜZENLENEN TELEFON MENÜSÜ: sıra, gruplar (çizgi) ve
+            // bağlantılar tamamen mağaza sahibinin. Otomatik eklenen bir şey yok.
             <>
-              <div className={baslik}>Koleksiyonlar</div>
-              {autoCollections.map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+              {mobilMenu.map((l, li) => l.type === "ayrac" ? (
+                <div key={`o-a-${li}`} className="my-2 border-t-2 border-zinc-200" role="separator" />
+              ) : l.type === "collections" ? (
+                <div key={`o-cm-${li}`}>
+                  <div className={baslik}>{l.label}</div>
+                  {(l.slugs || []).map((s2) => collections.find((c) => c.slug === s2))
+                    .filter((c): c is NavCollection => !!c)
+                    .map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+                </div>
+              ) : l.url?.startsWith("http") ? (
+                <a key={`o-${li}`} href={l.url} target="_blank" rel="noopener noreferrer" className={satir}>{l.label}</a>
+              ) : (
+                <Link key={`o-${li}`} href={l.url || "/"} className={satir}>{l.label}</Link>
+              ))}
+            </>
+          ) : (
+            <>
+              {navLinks.map((l, li) => l.type === "collections" ? (
+                <div key={`v-cm-${li}`}>
+                  <div className={baslik}>{l.label}</div>
+                  {(l.slugs || []).map((s2) => collections.find((c) => c.slug === s2))
+                    .filter((c): c is NavCollection => !!c)
+                    .map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+                </div>
+              ) : l.url?.startsWith("http") ? (
+                <a key={`v-${li}`} href={l.url} target="_blank" rel="noopener noreferrer" className={satir}>{l.label}</a>
+              ) : (
+                <Link key={`v-${li}`} href={l.url || "/"} className={satir}>{l.label}</Link>
+              ))}
+              {navLinks.length === 0 && <Link href="/urunler" className={satir}>Tüm ürünler</Link>}
+              {!hasCollectionsMenu && autoCollections.length > 0 && (
+                <>
+                  <div className={baslik}>Koleksiyonlar</div>
+                  {autoCollections.map((c) => <Link key={c.slug} href={`/koleksiyon/${c.slug}`} className={satir}>{c.title}</Link>)}
+                </>
+              )}
+              {!hasLinkTo("/favoriler") && <Link href="/favoriler" className={satir}>Favorilerim</Link>}
             </>
           )}
-          {!hasLinkTo("/hesap") && <Link href="/hesap" className={satir}>Hesabım</Link>}
-          {!hasLinkTo("/favoriler") && <Link href="/favoriler" className={satir}>Favorilerim</Link>}
+          {/* En altta HER ZAMAN: oturum aç / hesabım */}
+          <Link href="/hesap"
+            className="mt-3 flex items-center justify-center gap-2 rounded-[10px] bg-zinc-900 px-4 py-3.5 text-sm font-medium text-white">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+              <circle cx="12" cy="8" r="3.5" />
+              <path d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+            </svg>
+            {girisli ? "Hesabım" : "Oturum Aç"}
+          </Link>
         </nav>
       )}
     </div>

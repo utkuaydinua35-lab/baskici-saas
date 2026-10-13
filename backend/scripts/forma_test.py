@@ -84,6 +84,14 @@ es("serbest renk kapalı: takım dışı renk → varsayılan", f["varsayilan"][
    forma.secimleri_coz(kilitli, {"_renk1": "#ff0000", "_renk2": "#00ff00", "_renk3": "#0000ff"})["renkler"])
 es("serbest renk kapalı: tanımlı takım geçer", ["#0000ff", "#ffffff", "#ffffff"],
    forma.secimleri_coz(kilitli, {"_renk1": "#0000FF", "_renk2": "#ffffff", "_renk3": "#ffffff"})["renkler"])
+hazir = {**f, "kilitli": True}
+es("hazır ürün (kilitli): müşterinin desen/renk/font seçimi YOK SAYILIR",
+   (f["varsayilan"]["desen"], f["varsayilan"]["renkler"], f["varsayilan"]["font"]),
+   (lambda z: (z["desen"], z["renkler"], z["font"]))(forma.secimleri_coz(
+       hazir, {"_desen": "yari", "_renk1": "#ff0000", "_font": "bebas"})))
+es("kilitli bayrağı panel ayarından geçer ve vitrine bildirilir", (True, True),
+   (forma.yapilandirma_temizle({"aktif": True, "kilitli": True})["kilitli"],
+    forma.vitrin_ozeti(hazir)["kilitli"]))
 ozet = forma.vitrin_ozeti({**f, "yasak_ek": ["gizli"]})
 es("vitrine dosya yolu ve yasak listesi sızmıyor", False, "yasak_ek" in ozet or "ozel_amblemler" in ozet)
 

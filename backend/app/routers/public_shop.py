@@ -87,14 +87,33 @@ def _studio_overlay_moduller(db, store, product) -> list[dict]:
     return [
         {
             "id": str(o.id),
-            "label": o.label,
-            "kategori": o.kategori or None,
+            "label": _modul_adi(o),
+            "kategori": None if o.sadece_urunde else (o.kategori or None),
             "thumb_url": f"/storage/{o.thumb_path or o.image_path}",
+            # Forma tasarlayıcı açıksa kart yüklenen görseli değil, kodla
+            # çizilen başlangıç desenini gösterir
+            "forma_onizleme": _forma_onizleme(o),
             # Modül belirli bir kılıfa bağlıysa stüdyo o kılıfla açılsın
             "kilif_key": key,
         }
         for o, key in rows
     ]
+
+
+def _modul_adi(o) -> str:
+    """Müşteriye görünen şablon adı. ÜRÜNE ÖZEL modülde (yalnız atandığı
+    üründe görünen) ad İÇ ADDIR ("SARI KIRMIZI FORMA") ve müşteriye
+    gösterilmez — ürünün kendi adı yeter; vitrin boş adı ürün adıyla doldurur.
+    Her üründe görünen genel şablonda ad galeride ayırt etmek için gerekir."""
+    return "" if o.sadece_urunde else o.label
+
+
+def _forma_onizleme(o) -> dict | None:
+    f = o.forma or {}
+    if o.mod != "kisitli" or not f.get("aktif"):
+        return None
+    v = f["varsayilan"]
+    return {"desen": v["desen"], "yogunluk": v["yogunluk"], "renkler": v["renkler"]}
 
 
 # Vitrin "bakımda" — kiracının aboneliği askıya düştüğünde. Vitrin bu
@@ -2854,14 +2873,14 @@ def studio_overlays(store_slug: str, response: Response,
     return [
         {
             "id": str(o.id),
-            "label": o.label,
+            "label": _modul_adi(o),
             "template_key": key,          # null → tüm kılıflarda geçerli
             "image_url": f"/storage/{o.image_path}",
             "thumb_url": f"/storage/{o.thumb_path or o.image_path}",
             # "kisitli" ise editör form moduna geçer: müşteri yalnız bu
             # alanları doldurur, serbest görsel/yazı ekleyemez.
             "mod": o.mod,
-            "kategori": o.kategori or "Diğer",
+            "kategori": "Hazır tasarım" if o.sadece_urunde else (o.kategori or "Diğer"),
             "alanlar": kisitli_sablon.alan_ozeti(o) if o.mod == "kisitli" else [],
             # Forma tasarlayıcı: müşteriye açık desen/renk/yazı tipi/amblem seçenekleri
             "forma": forma_svc.vitrin_ozeti(o.forma) if o.mod == "kisitli" else None,

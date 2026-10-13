@@ -117,7 +117,7 @@ export default async function HomePage() {
           case "stil_onerici":
             return (
               <StilOnerici key={section.id} eyebrow={s.eyebrow} title={s.title}
-                subtitle={s.subtitle} secenekler={s.secenekler ?? []} />
+                subtitle={s.subtitle} secenekler={s.secenekler ?? []} otomatik={s.otomatik !== false} />
             );
           case "adimlar":
             return (
@@ -128,7 +128,7 @@ export default async function HomePage() {
             return (
               <KilifOnizleme key={section.id} eyebrow={s.eyebrow} title={s.title}
                 subtitle={s.subtitle} buton={s.buton} ctaText={s.cta_text} ctaUrl={s.cta_url}
-                logoYazi={s.logo_yazi} not={s.not} />
+                logoYazi={s.logo_yazi} not={s.not} yuzeyGoster={s.yuzey_goster === true} />
             );
           case "son_bakilanlar":
             return <SonBakilanlar key={section.id} eyebrow={s.eyebrow} title={s.title} subtitle={s.subtitle} />;

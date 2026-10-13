@@ -75,7 +75,11 @@ export interface ThemeSection {
     sembol?: string;
     palet?: "neon" | "tema";
     secenekler?: { etiket: string; renk: string; kelime: string; neden: string;
-      urun: string; zemin: string }[];
+      urun: string; urunler?: string[]; zemin: string }[];
+    /** Stil önerici: öneriler kendi kendine dönsün mü */
+    otomatik?: boolean;
+    /** Kılıf önizleme: "Yüzey: Parlak / Mat" seçeneği görünsün mü */
+    yuzey_goster?: boolean;
     buton?: string;
     logo_yazi?: string;
     not?: string;
@@ -91,6 +95,7 @@ export interface ThemeStyle {
   scroll_top: boolean;
   header_sabit?: "hep" | "mobil" | "masaustu" | "yok";
   footer_stil?: "sade" | "genis";
+  masaustu_menu?: "satir" | "dugme";
   ust_not?: string;
   ust_link_metin?: string;
   ust_link_url?: string;
@@ -124,6 +129,8 @@ export interface Theme {
   collection_pages?: Record<string, { image?: string | null; body?: string; position?: string }>;
   footer: { about: string; instagram: string };
   nav_links?: { label: string; url?: string; type?: string; slugs?: string[] }[];
+  /** Telefon menüsü; {type:"ayrac"} gruplar arası çizgidir */
+  mobil_menu?: { label?: string; url?: string; type?: string; slugs?: string[] }[];
   whatsapp?: { enabled: boolean; number: string; message: string };
   trust_badges?: { enabled: boolean };
   cart_messages?: { bxgy_progress: string; bxgy_reached: string };

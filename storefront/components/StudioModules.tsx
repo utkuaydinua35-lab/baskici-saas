@@ -7,6 +7,7 @@
 // Panelde yalnız modül seçilmişse de bölüm görünür (eskiden kılıf şablonu
 // seçilmediğinde ürün sayfasında hiçbir şey çıkmıyordu).
 import Link from "next/link";
+import { desenSekilleri } from "@/components/studio/forma";
 
 interface Modul {
   key: string;
@@ -21,6 +22,8 @@ export interface HazirModul {
   kategori: string | null;
   thumb_url: string;
   kilif_key: string | null;
+  /** Forma tasarlayıcı açıksa: kodla çizilen başlangıç deseni */
+  forma_onizleme?: { desen: string; yogunluk: string; renkler: string[] } | null;
 }
 
 export default function StudioModules({
@@ -49,11 +52,23 @@ export default function StudioModules({
                   m.kilif_key ? `&kilif=${encodeURIComponent(m.kilif_key)}` : ""}`}
                 className="group rounded-2xl border border-zinc-200 overflow-hidden hover:border-zinc-900 transition">
                 <div className="aspect-[3/4] bg-zinc-50 flex items-center justify-center p-2">
-                  <img src={m.thumb_url} alt={m.label}
-                    className="h-full w-auto object-contain group-hover:scale-105 transition" />
+                  {m.forma_onizleme ? (
+                    <svg viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden
+                      className="h-full aspect-[1/2] rounded-xl group-hover:scale-105 transition">
+                      <rect x="0" y="0" width="1" height="1" fill={m.forma_onizleme.renkler[0]} />
+                      {desenSekilleri(m.forma_onizleme.desen, m.forma_onizleme.yogunluk).map((c, i) => (
+                        <polygon key={i} fill={m.forma_onizleme!.renkler[Math.min(c.renk, 2)]}
+                          points={c.nokta.map(([x, y]) => `${x},${y}`).join(" ")} />
+                      ))}
+                    </svg>
+                  ) : (
+                    <img src={m.thumb_url} alt={m.label}
+                      className="h-full w-auto object-contain group-hover:scale-105 transition" />
+                  )}
                 </div>
                 <div className="px-2.5 py-2">
-                  <div className="text-sm font-medium truncate">{m.label}</div>
+                  {/* Ürüne özel modülün iç adı müşteriye gösterilmez (boş gelir) */}
+                  <div className="text-sm font-medium truncate">{m.label || "Tasarlamaya başla →"}</div>
                   {m.kategori && (
                     <div className="text-[11px] text-zinc-500 truncate">{m.kategori}</div>
                   )}

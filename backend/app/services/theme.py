@@ -166,6 +166,11 @@ _STYLE_ENUMS: dict[str, tuple[str, ...]] = {
     "heading_style": ("compact", "showcase", "editoryal"),
     "header_sabit": ("hep", "mobil", "masaustu", "yok"),
     "footer_stil": ("sade", "genis"),        # tek satır | logolu, sütunlu
+    # vitrin düzeninde MASAÜSTÜ menüsü: satir = logonun altında yan yana
+    # bağlantılar (etkin sayfa siyah hap, koleksiyonlar açılır liste) |
+    # dugme = koyu "Koleksiyonlar" düğmesi + geniş arama çubuğu.
+    # Telefonda her iki seçenekte de koyu menü düğmesi + arama kalır.
+    "masaustu_menu": ("satir", "dugme"),
 }
 MAX_DUYURU = 8
 
@@ -205,7 +210,7 @@ DEFAULT_THEME: dict = {
     # akis_cizgisi: anasayfada kaydırdıkça çizilen renkli, halkalı çizgi.
     "style": {"header_layout": "left", "button_shape": "rounded",
               "card_style": "boxed", "heading_style": "compact", "scroll_top": False,
-              "header_sabit": "hep", "footer_stil": "sade",
+              "header_sabit": "hep", "footer_stil": "sade", "masaustu_menu": "satir",
               "ust_not": "", "ust_link_metin": "", "ust_link_url": "",
               "mobil_dock": False, "ilerleme": False, "akis_cizgisi": False},
     # Açılış kampanya pop-up'ı — sayfa açılınca bir kez görünür (oturumda
@@ -253,6 +258,10 @@ DEFAULT_THEME: dict = {
     "footer": {"about": "", "instagram": ""},
     # Üst menü linkleri (Shopify Navigation) — boşsa varsayılan menü kullanılır
     "nav_links": [],   # [{label, url}]
+    # Telefon menüsü (koyu ☰ düğmesi) — üst menüden AYRI düzenlenir. Boşsa
+    # üst menü kullanılır. [{label, url} | {type:"collections", label, slugs}
+    # | {type:"ayrac"}] — ayrac: gruplar arası çizgi.
+    "mobil_menu": [],
     # WhatsApp yüzen butonu (TR e-ticareti standardı) — boşsa görünmez
     "whatsapp": {"enabled": False, "number": "", "message": "Merhaba, sipariş hakkında bilgi almak istiyorum."},
     # Ürün sayfası + checkout güven şeridi
@@ -825,8 +834,12 @@ def _normalize_sections(sections: list) -> list:
                  "kelime": _metin(o.get("kelime"), 14),
                  "neden": _metin(o.get("neden"), 120),
                  "urun": _metin(o.get("urun"), 200),
+                 # Bir tarzda BİRDEN ÇOK ürün: sırayla dönerek önerilir.
+                 # `urun` eski tek-ürün alanı; ilk ürünle eş tutulur.
+                 "urunler": [_metin(u, 200) for u in (o.get("urunler") or [])[:12] if _metin(u, 200)]
+                 or ([_metin(o.get("urun"), 200)] if _metin(o.get("urun"), 200) else []),
                  "zemin": _renk(o.get("zemin"), "#e5e8ed")}
-                for o in (settings.get("secenekler") or [])[:6]
+                for o in (settings.get("secenekler") or [])[:10]
                 if isinstance(o, dict) and _metin(o.get("etiket"), 40)
             ]
         elif stype == "adimlar":
@@ -841,6 +854,13 @@ def _normalize_sections(sections: list) -> list:
                 settings[key] = _metin(settings.get(key), limit)
             settings["buton"] = settings["buton"] or "FOTOĞRAF SEÇ"
             settings["cta_url"] = _guvenli_link(settings.get("cta_url")) or "/tasarla"
+            # Yüzey (parlak/mat) seçeneği — o ürün seçeneği sunulmuyorsa kapalı
+            settings["yuzey_goster"] = bool(settings.get("yuzey_goster"))
+        if stype == "stil_onerici":
+            # Öneriler kendi kendine sırayla değişsin mi (ziyaretçi seçince durur)
+            settings["otomatik"] = settings.get("otomatik", True) is not False
+            for o in settings["secenekler"]:
+                o["urun"] = o["urunler"][0] if o["urunler"] else ""
         cleaned.append({
             "id": str(sec.get("id") or uuid.uuid4().hex[:8])[:40],
             "type": stype,
@@ -966,10 +986,18 @@ def validate_theme_patch(patch: dict) -> dict:
             cleaned["logo_width"] = min(320, max(60, int(patch["logo_width"] or 120)))
         except (TypeError, ValueError):
             cleaned["logo_width"] = 120
-    if "nav_links" in patch:
+    for anahtar, sinir in (("nav_links", 12), ("mobil_menu", 24)):
+        if anahtar not in patch:
+            continue
         links = []
-        for l in (patch.get("nav_links") or [])[:8]:
-            if not isinstance(l, dict) or not str(l.get("label") or "").strip():
+        for l in (patch.get(anahtar) or [])[:sinir]:
+            if not isinstance(l, dict):
+                continue
+            if anahtar == "mobil_menu" and l.get("type") == "ayrac":
+                if links and links[-1].get("type") != "ayrac":      # çift/baştaki çizgi olmaz
+                    links.append({"type": "ayrac"})
+                continue
+            if not str(l.get("label") or "").strip():
                 continue
             label = str(l["label"]).strip()[:40]
             if l.get("type") == "collections":
@@ -980,7 +1008,9 @@ def validate_theme_patch(patch: dict) -> dict:
                 })
             elif l.get("url"):
                 links.append({"label": label, "url": str(l["url"])[:300]})
-        cleaned["nav_links"] = links
+        while links and links[-1].get("type") == "ayrac":
+            links.pop()
+        cleaned[anahtar] = links
     cleaned["sections"] = _normalize_sections(patch.get("sections") or [])
     cleaned["version"] = 2
     return cleaned

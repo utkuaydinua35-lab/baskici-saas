@@ -230,6 +230,20 @@ export function HazirSablonlar({ storeId, templates }) {
 
   const [alanDuzenle, setAlanDuzenle] = useState(null)
 
+  // Şablonu çoğalt — aynı forma, farklı renkte hazır ürünler için
+  const kopyala = async (o) => {
+    const adi = window.prompt('Kopyanın adı (yalnız panelde görünür):', `${o.label} (kopya)`)
+    if (!adi?.trim()) return
+    setBusy(true); setErr('')
+    try {
+      const yeni = await api.post(`/api/case-templates/overlays/${o.id}/kopyala`, { label: adi.trim() })
+      await load()
+      setAlanDuzenle(yeni)          // hemen renklerini düzenlemeye geç
+    } catch (e) {
+      setErr(typeof e?.detail === 'string' ? e.detail : 'Kopyalanamadı')
+    } finally { setBusy(false) }
+  }
+
   return (
     <div className="card space-y-3">
       <div>
@@ -306,6 +320,12 @@ export function HazirSablonlar({ storeId, templates }) {
                   className="w-full text-[10px] py-1 rounded-lg border border-panel-border
                     hover:border-panel-accent transition">
                   ✏️ Alanları düzenle
+                </button>
+                <button onClick={() => kopyala(o)} disabled={busy}
+                  title="Aynı şablonu çoğalt (ör. başka renkte hazır ürün)"
+                  className="w-full text-[10px] py-1 rounded-lg border border-panel-border
+                    hover:border-panel-accent transition disabled:opacity-40">
+                  ⧉ Kopyala
                 </button>
                 <div className="flex items-center gap-1">
                   <button onClick={() => durum(o)}

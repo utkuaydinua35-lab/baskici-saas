@@ -731,14 +731,15 @@ export default function TasarlaPage() {
           {kisitli && (
             <div className="border border-zinc-900 rounded-2xl p-3 space-y-3" data-tur="ayarlar">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">🔒 {kisitli.label}</span>
+                {/* Ürüne özel modülün iç adı gösterilmez (boş gelir) → ürün adı */}
+                <span className="text-sm font-medium">🔒 {kisitli.label || urun?.title || "Hazır tasarım"}</span>
                 {!modulKilitli && (
                   <button onClick={kisitliCik}
                     className="ml-auto text-xs underline text-zinc-500">şablondan çık</button>
                 )}
               </div>
               <p className="text-[11px] text-zinc-500 leading-snug">
-                {kisitli.forma
+                {kisitli.forma && !kisitli.forma.kilitli
                   ? "Formanı kendine göre tasarla: desen, renk, yazı tipi ve amblemi seç. "
                     + "Yerleşim baskıya hazır olarak sabitlenmiştir."
                   : "Bu hazır tasarımda yalnız aşağıdaki alanları değiştirebilirsin — "
@@ -815,7 +816,7 @@ export default function TasarlaPage() {
                   </label>
                 )
               ))}
-              {kisitli.forma && (
+              {kisitli.forma && !kisitli.forma.kilitli && (
                 <FormaAyarlari overlay={kisitli} degerler={alanDegerleri} onYaz={formaYaz} />
               )}
             </div>

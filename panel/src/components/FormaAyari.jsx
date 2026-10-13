@@ -27,6 +27,7 @@ export const BOS_FORMA = (s) => ({
     desen: 'dikey', yogunluk: 'orta', renkler: [...s.paletler[0].renkler],
     font: 'anton', yazi_renk: '#ffffff', kontur: '', kontur_kalinlik: 'orta', amblem: 'kalkan', amblem_renk: '#ffffff',
   },
+  kilitli: false,
   yasak: true,
   yasak_ek: [],
 })
@@ -102,6 +103,18 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
 
       {f?.aktif && (
         <div className="space-y-3.5">
+          <label className="flex items-start gap-2 text-xs rounded-xl bg-panel-input p-2.5">
+            <input type="checkbox" checked={!!f.kilitli} className="mt-0.5"
+              onChange={e => yama({ kilitli: e.target.checked })} />
+            <span>
+              <b>Hazır ürün</b> — müşteri deseni, rengi, yazı tipini ve amblemi <b>değiştiremez</b>;
+              yalnız yazı alanlarını (isim, numara) doldurur. Tasarım aşağıdaki “Başlangıç görünümü”nden çizilir.
+              <span className="block text-panel-muted mt-0.5">
+                Kapalıyken müşteri her şeyi kendisi seçer (“kendi formanı tasarla” ürünü). Aynı şablonu
+                “Kopyala” ile çoğaltıp her kopyada renkleri değiştirerek Sarı-Kırmızı, Siyah-Beyaz… ürünlerini hazırlayın.
+              </span>
+            </span>
+          </label>
           <div>
             <div className={baslik}>Müşteriye sunulan desenler</div>
             <div className="grid grid-cols-5 sm:grid-cols-9 gap-1.5">

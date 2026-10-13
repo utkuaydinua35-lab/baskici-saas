@@ -463,6 +463,41 @@ async def upload_overlay_field_image(
     return {"image_path": url.removeprefix("/storage/"), "image_url": url}
 
 
+class OverlayKopya(BaseModel):
+    label: str = Field(..., min_length=1, max_length=120)
+
+
+@router.post("/overlays/{overlay_id}/kopyala", response_model=dict)
+def kopyala_overlay(
+    overlay_id: uuid.UUID,
+    body: OverlayKopya,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Hazır şablonu çoğalt — aynı forma, farklı renkte hazır ürünler
+    ("Sarı-Kırmızı", "Siyah-Beyaz"…) tek tek sıfırdan kurulmasın.
+    Görsel dosyaları paylaşılır (kopyalanmaz); alanlar ve forma ayarı kopyalanır."""
+    import copy
+
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    yeni = DesignOverlay(
+        tenant_id=o.tenant_id, store_id=o.store_id, case_template_id=o.case_template_id,
+        label=body.label.strip()[:120], image_path=o.image_path, thumb_path=o.thumb_path,
+        mod=o.mod, sadece_urunde=o.sadece_urunde, kategori=o.kategori,
+        alanlar=copy.deepcopy(o.alanlar or []), forma=copy.deepcopy(o.forma),
+        position=(o.position or 0) + 1, is_active=o.is_active,
+    )
+    db.add(yeni)
+    activity.record(db, user, "hazir_sablon_kopyala", store_id=o.store_id,
+                    entity_type="hazir_sablon", entity_label=yeni.label)
+    db.commit()
+    db.refresh(yeni)
+    return _ser_overlay(yeni)
+
+
 @router.post("/overlays/{overlay_id}/amblem", response_model=dict)
 async def upload_forma_amblem(
     overlay_id: uuid.UUID,

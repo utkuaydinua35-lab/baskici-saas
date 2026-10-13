@@ -243,6 +243,8 @@ export default async function RootLayout({
             cartDrawer={theme.animations.cart_drawer}
             collections={navCollections.map((c) => ({ slug: c.slug, title: c.title }))}
             navLinks={theme.nav_links ?? []}
+            mobilMenu={theme.mobil_menu ?? []}
+            masaustuMenu={theme.style.masaustu_menu ?? "satir"}
             layout={theme.style.header_layout}
             ustNot={theme.style.ust_not}
             ustLinkMetin={theme.style.ust_link_metin}

@@ -163,6 +163,8 @@ export interface StudioOverlay {
 }
 
 export interface StudioForma {
+  /** Hazır ürün: müşteri deseni/rengi değiştiremez, yalnız yazıları doldurur */
+  kilitli?: boolean;
   desenler: { key: string; ad: string }[];
   paletler: { ad: string; renkler: string[] }[];
   serbest_renk: boolean;

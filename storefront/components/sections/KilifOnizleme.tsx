@@ -20,7 +20,10 @@ export default function KilifOnizleme({
   ctaUrl = "/tasarla",
   logoYazi,
   not: altNot,
+  yuzeyGoster = false,
 }: {
+  /** "Yüzey: Parlak / Mat" seçeneği — o ürün seçeneği sunulmuyorsa kapalı */
+  yuzeyGoster?: boolean;
   eyebrow?: string;
   title?: string;
   subtitle?: string;
@@ -115,6 +118,7 @@ export default function KilifOnizleme({
                 <button type="button" aria-pressed={sekil === "samsung"} onClick={() => setSekil("samsung")} className={chip(sekil === "samsung")}>Samsung</button>
               </div>
             </div>
+            {yuzeyGoster && (
             <div className="flex items-center justify-between gap-4">
               <span>Yüzey</span>
               <div className="flex gap-1.5" role="group" aria-label="Kılıf yüzeyi">
@@ -122,6 +126,7 @@ export default function KilifOnizleme({
                 <button type="button" aria-pressed={yuzey === "mat"} onClick={() => setYuzey("mat")} className={chip(yuzey === "mat")}>Mat</button>
               </div>
             </div>
+            )}
             <label className="flex items-center justify-between gap-4">
               <span>Yakınlaştır</span>
               <input type="range" min={100} max={250} value={zoom} disabled={!foto}

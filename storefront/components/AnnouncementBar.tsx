@@ -42,18 +42,21 @@ export default function AnnouncementBar({
   const yaziRengi = acikMi(bg) ? "text-zinc-900" : "text-white";
 
   if (kayan) {
-    // Kısa listede yarıyı dolduracak kadar tekrarla
-    const tekrar = Math.max(1, Math.ceil(6 / liste.length));
+    // Şerit HER ZAMAN dolu: duyurular eşit aralıkla art arda dizilir ve
+    // bir "yarı", en geniş ekranı da dolduracak kadar tekrarlanır.
+    // Eskiden yarı "ekran genişliği kadar" yapılıp öğeler aralara YAYILIYORDU
+    // (justify-around): kısa listede duyurular arasında uzun boşluk kalıyordu.
+    const tahminiPx = liste.reduce((t, d) => t + d.text.length * 7.5 + 64, 0);
+    const tekrar = Math.max(1, Math.ceil(2800 / Math.max(1, tahminiPx)));
     const yarim = Array.from({ length: tekrar }, () => liste).flat();
-    const harf = yarim.reduce((t, d) => t + d.text.length, 0);
-    const sure = `${Math.max(18, Math.round(harf * 0.28))}s`;
+    // Hız sabit (~45 px/sn): liste uzadıkça süre uzar, akış hızlanmaz
+    const sure = `${Math.max(20, Math.round((tahminiPx * tekrar) / 45))}s`;
     const parca = (gizli: boolean) => (
-      <div className="flex shrink-0 min-w-full items-center justify-around gap-10 px-5"
-        aria-hidden={gizli || undefined}>
+      <div className="flex shrink-0 items-center" aria-hidden={gizli || undefined}>
         {yarim.map((d, i) => (
-          <span key={i} className="flex items-center gap-10">
+          <span key={i} className="flex items-center">
             {yazi(d, `${gizli ? "g" : "a"}${i}`, gizli)}
-            <span className="text-[10px] opacity-60" aria-hidden>✦</span>
+            <span className="mx-5 sm:mx-7 text-[10px] opacity-60" aria-hidden>✦</span>
           </span>
         ))}
       </div>

@@ -257,6 +257,11 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
 
     return {
         "aktif": True,
+        # kilitli: HAZIR ÜRÜN — müşteri deseni/rengi/yazı tipini/amblemi
+        # değiştiremez, yalnız yazı alanlarını (isim, numara) doldurur. Tasarım
+        # "başlangıç görünümü"nden çizilir. Aynı forma, renkleri hazır ayrı
+        # ürünler olarak satılır ("Sarı-Kırmızı", "Siyah-Beyaz"…).
+        "kilitli": bool(ham.get("kilitli")),
         "desenler": desenler,
         "paletler": paletler,
         "serbest_renk": ham.get("serbest_renk", True) is not False,
@@ -288,6 +293,7 @@ def vitrin_ozeti(forma: dict | None) -> dict | None:
     if not forma or not forma.get("aktif"):
         return None
     return {
+        "kilitli": bool(forma.get("kilitli")),
         "desenler": [{"key": d, "ad": DESENLER[d]} for d in forma["desenler"] if d in DESENLER],
         "paletler": forma["paletler"],
         "serbest_renk": bool(forma.get("serbest_renk", True)),
@@ -304,7 +310,8 @@ def vitrin_ozeti(forma: dict | None) -> dict | None:
 def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
     """alan_degerleri içindeki `_…` anahtarlarını şablonun izin verdikleriyle
     doğrula. Geçersiz/eksik her seçim şablonun varsayılanına düşer."""
-    d = degerler or {}
+    # Hazır ürün (kilitli): müşterinin gönderdiği seçimler YOK SAYILIR
+    d = {} if forma.get("kilitli") else (degerler or {})
     v = forma["varsayilan"]
 
     desen = d.get("_desen") if d.get("_desen") in forma["desenler"] else v["desen"]

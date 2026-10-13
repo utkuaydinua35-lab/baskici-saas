@@ -75,6 +75,14 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
     arkadakiler: list[dict] = []      # şablonun ALTINA çizilecekler
     ondekiler: list[dict] = []        # şablonun ÜSTÜNE çizilecekler
 
+    # FORMA TASARLAYICI: zemin kodla çizilir, yazı tipi/rengi ve amblem
+    # müşterinin seçimidir — hepsi şablonun izin verdikleriyle doğrulanır.
+    forma_ayar = getattr(overlay, "forma", None) or None
+    secim = None
+    if forma_ayar and forma_ayar.get("aktif"):
+        from app.services import forma as _forma
+        secim = _forma.secimleri_coz(forma_ayar, degerler)
+
     for i, a in enumerate(overlay.alanlar or []):
         anahtar = str(a.get("key") or f"alan{i}")
         tip = a.get("tip")
@@ -91,9 +99,10 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "id": f"alan-{anahtar}",
                 "type": "text",
                 "text": metin,
-                "font": str(a.get("font") or "anton"),
+                "font": secim["font"] if secim else str(a.get("font") or "anton"),
                 "size": _sayi(a.get("size"), 0.1),
-                "color": str(a.get("renk") or "#ffffff"),
+                "color": secim["yazi_renk"] if secim else str(a.get("renk") or "#ffffff"),
+                **({"kontur": secim["kontur"]} if secim and secim["kontur"] else {}),
                 "x": _sayi(a.get("x"), 0.1),
                 "y": _sayi(a.get("y"), 0.1),
                 "w": _sayi(a.get("w"), 0.8),
@@ -172,6 +181,24 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "renk": str(a.get("renk") or "#ffffff"),
                 "renk_pasif": str(a.get("renk_pasif") or "#5a5a5a"),
             })
+
+    if secim:
+        # Sabit PNG zemin YERİNE kodla çizilen desen; amblem yazıların altında,
+        # açılabilir öğelerin (bayrak, mağaza logosu) yanında durur.
+        taban = {"id": "taban", "type": "sekil", "bicim": "desen",
+                 "desen": secim["desen"], "yogunluk": secim["yogunluk"],
+                 "renkler": secim["renkler"]}
+        amblem = []
+        if secim["amblem"]:
+            k = forma_ayar["amblem_kutu"]
+            amblem.append({
+                "id": "amblem", "type": "sekil", "bicim": "amblem",
+                "overlay_id": str(overlay.id), "amblem": secim["amblem"],
+                # url yalnız TUVAL içindir; baskıda dosya overlay kaydından çözülür
+                "url": secim["amblem_url"], "renk": secim["amblem_renk"],
+                "x": k["x"], "y": k["y"], "w": k["w"], "h": k["h"],
+            })
+        return [*arkadakiler, taban, *amblem, *ondekiler]
 
     taban = {"id": "taban", "type": "overlay", "overlay_id": str(overlay.id)}
     return [*arkadakiler, taban, *ondekiler]

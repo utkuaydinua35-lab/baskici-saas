@@ -2831,6 +2831,7 @@ def studio_overlays(store_slug: str, response: Response,
         .order_by(DesignOverlay.position, DesignOverlay.created_at)
     ).all()
     response.headers["Cache-Control"] = "public, max-age=120"
+    from app.services import forma as forma_svc
     from app.services import kisitli_sablon
 
     return [
@@ -2845,6 +2846,8 @@ def studio_overlays(store_slug: str, response: Response,
             "mod": o.mod,
             "kategori": o.kategori or "Diğer",
             "alanlar": kisitli_sablon.alan_ozeti(o) if o.mod == "kisitli" else [],
+            # Forma tasarlayıcı: müşteriye açık desen/renk/yazı tipi/amblem seçenekleri
+            "forma": forma_svc.vitrin_ozeti(o.forma) if o.mod == "kisitli" else None,
         }
         for o, key in rows
         # Ürüne özel modül: yalnız atandığı üründe. Genel şablon: her üründe.
@@ -2923,7 +2926,8 @@ class DesignSave(BaseModel):
     # değerleri. Katmanlar bunlardan SUNUCUDA üretilir; gövdedeki layers yok
     # sayılır — böylece müşteri şablonun dışına çıkan bir şey bastıramaz.
     overlay_id: uuid.UUID | None = None
-    alan_degerleri: dict[str, str | bool | None] | None = None
+    # `_` ile başlayan anahtarlar forma tasarlayıcı seçimleridir (_desen, _renk1…)
+    alan_degerleri: dict[str, str | bool | None] | None = Field(None, max_length=40)
     # Tuvalden alınan küçük önizleme (data URL) — liste ve panelde gösterilir
     preview_data_url: str | None = Field(None, max_length=4_000_000)
 
@@ -2978,6 +2982,12 @@ def save_design(request: Request, body: DesignSave, db: Session = Depends(get_db
             raise HTTPException(404, "Şablon bulunamadı")
         if ov.mod != "kisitli":
             raise HTTPException(422, "Bu şablon serbest modda — alan değeri gönderilemez")
+        # Forma tasarlayıcı: kulüp/marka adı basılmaz (lisanssız ürün)
+        _f = ov.forma or {}
+        if _f.get("aktif") and _f.get("yasak", True):
+            from app.services import yasak_kelime
+            if yasak_kelime.ilk_yasak(body.alan_degerleri, _f.get("yasak_ek")):
+                raise HTTPException(422, yasak_kelime.MESAJ)
         # Baskı alanının en/boy oranı — müşteri fotoğrafının çerçeveye
         # oranı bozmadan oturması (kapla) bu orana göre hesaplanır
         from app.models import CaseTemplate as _CT

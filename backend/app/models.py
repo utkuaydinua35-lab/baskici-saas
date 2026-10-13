@@ -2760,6 +2760,10 @@ class DesignOverlay(Base):
     # fotoğraf oradan görünür), yoksa üstüne.
     alanlar: Mapped[list] = mapped_column(JSONB, default=list,
                                           server_default=text("'[]'::jsonb"))
+    # FORMA TASARLAYICI (yalnız kısıtlı modda): doluysa zemin sabit görsel
+    # yerine KODLA çizilir ve müşteri desen/renk/yazı tipi/amblem seçer.
+    # Biçim ve doğrulama: services/forma.yapilandirma_temizle
+    forma: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))

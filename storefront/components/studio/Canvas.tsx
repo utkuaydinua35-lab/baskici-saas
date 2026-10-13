@@ -7,6 +7,7 @@
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
+import { KONTUR_ORAN, desenSekilleri } from "./forma";
 import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, ShapeLayer, TextLayer,
@@ -35,8 +36,12 @@ interface Props {
  *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu.
  *
  *  Sunucudaki karşılığı: design_render._ciz_metin / design_pdf._yazi. */
-function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil }: {
+function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur }: {
   metin: string; punto: number; sigdir: boolean;
+  /** Kontur rengi — GÖRÜNEN span'e yazılır: kalınlık em cinsinden, yani
+   *  sığdırma sonrası gerçek puntoya oranlanır (üst öğeden miras alınsa
+   *  üst öğenin puntosuna göre hesaplanırdı). */
+  kontur?: string;
   /** Çerçeve yüksekliği (px). 0 → yükseklik serbest, metin BÜYÜMEZ. */
   cerceveYuk: number;
   tavan: number;
@@ -101,6 +106,12 @@ function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil }: {
         fontSize: `${punto * olcek}px`,
         lineHeight: sigdir ? "normal" : undefined,
         width: sigdir ? "auto" : "100%",
+        // Çizgi harf kenarına ORTALANIR; paint-order ile yarısı dolgunun
+        // altında kalır → dışarıda KONTUR_ORAN kadar görünür (baskıyla aynı)
+        ...(kontur ? {
+          WebkitTextStroke: `${KONTUR_ORAN * 2}em ${kontur}`,
+          paintOrder: "stroke fill",
+        } : {}),
       }}>
         {metin}
       </span>
@@ -335,6 +346,35 @@ export default function Canvas({
                 } : { inset: 0, width: "100%", height: "100%", objectFit: "fill" }} />
             );
           }
+          if (l.type === "sekil" && l.bicim === "desen") {
+            // Forma zemini: kodla çizilen desen. SVG baskı alanına GERİLİR
+            // (preserveAspectRatio none) — çokgenler birim karede tanımlı,
+            // sunucu da aynı noktaları 300 DPI'da çizer.
+            const renk = (i: number) => l.renkler[Math.min(i, l.renkler.length - 1)] || "#ffffff";
+            return (
+              <svg key={l.id} data-katman={l.id} viewBox="0 0 1 1" preserveAspectRatio="none"
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                shapeRendering="geometricPrecision" aria-hidden>
+                <rect x="0" y="0" width="1" height="1" fill={renk(0)} />
+                {desenSekilleri(l.desen, l.yogunluk).map((c, i) => (
+                  <polygon key={i} fill={renk(c.renk)}
+                    points={c.nokta.map(([x, y]) => `${x},${y}`).join(" ")} />
+                ))}
+              </svg>
+            );
+          }
+          if (l.type === "sekil" && l.bicim === "amblem") {
+            // Amblem: tek renkli maske, seçilen renge boyanır, kutusuna ortalanır
+            const maske = `url("${l.url}") center / contain no-repeat`;
+            return (
+              <div key={l.id} data-katman={l.id} className="absolute pointer-events-none"
+                style={{
+                  left: `${l.x * 100}%`, top: `${l.y * 100}%`,
+                  width: `${l.w * 100}%`, height: `${l.h * 100}%`,
+                  background: l.renk, WebkitMask: maske, mask: maske,
+                }} />
+            );
+          }
           if (l.type === "sekil") {
             // Kısıtlı şablonun ilerleme çubuğu (Spotify): dolu kısım + nokta,
             // konumu müşterinin yazdığı sürelerden gelir
@@ -416,6 +456,7 @@ export default function Canvas({
               <SigdirilanYazi metin={tx.text} punto={puntoPx}
                 sigdir={tx.sigdir === true} cerceveYuk={cerceveYuk}
                 tavan={TAVAN_PUNTO * areaPx.h}
+                kontur={tx.kontur}
                 stil={{ fontFamily: `'${f.css}', sans-serif` }} />
             </div>
           );

@@ -250,9 +250,18 @@ def _ser_overlay(o: DesignOverlay) -> dict:
             {**a, "image_url": f"/storage/{a['image_path']}" if a.get("image_path") else None}
             for a in (o.alanlar or [])
         ],
+        "forma": _ser_forma(o.forma),
         "position": o.position,
         "is_active": o.is_active,
     }
+
+
+def _ser_forma(f: dict | None) -> dict | None:
+    """Panel için forma ayarı — yüklenen amblemlere adres eklenir."""
+    if not f:
+        return None
+    return {**f, "ozel_amblemler": [
+        {**a, "url": f"/storage/{a['image_path']}"} for a in (f.get("ozel_amblemler") or [])]}
 
 
 class OverlayAlan(BaseModel):
@@ -356,8 +365,26 @@ class OverlayUpdate(BaseModel):
     sadece_urunde: bool | None = None
     mod: str | None = Field(None, pattern="^(serbest|kisitli)$")
     alanlar: list[OverlayAlan] | None = Field(None, max_length=12)
+    # Forma tasarlayıcı ayarı — serbest sözlük, services/forma'da doğrulanır.
+    # {"aktif": false} ya da null → kapatır.
+    forma: dict | None = None
     position: int | None = None
     is_active: bool | None = None
+
+
+@router.get("/forma/secenekler", response_model=dict)
+def forma_secenekleri(user: User = Depends(require_permission("vitrin"))):
+    """Panel forma ayarı için sabit listeler: desenler, hazır amblemler,
+    önerilen fontlar, örnek renk takımları, yerleşik yasak kelimeler."""
+    from app.services import forma, yasak_kelime
+    return {
+        "desenler": [{"key": k, "ad": v} for k, v in forma.DESENLER.items()],
+        "amblemler": [{"key": k, "ad": v, "url": f"/storage/sablon/amblem/{k}.png"}
+                      for k, v in forma.AMBLEMLER.items()],
+        "fontlar": forma.VARSAYILAN_FONTLAR,
+        "paletler": forma.VARSAYILAN_PALETLER,
+        "yasak_yerlesik": len(yasak_kelime.ICEREN) + len(yasak_kelime.TAM),
+    }
 
 
 @router.patch("/overlays/{overlay_id}", response_model=dict)
@@ -394,10 +421,15 @@ def update_overlay(
                 for k, v in a.items() if v is not None
             })
         guncel["alanlar"] = temiz
+    if "forma" in guncel:
+        from app.services import forma as forma_svc
+        guncel["forma"] = forma_svc.yapilandirma_temizle(guncel["forma"], o.forma)
     for k, v in guncel.items():
         setattr(o, k, v)
     if o.mod == "kisitli" and not (o.alanlar or []):
         raise HTTPException(422, "Kısıtlı şablonda en az bir alan tanımlanmalı")
+    if o.forma and o.mod != "kisitli":
+        raise HTTPException(422, "Forma tasarlayıcı yalnız kısıtlı şablonda açılabilir")
     db.commit()
     db.refresh(o)
     return _ser_overlay(o)
@@ -429,6 +461,82 @@ async def upload_overlay_field_image(
     except ValueError as e:
         raise HTTPException(422, str(e))
     return {"image_path": url.removeprefix("/storage/"), "image_url": url}
+
+
+@router.post("/overlays/{overlay_id}/amblem", response_model=dict)
+async def upload_forma_amblem(
+    overlay_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Forma tasarlayıcıya mağazanın KENDİ amblemini ekler.
+
+    Yüklenen görsel tek renkli MASKEYE çevrilir (müşteri rengini seçecek):
+    saydam zeminli PNG'de saydamlık, düz zeminli görselde koyuluk şekli
+    belirler. Amblem şablonun forma ayarına eklenir ve müşteriye sunulur."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == user.tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    if not (o.forma or {}).get("aktif"):
+        raise HTTPException(422, "Önce forma tasarlayıcıyı açıp kaydedin")
+    if len(o.forma.get("ozel_amblemler") or []) >= 20:
+        raise HTTPException(422, "En fazla 20 özel amblem eklenebilir")
+    form = await request.form()
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(422, "Dosya gerekli")
+    ad = str(form.get("ad") or "").strip()[:30] or "Amblem"
+    data = await file.read()
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(422, "Amblem dosyası en fazla 8 MB olabilir")
+    try:
+        maske = await run_in_threadpool(_amblem_maskesi, data)
+        url, _prev, _w, _h = await run_in_threadpool(
+            storage_svc.save_design_original, user.tenant_id, o.store_id, maske, "amblem.png")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    kayit = {"key": f"ozel-{uuid.uuid4().hex[:8]}", "ad": ad,
+             "image_path": url.removeprefix("/storage/")}
+    f = dict(o.forma)
+    f["ozel_amblemler"] = [*(f.get("ozel_amblemler") or []), kayit]
+    f["amblemler"] = [*(f.get("amblemler") or []), kayit["key"]]
+    o.forma = f
+    flag_modified(o, "forma")
+    db.commit()
+    db.refresh(o)
+    return _ser_overlay(o)
+
+
+def _amblem_maskesi(data: bytes) -> bytes:
+    """Yüklenen görsel → beyaz, saydam zeminli maske PNG (en fazla 600 px)."""
+    import io
+
+    from PIL import Image, ImageOps
+
+    try:
+        g = Image.open(io.BytesIO(data))
+        g.load()
+    except Exception:  # noqa: BLE001
+        raise ValueError("Görsel okunamadı — PNG ya da JPG yükleyin")
+    g = g.convert("RGBA")
+    alfa = g.getchannel("A")
+    if alfa.getextrema()[0] >= 250:
+        # Saydamlık yok (düz zemin): koyu yerler şekil sayılır
+        alfa = ImageOps.invert(g.convert("L"))
+    kutu = alfa.point(lambda v: 255 if v > 12 else 0).getbbox()
+    if not kutu:
+        raise ValueError("Görselde şekil bulunamadı — saydam zeminli PNG yükleyin")
+    alfa = alfa.crop(kutu)
+    alfa.thumbnail((600, 600), Image.LANCZOS)
+    cikti = Image.new("RGBA", alfa.size, (255, 255, 255, 0))
+    cikti.putalpha(alfa)
+    buf = io.BytesIO()
+    cikti.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
 
 
 @router.delete("/overlays/{overlay_id}", status_code=status.HTTP_204_NO_CONTENT)

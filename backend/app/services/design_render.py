@@ -52,6 +52,8 @@ MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
 # katından büyüyemez — tek harfli metin alanı boydan boya taşırmasın.
 # İstemcideki eşi: storefront/components/studio/Canvas.tsx → TAVAN_PUNTO
 TAVAN_PUNTO = 0.8
+# Yazı konturu kalınlığı / punto. İstemcideki eşi: studio/forma.ts → KONTUR_ORAN
+KONTUR_ORAN = 0.05
 
 # BASKI RENK KURALI (storefront/components/studio/renk.ts ile aynı):
 # CMYK bileşenlerinin tamamı ~0 olan renk (saf beyaz) baskı makinesinde
@@ -143,7 +145,12 @@ def render_print_file(db, design, template) -> bytes:
             elif tip == "text":
                 _ciz_metin(tuval, ciz, katman, W, H)
             elif tip == "sekil":
-                _ciz_sekil(ciz, katman, W, H)
+                if katman.get("bicim") == "desen":
+                    _ciz_desen(tuval, katman, W, H)
+                elif katman.get("bicim") == "amblem":
+                    _ciz_amblem(db, tuval, katman, W, H)
+                else:
+                    _ciz_sekil(ciz, katman, W, H)
         except Exception:  # noqa: BLE001 — tek katman baskıyı tümden bozmasın
             log.exception("katman çizilemedi (design=%s, tip=%s)", design.id, tip)
 
@@ -181,6 +188,60 @@ def _ciz_sekil(ciz: ImageDraw.ImageDraw, k: dict, W: int, H: int) -> None:
         ciz.rectangle([x, y - kalinlik / 2, x + w * oran, y + kalinlik / 2], fill=renk)
     nx = x + w * oran
     ciz.ellipse([nx - yaricap, y - yaricap, nx + yaricap, y + yaricap], fill=renk)
+
+
+def _ciz_desen(tuval: Image.Image, k: dict, W: int, H: int) -> None:
+    """Forma zemini — kodla çizilen desen (services/forma.desen_sekilleri).
+
+    4 kat büyük çizilip küçültülür: eğik kenarlar (çapraz desenler) baskıda
+    tırtıklı çıkmasın. Dik kenarlı desenlerde fark yaratmaz."""
+    from app.services import forma
+
+    renkler = [_basilabilir_renk(r) for r in (k.get("renkler") or [])][:3]
+    while len(renkler) < 3:
+        renkler.append(BASKI_BEYAZ)
+    kat = 2 if max(W, H) * 2 <= MAX_PRINT_PX else 1
+    kw, kh = W * kat, H * kat
+    g = Image.new("RGBA", (kw, kh), renkler[0])
+    gciz = ImageDraw.Draw(g)
+    for sira, cokgen in forma.desen_sekilleri(str(k.get("desen") or "duz"),
+                                              str(k.get("yogunluk") or "orta")):
+        gciz.polygon([(x * kw, y * kh) for x, y in cokgen], fill=renkler[min(sira, 2)])
+    if kat > 1:
+        g = g.resize((W, H), Image.LANCZOS)
+    tuval.alpha_composite(g, (0, 0))
+
+
+def _ciz_amblem(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
+    """Amblem — tek renkli maske, müşterinin seçtiği renge boyanır ve kutusuna
+    ORANI BOZULMADAN ortalanır. Dosya şablon kaydından/hazır kütüphaneden
+    çözülür; katmandaki url baskıda KULLANILMAZ."""
+    from sqlalchemy import select
+
+    from app.models import DesignOverlay
+    from app.services import forma
+
+    try:
+        o = db.scalar(select(DesignOverlay).where(
+            DesignOverlay.id == str(k.get("overlay_id") or "")))
+    except Exception:  # noqa: BLE001 — geçersiz uuid
+        return
+    if not o:
+        return
+    yol = forma.amblem_dosyasi(getattr(o, "forma", None), str(k.get("amblem") or ""))
+    if not yol:
+        return
+    maske = Image.open(yol)
+    maske.load()
+    alfa = maske.convert("RGBA").getchannel("A")
+    kx, ky = float(k.get("x", 0)) * W, float(k.get("y", 0)) * H
+    kw, kh = max(1.0, float(k.get("w", 0.2)) * W), max(1.0, float(k.get("h", 0.1)) * H)
+    olcek = min(kw / alfa.width, kh / alfa.height)
+    gw, gh = max(1, round(alfa.width * olcek)), max(1, round(alfa.height * olcek))
+    alfa = alfa.resize((gw, gh), Image.LANCZOS)
+    boya = Image.new("RGBA", (gw, gh), _basilabilir_renk(k.get("renk")))
+    boya.putalpha(alfa)
+    tuval.alpha_composite(boya, (round(kx + (kw - gw) / 2), round(ky + (kh - gh) / 2)))
 
 
 def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
@@ -338,11 +399,18 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
         (0, 0, 0, 0))
     kciz = ImageDraw.Draw(kat)
     hiza = k.get("align") or "left"
+    # KONTUR (forma tasarlayıcı): harfin DIŞINA puntonun %5'i kadar çizgi.
+    # Tuvaldeki eşi: -webkit-text-stroke 0.1em + paint-order (çizgi harf
+    # kenarına ortalanır, yarısı dolgunun altında kalır → görünen %5).
+    kontur = k.get("kontur")
+    kontur_px = max(1, round(boy * KONTUR_ORAN)) if kontur else 0
     for i, s in enumerate(satirlar):
         gen = kciz.textlength(s, font=font)
         x = 0 if hiza == "left" else (kutu_gen - gen) / 2 if hiza == "center" else kutu_gen - gen
         kciz.text((x + pay_x, pay_y + i * satir_yuk), s, font=font,
-                  fill=_basilabilir_renk(k.get("color")))
+                  fill=_basilabilir_renk(k.get("color")),
+                  **({"stroke_width": kontur_px, "stroke_fill": _basilabilir_renk(kontur)}
+                     if kontur_px else {}))
 
     aci = float(k.get("rot") or 0)
     if aci:

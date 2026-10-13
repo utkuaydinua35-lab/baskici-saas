@@ -4,6 +4,7 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
+import { KONTUR_ORAN, desenSekilleri } from "./forma";
 import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, OverlayLayer, ShapeLayer, TextLayer,
@@ -80,6 +81,39 @@ export async function onizlemeUret(
             ctx.drawImage(ov, ax, ay, aw, ah);
           }
         } catch { /* şablon yüklenemezse önizleme yine üretilir */ }
+      } else if (l.type === "sekil" && l.bicim === "desen") {
+        // Forma zemini — tuvaldeki SVG ile aynı çokgenler
+        const renk = (i: number) => l.renkler[Math.min(i, l.renkler.length - 1)] || "#ffffff";
+        ctx.fillStyle = renk(0);
+        ctx.fillRect(ax, ay, aw, ah);
+        for (const c of desenSekilleri(l.desen, l.yogunluk)) {
+          ctx.fillStyle = renk(c.renk);
+          ctx.beginPath();
+          c.nokta.forEach(([x, y], i) => {
+            if (i === 0) ctx.moveTo(ax + x * aw, ay + y * ah);
+            else ctx.lineTo(ax + x * aw, ay + y * ah);
+          });
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else if (l.type === "sekil" && l.bicim === "amblem") {
+        try {
+          const g = await gorselYukle(l.url);
+          const kw = l.w * aw, kh = l.h * ah;
+          const olcek = Math.min(kw / g.naturalWidth, kh / g.naturalHeight);
+          const gw = Math.max(1, g.naturalWidth * olcek), gh = Math.max(1, g.naturalHeight * olcek);
+          // Maskeyi ayrı tuvalde seçilen renge boya, sonra yerine çiz
+          const m = document.createElement("canvas");
+          m.width = Math.ceil(gw); m.height = Math.ceil(gh);
+          const mc = m.getContext("2d");
+          if (mc) {
+            mc.drawImage(g, 0, 0, m.width, m.height);
+            mc.globalCompositeOperation = "source-in";
+            mc.fillStyle = l.renk;
+            mc.fillRect(0, 0, m.width, m.height);
+            ctx.drawImage(m, ax + l.x * aw + (kw - gw) / 2, ay + l.y * ah + (kh - gh) / 2, gw, gh);
+          }
+        } catch { /* amblem yüklenemezse önizleme yine üretilir */ }
       } else if (l.type === "sekil") {
         const sk = l as ShapeLayer;
         const bx = ax + sk.x * aw, by = ay + sk.y * ah, bw = sk.w * aw;
@@ -137,6 +171,13 @@ export async function onizlemeUret(
           }
         }
         ctx.fillStyle = tx.color;
+        if (tx.kontur) {
+          // Çizgi harf kenarına ortalanır; dolgu üstüne bindiği için dışarıda
+          // KONTUR_ORAN kadarı görünür (tuval ve baskıyla aynı)
+          ctx.strokeStyle = tx.kontur;
+          ctx.lineWidth = boy * KONTUR_ORAN * 2;
+          ctx.lineJoin = "round";
+        }
         ctx.textBaseline = "top";
         ctx.textAlign = tx.align === "center" ? "center" : tx.align === "right" ? "right" : "left";
         const x = ax + tx.x * aw;
@@ -153,6 +194,7 @@ export async function onizlemeUret(
         for (const k of kelimeler) {
           const deneme = satir ? `${satir} ${k}` : k;
           if (ctx.measureText(deneme).width > kutuG && satir) {
+            if (tx.kontur) ctx.strokeText(satir, 0, dy);
             ctx.fillText(satir, 0, dy);
             satir = k;
             dy += boy * 1.15;
@@ -160,7 +202,10 @@ export async function onizlemeUret(
             satir = deneme;
           }
         }
-        if (satir) ctx.fillText(satir, 0, dy);
+        if (satir) {
+          if (tx.kontur) ctx.strokeText(satir, 0, dy);
+          ctx.fillText(satir, 0, dy);
+        }
         ctx.restore();
       }
     }

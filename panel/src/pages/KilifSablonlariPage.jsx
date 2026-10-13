@@ -1,3 +1,4 @@
+import FormaAyari, { AmblemMaske, DesenSvg } from '../components/FormaAyari'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
@@ -721,6 +722,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
   const [sadeceUrunde, setSadeceUrunde] = useState(!!overlay.sadece_urunde)
   const [alanlar, setAlanlar] = useState(() =>
     (overlay.alanlar || []).map(a => ({ ...a })))
+  // Forma tasarlayıcı ayarı (null/aktif:false → kapalı)
+  const [forma, setForma] = useState(overlay.forma || null)
   const [sel, setSel] = useState(0)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -865,7 +868,11 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
       const temiz = alanlar.map(({ image_url, ...a }) => a)
       await api.patch(`/api/case-templates/overlays/${overlay.id}`,
         { mod, kategori: kategori.trim() || null, sadece_urunde: sadeceUrunde,
-          alanlar: temiz })
+          alanlar: temiz,
+          // Yüklenen amblemlerin türetilmiş adresi (url) gönderilmez
+          forma: forma?.aktif && mod === 'kisitli'
+            ? { ...forma, ozel_amblemler: (forma.ozel_amblemler || []).map(({ url, ...a }) => a) }
+            : { aktif: false } })
       onSaved()
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
@@ -920,8 +927,27 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
           <div className="bg-panel-input rounded-xl p-3 flex flex-col items-center gap-1.5">
             <div ref={tuvalRef} className="relative select-none touch-none bg-black/20"
               style={{ height: '58vh', aspectRatio: alanOran || 0.5 }}>
-              <img src={overlay.image_url} alt={overlay.label} draggable={false}
-                style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} />
+              {forma?.aktif && mod === 'kisitli' ? (
+                // Forma tasarlayıcı açık: zemin kodla çizilir (başlangıç görünümü)
+                <>
+                  <DesenSvg desen={forma.varsayilan.desen} yogunluk={forma.varsayilan.yogunluk}
+                    renkler={forma.varsayilan.renkler} className="absolute inset-0 w-full h-full" />
+                  {(() => {
+                    const a = [...(forma.ozel_amblemler || [])].find(x => x.key === forma.varsayilan.amblem)
+                    const url = a?.url || (forma.varsayilan.amblem
+                      ? `/storage/sablon/amblem/${forma.varsayilan.amblem}.png` : null)
+                    const k = forma.amblem_kutu
+                    return url ? (
+                      <AmblemMaske url={url} renk={forma.varsayilan.amblem_renk}
+                        className="absolute pointer-events-none outline outline-1 outline-dashed outline-white/40"
+                        style={{ left: yuzde(k.x), top: yuzde(k.y), width: yuzde(k.w), height: yuzde(k.h) }} />
+                    ) : null
+                  })()}
+                </>
+              ) : (
+                <img src={overlay.image_url} alt={overlay.label} draggable={false}
+                  style={{ width: '100%', height: '100%', objectFit: 'fill', display: 'block' }} />
+              )}
               {alanlar.map((a, i) => (
                 <div key={i} onPointerDown={e => basla(e, i, 'tasi')}
                   className={`absolute cursor-move ${i === sel
@@ -953,7 +979,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                           flex items-center justify-center">görsel yok</div>
                   ) : (
                     <div style={{
-                      color: a.renk || '#fff', textAlign: a.hiza || 'center',
+                      color: (forma?.aktif && mod === 'kisitli' ? forma.varsayilan.yazi_renk : a.renk) || '#fff',
+                      textAlign: a.hiza || 'center',
                       lineHeight: 1.15, fontWeight: 800,
                       width: '100%', height: '100%', display: 'flex',
                       alignItems: 'center', overflow: 'hidden',
@@ -1219,6 +1246,17 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
             )}
           </div>
         </div>
+
+        <FormaAyari overlayId={overlay.id} forma={forma} onChange={setForma}
+          kisitli={mod === 'kisitli'}
+          onAmblemEklendi={(sunucu) => setForma(f => ({
+            ...(f || sunucu),
+            // Yükleme sunucuda hemen kaydedildi: yeni amblemi yereldeki
+            // (henüz kaydedilmemiş olabilecek) ayarın üstüne ekle
+            ozel_amblemler: sunucu.ozel_amblemler,
+            amblemler: [...new Set([...(f?.amblemler || []),
+              ...sunucu.ozel_amblemler.map(a => a.key).filter(k => !(f?.ozel_amblemler || []).some(x => x.key === k))])],
+          }))} />
 
         <div className="flex gap-2 mt-4">
           <button onClick={onClose} className="btn-ghost !py-2 text-sm">Vazgeç</button>

@@ -59,6 +59,8 @@ export interface TextLayer {
   /** Metin çerçeveyi doldursun mu (kısa metin büyür, uzun metin küçülür) —
    *  kısıtlı şablon alanlarında varsayılan açık */
   sigdir?: boolean;
+  /** Kontur rengi (forma tasarlayıcı). Kalınlık puntoya oranlıdır (KONTUR_ORAN). */
+  kontur?: string;
 }
 
 /** Hazır tasarım şablonu (panelden yüklenen çerçeve/desen).
@@ -77,7 +79,7 @@ export interface OverlayLayer {
   kutu?: { x: number; y: number; w: number; h: number };
 }
 
-/** Çizilen öğe — şimdilik kısıtlı şablonun ilerleme çubuğu (Spotify) */
+/** Çizilen öğe — kısıtlı şablonun ilerleme çubuğu (Spotify) */
 export interface ShapeLayer {
   id: string;
   type: "sekil";
@@ -90,7 +92,30 @@ export interface ShapeLayer {
   renk_pasif: string;
 }
 
-export type Layer = ImageLayer | TextLayer | OverlayLayer | ShapeLayer;
+/** Forma zemini — kodla çizilen desen (bkz. forma.ts → desenSekilleri) */
+export interface DesenLayer {
+  id: string;
+  type: "sekil";
+  bicim: "desen";
+  desen: string;
+  yogunluk: string;
+  renkler: string[];     // [zemin, desen, kenar çizgisi]
+}
+
+/** Forma amblemi — tek renkli maske, seçilen renge boyanır, kutusuna ortalanır */
+export interface AmblemLayer {
+  id: string;
+  type: "sekil";
+  bicim: "amblem";
+  overlay_id: string;
+  amblem: string;
+  url: string;           // yalnız tuval/önizleme; baskıda dosya sunucuda çözülür
+  renk: string;
+  x: number; y: number; w: number; h: number;
+}
+
+export type SekilLayer = ShapeLayer | DesenLayer | AmblemLayer;
+export type Layer = ImageLayer | TextLayer | OverlayLayer | SekilLayer;
 
 /** Kısıtlı şablonda müşterinin doldurduğu tek alan (panelde tanımlanır) */
 export interface StudioAlan {
@@ -131,6 +156,22 @@ export interface StudioOverlay {
   mod?: "serbest" | "kisitli";
   kategori?: string;             // vitrinde şablonlar buna göre gruplanır
   alanlar?: StudioAlan[];
+  /** Forma tasarlayıcı açıksa müşteriye sunulan seçenekler */
+  forma?: StudioForma | null;
+}
+
+export interface StudioForma {
+  desenler: { key: string; ad: string }[];
+  paletler: { ad: string; renkler: string[] }[];
+  serbest_renk: boolean;
+  fontlar: string[];
+  amblemler: { key: string; ad: string; url: string }[];
+  amblem_kutu: { x: number; y: number; w: number; h: number };
+  varsayilan: {
+    desen: string; yogunluk: "ince" | "orta" | "kalin"; renkler: string[];
+    font: string; yazi_renk: string; kontur: string; amblem: string; amblem_renk: string;
+  };
+  yasak: boolean;
 }
 
 export interface SavedDesign {

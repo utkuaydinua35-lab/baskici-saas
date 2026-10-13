@@ -11,8 +11,10 @@
 //   gorsel   — panelden gelen SABİT öğe, müşteri açıp kapatır (bayrak, logo)
 //   foto     — MÜŞTERİNİN yüklediği görsel, çerçeveye oranı bozulmadan oturur
 //   ilerleme — iki süre alanından hesaplanan Spotify tarzı çubuk + nokta
+import { formaDegerleri, formaSecimi } from "./forma";
 import type {
-  ImageLayer, Layer, OverlayLayer, ShapeLayer, StudioAlan, StudioOverlay, TextLayer,
+  AmblemLayer, DesenLayer, ImageLayer, Layer, OverlayLayer, ShapeLayer, StudioAlan,
+  StudioOverlay, TextLayer,
 } from "./types";
 
 /** Müşterinin foto alanına yüklediği görsel */
@@ -32,6 +34,9 @@ export function varsayilanDegerler(o: StudioOverlay): Record<string, AlanDegeri>
     else if (a.tip === "gorsel") d[a.key] = a.varsayilan !== false;
     else if (a.tip === "foto") d[a.key] = null;
   }
+  // Forma tasarlayıcı: desen/renk/yazı tipi/amblem şablonun varsayılanıyla başlar
+  const secim = formaSecimi(o, {});
+  if (secim) Object.assign(d, formaDegerleri(secim));
   return d;
 }
 
@@ -67,6 +72,8 @@ export function kisitliKatmanlar(
 ): Layer[] {
   const arkadakiler: Layer[] = [];
   const ondekiler: Layer[] = [];
+  // Forma tasarlayıcı açıksa yazı tipi/rengi/konturu müşterinin seçimidir
+  const secim = formaSecimi(o, degerler);
 
   const sureDegeri = (key?: string): number | null => {
     if (!key) return null;
@@ -86,7 +93,9 @@ export function kisitliKatmanlar(
       if (!metin) continue;
       const yazi: TextLayer = {
         id: `alan-${a.key}`, type: "text", text: metin,
-        font: a.font || "anton", size: a.size ?? 0.1, color: a.renk || "#ffffff",
+        font: secim ? secim.font : a.font || "anton", size: a.size ?? 0.1,
+        color: secim ? secim.yazi_renk : a.renk || "#ffffff",
+        ...(secim?.kontur ? { kontur: secim.kontur } : {}),
         x: a.x, y: a.y, w: a.w,
         // Çerçeve yüksekliği — panelde çizilmemişse yok sayılır: o alanda
         // metin büyümez, yalnız gerekirse küçülür (taşma olmaz)
@@ -138,6 +147,21 @@ export function kisitliKatmanlar(
     }
   }
 
+  if (secim && o.forma) {
+    // Sabit görsel zemin YERİNE kodla çizilen desen; amblem yazıların altında
+    const desen: DesenLayer = {
+      id: "taban", type: "sekil", bicim: "desen",
+      desen: secim.desen, yogunluk: secim.yogunluk, renkler: secim.renkler,
+    };
+    const amblemTanim = o.forma.amblemler.find((x) => x.key === secim.amblem);
+    const amblem: AmblemLayer[] = amblemTanim ? [{
+      id: "amblem", type: "sekil", bicim: "amblem", overlay_id: o.id,
+      amblem: amblemTanim.key, url: amblemTanim.url, renk: secim.amblem_renk,
+      ...o.forma.amblem_kutu,
+    }] : [];
+    return [...arkadakiler, desen, ...amblem, ...ondekiler];
+  }
+
   const taban: OverlayLayer = {
     id: "taban", type: "overlay", overlay_id: o.id, url: o.image_url, label: o.label,
   };
@@ -154,6 +178,11 @@ export function sunucuDegerleri(
     if (a.tip === "foto") cikti[a.key] = (d as FotoDegeri | null)?.asset_id || null;
     else if (a.tip === "gorsel") cikti[a.key] = d !== false;
     else if (a.tip === "yazi") cikti[a.key] = String(d ?? "");
+  }
+  // Forma tasarlayıcı seçimleri (`_desen`, `_renk1`…) olduğu gibi gider;
+  // sunucu şablonun izin verdikleriyle yeniden doğrular
+  for (const [k, v] of Object.entries(degerler)) {
+    if (k.startsWith("_") && typeof v === "string") cikti[k] = v;
   }
   return cikti;
 }

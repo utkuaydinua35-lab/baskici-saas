@@ -15,6 +15,8 @@ import { katmanEkle, overlayTasi } from "@/components/studio/katmanlar";
 import {
   type AlanDegeri, type FotoDegeri, kisitliKatmanlar, sunucuDegerleri, varsayilanDegerler,
 } from "@/components/studio/kisitli";
+import FormaAyarlari from "@/components/studio/FormaAyarlari";
+import { YASAK_MESAJ, yasakMi } from "@/components/studio/yasak";
 import Ogretici, { type TurAdimi } from "@/components/studio/Ogretici";
 import { onizlemeUret } from "@/components/studio/preview";
 import type {
@@ -353,6 +355,18 @@ export default function TasarlaPage() {
     setAlanDegerleri(yeni);
     setLayers(kisitliKatmanlar(kisitli, yeni, alanOrani));
   };
+  // Forma tasarlayıcı: birden çok seçim birlikte yazılır (renk takımı = 3 renk)
+  const formaYaz = (yama: Record<string, string>) => {
+    if (!kisitli) return;
+    const yeni = { ...alanDegerleri, ...yama };
+    setAlanDegerleri(yeni);
+    setLayers(kisitliKatmanlar(kisitli, yeni, alanOrani));
+  };
+  // Kulüp/marka adı yazılmışsa kaydetme ve sepete ekleme durur (sunucu da reddeder)
+  const yasakAlan = kisitli?.forma?.yasak
+    ? (kisitli.alanlar || []).find((a) => a.tip === "yazi"
+        && yasakMi(String(alanDegerleri[a.key] ?? "")))
+    : undefined;
 
   // Kısıtlı şablondaki "foto" alanına müşteri görseli yükleme
   const [fotoYukleniyor, setFotoYukleniyor] = useState("");
@@ -471,6 +485,7 @@ export default function TasarlaPage() {
       setDurum("Tasarımını kaydetmek için giriş yap — tasarımın kaybolmaz.");
       return;
     }
+    if (yasakAlan) { setDurum(YASAK_MESAJ); return; }
     setYukleniyor(true); setDurum("");
     try {
       const onizleme = await onizlemeUret(tpl, layers);
@@ -508,6 +523,7 @@ export default function TasarlaPage() {
       setDurum("Sipariş için giriş yap — tasarımın hesabına kaydedilecek.");
       return;
     }
+    if (yasakAlan) { setDurum(YASAK_MESAJ); return; }
     // Sepete eklenen tasarım SUNUCUDA kayıtlı olmalı; önce kaydet
     setYukleniyor(true); setDurum("");
     try {
@@ -722,8 +738,11 @@ export default function TasarlaPage() {
                 )}
               </div>
               <p className="text-[11px] text-zinc-500 leading-snug">
-                Bu hazır tasarımda yalnız aşağıdaki alanları değiştirebilirsin —
-                yerleşim ve renkler baskıya hazır olarak sabitlenmiştir.
+                {kisitli.forma
+                  ? "Formanı kendine göre tasarla: desen, renk, yazı tipi ve amblemi seç. "
+                    + "Yerleşim baskıya hazır olarak sabitlenmiştir."
+                  : "Bu hazır tasarımda yalnız aşağıdaki alanları değiştirebilirsin — "
+                    + "yerleşim ve renkler baskıya hazır olarak sabitlenmiştir."}
               </p>
 
               {(kisitli.alanlar || []).map((a) => (
@@ -771,10 +790,16 @@ export default function TasarlaPage() {
                       value={String(alanDegerleri[a.key] ?? "")}
                       maxLength={a.max || 40}
                       onChange={(e) => alanYaz(a.key, e.target.value)}
-                      className="w-full border border-zinc-300 rounded-lg px-2 py-1.5 text-sm mt-0.5" />
-                    <span className="text-[10px] text-zinc-400">
-                      en fazla {a.max || 40} karakter
-                    </span>
+                      aria-invalid={yasakAlan?.key === a.key}
+                      className={`w-full border rounded-lg px-2 py-1.5 text-sm mt-0.5 ${
+                        yasakAlan?.key === a.key ? "border-red-500" : "border-zinc-300"}`} />
+                    {yasakAlan?.key === a.key ? (
+                      <span className="block text-[11px] text-red-600 leading-snug mt-0.5">{YASAK_MESAJ}</span>
+                    ) : (
+                      <span className="text-[10px] text-zinc-400">
+                        en fazla {a.max || 40} karakter
+                      </span>
+                    )}
                   </label>
                 ) : (
                   <label key={a.key}
@@ -790,6 +815,9 @@ export default function TasarlaPage() {
                   </label>
                 )
               ))}
+              {kisitli.forma && (
+                <FormaAyarlari overlay={kisitli} degerler={alanDegerleri} onYaz={formaYaz} />
+              )}
             </div>
           )}
 

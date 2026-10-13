@@ -12,6 +12,7 @@ export default function AccessoriesPage() {
   const [onlyAcc, setOnlyAcc] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const istenenRef = useRef('')   // o an istenen mağaza (yarış koruması)
+  const [kesildi, setKesildi] = useState(false)  // liste limite dayandı mı
 
   useEffect(() => {
     api.get('/api/stores').then(s => {
@@ -42,6 +43,7 @@ export default function AccessoriesPage() {
       const r = await api.get(`/api/designs/_meta/products?store_id=${sid}`)
       if (istenenRef.current !== sid) return
       setProducts(r.items || [])
+      setKesildi(!!r.kesildi)
     } catch (e) {
       if (istenenRef.current !== sid) return
       setError(typeof e?.detail === 'string' ? e.detail : 'Ürünler yüklenemedi')
@@ -113,6 +115,14 @@ export default function AccessoriesPage() {
       </div>
 
       {error && <div className="text-sm rounded-lg px-3 py-2 mb-3 border bg-red-500/10 border-red-500/20 text-red-300">✗ {error}</div>}
+
+      {kesildi && (
+        <div className="text-sm rounded-lg px-3 py-2 mb-3 border bg-amber-500/10
+          border-amber-500/20 text-amber-300">
+          ⚠ Katalog çok büyük, liste kırpıldı — aradığın ürün görünmüyorsa arama
+          kutusunu kullan.
+        </div>
+      )}
 
       {loading && <div className="text-gray-500 text-sm text-center py-10">Ürünler yükleniyor...</div>}
 

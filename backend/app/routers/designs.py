@@ -257,7 +257,14 @@ def list_shopify_products(
         )
         if search:
             q = q.where(CatalogProduct.title.ilike(f"%{search.strip()}%"))
-        urunler = db.scalars(q.order_by(CatalogProduct.title).limit(500)).all()
+        # DİKKAT: bu ucu kullanan ekranların bir kısmı (Aksesuarlar, Couple)
+        # aramayı YEREL yapar — sunucudan gelmeyen ürün onlarda hiç görünmez.
+        # 500'lük limit yüzünden başlık sırası 663 olan boş kılıf ekranda hiç
+        # çıkmıyordu. Limit kataloğu rahat kapsıyor; kırpılırsa ekran uyarıyor.
+        LIMIT = 2000
+        urunler = db.scalars(q.order_by(CatalogProduct.title).limit(LIMIT + 1)).all()
+        kesildi = len(urunler) > LIMIT
+        urunler = urunler[:LIMIT]
         items = [{
             "id": str(u.id),
             "title": u.title,
@@ -267,7 +274,7 @@ def list_shopify_products(
             "tags": u.tags or "",
             "handle": u.slug,
         } for u in urunler]
-        return {"items": items, "count": len(items)}
+        return {"items": items, "count": len(items), "kesildi": kesildi}
     try:
         adapter = get_adapter(store)
         products = adapter.get_all_products(limit=250, search=search)

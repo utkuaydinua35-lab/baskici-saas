@@ -197,6 +197,15 @@ try:
     r5 = c.get(f"/api/designs/_meta/products?store_id={vitrin.id}"
                f"&search=baskısız", headers=H).json()
     es("başlık aramasıyla süzülüyor", [str(u_yok.id)], [x["id"] for x in r5["items"]])
+    es("liste kırpılmadı işareti", False, r4.json().get("kesildi"))
+    # Aksesuarlar ekranı aramayı YEREL yapar: alfabetik olarak sonlarda kalan
+    # ürün listede dönmezse orada HİÇ görünmez (663. sıradaki boş kılıf böyle
+    # kayboldu). Başlığı 'z' ile başlayan ürün de dönmeli.
+    u_son = urun(vitrin, f"zzz {IZ} alfabetik en sondaki ürün")
+    db.commit()
+    r6 = c.get(f"/api/designs/_meta/products?store_id={vitrin.id}", headers=H).json()
+    es("alfabetik sonda kalan ürün de dönüyor", True,
+       str(u_son.id) in {x["id"] for x in r6["items"]})
 finally:
     db.rollback()
     ids = [x for (x,) in db.execute(select(Store.id).where(Store.slug.like(f"{IZ}-%"))).all()]

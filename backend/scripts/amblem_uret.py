@@ -71,6 +71,19 @@ def uc_yildiz(c) -> None:
     c.polygon(yildiz_noktalari(0.81, 0.60, 0.17), fill=BEYAZ)
 
 
+def yildiz_sirasi(n: int):
+    """n yıldız yan yana, hafif yay üzerinde (ortadakiler biraz yukarıda)."""
+    def ciz(c) -> None:
+        r = min(0.46, 0.92 / (n * 1.9))            # yıldız yarıçapı: sıraya sığsın
+        adim = 0.92 / n
+        for i in range(n):
+            x = 0.04 + adim * (i + 0.5)
+            uzak = abs(i - (n - 1) / 2) / max(1, (n - 1) / 2)     # 0 orta, 1 kenar
+            y = 0.50 + 0.10 * uzak * uzak - 0.03
+            c.polygon(yildiz_noktalari(x, y, r), fill=BEYAZ)
+    return ciz
+
+
 def tac(c) -> None:
     c.polygon([p(0.10, 0.74), p(0.06, 0.30), p(0.29, 0.52), p(0.50, 0.18),
                p(0.71, 0.52), p(0.94, 0.30), p(0.90, 0.74)], fill=BEYAZ)
@@ -144,7 +157,9 @@ def kupa(c) -> None:
 
 
 AMBLEMLER = {
-    "kalkan": kalkan, "yildiz": yildiz, "uc_yildiz": uc_yildiz, "tac": tac, "top": top,
+    "kalkan": kalkan, "yildiz": yildiz, "yildiz_2": yildiz_sirasi(2), "yildiz_3": yildiz_sirasi(3),
+    "yildiz_4": yildiz_sirasi(4), "yildiz_5": yildiz_sirasi(5),
+    "uc_yildiz": uc_yildiz, "tac": tac, "top": top,
     "simsek": simsek, "elmas": elmas, "kalp": kalp, "rozet": rozet, "kupa": kupa,
 }
 

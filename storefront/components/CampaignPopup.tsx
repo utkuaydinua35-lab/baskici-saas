@@ -101,7 +101,11 @@ export default function CampaignPopup({ onizleme, gorselBoyut = 100, gorselBoyut
         <div className={gorselUrl ? "grid sm:grid-cols-2 items-center" : ""}>
           {gorselUrl ? (
             // Mobilde üstte, masaüstünde sağda
-            <div className="sm:order-2 p-6 sm:p-8 flex items-center justify-center">
+            // Telefonda görselin ALTINDA boşluk yok: görsel ile yazı tek blok
+            // gibi durur. Eskiden görselin alt boşluğu + yazının üst boşluğu
+            // üst üste biniyor, logo yukarıda asılı kalıp içerik kartta
+            // ortalanmamış görünüyordu.
+            <div className="sm:order-2 px-6 pt-9 pb-0 sm:p-8 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={gorselUrl} alt="" className="h-auto max-h-72 sm:max-h-[26rem] object-contain w-[var(--gb-m)] sm:w-[var(--gb-d)]"
                 style={{
@@ -111,7 +115,7 @@ export default function CampaignPopup({ onizleme, gorselBoyut = 100, gorselBoyut
             </div>
           ) : null}
 
-          <div className="px-7 pb-9 pt-10 sm:py-12 text-center">
+          <div className={`px-7 pb-9 sm:py-12 text-center ${gorselUrl ? "pt-5" : "pt-10"}`}>
             {ustBaslik ? (
               <p className="popup-ust text-xs font-extrabold uppercase tracking-[0.16em]"
                 style={{ color: "var(--c-accent)" }}>
@@ -120,7 +124,7 @@ export default function CampaignPopup({ onizleme, gorselBoyut = 100, gorselBoyut
             ) : null}
             {baslik ? (
               <h2 className="mt-2 whitespace-pre-line text-4xl font-extrabold leading-[0.95] tracking-[-0.04em] text-zinc-900">
-                {baslik}
+                {baslik.trim()}
               </h2>
             ) : null}
             {metin ? <p className="mt-4 text-sm font-semibold text-zinc-700">{metin}</p> : null}

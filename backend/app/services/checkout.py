@@ -446,6 +446,9 @@ class DiscountPlan:
 
     def __init__(self, applied: list[tuple[DiscountCode, Decimal, bool]]):
         self.applied = applied
+        # Müşterinin girdiği kod, otomatik kampanyadan AZ kazandırdığı için
+        # uygulanmadıysa kodun adı (yanıtta müşteriye açıklanır)
+        self.kod_yok_sayildi: str | None = None
 
     @property
     def total(self) -> Decimal:
@@ -526,6 +529,20 @@ def resolve_discounts(
                 bucket=other, combinable_only=True)
             if extra and extra[0].id != dc.id:
                 applied.append(extra)
+        # MÜŞTERİ KOD GİRDİĞİ İÇİN DAHA FAZLA ÖDEMEZ. Kod, aynı kovadaki
+        # otomatik kampanyanın YERİNE geçer; kampanya daha kazançlıysa kod
+        # toplamı ARTIRIYORDU: canlıda 3 üründe KACIRMA10 girilince 3 Al 2 Öde
+        # düşüp 684,88 TL'lik sepet 894,87 TL oluyor, ekranda yine "Kupon
+        # uygulandı" yazıyordu. Kodsuz plan daha iyiyse o uygulanır.
+        kodsuz = resolve_discounts(db, store, None, items_total, email, shipping_fee,
+                                   items_count, snapshot)
+
+        def kazanc(plan_: "DiscountPlan") -> Decimal:
+            return plan_.total + (shipping_fee if plan_.free_shipping else Decimal("0"))
+
+        if kazanc(kodsuz) > kazanc(_kirp(applied, items_total)):
+            kodsuz.kod_yok_sayildi = dc.code
+            return kodsuz
     else:
         sepet = best_automatic_discount(
             db, store, items_total, email, shipping_fee, items_count, snapshot,
@@ -546,14 +563,18 @@ def resolve_discounts(
             if best:
                 applied = [best]
 
-    # Güvenlik tabanı: birleşik indirim sepeti sağlayıcının kabul etmeyeceği
-    # tutara indirmesin — son indirim kırpılır (kırpma sunucuda, istemcide değil)
+    return _kirp(applied, items_total)
+
+
+def _kirp(applied: list, items_total: Decimal) -> "DiscountPlan":
+    """Güvenlik tabanı: birleşik indirim sepeti sağlayıcının kabul etmeyeceği
+    tutara indirmesin — son indirim kırpılır (kırpma sunucuda, istemcide değil)."""
+    applied = list(applied)
     total = sum((a for _, a, _ in applied), Decimal("0"))
     if applied and total > items_total - MIN_CHARGE:
         fazla = total - (items_total - MIN_CHARGE)
         dc, amount, fs = applied[-1]
         applied[-1] = (dc, max(Decimal("0"), amount - fazla), fs)
-
     return DiscountPlan(applied)
 
 

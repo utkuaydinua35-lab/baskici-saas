@@ -170,7 +170,16 @@ export default function TasarlaPage() {
         const slug = urunSlug || c?.settings?.studio_product_slug;
         if (!slug) return;
         return fetch(`/api/product/${slug}`).then((r) => (r.ok ? r.json() : null))
-          .then((p) => { if (p) setUrun(p); });
+          .then((p) => {
+            if (!p) return;
+            setUrun(p);
+            // Ürün sayfasında seçilen model stüdyoya taşınır (?model=<varyant>):
+            // müşteri aynı modeli ikinci kez aramak zorunda kalmasın
+            const secili = new URLSearchParams(window.location.search).get("model");
+            const v = secili ? (p.variants || []).find(
+              (x: { id: string; in_stock?: boolean }) => x.id === secili && x.in_stock !== false) : null;
+            if (v) { setModelId(v.id); setMarka(v.brand || "Diğer"); }
+          });
       })
       .catch(() => {});
     // Modüller ürüne özel olabilir — hangi üründen gelindiyse onunla sorulur
@@ -816,8 +825,9 @@ export default function TasarlaPage() {
                   </label>
                 )
               ))}
-              {kisitli.forma && !kisitli.forma.kilitli && (
-                <FormaAyarlari overlay={kisitli} degerler={alanDegerleri} onYaz={formaYaz} />
+              {kisitli.forma && (
+                <FormaAyarlari overlay={kisitli} degerler={alanDegerleri} onYaz={formaYaz}
+                  yalnizKontur={!!kisitli.forma.kilitli} />
               )}
             </div>
           )}

@@ -669,6 +669,14 @@ def validate_discount_code(
     except checkout_svc.CheckoutError as e:
         return {"valid": False, "message": str(e)}
 
+    if plan.kod_yok_sayildi:
+        # Sepetteki otomatik kampanya bu koddan daha kazançlı: kod uygulanmaz,
+        # kampanya korunur. valid=False → vitrin kuponu sepete yazmaz ve
+        # otomatik kampanya özeti ekranda kalır.
+        kampanya = " + ".join(r["label"] for r in plan.breakdown()) or "kampanya"
+        return {"valid": False, "kampanya_daha_iyi": True,
+                "message": f"Sepetindeki {kampanya} kampanyası bu koddan daha avantajlı — "
+                           "kampanya indirimin korunuyor, kod uygulanmadı."}
     dc = plan.primary
     discount = plan.total
     shipping = checkout_svc.kargo_ucreti(store, items_total, plan)
@@ -680,6 +688,9 @@ def validate_discount_code(
         "discount_amount": str(discount),
         "free_shipping": plan.free_shipping,
         "new_total": str(items_total - discount + shipping),
+        # Vitrin özeti bu ikisini okur (kupon uygulanınca kesin kargo ve toplam)
+        "shipping": str(shipping),
+        "total": str(items_total - discount + shipping),
         "applied": plan.breakdown(),
         "message": (
             "Kupon uygulandı — " + " + ".join(r["label"] for r in extra) + " ile birleşti"

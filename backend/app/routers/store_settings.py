@@ -338,6 +338,35 @@ def store_readiness(
         "Yayın öncesi kilit AÇIK — ziyaretçiler şifre ekranı görüyor",
         blocker=True, to="/ayarlar")
 
+    # 4b) Kampanya araçlarının verdiği kuponlar GERÇEKTEN var mı.
+    # Çark/çıkış penceresi/açılış pop-up'ı kodu yalnız METİN olarak verir;
+    # kupon ayrıca oluşturulmalıdır. Canlıda çark "10BERNZ10" veriyordu ama
+    # kupon "1OBERNZ10" (sıfır yerine O harfi) diye açılmıştı: çarktan %10
+    # kazanan müşteri ödemede "Kupon kodu geçersiz" görüyordu.
+    from app.models import DiscountCode
+    from app.services.theme import resolve_theme
+    tema = resolve_theme(config)
+    verilen: dict[str, str] = {}
+    cark = tema.get("cark") or {}
+    if cark.get("enabled"):
+        for d in cark.get("dilimler") or []:
+            if d.get("kod"):
+                verilen[str(d["kod"]).strip().upper()] = "indirim çarkı"
+    for anahtar, ad in (("cikis", "çıkış penceresi"), ("popup", "açılış pop-up'ı")):
+        b = tema.get(anahtar) or {}
+        if b.get("enabled") and b.get("kupon"):
+            verilen[str(b["kupon"]).strip().upper()] = ad
+    if verilen:
+        mevcut = {str(c).upper() for c in db.scalars(select(DiscountCode.code).where(
+            DiscountCode.store_id == store.id, DiscountCode.is_active.is_(True))).all()}
+        eksik = sorted(k for k in verilen if k not in mevcut)
+        add("kampanya_kuponlari", not eksik, "Kampanya araçlarının kuponları tanımlı",
+            ("Müşteriye verilen ama KUPON OLARAK BULUNMAYAN kodlar: "
+             + ", ".join(f"{k} ({verilen[k]})" for k in eksik)
+             + ". Harf/rakam karışmış olabilir (O ↔ 0, I ↔ 1). Kuponlar sayfasında aynı adla "
+               "oluşturun ya da temadaki kodu düzeltin.") if eksik else "",
+            blocker=bool(eksik), to="/kuponlar", count=len(eksik) or None)
+
     # 5) Pazarlama + içerik (engel değil, öneri)
     add("pixel", bool(config.get("meta_pixel_id")), "Meta Pixel bağlı",
         "Reklam ölçümü için Ayarlar → Pazarlama'ya piksel ID girin", to="/ayarlar")

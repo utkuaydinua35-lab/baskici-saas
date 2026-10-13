@@ -86,7 +86,11 @@ VARSAYILAN_FONTLAR = ["anton", "bebas", "oswald", "russo", "staatliches", "monts
 AMBLEMLER: dict[str, str] = {
     "kalkan": "Kalkan",
     "yildiz": "Yıldız",
-    "uc_yildiz": "Üç yıldız",
+    "yildiz_2": "İki yıldız",
+    "yildiz_3": "Üç yıldız (sıra)",
+    "yildiz_4": "Dört yıldız",
+    "yildiz_5": "Beş yıldız",
+    "uc_yildiz": "Üç yıldız (piramit)",
     "tac": "Taç",
     "top": "Top",
     "simsek": "Şimşek",
@@ -310,8 +314,12 @@ def vitrin_ozeti(forma: dict | None) -> dict | None:
 def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
     """alan_degerleri içindeki `_…` anahtarlarını şablonun izin verdikleriyle
     doğrula. Geçersiz/eksik her seçim şablonun varsayılanına düşer."""
-    # Hazır ürün (kilitli): müşterinin gönderdiği seçimler YOK SAYILIR
-    d = {} if forma.get("kilitli") else (degerler or {})
+    # Hazır ürün (kilitli): desen/renk/yazı tipi/amblem seçimleri YOK SAYILIR.
+    # KONTUR istisna — hazır üründe de müşterinin tercihidir (aç/kapa, renk,
+    # kalınlık): tasarımı değiştirmez, yalnız yazının okunurluğunu.
+    d = degerler or {}
+    if forma.get("kilitli"):
+        d = {k: v for k, v in d.items() if k in ("_kontur", "_kontur_kalinlik")}
     v = forma["varsayilan"]
 
     desen = d.get("_desen") if d.get("_desen") in forma["desenler"] else v["desen"]

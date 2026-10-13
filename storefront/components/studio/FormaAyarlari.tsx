@@ -35,7 +35,9 @@ function RenkKutusu({ etiket, deger, onDegis }: { etiket: string; deger: string;
   );
 }
 
-export default function FormaAyarlari({ overlay, degerler, onYaz }: {
+export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur = false }: {
+  /** Hazır ürün: desen/renk/yazı tipi/amblem gizli, yalnız kontur seçilir */
+  yalnizKontur?: boolean;
   overlay: StudioOverlay;
   degerler: Record<string, unknown>;
   /** Bir ya da birden çok `_…` anahtarını birlikte yazar (renk takımı = 3 renk) */
@@ -52,7 +54,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
 
   return (
     <div className="space-y-3.5 border-t border-zinc-200 pt-3">
-      {f.paletler.length > 0 && (
+      {!yalnizKontur && f.paletler.length > 0 && (
         <div>
           <div className={baslik}>Renk takımı</div>
           <div className="flex flex-wrap gap-1.5">
@@ -71,7 +73,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
         </div>
       )}
 
-      {f.serbest_renk && (
+      {!yalnizKontur && f.serbest_renk && (
         <div>
           <div className={baslik}>Renkler</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -86,7 +88,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
         </div>
       )}
 
-      {f.desenler.length > 1 && (
+      {!yalnizKontur && f.desenler.length > 1 && (
         <div>
           <div className={baslik}>Desen</div>
           <div className="grid grid-cols-5 gap-1.5">
@@ -113,7 +115,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
         </div>
       )}
 
-      {f.fontlar.length > 1 && (
+      {!yalnizKontur && f.fontlar.length > 1 && (
         <div>
           <div className={baslik}>Yazı tipi</div>
           <div className="grid grid-cols-4 gap-1.5">
@@ -133,9 +135,11 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
       )}
 
       <div>
-        <div className={baslik}>Yazı rengi</div>
+        <div className={baslik}>{yalnizKontur ? "Yazı konturu" : "Yazı rengi"}</div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <RenkKutusu etiket="Yazı" deger={s.yazi_renk} onDegis={(v) => onYaz({ _yazi_renk: v })} />
+          {!yalnizKontur && (
+            <RenkKutusu etiket="Yazı" deger={s.yazi_renk} onDegis={(v) => onYaz({ _yazi_renk: v })} />
+          )}
           <label className="flex items-center gap-1.5 text-[11px] text-zinc-600 cursor-pointer">
             <input type="checkbox" checked={!!s.kontur}
               onChange={(e) => onYaz({ _kontur: e.target.checked ? (f.varsayilan.kontur || "#111111") : "" })} />
@@ -159,7 +163,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
         )}
       </div>
 
-      {f.amblemler.length > 0 && (
+      {!yalnizKontur && f.amblemler.length > 0 && (
         <div>
           <div className={baslik}>Amblem</div>
           <div className="grid grid-cols-6 gap-1.5">

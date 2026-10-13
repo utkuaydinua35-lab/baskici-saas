@@ -108,7 +108,8 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
               onChange={e => yama({ kilitli: e.target.checked })} />
             <span>
               <b>Hazır ürün</b> — müşteri deseni, rengi, yazı tipini ve amblemi <b>değiştiremez</b>;
-              yalnız yazı alanlarını (isim, numara) doldurur. Tasarım aşağıdaki “Başlangıç görünümü”nden çizilir.
+              yalnız yazı alanlarını (isim, numara) doldurur ve isterse yazıya <b>kontur</b> ekler.
+              Tasarım aşağıdaki “Başlangıç görünümü”nden çizilir.
               <span className="block text-panel-muted mt-0.5">
                 Kapalıyken müşteri her şeyi kendisi seçer (“kendi formanı tasarla” ürünü). Aynı şablonu
                 “Kopyala” ile çoğaltıp her kopyada renkleri değiştirerek Sarı-Kırmızı, Siyah-Beyaz… ürünlerini hazırlayın.

@@ -94,8 +94,10 @@ export function formaSecimi(o: StudioOverlay, d: Record<string, unknown>): Forma
   const f = o.forma;
   if (!f) return null;
   const v = f.varsayilan;
-  // Hazır ürün (kilitli): müşteri seçimi yok — hep şablonun görünümü
-  const metin = (k: string) => (!f.kilitli && typeof d[k] === "string" ? (d[k] as string) : undefined);
+  // Hazır ürün (kilitli): desen/renk/yazı tipi/amblem şablonun görünümünden;
+  // müşteri yalnız KONTURU seçebilir (sunucu: services/forma.secimleri_coz)
+  const serbest = (k: string) => !f.kilitli || k === "_kontur" || k === "_kontur_kalinlik";
+  const metin = (k: string) => (serbest(k) && typeof d[k] === "string" ? (d[k] as string) : undefined);
   const desen = f.desenler.some((x) => x.key === metin("_desen")) ? metin("_desen")! : v.desen;
   const yg = metin("_yogunluk");
   const amblemHam = metin("_amblem");

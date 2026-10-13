@@ -2,7 +2,7 @@
 
 // Sepet — localStorage'da tutulur; sunucu istemci fiyatına ASLA güvenmez
 // (checkout'ta variant_id+quantity gönderilir, fiyat sunucuda yeniden hesaplanır).
-import {
+import { useRef,
   createContext,
   useCallback,
   useContext,
@@ -169,6 +169,52 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems([]);
     setCoupon(null);
   }, [setCoupon]);
+
+  // SEPET DEĞİŞİNCE KUPON YENİDEN DOĞRULANIR. Kuponun tutarı uygulandığı
+  // andaki sepete göre saklanır; sonradan ürün eklenince/çıkarılınca eski
+  // tutar ekranda kalıyordu. Ayrıca sepet otomatik kampanyaya (3 Al 2 Öde)
+  // ulaşınca kampanya koddan kazançlı olabilir — o zaman kupon kaldırılır,
+  // kampanya özeti (useAutoQuote) devreye girer.
+  const kuponKodu = coupon?.code || "";
+  const sepetImzasi = items.map((i) => `${i.lineId ?? cartLineId(i)}x${i.quantity}`).join("|");
+  const ilkImza = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || !kuponKodu) { ilkImza.current = null; return; }
+    // Kuponun uygulandığı (ya da sayfanın açıldığı) andaki sepet: doğrulama gerekmez
+    if (ilkImza.current === null) { ilkImza.current = `${kuponKodu}#${sepetImzasi}`; return; }
+    if (ilkImza.current === `${kuponKodu}#${sepetImzasi}`) return;
+    ilkImza.current = `${kuponKodu}#${sepetImzasi}`;
+    if (items.length === 0) { setCoupon(null); return; }
+    let iptal = false;
+    const t = setTimeout(() => {
+      fetch("/api/validate-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: kuponKodu,
+          items: items.map((i) => ({
+            variant_id: i.variantId, quantity: i.quantity,
+            second_variant_id: i.secondVariantId || null, custom: i.custom || null,
+          })),
+        }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (iptal) return;
+          if (!d?.valid) { setCoupon(null); return; }     // artık geçersiz ya da kampanya daha iyi
+          setCoupon({
+            code: d.code, kind: d.kind, discountAmount: d.discount_amount,
+            freeShipping: d.free_shipping, shipping: d.shipping, total: d.total,
+            combined: (d.applied || [])
+              .filter((a: { code: string }) => a.code !== d.code)
+              .map((a: { code: string; label: string }) => ({ code: a.code, label: a.label })),
+          });
+        })
+        .catch(() => { /* ağ hatası: ödeme anında sunucu yine doğrular */ });
+    }, 350);
+    return () => { iptal = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sepetImzasi, kuponKodu, hydrated]);
 
   const value = useMemo<CartContextValue>(() => {
     const count = items.reduce((s, i) => s + i.quantity, 0);

@@ -89,6 +89,9 @@ es("hazır ürün (kilitli): müşterinin desen/renk/font seçimi YOK SAYILIR",
    (f["varsayilan"]["desen"], f["varsayilan"]["renkler"], f["varsayilan"]["font"]),
    (lambda z: (z["desen"], z["renkler"], z["font"]))(forma.secimleri_coz(
        hazir, {"_desen": "yari", "_renk1": "#ff0000", "_font": "bebas"})))
+es("hazır üründe KONTUR müşterinin seçimi olarak kalır", ("#123456", "kalin"),
+   (lambda z: (z["kontur"], z["kontur_kalinlik"]))(forma.secimleri_coz(
+       hazir, {"_kontur": "#123456", "_kontur_kalinlik": "kalin", "_desen": "yari"})))
 es("kilitli bayrağı panel ayarından geçer ve vitrine bildirilir", (True, True),
    (forma.yapilandirma_temizle({"aktif": True, "kilitli": True})["kilitli"],
     forma.vitrin_ozeti(hazir)["kilitli"]))

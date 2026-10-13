@@ -4,6 +4,7 @@
 // Tek marka varsa marka adımı atlanır; markası olmayan varyantlar "Diğer"de.
 import { sepeteUcur } from "@/lib/sepeteUcur";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import OptionCompare from "@/components/OptionCompare";
@@ -18,6 +19,28 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   const t = useTexts();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  // Özelleştirilebilir ürün mü (stüdyo şablonu/modülü bağlı)? Tek seçenek
+  // varsa doğrudan stüdyoya, birden çoksa sayfadaki seçim bölümüne gider.
+  const ozellestir = useMemo(() => {
+    const kiliflar = product.studio_templates ?? [];
+    const moduller = product.studio_moduller ?? [];
+    const toplam = kiliflar.length + moduller.length;
+    if (toplam === 0) return null;
+    const urunQs = `urun=${encodeURIComponent(product.slug)}`;
+    const adres = toplam !== 1 ? null
+      : moduller.length === 1
+        ? `/tasarla?${urunQs}&modul=${encodeURIComponent(moduller[0].id)}${
+          moduller[0].kilif_key ? `&kilif=${encodeURIComponent(moduller[0].kilif_key)}` : ""}`
+        : `/tasarla?${urunQs}&kilif=${encodeURIComponent(kiliflar[0].key)}`;
+    const kaydir = () => {
+      const el = document.getElementById("tasarim");
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      el.classList.add("ring-2", "ring-zinc-900", "ring-offset-2");
+      setTimeout(() => el.classList.remove("ring-2", "ring-zinc-900", "ring-offset-2"), 1600);
+    };
+    return { adres, kaydir };
+  }, [product.slug, product.studio_templates, product.studio_moduller]);
   // Couple: iki kılıfın her biri için marka → model → renk
   const isCouple = (product.models_per_item ?? 1) >= 2;
   const birinci = useModelSecimi(product.variants);
@@ -208,6 +231,25 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
         </p>
       )}
 
+      {ozellestir ? (
+        // ÖZELLEŞTİRİLEBİLİR ÜRÜN: "Sepete Ekle" yok. Bu ürün tasarlanmadan
+        // satın alınmaz; boş hâlini sepete eklemek anlamsızdı ve ayrı duran
+        // "Özelleştir" düğmesiyle çelişiyordu. Tek düğme stüdyoya götürür,
+        // sepete ekleme tasarım bitince stüdyoda yapılır.
+        ozellestir.adres ? (
+          <Link href={`${ozellestir.adres}${selected ? `&model=${encodeURIComponent(selected.id)}` : ""}`}
+            className="btn-r flex w-full items-center justify-center gap-2 text-white font-medium py-3.5 hover:opacity-90 transition"
+            style={{ background: "var(--c-primary)" }}>
+            🎨 Özelleştir
+          </Link>
+        ) : (
+          <button type="button" onClick={ozellestir.kaydir}
+            className="btn-r flex w-full items-center justify-center gap-2 text-white font-medium py-3.5 hover:opacity-90 transition"
+            style={{ background: "var(--c-primary)" }}>
+            🎨 Özelleştir
+          </button>
+        )
+      ) : (
       <div className="flex gap-3">
         <div className="inline-flex items-center border border-zinc-300 rounded-xl bg-white shrink-0">
           <button type="button" onClick={() => setQty((n) => Math.max(1, n - 1))}
@@ -227,10 +269,17 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
           {added ? "Sepete eklendi ✓" : t.add_to_cart}
         </button>
       </div>
-      {!activeBrand && (
+      )}
+      {ozellestir && (
+        <p className="text-xs text-zinc-500">
+          Tasarımını stüdyoda yap, beğenince sepete ekle.
+          {selected ? "" : " Modelini burada ya da stüdyoda seçebilirsin."}
+        </p>
+      )}
+      {!ozellestir && !activeBrand && (
         <p className="text-xs text-zinc-500">Önce telefon markanızı seçin.</p>
       )}
-      {activeBrand && !modelKey && (
+      {!ozellestir && activeBrand && !modelKey && (
         <p className="text-xs text-zinc-500">Sepete eklemek için telefon modelinizi seçin.</p>
       )}
     </div>

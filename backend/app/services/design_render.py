@@ -52,8 +52,26 @@ MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
 # katından büyüyemez — tek harfli metin alanı boydan boya taşırmasın.
 # İstemcideki eşi: storefront/components/studio/Canvas.tsx → TAVAN_PUNTO
 TAVAN_PUNTO = 0.8
-# Yazı konturu kalınlığı / punto. İstemcideki eşi: studio/forma.ts → KONTUR_ORAN
-KONTUR_ORAN = 0.05
+
+
+def _kontur(k: dict, boy: float) -> tuple[float, float]:
+    """(kontur kalınlığı, harf aralığı) — ikisi de px, puntoya oranlı.
+
+    Kontur harfin DIŞINA doğru büyür; yan yana iki harfin konturu birbirinin
+    üstüne binmesin diye harf arası kontur kalınlığının İKİ KATI kadar açılır
+    (canlıda "10" yazınca rakamlar üst üste biniyordu). Aynı kural tuvalde,
+    önizlemede ve PDF'te de uygulanır."""
+    if not k.get("kontur"):
+        return 0.0, 0.0
+    from app.services.forma import kontur_orani
+    t = boy * kontur_orani(k.get("kontur_kalinlik"))
+    return t, 2 * t
+
+
+def _aralikli_genislik(ciz, metin: str, font, aralik: float) -> float:
+    if not aralik:
+        return ciz.textlength(metin, font=font)
+    return sum(ciz.textlength(h, font=font) for h in metin) + aralik * max(0, len(metin) - 1)
 
 # BASKI RENK KURALI (storefront/components/studio/renk.ts ile aynı):
 # CMYK bileşenlerinin tamamı ~0 olan renk (saf beyaz) baskı makinesinde
@@ -287,6 +305,15 @@ def _ciz_overlay(db, tuval: Image.Image, k: dict, W: int, H: int) -> None:
     g.load()
     if g.mode != "RGBA":
         g = g.convert("RGBA")
+    if alan_key:
+        # Açılabilir öğe kutusuna ORANI BOZULMADAN ortalanır — tuval
+        # (object-fit: contain) ve PDF ile aynı. Eskiden kutuya geriliyordu:
+        # kutusu logonun oranına uymayan öğe baskıda yassı/uzun çıkıyordu.
+        olcek = min(kutu[2] / g.width, kutu[3] / g.height)
+        gw, gh = max(1, round(g.width * olcek)), max(1, round(g.height * olcek))
+        g = g.resize((gw, gh), Image.LANCZOS)
+        tuval.alpha_composite(g, (kutu[0] + (kutu[2] - gw) // 2, kutu[1] + (kutu[3] - gh) // 2))
+        return
     g = g.resize((kutu[2], kutu[3]), Image.LANCZOS)
     tuval.alpha_composite(g, (kutu[0], kutu[1]))
 
@@ -375,7 +402,8 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # Yalnız KISITLI ŞABLON alanlarında açıktır (katman üreticisi sigdir=True
     # yazar); serbest editörde punto müşterinin kendi ayarıdır, dokunulmaz.
     if k.get("sigdir") is True:
-        gen = ciz.textlength(metin, font=font)
+        # Harf aralığı puntoyla orantılı olduğundan oran hesabı aynen geçerli
+        gen = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
         if gen > 0:
             en = boy * kutu_gen / gen               # genişliğe göre punto
             yuk = kutu_yuk / oran                   # yüksekliğe göre punto
@@ -399,18 +427,32 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
         (0, 0, 0, 0))
     kciz = ImageDraw.Draw(kat)
     hiza = k.get("align") or "left"
-    # KONTUR (forma tasarlayıcı): harfin DIŞINA puntonun %5'i kadar çizgi.
-    # Tuvaldeki eşi: -webkit-text-stroke 0.1em + paint-order (çizgi harf
-    # kenarına ortalanır, yarısı dolgunun altında kalır → görünen %5).
+    # KONTUR (forma tasarlayıcı): harfin DIŞINA çizgi (kalınlık: _kontur).
+    # Tuvaldeki eşi: -webkit-text-stroke 2×oran em + paint-order (çizgi harf
+    # kenarına ortalanır, yarısı dolgunun altında kalır).
     kontur = k.get("kontur")
-    kontur_px = max(1, round(boy * KONTUR_ORAN)) if kontur else 0
+    kalinlik, aralik = _kontur(k, boy)
+    kontur_px = max(1, round(kalinlik)) if kontur else 0
+    dolgu = _basilabilir_renk(k.get("color"))
     for i, s in enumerate(satirlar):
-        gen = kciz.textlength(s, font=font)
+        gen = _aralikli_genislik(kciz, s, font, aralik)
         x = 0 if hiza == "left" else (kutu_gen - gen) / 2 if hiza == "center" else kutu_gen - gen
-        kciz.text((x + pay_x, pay_y + i * satir_yuk), s, font=font,
-                  fill=_basilabilir_renk(k.get("color")),
-                  **({"stroke_width": kontur_px, "stroke_fill": _basilabilir_renk(kontur)}
-                     if kontur_px else {}))
+        y = pay_y + i * satir_yuk
+        if not kontur_px:
+            kciz.text((x + pay_x, y), s, font=font, fill=dolgu)
+            continue
+        # Konturlu: harfler tek tek, aralıklı. ÖNCE tüm konturlar, SONRA tüm
+        # dolgular — bir harfin konturu komşusunun dolgusunu örtmesin.
+        konumlar, cx = [], x + pay_x
+        for h in s:
+            konumlar.append((cx, h))
+            cx += kciz.textlength(h, font=font) + aralik
+        kontur_renk = _basilabilir_renk(kontur)
+        for hx, h in konumlar:
+            kciz.text((hx, y), h, font=font, fill=kontur_renk,
+                      stroke_width=kontur_px, stroke_fill=kontur_renk)
+        for hx, h in konumlar:
+            kciz.text((hx, y), h, font=font, fill=dolgu)
 
     aci = float(k.get("rot") or 0)
     if aci:

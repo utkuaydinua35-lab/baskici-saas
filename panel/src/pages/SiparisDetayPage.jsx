@@ -3,6 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { api, fetchYetkili } from '../lib/api'
 import { mutlak } from '../lib/taban'
 
+// Katalog ürün kimliği (UUID) — Shopify'dan kalan sayısal kimliklerden ayırır
+const URUN_KIMLIGI = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // Sipariş detayı — Shopify düzeni: solda ürünler + ödeme + zaman çizelgesi,
 // sağda müşteri/adres/kargo/üretim durumu. Veri: zengin /detail endpoint'i.
 const STAGES = [
@@ -374,17 +377,26 @@ function ItemsCard({ d, isStorefront, stage, onChanged }) {
               </div>
             )
           }
+          // Vitrin ürünü ise (katalog kimliği UUID) ürün detayına gidilir.
+          // Eski Shopify siparişlerinde kimlik Shopify'ındır — bağlantı yok.
+          const urunYolu = URUN_KIMLIGI.test(String(li.product_id || '')) ? `/urunler/${li.product_id}` : null
+          const gorsel = li.image_url ? (
+            <img src={li.image_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xl opacity-30">📱</div>
+          )
+          const kutu = 'w-14 h-14 rounded-xl bg-panel-input overflow-hidden shrink-0 border border-panel-border'
           return (
             <div key={li.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="w-14 h-14 rounded-xl bg-panel-input overflow-hidden shrink-0 border border-panel-border">
-                {li.image_url ? (
-                  <img src={li.image_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xl opacity-30">📱</div>
-                )}
-              </div>
+              {urunYolu
+                ? <Link to={urunYolu} title="Ürün detayına git"
+                    className={`${kutu} block hover:border-panel-accent transition-colors`}>{gorsel}</Link>
+                : <div className={kutu}>{gorsel}</div>}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{li.title}</div>
+                {urunYolu
+                  ? <Link to={urunYolu} title="Ürün detayına git"
+                      className="block text-sm font-medium truncate hover:text-panel-accent hover:underline">{li.title}</Link>
+                  : <div className="text-sm font-medium truncate">{li.title}</div>}
                 {li.variant_title && (
                   <div className="text-xs text-panel-muted">{li.variant_title}</div>
                 )}

@@ -881,6 +881,28 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
 
   const yuzde = (v) => `${(v || 0) * 100}%`
 
+  // Forma amblemini önizlemede sürükle/boyutlandır (oranlar baskı alanına göre)
+  const amblemSurukle = (e, tip) => {
+    e.preventDefault(); e.stopPropagation()
+    const r = tuvalRef.current?.getBoundingClientRect()
+    if (!r || !forma) return
+    const ilk = { ...forma.amblem_kutu }
+    const sx = e.clientX, sy = e.clientY
+    const sinir = (v, alt, ust) => Math.max(alt, Math.min(ust, v))
+    const hareket = (ev) => {
+      const dx = (ev.clientX - sx) / r.width, dy = (ev.clientY - sy) / r.height
+      setForma(f => ({ ...f, amblem_kutu: tip === 'tasi'
+        ? { ...ilk, x: sinir(ilk.x + dx, 0, 1 - ilk.w), y: sinir(ilk.y + dy, 0, 1 - ilk.h) }
+        : { ...ilk, w: sinir(ilk.w + dx, 0.03, 1 - ilk.x), h: sinir(ilk.h + dy, 0.02, 1 - ilk.y) } }))
+    }
+    const bitir = () => {
+      window.removeEventListener('pointermove', hareket)
+      window.removeEventListener('pointerup', bitir)
+    }
+    window.addEventListener('pointermove', hareket)
+    window.addEventListener('pointerup', bitir)
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
       onClick={onClose}>
@@ -937,10 +959,19 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                     const url = a?.url || (forma.varsayilan.amblem
                       ? `/storage/sablon/amblem/${forma.varsayilan.amblem}.png` : null)
                     const k = forma.amblem_kutu
+                    // Amblem kutusu SÜRÜKLENİR ve sağ alt köşeden boyutlanır —
+                    // numara/isim alanlarıyla üst üste gelmeyecek yere koyun
+                    // (müşteri yerini değiştiremez, burada ne ayarlanırsa o).
                     return url ? (
-                      <AmblemMaske url={url} renk={forma.varsayilan.amblem_renk}
-                        className="absolute pointer-events-none outline outline-1 outline-dashed outline-white/40"
-                        style={{ left: yuzde(k.x), top: yuzde(k.y), width: yuzde(k.w), height: yuzde(k.h) }} />
+                      <div onPointerDown={e => amblemSurukle(e, 'tasi')} title="Amblemi sürükleyerek yerleştir"
+                        className="absolute cursor-move outline outline-2 outline-dashed outline-amber-300/80"
+                        style={{ left: yuzde(k.x), top: yuzde(k.y), width: yuzde(k.w), height: yuzde(k.h), zIndex: 3 }}>
+                        <AmblemMaske url={url} renk={forma.varsayilan.amblem_renk}
+                          className="w-full h-full pointer-events-none" />
+                        <span onPointerDown={e => amblemSurukle(e, 'boyut')}
+                          className="absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-full
+                            bg-white border-2 border-amber-400 cursor-nwse-resize" />
+                      </div>
                     ) : null
                   })()}
                 </>

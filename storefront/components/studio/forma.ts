@@ -10,8 +10,13 @@
 import type { StudioOverlay } from "./types";
 
 /** Yazı konturu kalınlığı / punto (harfin DIŞINDA görünen kısım).
- *  Sunucudaki eşi: design_render.py → KONTUR_ORAN */
-export const KONTUR_ORAN = 0.05;
+ *  Sunucudaki eşi: backend/app/services/forma.py → KONTUR_ORANLARI */
+export const KONTUR_ORANLARI: Record<string, number> = { ince: 0.018, orta: 0.032, kalin: 0.05 };
+export const konturOrani = (anahtar?: string) =>
+  KONTUR_ORANLARI[anahtar || "orta"] ?? KONTUR_ORANLARI.orta;
+/** Konturlu yazıda harf arası = kontur kalınlığının 2 katı: yan yana iki
+ *  harfin konturu üst üste binmez (sunucu: design_render._kontur) */
+export const konturAraligi = (anahtar?: string) => 2 * konturOrani(anahtar);
 
 export type Yogunluk = "ince" | "orta" | "kalin";
 export type Cokgen = { renk: number; nokta: [number, number][] };
@@ -79,6 +84,7 @@ export const UC_RENKLI = new Set(["bant", "orta_serit", "capraz_bant"]);
 export interface FormaSecim {
   desen: string; yogunluk: Yogunluk; renkler: [string, string, string];
   font: string; yazi_renk: string; kontur: string;      // "" → kontur yok
+  kontur_kalinlik: Yogunluk;
   amblem: string; amblem_renk: string;                    // "" → amblem yok
 }
 
@@ -102,6 +108,10 @@ export function formaSecimi(o: StudioOverlay, d: Record<string, unknown>): Forma
     font: f.fontlar.includes(metin("_font") || "") ? metin("_font")! : v.font,
     yazi_renk: metin("_yazi_renk") || v.yazi_renk,
     kontur: konturHam === undefined ? v.kontur : konturHam,
+    kontur_kalinlik: (() => {
+      const k = metin("_kontur_kalinlik");
+      return (k === "ince" || k === "orta" || k === "kalin") ? k : (v.kontur_kalinlik || "orta");
+    })(),
     amblem: f.amblemler.some((a) => a.key === amblem) ? amblem : "",
     amblem_renk: metin("_amblem_renk") || v.amblem_renk,
   };
@@ -113,6 +123,7 @@ export function formaDegerleri(s: FormaSecim): Record<string, string> {
     _desen: s.desen, _yogunluk: s.yogunluk,
     _renk1: s.renkler[0], _renk2: s.renkler[1], _renk3: s.renkler[2],
     _font: s.font, _yazi_renk: s.yazi_renk, _kontur: s.kontur,
+    _kontur_kalinlik: s.kontur_kalinlik,
     _amblem: s.amblem, _amblem_renk: s.amblem_renk,
   };
 }

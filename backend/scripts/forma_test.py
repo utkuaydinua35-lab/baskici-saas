@@ -109,7 +109,12 @@ else:
     ov = DesignOverlay(
         tenant_id=store.tenant_id, store_id=store.id, label=f"forma-test-{uuid.uuid4().hex[:6]}",
         image_path="yok/olmayan.png", mod="kisitli", forma=ayar,
-        alanlar=[{"key": "numara", "tip": "yazi", "etiket": "Numara", "varsayilan": "10",
+        # Açılabilir öğe (logo/bayrak) BİLEREK var: katman üreticisindeki
+        # "gorsel" dalı bir kez forma seçimini ezmiş, kaydedilen tasarım eski
+        # sabit zeminle basılacak hâle gelmişti (ekranda doğru görünürken).
+        alanlar=[{"key": "logo", "tip": "gorsel", "etiket": "Logo", "image_path": "yok/logo.png",
+                  "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.05, "varsayilan": True},
+                 {"key": "numara", "tip": "yazi", "etiket": "Numara", "varsayilan": "10",
                   "x": 0.2, "y": 0.6, "w": 0.6, "h": 0.2, "size": 0.2, "font": "anton", "renk": "#ffffff"}])
     db.add(ov); db.commit()
     try:
@@ -118,7 +123,8 @@ else:
             "_amblem": "yildiz", "_amblem_renk": "#0000ff"})
         es("zemin: sabit görsel yerine desen katmanı", ("sekil", "desen"),
            (katmanlar[0]["type"], katmanlar[0].get("bicim")))
-        es("sıra: desen → amblem → yazı", ["taban", "amblem", "alan-numara"], [k["id"] for k in katmanlar])
+        es("sıra: desen → amblem → logo → yazı", ["taban", "amblem", "alan-logo", "alan-numara"],
+           [k["id"] for k in katmanlar])
         es("yazıya kontur işlendi", "#00ff00", katmanlar[-1].get("kontur"))
 
         tasarim = SimpleNamespace(id="test", layers=katmanlar)
@@ -133,6 +139,44 @@ else:
         kirpik = g.crop((round(0.2 * W), round(0.6 * H), round(0.8 * W), round(0.8 * H)))
         renkler = {c[:3] for _, c in kirpik.getcolors(maxcolors=100000)}
         es("yazı konturu basıldı (yeşil var)", True, (0, 255, 0) in renkler)
+
+        # KONTUR: harf arası açılır — yan yana iki rakamın konturu üst üste binmez
+        def satir_genisligi(deg):
+            kt = kisitli_sablon.layers_uret(ov, {"numara": "11", "_amblem": "", **deg})
+            gg = Image.open(io.BytesIO(design_render.render_print_file(
+                db, SimpleNamespace(id="k", layers=[x for x in kt if x["type"] == "text"]), sablon)))
+            kutu = gg.getchannel("A").getbbox()
+            # iki "1" arasında TAM saydam sütun var mı (konturlar ayrık mı)
+            orta = gg.crop(kutu).getchannel("A")
+            bos = [x for x in range(orta.width) if orta.crop((x, 0, x + 1, orta.height)).getextrema()[1] == 0]
+            return bool(bos)
+        es("kalın konturda rakamlar birbirine DEĞMİYOR", True,
+           satir_genisligi({"_kontur": "#000000", "_kontur_kalinlik": "kalin"}))
+        es("kontur kalınlığı katmana işlendi", "ince", kisitli_sablon.layers_uret(
+            ov, {"_kontur": "#000000", "_kontur_kalinlik": "ince"})[-1].get("kontur_kalinlik"))
+        es("geçersiz kalınlık → şablon varsayılanı", "orta", kisitli_sablon.layers_uret(
+            ov, {"_kontur": "#000000", "_kontur_kalinlik": "devasa"})[-1].get("kontur_kalinlik"))
+
+        # PDF: vektör desen + gömülü font + gerçek mm + saf beyaz yok
+        import pymupdf
+
+        from app.services import design_pdf
+        pdf = design_pdf.render_print_pdf(db, tasarim, sablon)
+        sayfa = pymupdf.open("pdf", pdf)[0]
+        es("PDF sayfası gerçek ölçüde (40×80 mm)", (40.0, 80.0),
+           (round(sayfa.rect.width / 72 * 25.4, 1), round(sayfa.rect.height / 72 * 25.4, 1)))
+        cizimler = sayfa.get_drawings()
+        es("PDF'te desen VEKTÖR (zemin + sağ yarı)", 2, len(cizimler))
+        dolgular = {tuple(round(c, 3) for c in (d.get("fill") or ())) for d in cizimler}
+        es("PDF'te saf beyaz (mürekkepsiz) dolgu YOK — beyaz 0.949'a döndü", True,
+           (1.0, 1.0, 1.0) not in dolgular and (0.949, 0.949, 0.949) in dolgular)
+        es("PDF'te yazı VEKTÖR, font gömülü", True,
+           any("Anton" in f[3] for f in sayfa.get_fonts()) and "7" in sayfa.get_text())
+        es("PDF'te amblem gömülü (maskeyle, beyaz kutu değil)", True,
+           any(g[1] > 0 for g in sayfa.get_images()))     # g[1] = smask xref
+        pix = sayfa.get_pixmap(dpi=100)
+        px = pix.pixel(round(ax * pix.width / W), round(ay * pix.height / H))
+        es("PDF'te amblem seçilen renkte", True, px[2] > 200 and px[0] < 60 and px[1] < 60)
 
         # İstemci katmana kendi adresini yazsa da dosya şablon kaydından çözülür
         sahte = [dict(k2, url="https://kotu.example/logo.png", amblem="../../etc/passwd")

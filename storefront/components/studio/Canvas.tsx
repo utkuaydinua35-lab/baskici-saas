@@ -7,7 +7,7 @@
 // canvas'a çizilir (Preview.ts), baskı dosyası ise sunucuda üretilir.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fontByKey } from "./fonts";
-import { KONTUR_ORAN, desenSekilleri } from "./forma";
+import { desenSekilleri, konturAraligi, konturOrani } from "./forma";
 import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, LayerPatch, OverlayLayer, ShapeLayer, TextLayer,
@@ -36,7 +36,8 @@ interface Props {
  *  ve "100" gibi metinler ekranda çerçeveyi taşırıyordu.
  *
  *  Sunucudaki karşılığı: design_render._ciz_metin / design_pdf._yazi. */
-function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur }: {
+function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur, konturKalinlik }: {
+  konturKalinlik?: string;
   metin: string; punto: number; sigdir: boolean;
   /** Kontur rengi — GÖRÜNEN span'e yazılır: kalınlık em cinsinden, yani
    *  sığdırma sonrası gerçek puntoya oranlanır (üst öğeden miras alınsa
@@ -53,6 +54,7 @@ function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur 
   // ölçek tek geçişte doğru değere yakınsamıyordu.
   const olcRef = useRef<HTMLSpanElement>(null);
   const [olcek, setOlcek] = useState(1);
+  const aralik = `${konturAraligi(konturKalinlik)}em`;
 
   useLayoutEffect(() => {
     const el = olcRef.current;
@@ -87,7 +89,7 @@ function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur 
     } catch { /* eski tarayıcı — zamanlayıcılar yine ölçer */ }
     const zamanlar = [120, 350, 800, 1600].map((ms) => window.setTimeout(olc, ms));
     return () => { ro?.disconnect(); zamanlar.forEach(window.clearTimeout); };
-  }, [metin, punto, sigdir, cerceveYuk, tavan, stil.fontFamily]);
+  }, [metin, punto, sigdir, cerceveYuk, tavan, stil.fontFamily, kontur, konturKalinlik]);
 
   return (
     <>
@@ -96,6 +98,9 @@ function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur 
           position: "absolute", visibility: "hidden", pointerEvents: "none",
           left: 0, top: 0, whiteSpace: "nowrap", fontSize: `${punto}px`,
           lineHeight: "normal",
+          // Ölçüm de harf aralığıyla yapılır (sondaki aralık hariç) — yoksa
+          // konturlu metin çerçeveye sığdırılırken dışarı taşardı
+          ...(kontur ? { letterSpacing: aralik, marginRight: `-${aralik}` } : {}),
         }}>
           {metin}
         </span>
@@ -109,8 +114,11 @@ function SigdirilanYazi({ metin, punto, sigdir, cerceveYuk, tavan, stil, kontur 
         // Çizgi harf kenarına ORTALANIR; paint-order ile yarısı dolgunun
         // altında kalır → dışarıda KONTUR_ORAN kadar görünür (baskıyla aynı)
         ...(kontur ? {
-          WebkitTextStroke: `${KONTUR_ORAN * 2}em ${kontur}`,
+          WebkitTextStroke: `${konturOrani(konturKalinlik) * 2}em ${kontur}`,
           paintOrder: "stroke fill",
+          // Harf arası açılır: iki harfin konturu üst üste binmesin. Sondaki
+          // aralık eksi kenar boşluğuyla geri alınır (ortalama kaymasın).
+          letterSpacing: aralik, marginRight: `-${aralik}`,
         } : {}),
       }}>
         {metin}
@@ -456,7 +464,7 @@ export default function Canvas({
               <SigdirilanYazi metin={tx.text} punto={puntoPx}
                 sigdir={tx.sigdir === true} cerceveYuk={cerceveYuk}
                 tavan={TAVAN_PUNTO * areaPx.h}
-                kontur={tx.kontur}
+                kontur={tx.kontur} konturKalinlik={tx.kontur_kalinlik}
                 stil={{ fontFamily: `'${f.css}', sans-serif` }} />
             </div>
           );

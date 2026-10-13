@@ -95,7 +95,7 @@ export function kisitliKatmanlar(
         id: `alan-${a.key}`, type: "text", text: metin,
         font: secim ? secim.font : a.font || "anton", size: a.size ?? 0.1,
         color: secim ? secim.yazi_renk : a.renk || "#ffffff",
-        ...(secim?.kontur ? { kontur: secim.kontur } : {}),
+        ...(secim?.kontur ? { kontur: secim.kontur, kontur_kalinlik: secim.kontur_kalinlik } : {}),
         x: a.x, y: a.y, w: a.w,
         // Çerçeve yüksekliği — panelde çizilmemişse yok sayılır: o alanda
         // metin büyümez, yalnız gerekirse küçülür (taşma olmaz)

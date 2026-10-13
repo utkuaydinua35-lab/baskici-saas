@@ -59,8 +59,10 @@ export interface TextLayer {
   /** Metin çerçeveyi doldursun mu (kısa metin büyür, uzun metin küçülür) —
    *  kısıtlı şablon alanlarında varsayılan açık */
   sigdir?: boolean;
-  /** Kontur rengi (forma tasarlayıcı). Kalınlık puntoya oranlıdır (KONTUR_ORAN). */
+  /** Kontur rengi (forma tasarlayıcı). Kalınlık puntoya oranlıdır. */
   kontur?: string;
+  /** "ince" | "orta" | "kalin" — bkz. forma.ts → KONTUR_ORANLARI */
+  kontur_kalinlik?: string;
 }
 
 /** Hazır tasarım şablonu (panelden yüklenen çerçeve/desen).
@@ -170,6 +172,7 @@ export interface StudioForma {
   varsayilan: {
     desen: string; yogunluk: "ince" | "orta" | "kalin"; renkler: string[];
     font: string; yazi_renk: string; kontur: string; amblem: string; amblem_renk: string;
+    kontur_kalinlik?: "ince" | "orta" | "kalin";
   };
   yasak: boolean;
 }

@@ -22,10 +22,10 @@ export const BOS_FORMA = (s) => ({
   fontlar: [...s.fontlar],
   amblemler: s.amblemler.map(a => a.key),
   ozel_amblemler: [],
-  amblem_kutu: { x: 0.58, y: 0.50, w: 0.26, h: 0.13 },
+  amblem_kutu: { x: 0.62, y: 0.30, w: 0.24, h: 0.12 },
   varsayilan: {
     desen: 'dikey', yogunluk: 'orta', renkler: [...s.paletler[0].renkler],
-    font: 'anton', yazi_renk: '#ffffff', kontur: '', amblem: 'kalkan', amblem_renk: '#ffffff',
+    font: 'anton', yazi_renk: '#ffffff', kontur: '', kontur_kalinlik: 'orta', amblem: 'kalkan', amblem_renk: '#ffffff',
   },
   yasak: true,
   yasak_ek: [],
@@ -223,7 +223,11 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
               “+” ile kendi amblemini ekle: saydam zeminli tek renk PNG en iyi sonucu verir — şekil maskeye
               çevrilir, rengini müşteri seçer. Yükleme hemen kaydedilir; silme “Alanları Kaydet” ile geçerli olur.
             </p>
-            <div className="grid grid-cols-4 gap-1.5 mt-2">
+            <p className="text-[10px] text-amber-300 mt-2">
+              Amblemin yeri: yukarıdaki önizlemede sarı kesikli kutuyu <b>sürükleyin</b>, köşesinden
+              boyutlandırın — numara ve isimle üst üste gelmeyecek bir yere koyun.
+            </p>
+            <div className="grid grid-cols-4 gap-1.5 mt-1.5">
               {[['x', 'Sol'], ['y', 'Üst'], ['w', 'Genişlik'], ['h', 'Yükseklik']].map(([k, ad]) => (
                 <label key={k} className="text-[10px] text-panel-muted">
                   Amblem {ad.toLowerCase()} %
@@ -285,6 +289,13 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
                   <input type="color" value={f.varsayilan.kontur} onChange={e => vYama({ kontur: e.target.value })}
                     className="w-6 h-6 rounded border border-panel-border bg-transparent p-0" />
                 )}
+              </label>
+              <label className="flex items-center gap-1.5">
+                Kontur kalınlığı
+                <select className="input !py-0.5 !text-xs !w-auto" value={f.varsayilan.kontur_kalinlik || 'orta'}
+                  onChange={e => vYama({ kontur_kalinlik: e.target.value })}>
+                  <option value="ince">İnce</option><option value="orta">Orta</option><option value="kalin">Kalın</option>
+                </select>
               </label>
               <label className="flex items-center gap-1.5">
                 <input type="color" value={f.varsayilan.amblem_renk} onChange={e => vYama({ amblem_renk: e.target.value })}

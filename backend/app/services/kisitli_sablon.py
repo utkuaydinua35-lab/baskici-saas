@@ -78,10 +78,10 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
     # FORMA TASARLAYICI: zemin kodla çizilir, yazı tipi/rengi ve amblem
     # müşterinin seçimidir — hepsi şablonun izin verdikleriyle doğrulanır.
     forma_ayar = getattr(overlay, "forma", None) or None
-    secim = None
+    fsecim = None      # DİKKAT: aşağıdaki "gorsel" dalında `secim` adlı ayrı bir değişken var
     if forma_ayar and forma_ayar.get("aktif"):
         from app.services import forma as _forma
-        secim = _forma.secimleri_coz(forma_ayar, degerler)
+        fsecim = _forma.secimleri_coz(forma_ayar, degerler)
 
     for i, a in enumerate(overlay.alanlar or []):
         anahtar = str(a.get("key") or f"alan{i}")
@@ -99,10 +99,11 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "id": f"alan-{anahtar}",
                 "type": "text",
                 "text": metin,
-                "font": secim["font"] if secim else str(a.get("font") or "anton"),
+                "font": fsecim["font"] if fsecim else str(a.get("font") or "anton"),
                 "size": _sayi(a.get("size"), 0.1),
-                "color": secim["yazi_renk"] if secim else str(a.get("renk") or "#ffffff"),
-                **({"kontur": secim["kontur"]} if secim and secim["kontur"] else {}),
+                "color": fsecim["yazi_renk"] if fsecim else str(a.get("renk") or "#ffffff"),
+                **({"kontur": fsecim["kontur"], "kontur_kalinlik": fsecim["kontur_kalinlik"]}
+                   if fsecim and fsecim["kontur"] else {}),
                 "x": _sayi(a.get("x"), 0.1),
                 "y": _sayi(a.get("y"), 0.1),
                 "w": _sayi(a.get("w"), 0.8),
@@ -182,20 +183,20 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "renk_pasif": str(a.get("renk_pasif") or "#5a5a5a"),
             })
 
-    if secim:
+    if fsecim:
         # Sabit PNG zemin YERİNE kodla çizilen desen; amblem yazıların altında,
         # açılabilir öğelerin (bayrak, mağaza logosu) yanında durur.
         taban = {"id": "taban", "type": "sekil", "bicim": "desen",
-                 "desen": secim["desen"], "yogunluk": secim["yogunluk"],
-                 "renkler": secim["renkler"]}
+                 "desen": fsecim["desen"], "yogunluk": fsecim["yogunluk"],
+                 "renkler": fsecim["renkler"]}
         amblem = []
-        if secim["amblem"]:
+        if fsecim["amblem"]:
             k = forma_ayar["amblem_kutu"]
             amblem.append({
                 "id": "amblem", "type": "sekil", "bicim": "amblem",
-                "overlay_id": str(overlay.id), "amblem": secim["amblem"],
+                "overlay_id": str(overlay.id), "amblem": fsecim["amblem"],
                 # url yalnız TUVAL içindir; baskıda dosya overlay kaydından çözülür
-                "url": secim["amblem_url"], "renk": secim["amblem_renk"],
+                "url": fsecim["amblem_url"], "renk": fsecim["amblem_renk"],
                 "x": k["x"], "y": k["y"], "w": k["w"], "h": k["h"],
             })
         return [*arkadakiler, taban, *amblem, *ondekiler]

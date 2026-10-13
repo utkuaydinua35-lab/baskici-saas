@@ -38,6 +38,44 @@ DESENLER: dict[str, str] = {
     "capraz_bant": "Çapraz bant",
 }
 YOGUNLUKLAR = ("ince", "orta", "kalin")
+# Yazı konturu kalınlığı / punto (harfin DIŞINDA görünen kısım).
+# İstemcideki eşi: storefront/components/studio/forma.ts → KONTUR_ORANLARI
+KONTUR_ORANLARI = {"ince": 0.018, "orta": 0.032, "kalin": 0.05}
+
+
+def kontur_orani(anahtar) -> float:
+    return KONTUR_ORANLARI.get(str(anahtar or "orta"), KONTUR_ORANLARI["orta"])
+
+
+def kirp_birim_kare(cokgen: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Çokgeni birim kareye (0-1) kırp (Sutherland–Hodgman). Çapraz desenlerin
+    şeritleri karenin dışına uzanır; PNG'de tuval kendiliğinden keser, vektör
+    PDF'te ise taşan kısım sayfa dışına çizilmiş olurdu."""
+    def kes(noktalar, icinde, kesisim):
+        cikti = []
+        for i, b in enumerate(noktalar):
+            a = noktalar[i - 1]
+            if icinde(b):
+                if not icinde(a):
+                    cikti.append(kesisim(a, b))
+                cikti.append(b)
+            elif icinde(a):
+                cikti.append(kesisim(a, b))
+        return cikti
+
+    def x_kes(v):
+        return lambda a, b: (v, a[1] + (b[1] - a[1]) * (v - a[0]) / (b[0] - a[0]))
+
+    def y_kes(v):
+        return lambda a, b: (a[0] + (b[0] - a[0]) * (v - a[1]) / (b[1] - a[1]), v)
+
+    n = list(cokgen)
+    for icinde, kesisim in ((lambda q: q[0] >= 0, x_kes(0.0)), (lambda q: q[0] <= 1, x_kes(1.0)),
+                            (lambda q: q[1] >= 0, y_kes(0.0)), (lambda q: q[1] <= 1, y_kes(1.0))):
+        if not n:
+            break
+        n = kes(n, icinde, kesisim)
+    return n
 # Formaya yakışan, Türkçe harfleri TAM olan fontlar (design_render.FONT_FILES anahtarları)
 VARSAYILAN_FONTLAR = ["anton", "bebas", "oswald", "russo", "staatliches", "montserrat",
                       "bungee", "alfaslab"]
@@ -189,8 +227,8 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
     amblemler = [a for a in (ham.get("amblemler") or []) if a in gecerli_amblem]
 
     k = ham.get("amblem_kutu") or {}
-    kutu = {"x": _sayi(k.get("x"), 0.58), "y": _sayi(k.get("y"), 0.50),
-            "w": _sayi(k.get("w"), 0.26, 0.03), "h": _sayi(k.get("h"), 0.13, 0.02)}
+    kutu = {"x": _sayi(k.get("x"), 0.62), "y": _sayi(k.get("y"), 0.30),
+            "w": _sayi(k.get("w"), 0.24, 0.03), "h": _sayi(k.get("h"), 0.12, 0.02)}
 
     v = ham.get("varsayilan") or {}
     renkler = [_hex(r, "") for r in (v.get("renkler") or [])][:3]
@@ -206,6 +244,7 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
         "font": v.get("font") if v.get("font") in fontlar else fontlar[0],
         "yazi_renk": _hex(v.get("yazi_renk"), "#ffffff"),
         "kontur": _hex(v.get("kontur"), "") if v.get("kontur") else "",
+        "kontur_kalinlik": v.get("kontur_kalinlik") if v.get("kontur_kalinlik") in KONTUR_ORANLARI else "orta",
         "amblem": amblem or "",
         "amblem_renk": _hex(v.get("amblem_renk"), "#ffffff"),
     }
@@ -292,6 +331,8 @@ def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
     return {
         "desen": desen, "yogunluk": yogunluk, "renkler": renkler,
         "font": font, "yazi_renk": yazi_renk, "kontur": kontur,
+        "kontur_kalinlik": d.get("_kontur_kalinlik") if d.get("_kontur_kalinlik") in KONTUR_ORANLARI
+        else v.get("kontur_kalinlik", "orta"),
         "amblem": amblem, "amblem_url": sunulan[amblem]["url"] if amblem else None,
         "amblem_renk": _hex(d.get("_amblem_renk"), v["amblem_renk"]),
     }

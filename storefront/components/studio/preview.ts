@@ -4,7 +4,7 @@
 // ORİJİNAL görsellerden ve aynı font dosyalarından üretilir; ekran görüntüsü
 // asla baskıya gitmez.
 import { fontByKey } from "./fonts";
-import { KONTUR_ORAN, desenSekilleri } from "./forma";
+import { desenSekilleri, konturAraligi, konturOrani } from "./forma";
 import { TAVAN_PUNTO } from "./types";
 import type {
   CaseTemplate, ImageLayer, Layer, OverlayLayer, ShapeLayer, TextLayer,
@@ -158,6 +158,16 @@ export async function onizlemeUret(
         const satirOran = Math.max(0.5,
           ((olcuBir.fontBoundingBoxAscent ?? 0) + (olcuBir.fontBoundingBoxDescent ?? 0))
           / boy) || 1.3;
+        // Konturlu yazıda harf arası açılır (tuval ve baskıyla aynı). Eski
+        // tarayıcıda letterSpacing yoksa önizleme aralıksız kalır — yalnız
+        // küçük resim etkilenir, baskı dosyası sunucuda üretilir.
+        const aralikOran = tx.kontur ? konturAraligi(tx.kontur_kalinlik) : 0;
+        const aralikYaz = () => {
+          if (aralikOran && "letterSpacing" in ctx) {
+            (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${boy * aralikOran}px`;
+          }
+        };
+        aralikYaz();
         // ÇERÇEVEYİ DOLDUR — tuval ve baskıdaki kuralın aynısı: kısa metin
         // büyür, uzun metin küçülür; genişlik VE yükseklik birlikte sınırlar
         if (tx.sigdir === true) {
@@ -168,6 +178,7 @@ export async function onizlemeUret(
             boy = Math.max(4, Math.min((boy * kutu) / olcu, yukSiniri,
               ah * TAVAN_PUNTO));
             ctx.font = `${boy}px '${f.css}', sans-serif`;
+            aralikYaz();
           }
         }
         ctx.fillStyle = tx.color;
@@ -175,7 +186,7 @@ export async function onizlemeUret(
           // Çizgi harf kenarına ortalanır; dolgu üstüne bindiği için dışarıda
           // KONTUR_ORAN kadarı görünür (tuval ve baskıyla aynı)
           ctx.strokeStyle = tx.kontur;
-          ctx.lineWidth = boy * KONTUR_ORAN * 2;
+          ctx.lineWidth = boy * konturOrani(tx.kontur_kalinlik) * 2;
           ctx.lineJoin = "round";
         }
         ctx.textBaseline = "top";
@@ -185,7 +196,10 @@ export async function onizlemeUret(
         const y = ay + tx.y * ah + Math.max(0, (cerceveYuk - boy * satirOran) / 2);
         const kutuG = tx.w * aw;
         const hizaX = tx.align === "center" ? x + kutuG / 2 : tx.align === "right" ? x + kutuG : x;
-        ctx.translate(hizaX, y);
+        // Tarayıcı aralığı SON harften sonra da ekler; ortalı/sağa yaslı
+        // metinde bu yarım/tam aralık kadar kaymayı geri al
+        const sonAralik = aralikOran && "letterSpacing" in ctx ? boy * aralikOran : 0;
+        ctx.translate(hizaX + (tx.align === "center" ? sonAralik / 2 : tx.align === "right" ? sonAralik : 0), y);
         ctx.rotate(((tx.rot || 0) * Math.PI) / 180);
         // Basit satır sarma — tuvaldeki word-break davranışına yakın
         const kelimeler = (tx.text || "").split(/\s+/);

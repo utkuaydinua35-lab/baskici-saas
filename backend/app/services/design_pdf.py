@@ -23,7 +23,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.services.design_render import (
-    FONT_DIR, FONT_FILES, TAVAN_PUNTO, _basilabilir_renk, _sayi_yoksa,
+    FONT_DIR, FONT_FILES, TAVAN_PUNTO, _basilabilir_renk, _kontur, _sayi_yoksa,
 )
 from app.services.storage import STORAGE_ROOT
 
@@ -174,7 +174,12 @@ def render_print_pdf(db, design, template, icc: bytes | None = None) -> bytes:
             if tip == "text":
                 _yazi(sayfa, katman, W, H, renk_fn)
             elif tip == "sekil":
-                _sekil(sayfa, katman, W, H, renk_fn)
+                if katman.get("bicim") == "desen":
+                    _desen(sayfa, katman, W, H, renk_fn)
+                elif katman.get("bicim") == "amblem":
+                    _amblem(db, sayfa, katman, W, H, icc)
+                else:
+                    _sekil(sayfa, katman, W, H, renk_fn)
             elif tip == "image":
                 _gorsel(db, sayfa, katman, W, H, icc)
             elif tip == "overlay":
@@ -214,7 +219,7 @@ def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
             oran = max(0.5, font.ascender - font.descender)
             # Yükseklik verilmemişse tanımlı puntonun doğal satırı → büyüme yok
             kutu_yuk = _sayi_yoksa(k.get("h"), 0) * H or boy * oran
-            gen = font.text_length(metin, fontsize=boy)
+            gen = _aralikli(font, metin, boy, _kontur(k, boy)[1])
             if gen > 0:
                 boy = max(2.0, min(boy * kutu_gen / gen, kutu_yuk / oran,
                                    H * TAVAN_PUNTO))
@@ -222,7 +227,8 @@ def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
                 # sığdıramazsa HİÇ çizmez — punto büyüyünce kısa metinler
                 # (tek harf, "10") baskı dosyasından tamamen düşüyordu.
                 # Ekrandaki karşılığı da tek satırdır (white-space: nowrap).
-                genislik = font.text_length(metin, fontsize=boy)
+                kalinlik, aralik = _kontur(k, boy)
+                genislik = _aralikli(font, metin, boy, aralik)
                 x = sol
                 if yaslama == "center":
                     x = sol + (kutu_gen - genislik) / 2
@@ -231,10 +237,33 @@ def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
                 # insert_text TABAN ÇİZGİSİNİ ister. Metin çerçeveye dikey
                 # ortalanır (PNG çıktısındaki kuralın aynısı).
                 satir_ust = ust + (kutu_yuk - boy * oran) / 2
-                sayfa.insert_text(
-                    (x, satir_ust + boy * font.ascender), metin, fontsize=boy,
-                    fontfile=str(yol), fontname=yol.stem, color=renk,
-                )
+                taban = satir_ust + boy * font.ascender
+                if not kalinlik:
+                    sayfa.insert_text(
+                        (x, taban), metin, fontsize=boy,
+                        fontfile=str(yol), fontname=yol.stem, color=renk,
+                    )
+                    return
+                # KONTURLU (forma tasarlayıcı): harfler tek tek, aralıklı.
+                # ÖNCE tüm konturlar, SONRA tüm dolgular (PNG ile aynı sıra).
+                kontur_renk = renk_fn(k.get("kontur"))
+                konumlar, cx = [], x
+                for h in metin:
+                    konumlar.append((cx, h))
+                    cx += font.text_length(h, fontsize=boy) + aralik
+                onceki = len(sayfa.get_contents())
+                for hx, h in konumlar:
+                    # render_mode 2 = dolgu + çizgi; çizgi kenara ORTALANIR,
+                    # yani dışarıda `kalinlik` görünmesi için genişlik 2 katı
+                    sayfa.insert_text(
+                        (hx, taban), h, fontsize=boy, fontfile=str(yol), fontname=yol.stem,
+                        color=kontur_renk, fill=kontur_renk, render_mode=2,
+                        border_width=2 * kalinlik / boy)
+                _yuvarlak_kose(sayfa, onceki)
+                for hx, h in konumlar:
+                    sayfa.insert_text(
+                        (hx, taban), h, fontsize=boy,
+                        fontfile=str(yol), fontname=yol.stem, color=renk)
                 return
         except Exception:  # noqa: BLE001 — ölçüm/çizim başarısızsa kutuya düşülür
             log.debug("PDF metin ölçülemedi — kutuya düşülüyor", exc_info=True)
@@ -247,8 +276,87 @@ def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
     )
 
 
+def _aralikli(font, metin: str, boy: float, aralik: float) -> float:
+    """Metnin genişliği — konturluysa harfler tek tek, aralıklı ölçülür."""
+    if not aralik:
+        return font.text_length(metin, fontsize=boy)
+    return sum(font.text_length(h, fontsize=boy) for h in metin) + aralik * max(0, len(metin) - 1)
+
+
+def _yuvarlak_kose(sayfa, onceki: int) -> None:
+    """Kontur çizgisinin köşelerini YUVARLAT (PDF varsayılanı sivri köşe:
+    "1", "7", "M" gibi harflerde kontur diken gibi uzar; tuval ve PNG yuvarlak
+    çizer). PyMuPDF'te bunun seçeneği yok — az önce eklenen içerik akışlarına
+    çizgi birleşim/uç operatörü (1 j, 1 J) yazılır."""
+    belge = sayfa.parent
+    for xref in sayfa.get_contents()[onceki:]:
+        try:
+            akis = belge.xref_stream(xref)
+            if akis and b"BT" in akis:
+                belge.update_stream(xref, akis.replace(b"BT", b"1 j 1 J\nBT", 1))
+        except Exception:  # noqa: BLE001 — yalnız görünüm; çizim yine geçerli
+            log.debug("kontur köşesi yuvarlatılamadı", exc_info=True)
+
+
+def _desen(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
+    """Forma zemini — VEKTÖR çokgenler (services/forma.desen_sekilleri)."""
+    import pymupdf
+
+    from app.services import forma
+
+    renkler = [renk_fn(r) for r in (k.get("renkler") or [])][:3]
+    while len(renkler) < 3:
+        renkler.append(renk_fn("#ffffff"))
+    sayfa.draw_rect(pymupdf.Rect(0, 0, W, H), color=renkler[0], fill=renkler[0], width=0)
+    for sira, cokgen in forma.desen_sekilleri(str(k.get("desen") or "duz"),
+                                              str(k.get("yogunluk") or "orta")):
+        kirpik = forma.kirp_birim_kare(cokgen)      # sayfa dışına taşan şeritleri kes
+        if len(kirpik) < 3:
+            continue
+        renk = renkler[min(sira, 2)]
+        sayfa.draw_polyline([pymupdf.Point(x * W, y * H) for x, y in kirpik] +
+                            [pymupdf.Point(kirpik[0][0] * W, kirpik[0][1] * H)],
+                            color=renk, fill=renk, width=0, closePath=True)
+
+
+def _amblem(db, sayfa, k: dict, W: float, H: float, icc: bytes | None) -> None:
+    """Amblem — maske görseli seçilen renge boyanıp kutusuna ortalanır.
+    Dosya şablon kaydından çözülür (katmandaki url kullanılmaz)."""
+    import pymupdf
+    from sqlalchemy import select
+
+    from app.models import DesignOverlay
+    from app.services import forma
+
+    try:
+        o = db.scalar(select(DesignOverlay).where(
+            DesignOverlay.id == str(k.get("overlay_id") or "")))
+    except Exception:  # noqa: BLE001
+        return
+    if not o:
+        return
+    yol = forma.amblem_dosyasi(getattr(o, "forma", None), str(k.get("amblem") or ""))
+    if not yol:
+        return
+    maske = Image.open(yol)
+    maske.load()
+    alfa = maske.convert("RGBA").getchannel("A")
+    kx, ky = float(k.get("x", 0)) * W, float(k.get("y", 0)) * H
+    kw, kh = float(k.get("w", 0.2)) * W, float(k.get("h", 0.1)) * H
+    olcek = min(kw / alfa.width, kh / alfa.height)
+    gw, gh = alfa.width * olcek, alfa.height * olcek
+    kutu = pymupdf.Rect(kx + (kw - gw) / 2, ky + (kh - gh) / 2,
+                        kx + (kw + gw) / 2, ky + (kh + gh) / 2)
+    renk = tuple(round(x * 255) for x in _rgb01(k.get("renk")))
+    duz = Image.new("RGB", alfa.size, renk)
+    buf = io.BytesIO()
+    alfa.save(buf, "PNG")
+    # Renk, yazı ve desenle AYNI uzaya çevrilir (_baski_jpeg: ICC varsa CMYK)
+    sayfa.insert_image(kutu, stream=_baski_jpeg(duz, icc), mask=buf.getvalue())
+
+
 def _sekil(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
-    """Vektör şekil — şimdilik ilerleme çubuğu (Spotify)."""
+    """Vektör şekil — ilerleme çubuğu (Spotify)."""
     import pymupdf
 
     if k.get("bicim") != "ilerleme":
@@ -300,7 +408,19 @@ def _yerlestir(sayfa, yol: Path, kutu, icc: bytes | None, crop: dict | None = No
         )
         if kutu_px[2] > kutu_px[0] and kutu_px[3] > kutu_px[1]:
             img = img.crop(kutu_px)
-    sayfa.insert_image(kutu, stream=_baski_jpeg(img, icc))
+    # SAYDAM görsel (logo, bayrak, delikli çerçeve): saydamlık MASKE olarak
+    # gömülür. Eskiden beyaza düzleştiriliyordu — desenin/fotoğrafın üstüne
+    # binen logo PDF'te beyaz bir kutu içinde çıkıyordu.
+    maske = None
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        alfa = img.convert("RGBA").getchannel("A")
+        if alfa.getextrema()[0] < 255:
+            buf = io.BytesIO()
+            alfa.save(buf, "PNG")
+            maske = buf.getvalue()
+            # Renk kanalı beyazla KARIŞTIRILMAZ (kenarlarda açık renk hale olurdu)
+            img = img.convert("RGBA").convert("RGB")
+    sayfa.insert_image(kutu, stream=_baski_jpeg(img, icc), **({"mask": maske} if maske else {}))
 
 
 def _gorsel(db, sayfa, k: dict, W: float, H: float, icc: bytes | None) -> None:

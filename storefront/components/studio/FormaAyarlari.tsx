@@ -145,6 +145,18 @@ export default function FormaAyarlari({ overlay, degerler, onYaz }: {
             <RenkKutusu etiket="Kontur rengi" deger={s.kontur} onDegis={(v) => onYaz({ _kontur: v })} />
           )}
         </div>
+        {s.kontur && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="text-[11px] text-zinc-500 mr-1">Kontur kalınlığı</span>
+            {(["ince", "orta", "kalin"] as const).map((y) => (
+              <button key={y} type="button" aria-pressed={s.kontur_kalinlik === y}
+                onClick={() => onYaz({ _kontur_kalinlik: y })}
+                className={`rounded-full border px-2.5 py-1 text-[11px] ${secili(s.kontur_kalinlik === y)}`}>
+                {YOGUNLUK_AD[y]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {f.amblemler.length > 0 && (

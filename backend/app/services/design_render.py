@@ -46,8 +46,13 @@ FONT_FILES = {
     "monoton": "Monoton-Regular.ttf",
     "righteous": "Righteous-Regular.ttf",
     "elite": "SpecialElite-Regular.ttf",
+    # Kolej/forma: kalın, köşeli, İÇ ÇİZGİLİ (harfin içinde ince boşluk var —
+    # kontur rengi o boşluğu doldurur, çift çizgili forma yazısı olur)
+    "kolej": "AlumniSansCollegiateOne-Regular.ttf",
 }
 MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
+# "Çerçeveye esnet" açık alanlarda yatay esneme tavanı
+ESNET_TAVAN = 2.4
 # "Çerçeveyi doldur" açık alanlarda punto, baskı alanı yüksekliğinin bu
 # katından büyüyemez — tek harfli metin alanı boydan boya taşırmasın.
 # İstemcideki eşi: storefront/components/studio/Canvas.tsx → TAVAN_PUNTO
@@ -150,10 +155,38 @@ def render_print_file(db, design, template) -> bytes:
     if W > MAX_PRINT_PX or H > MAX_PRINT_PX:
         raise ValueError(f"Baskı ölçüsü çok büyük: {W}×{H} px")
 
+    tuval = _tuval_ciz(db, design.layers or [], W, H, design.id)
+
+    import io
+
+    buf = io.BytesIO()
+    tuval.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+def render_onizleme(db, katmanlar: list[dict], en_mm: float, boy_mm: float, genislik: int) -> bytes:
+    """Stüdyo önizlemesi — BASKI ÇİZİCİSİNİN AYNISI, küçük boyutta (JPEG).
+
+    Forma tasarlayıcının kumaş dokusu, fırça darbesi, kavisli yazı ve parlaması
+    tarayıcıda birebir taklit edilemez; önizlemeyi baskıyı üreten kod çizer ki
+    müşterinin gördüğü ile basılan aynı olsun."""
+    import io
+
+    W = max(120, min(900, int(genislik)))
+    H = max(1, round(W * boy_mm / max(1.0, en_mm)))
+    tuval = _tuval_ciz(db, katmanlar, W, H, "onizleme")
+    zemin = Image.new("RGB", (W, H), (255, 255, 255))
+    zemin.paste(tuval, (0, 0), tuval)
+    buf = io.BytesIO()
+    zemin.save(buf, "JPEG", quality=86)
+    return buf.getvalue()
+
+
+def _tuval_ciz(db, katmanlar: list[dict], W: int, H: int, kimlik) -> Image.Image:
     tuval = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ciz = ImageDraw.Draw(tuval)
 
-    for katman in (design.layers or []):
+    for katman in katmanlar:
         tip = katman.get("type")
         try:
             if tip == "image":
@@ -170,13 +203,8 @@ def render_print_file(db, design, template) -> bytes:
                 else:
                     _ciz_sekil(ciz, katman, W, H)
         except Exception:  # noqa: BLE001 — tek katman baskıyı tümden bozmasın
-            log.exception("katman çizilemedi (design=%s, tip=%s)", design.id, tip)
-
-    import io
-
-    buf = io.BytesIO()
-    tuval.save(buf, "PNG", optimize=True)
-    return buf.getvalue()
+            log.exception("katman çizilemedi (design=%s, tip=%s)", kimlik, tip)
+    return tuval
 
 
 # KATMAN SIRASI: dizideki sıra çizim sırasıdır (ilk eleman en altta). Tipe göre
@@ -227,6 +255,9 @@ def _ciz_desen(tuval: Image.Image, k: dict, W: int, H: int) -> None:
         gciz.polygon([(x * kw, y * kh) for x, y in cokgen], fill=renkler[min(sira, 2)])
     if kat > 1:
         g = g.resize((W, H), Image.LANCZOS)
+    # Kumaş dokusu / fırça darbeleri (şablon ayarı; müşteri seçmez)
+    from app.services import forma_cizim
+    g = forma_cizim.zemin_susle(g, renkler, str(k.get("doku") or "yok"), str(k.get("efekt") or "yok"))
     tuval.alpha_composite(g, (0, 0))
 
 
@@ -376,6 +407,77 @@ def _satir_orani(font, boy: int) -> float:
     return 1.3
 
 
+def _isaretli(v) -> float:
+    """Sayı (eksi olabilir); geçersizse 0."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def kavis_yerlesimi(genler: list[float], aralik: float, kavis: float) -> tuple[list[tuple[float, float, float]], float, float]:
+    """Yay üzerindeki harf konumları — PNG ve PDF AYNI hesabı kullanır.
+
+    kavis: yayın toplam açısı (derece). Artı → ortası YUKARI (kubbe), eksi →
+    ortası aşağı. Dönüş: ([(dx, dy, aci_derece)], yaricap, sehim) — dx/dy harf
+    ORTASININ yayın tepe noktasına göre konumu (y aşağı artar), aci harfin
+    saat yönünde dönüşü.
+    """
+    import math
+
+    toplam = sum(genler) + aralik * max(0, len(genler) - 1)
+    aci = math.radians(abs(kavis))
+    if toplam <= 0 or aci <= 0:
+        return [], 0.0, 0.0
+    R = toplam / aci                                   # yay uzunluğu = yazı genişliği
+    yon = 1 if kavis > 0 else -1
+    konum, x = [], -toplam / 2
+    for gen in genler:
+        fi = (x + gen / 2) / R                         # harf ortasının yaydaki açısı
+        konum.append((R * math.sin(fi), yon * R * (1 - math.cos(fi)), math.degrees(fi) * yon))
+        x += gen + aralik
+    return konum, R, R * (1 - math.cos(aci / 2))
+
+
+def _kavisli_katman(metin: str, font, boy: int, oran: float, kavis: float, aralik: float,
+                    kontur_px: int, kontur_renk, dolgu, pay_x: int, pay_y: int,
+                    esnet: float = 1.0) -> Image.Image:
+    """Yay üzerine dizilmiş tek satır yazı (forma sırtındaki isim gibi).
+    Katmanın ORTASI yazının yay üzerindeki kutusunun ortasıdır: konumlama kutu
+    merkezine göre yapıldığı için düz yazıyla aynı yere oturur."""
+    import math
+
+    olc = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+    genler = [olc.textlength(h, font=font) * esnet for h in metin]
+    konumlar, R, sehim = kavis_yerlesimi(genler, aralik * esnet, kavis)
+    if not konumlar:
+        return Image.new("RGBA", (4, 4), (0, 0, 0, 0))
+    yon = 1 if kavis > 0 else -1
+    satir = max(1, round(boy * oran))
+    kw = int(2 * R * math.sin(math.radians(abs(kavis)) / 2) + 2 * satir + 2 * pay_x)
+    kh = int(satir + sehim + 2 * pay_y + satir)
+    kat = Image.new("RGBA", (kw, kh), (0, 0, 0, 0))
+    ox, oy = kw / 2, kh / 2 - yon * sehim / 2          # yayın tepe/dip noktası
+
+    def harf(h: str, gen: float, renk, cizgi: int) -> Image.Image:
+        pay = cizgi + 2
+        t = Image.new("RGBA", (int(gen / esnet) + 2 * pay + 2, satir + 2 * pay), (0, 0, 0, 0))
+        ImageDraw.Draw(t).text((pay, pay), h, font=font, fill=renk,
+                               **({"stroke_width": cizgi, "stroke_fill": renk} if cizgi else {}))
+        if esnet > 1:
+            t = t.resize((max(1, round(t.width * esnet)), t.height), Image.LANCZOS)
+        return t
+
+    gecisler = ([(kontur_renk, kontur_px)] if kontur_px else []) + [(dolgu, 0)]
+    for renk, cizgi in gecisler:                       # önce tüm konturlar, sonra dolgular
+        for h, gen, (dx, dy, derece) in zip(metin, genler, konumlar):
+            if h.isspace():
+                continue
+            t = harf(h, gen, renk, cizgi).rotate(-derece, expand=True, resample=Image.BICUBIC)
+            kat.alpha_composite(t, (round(ox + dx - t.width / 2), round(oy + dy - t.height / 2)))
+    return kat
+
+
 def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H: int) -> None:
     metin = (k.get("text") or "").strip()
     if not metin:
@@ -411,7 +513,20 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
             font = _font(ad, boy)
             oran = _satir_orani(font, boy)
 
-    satirlar = _sar(ciz, metin, font, kutu_gen)
+    # ÇERÇEVEYE ESNET: dar fontlar (kolej) çerçevenin YÜKSEKLİĞİNE sığınca
+    # genişliği dolduramıyor; yazı yatayda esnetilip çerçeveyi kaplar (forma
+    # numarası gibi). En çok 2,4 kat — daha fazlası harfi tanınmaz yapar.
+    esnet = 1.0
+    if k.get("esnet") is True:
+        dogal = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
+        if dogal > 0:
+            # Tek karakter ("7") tam tavana esnerse şişman ve tanınmaz olur
+            tavan = ESNET_TAVAN if len(metin.strip()) > 1 else 1.6
+            esnet = max(1.0, min(tavan, kutu_gen / dogal))
+
+    kavis = max(-80.0, min(80.0, _isaretli(k.get("kavis"))))
+    # Kavisli yazı TEK satırdır (yay üzerinde satır sarma olmaz)
+    satirlar = [metin] if kavis else _sar(ciz, metin, font, kutu_gen)
     satir_yuk = max(1, round(boy * oran))
 
     # Metni kendi katmanına çiz — döndürme ancak böyle temiz olur.
@@ -419,40 +534,64 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # "g/y/ğ" gibi alt uzantılar satır kutusunun dışına iner. Tuval satır
     # yüksekliğinde olursa bu kuyruklar BASKIDA KESİLİR. Paylar simetrik
     # olduğu için (birleştirme merkeze göre yapılır) konum değişmez.
-    pay_y = max(1, round(boy * 0.35))
-    pay_x = max(1, round(boy * 0.15))
-    kat = Image.new(
-        "RGBA",
-        (kutu_gen + 2 * pay_x, max(1, satir_yuk * len(satirlar)) + 2 * pay_y),
-        (0, 0, 0, 0))
-    kciz = ImageDraw.Draw(kat)
-    hiza = k.get("align") or "left"
-    # KONTUR (forma tasarlayıcı): harfin DIŞINA çizgi (kalınlık: _kontur).
-    # Tuvaldeki eşi: -webkit-text-stroke 2×oran em + paint-order (çizgi harf
-    # kenarına ortalanır, yarısı dolgunun altında kalır).
     kontur = k.get("kontur")
     kalinlik, aralik = _kontur(k, boy)
     kontur_px = max(1, round(kalinlik)) if kontur else 0
     dolgu = _basilabilir_renk(k.get("color"))
-    for i, s in enumerate(satirlar):
-        gen = _aralikli_genislik(kciz, s, font, aralik)
-        x = 0 if hiza == "left" else (kutu_gen - gen) / 2 if hiza == "center" else kutu_gen - gen
-        y = pay_y + i * satir_yuk
-        if not kontur_px:
-            kciz.text((x + pay_x, y), s, font=font, fill=dolgu)
-            continue
-        # Konturlu: harfler tek tek, aralıklı. ÖNCE tüm konturlar, SONRA tüm
-        # dolgular — bir harfin konturu komşusunun dolgusunu örtmesin.
-        konumlar, cx = [], x + pay_x
-        for h in s:
-            konumlar.append((cx, h))
-            cx += kciz.textlength(h, font=font) + aralik
-        kontur_renk = _basilabilir_renk(kontur)
-        for hx, h in konumlar:
-            kciz.text((hx, y), h, font=font, fill=kontur_renk,
-                      stroke_width=kontur_px, stroke_fill=kontur_renk)
-        for hx, h in konumlar:
-            kciz.text((hx, y), h, font=font, fill=dolgu)
+    kontur_renk = _basilabilir_renk(kontur) if kontur else None
+    hale_renk = k.get("parlama")
+    hale_pay = round(boy * 0.30) if hale_renk else 0
+    pay_y = max(1, round(boy * 0.35)) + hale_pay
+    pay_x = max(1, round(boy * 0.15)) + hale_pay
+    hiza = k.get("align") or "left"
+
+    if kavis:
+        kat = _kavisli_katman(metin, font, boy, oran, kavis, aralik, kontur_px, kontur_renk, dolgu,
+                              pay_x, pay_y, esnet)
+    else:
+        if esnet > 1:
+            # Dar bir katmana ORTALI çiz, sonra yatayda esnet (aşağıda)
+            kutu_gen_ciz, hiza = max(1, round(kutu_gen / esnet)), "center"
+        else:
+            kutu_gen_ciz = kutu_gen
+        kat = Image.new(
+            "RGBA",
+            (kutu_gen_ciz + 2 * pay_x, max(1, satir_yuk * len(satirlar)) + 2 * pay_y),
+            (0, 0, 0, 0))
+        kciz = ImageDraw.Draw(kat)
+        for i, s in enumerate(satirlar):
+            gen = _aralikli_genislik(kciz, s, font, aralik)
+            x = 0 if hiza == "left" else (kutu_gen_ciz - gen) / 2 if hiza == "center" else kutu_gen_ciz - gen
+            y = pay_y + i * satir_yuk
+            if not kontur_px:
+                kciz.text((x + pay_x, y), s, font=font, fill=dolgu)
+                continue
+            # Konturlu: harfler tek tek, aralıklı. ÖNCE tüm konturlar, SONRA tüm
+            # dolgular — bir harfin konturu komşusunun dolgusunu örtmesin.
+            konumlar, cx = [], x + pay_x
+            for h in s:
+                konumlar.append((cx, h))
+                cx += kciz.textlength(h, font=font) + aralik
+            for hx, h in konumlar:
+                kciz.text((hx, y), h, font=font, fill=kontur_renk,
+                          stroke_width=kontur_px, stroke_fill=kontur_renk)
+            for hx, h in konumlar:
+                kciz.text((hx, y), h, font=font, fill=dolgu)
+
+        if esnet > 1:
+            # Oran, çizilen MÜREKKEBİN gerçek genişliğinden: ölçülen ilerleme
+            # genişliği harfin (ve konturun) kenar taşmasını saymaz, yazı
+            # çerçeveden birkaç yüzde taşıyordu.
+            murekkep = kat.getchannel("A").getbbox()
+            if murekkep:
+                esnet = max(1.0, min(ESNET_TAVAN, esnet, (kutu_gen - 2) / max(1, murekkep[2] - murekkep[0])))
+            kat = kat.resize((max(1, round(kat.width * esnet)), kat.height), Image.LANCZOS)
+
+    # PARLAMA: yazının çevresinde yumuşak hale (yazının ALTINA konur)
+    if hale_renk:
+        from app.services import forma_cizim
+        kat = Image.alpha_composite(
+            forma_cizim.parlama(kat, _basilabilir_renk(hale_renk), boy), kat)
 
     aci = float(k.get("rot") or 0)
     if aci:

@@ -1,4 +1,5 @@
 import FormaAyari, { AmblemMaske, DesenSvg } from '../components/FormaAyari'
+import SablonKapak from '../components/SablonKapak'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, fetchYetkili } from '../lib/api'
@@ -284,7 +285,7 @@ export function HazirSablonlar({ storeId, templates }) {
 
       {alanDuzenle && (
         <SablonAlanEditoru overlay={alanDuzenle} templates={templates}
-          onClose={() => setAlanDuzenle(null)}
+          onClose={() => { setAlanDuzenle(null); load() }}
           onSaved={() => { setAlanDuzenle(null); load() }} />
       )}
 
@@ -985,7 +986,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     finally { setBusy(false); if (gorselRef.current) gorselRef.current.value = '' }
   }
 
-  const kaydet = async () => {
+  // acikKal: kaydedip pencerede kal (ardından kapak görseli eklenebilsin)
+  const kaydet = async (acikKal = false) => {
     setBusy(true); setErr('')
     try {
       // image_url sunucuya gönderilmez (türetilmiş alan)
@@ -997,7 +999,8 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
           forma: forma?.aktif && mod === 'kisitli'
             ? { ...forma, ozel_amblemler: (forma.ozel_amblemler || []).map(({ url, ...a }) => a) }
             : { aktif: false } })
-      onSaved()
+      if (acikKal === true) ilkHal.current = simdikiHal
+      else onSaved()
     } catch (e) {
       setErr(typeof e?.detail === 'string' ? e.detail : 'Kaydedilemedi')
     } finally { setBusy(false) }
@@ -1363,7 +1366,7 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                         {['anton','russo','bebas','staatliches','montserrat','poppins','oswald',
                           'bangers','bungee','alfaslab','gotik','pirata','marker','sprey',
                           'playfair','lobster','monoton','righteous','elite','dancing',
-                          'caveat','greatvibes','pacifico','creepster','mono'].map(f => (
+                          'caveat','greatvibes','pacifico','creepster','mono','kolej'].map(f => (
                           <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
@@ -1388,6 +1391,22 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                         haneli metin de dışarı taşmaz. Kapalıyken punto
                         çerçeve yüksekliğinden hesaplanan sabit değerde kalır.
                       </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-[11px]">
+                      <input type="checkbox" checked={secili.esnet === true} className="mt-0.5"
+                        onChange={e => yamala({ esnet: e.target.checked || null })} />
+                      <span>
+                        <b>Çerçeveye esnet</b> — dar yazı tipleri (Kolej) çerçevenin
+                        yüksekliğine sığdıktan sonra genişliğe de yayılır: forma
+                        numarası gibi iri, dolgun durur.
+                      </span>
+                    </label>
+                    <label className="block text-[11px] text-panel-muted">
+                      Kavis: {Math.round(secili.kavis || 0)}° {secili.kavis ? (secili.kavis > 0 ? '(yukarı yay)' : '(aşağı yay)') : '(düz)'}
+                      <input type="range" min={-80} max={80} step={2} value={secili.kavis || 0}
+                        onChange={e => yamala({ kavis: Number(e.target.value) || null })}
+                        className="w-full mt-0.5" />
+                      <span className="text-[10px]">Formadaki isim gibi yay çizer. Buradaki kutu düz gösterir; gerçek hâli aşağıdaki önizlemede.</span>
                     </label>
                     <div className="text-[10px] text-panel-muted">
                       Çerçeve: {((secili.w || 0.6) * 100).toFixed(0)}% ×
@@ -1427,9 +1446,20 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
               ...sunucu.ozel_amblemler.map(a => a.key).filter(k => !(f?.ozel_amblemler || []).some(x => x.key === k))])],
           }))} />
 
+        {mod === 'kisitli' && forma?.aktif && alanlar.length > 0 && (
+          <SablonKapak overlayId={overlay.id} alanlar={alanlar} forma={forma} templates={templates}
+            kilifId={overlay.case_template_id} degisti={simdikiHal !== ilkHal.current} />
+        )}
+
         <div className="flex gap-2 mt-4">
           <button onClick={kapat} className="btn-ghost !py-2 text-sm">Vazgeç</button>
-          <button onClick={kaydet} disabled={busy}
+          {mod === 'kisitli' && forma?.aktif && (
+            <button onClick={() => kaydet(true)} disabled={busy || simdikiHal === ilkHal.current}
+              className="btn-ghost !py-2 text-sm disabled:opacity-40">
+              Kaydet, açık kalsın
+            </button>
+          )}
+          <button onClick={() => kaydet()} disabled={busy}
             className="btn !py-2 text-sm flex-1 disabled:opacity-40">
             {busy ? 'Kaydediliyor…' : 'Alanları Kaydet'}
           </button>

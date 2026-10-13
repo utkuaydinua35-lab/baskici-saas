@@ -373,18 +373,35 @@ export default function TasarlaPage() {
     return (tpl.area.w * p.width_mm) / (tpl.area.h * p.height_mm) || 1;
   }, [tpl]);
 
+  // Forma önizlemesi sunucuda çizilir: her tuşta istek atmamak için katman
+  // güncellemesi kısa bir süre bekletilir (yazarken son hâl çizilir).
+  const katmanZamani = useRef<number | null>(null);
+  const katmanlariYaz = (o: StudioOverlay, yeni: Record<string, AlanDegeri>) => {
+    if (katmanZamani.current) window.clearTimeout(katmanZamani.current);
+    if (!o.forma) { setLayers(kisitliKatmanlar(o, yeni, alanOrani, tpl?.key)); return; }
+    katmanZamani.current = window.setTimeout(
+      () => setLayers(kisitliKatmanlar(o, yeni, alanOrani, tpl?.key)), 250);
+  };
+  // Kılıf modeli değişince forma önizlemesi o modelin baskı ölçüsüyle yeniden çizilir
+  useEffect(() => {
+    if (kisitli?.forma) setLayers(kisitliKatmanlar(kisitli, alanDegerleri, alanOrani, tpl?.key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tpl?.key]);
+  // Kaydet/sepete ekle beklemedeki (250 ms) çizimi beklemez: en güncel hâl
+  const guncelKatmanlar = () =>
+    kisitli?.forma ? kisitliKatmanlar(kisitli, alanDegerleri, alanOrani, tpl?.key) : layers;
   const alanYaz = (key: string, deger: AlanDegeri) => {
     if (!kisitli) return;
     const yeni = { ...alanDegerleri, [key]: deger };
     setAlanDegerleri(yeni);
-    setLayers(kisitliKatmanlar(kisitli, yeni, alanOrani));
+    katmanlariYaz(kisitli, yeni);
   };
   // Forma tasarlayıcı: birden çok seçim birlikte yazılır (renk takımı = 3 renk)
   const formaYaz = (yama: Record<string, string>) => {
     if (!kisitli) return;
     const yeni = { ...alanDegerleri, ...yama };
     setAlanDegerleri(yeni);
-    setLayers(kisitliKatmanlar(kisitli, yeni, alanOrani));
+    katmanlariYaz(kisitli, yeni);
   };
   // Kulüp/marka adı yazılmışsa kaydetme ve sepete ekleme durur (sunucu da reddeder)
   const yasakAlan = kisitli?.forma?.yasak
@@ -426,7 +443,7 @@ export default function TasarlaPage() {
       const d = varsayilanDegerler(o);
       setKisitli(o);
       setAlanDegerleri(d);
-      setLayers(kisitliKatmanlar(o, d, alanOrani));
+      setLayers(kisitliKatmanlar(o, d, alanOrani, tpl?.key));
       setSecili(null);
       return;
     }
@@ -512,7 +529,7 @@ export default function TasarlaPage() {
     if (yasakAlan) { setDurum(YASAK_MESAJ); return; }
     setYukleniyor(true); setDurum("");
     try {
-      const onizleme = await onizlemeUret(tpl, layers);
+      const onizleme = await onizlemeUret(tpl, guncelKatmanlar());
       const res = await fetch("/api/account/designs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -551,7 +568,7 @@ export default function TasarlaPage() {
     // Sepete eklenen tasarım SUNUCUDA kayıtlı olmalı; önce kaydet
     setYukleniyor(true); setDurum("");
     try {
-      const onizleme = await onizlemeUret(tpl, layers);
+      const onizleme = await onizlemeUret(tpl, guncelKatmanlar());
       const res = await fetch("/api/account/designs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

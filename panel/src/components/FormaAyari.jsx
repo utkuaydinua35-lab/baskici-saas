@@ -11,7 +11,7 @@ import { desenSekilleri } from '../lib/formaDesen'
 const FONT_AD = {
   anton: 'Anton', bebas: 'Bebas Neue', oswald: 'Oswald', russo: 'Russo One',
   staatliches: 'Staatliches', montserrat: 'Montserrat', bungee: 'Tabela', alfaslab: 'Kalın Serif',
-  poppins: 'Poppins', bangers: 'Çizgi Roman', righteous: 'Righteous', pirata: 'Gotik İnce',
+  kolej: 'Kolej (forma)', poppins: 'Poppins', bangers: 'Çizgi Roman', righteous: 'Righteous', pirata: 'Gotik İnce',
 }
 
 export const BOS_FORMA = (s) => ({
@@ -26,7 +26,10 @@ export const BOS_FORMA = (s) => ({
   varsayilan: {
     desen: 'dikey', yogunluk: 'orta', renkler: [...s.paletler[0].renkler],
     font: 'anton', yazi_renk: '#ffffff', kontur: '', kontur_kalinlik: 'orta', amblem: 'kalkan', amblem_renk: '#ffffff',
+    parlama: '',
   },
+  doku: 'kumas',
+  efekt: 'yok',
   kilitli: false,
   yasak: true,
   yasak_ek: [],
@@ -252,6 +255,38 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
                 </label>
               ))}
             </div>
+          </div>
+
+          <div>
+            <div className={baslik}>Zengin görünüm <span className="font-normal text-panel-muted">— gerçek forma hissi (müşteri değiştiremez)</span></div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
+              <label className="flex items-center gap-1.5">
+                Zemin
+                <select className="input !py-0.5 !text-xs !w-auto" value={f.doku || 'kumas'}
+                  onChange={e => yama({ doku: e.target.value })}>
+                  <option value="yok">Düz renk</option><option value="kumas">Kumaş dokusu</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                Efekt
+                <select className="input !py-0.5 !text-xs !w-auto" value={f.efekt || 'yok'}
+                  onChange={e => yama({ efekt: e.target.value })}>
+                  <option value="yok">Yok</option><option value="firca">Fırça darbeleri</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={!!f.varsayilan.parlama}
+                  onChange={e => vYama({ parlama: e.target.checked ? '#ffffff' : '' })} />Yazı parlaması
+                {f.varsayilan.parlama && (
+                  <input type="color" value={f.varsayilan.parlama} onChange={e => vYama({ parlama: e.target.value })}
+                    className="w-6 h-6 rounded border border-panel-border bg-transparent p-0" />
+                )}
+              </label>
+            </div>
+            <p className="text-[10px] text-panel-muted mt-1.5">
+              İsim alanına kavis, numaraya "çerçeveye esnet" vermek için yukarıdan alanı seçin.
+              Doku, fırça ve parlama yukarıdaki kutuda görünmez — en alttaki <b>gerçek önizleme</b>ye bakın.
+            </p>
           </div>
 
           <div>

@@ -41,6 +41,9 @@ router = APIRouter(prefix="/api/shop", tags=["public-shop"])
 read_rate_limit = make_rate_limiter(max_hits=60, window=60.0)
 checkout_rate_limit = make_rate_limiter(max_hits=10, window=60.0)
 status_rate_limit = make_rate_limiter(max_hits=30, window=60.0)
+# Forma önizlemesi: müşteri yazdıkça/seçtikçe yeniden çizilir (istemci 250 ms
+# bekletir). Ürün okuma sınırını tüketmesin diye ayrı sayaç.
+onizleme_rate_limit = make_rate_limiter(max_hits=120, window=60.0)
 
 
 def _studio_modules(db, store, product) -> list[dict]:
@@ -2808,6 +2811,55 @@ def studio_overlays(store_slug: str, response: Response,
         # Ürüne özel modül: yalnız atandığı üründe. Genel şablon: her üründe.
         if (str(o.id) in urun_modulleri) or not o.sadece_urunde
     ]
+
+
+@router.get("/{store_slug}/studio/forma-onizleme")
+def studio_forma_onizleme(
+    store_slug: str,
+    modul: uuid.UUID,
+    kilif: str | None = Query(None, max_length=40),
+    w: int = Query(480, ge=120, le=900),
+    d: str = Query("{}", max_length=4000),
+    _rl: None = Depends(onizleme_rate_limit),
+    db: Session = Depends(get_db),
+):
+    """Forma tasarımının önizlemesi (JPEG) — baskıyı üreten kodla çizilir.
+
+    d: müşterinin alan değerleri (JSON). Hiçbir şey kaydedilmez; seçimler
+    kaydetmedeki gibi şablonun izin verdikleriyle doğrulanır."""
+    import json
+
+    from app.models import CaseTemplate, DesignOverlay
+    from app.services import kisitli_sablon
+    from app.services.design_render import render_onizleme
+
+    store = _resolve_store(db, store_slug)
+    ov = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == modul, DesignOverlay.store_id == store.id,
+        DesignOverlay.is_active.is_(True)))
+    if not ov or ov.mod != "kisitli":
+        raise HTTPException(404, "Şablon bulunamadı")
+    try:
+        ham = json.loads(d or "{}")
+        degerler = {str(k)[:40]: v for k, v in ham.items()
+                    if isinstance(v, (str, bool)) or v is None} if isinstance(ham, dict) else {}
+    except ValueError:
+        degerler = {}
+    tpl = None
+    if kilif:
+        tpl = db.scalar(select(CaseTemplate).where(
+            CaseTemplate.store_id == store.id, CaseTemplate.key == kilif))
+    if tpl is None and ov.case_template_id:
+        tpl = db.get(CaseTemplate, ov.case_template_id)
+    en, boy, oran = 70.0, 145.0, 1.0
+    if tpl:
+        en, boy = float(tpl.print_width_mm), float(tpl.print_height_mm)
+        if tpl.area_h:
+            oran = (float(tpl.area_w) * en) / (float(tpl.area_h) * boy)
+    katmanlar = kisitli_sablon.layers_uret(ov, degerler, db=db, alan_oran=oran)
+    veri = render_onizleme(db, katmanlar, en, boy, w)
+    return Response(content=veri, media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=600"})
 
 
 @router.get("/{store_slug}/studio/templates")

@@ -13,7 +13,7 @@
 //   ilerleme — iki süre alanından hesaplanan Spotify tarzı çubuk + nokta
 import { formaDegerleri, formaSecimi } from "./forma";
 import type {
-  AmblemLayer, DesenLayer, ImageLayer, Layer, OverlayLayer, ShapeLayer, StudioAlan,
+  ImageLayer, Layer, OverlayLayer, ShapeLayer, StudioAlan,
   StudioOverlay, TextLayer,
 } from "./types";
 
@@ -65,15 +65,37 @@ function kaplaCrop(hedefOran: number, kaynakW: number, kaynakH: number) {
   return { x: 0, y: (1 - h) / 2, w: 1, h };
 }
 
+/** Forma tasarımının sunucuda çizilen önizleme adresi (bkz. forma-onizleme) */
+export function formaOnizlemeAdresi(
+  o: StudioOverlay, degerler: Record<string, AlanDegeri>, kilifKey?: string | null, genislik = 520,
+): string {
+  const q = new URLSearchParams({
+    modul: o.id, w: String(genislik),
+    d: JSON.stringify(sunucuDegerleri(degerler, o.alanlar || [])),
+  });
+  if (kilifKey) q.set("kilif", kilifKey);
+  return `/api/studio/forma-onizleme?${q}`;
+}
+
 export function kisitliKatmanlar(
   o: StudioOverlay,
   degerler: Record<string, AlanDegeri>,
   alanOran = 1,           // baskı alanının en/boy oranı (W/H)
+  kilifKey?: string | null,
 ): Layer[] {
+  if (o.forma) {
+    // FORMA TASARLAYICI: tuvalde tek görsel — sunucunun çizdiği önizleme.
+    // Kumaş dokusu, fırça darbesi, kavisli yazı ve parlama tarayıcıda birebir
+    // taklit edilemiyor; baskıyı üreten kod çizince müşterinin gördüğü ile
+    // basılan AYNI olur. Kaydederken katmanları yine sunucu üretir.
+    const onizleme: OverlayLayer = {
+      id: "taban", type: "overlay", overlay_id: o.id, label: o.label,
+      url: formaOnizlemeAdresi(o, degerler, kilifKey),
+    };
+    return [onizleme];
+  }
   const arkadakiler: Layer[] = [];
   const ondekiler: Layer[] = [];
-  // Forma tasarlayıcı açıksa yazı tipi/rengi/konturu müşterinin seçimidir
-  const secim = formaSecimi(o, degerler);
 
   const sureDegeri = (key?: string): number | null => {
     if (!key) return null;
@@ -93,9 +115,8 @@ export function kisitliKatmanlar(
       if (!metin) continue;
       const yazi: TextLayer = {
         id: `alan-${a.key}`, type: "text", text: metin,
-        font: secim ? secim.font : a.font || "anton", size: a.size ?? 0.1,
-        color: secim ? secim.yazi_renk : a.renk || "#ffffff",
-        ...(secim?.kontur ? { kontur: secim.kontur, kontur_kalinlik: secim.kontur_kalinlik } : {}),
+        font: a.font || "anton", size: a.size ?? 0.1,
+        color: a.renk || "#ffffff",
         x: a.x, y: a.y, w: a.w,
         // Çerçeve yüksekliği — panelde çizilmemişse yok sayılır: o alanda
         // metin büyümez, yalnız gerekirse küçülür (taşma olmaz)
@@ -145,21 +166,6 @@ export function kisitliKatmanlar(
       };
       hedef.push(sekil);
     }
-  }
-
-  if (secim && o.forma) {
-    // Sabit görsel zemin YERİNE kodla çizilen desen; amblem yazıların altında
-    const desen: DesenLayer = {
-      id: "taban", type: "sekil", bicim: "desen",
-      desen: secim.desen, yogunluk: secim.yogunluk, renkler: secim.renkler,
-    };
-    const amblemTanim = o.forma.amblemler.find((x) => x.key === secim.amblem);
-    const amblem: AmblemLayer[] = amblemTanim ? [{
-      id: "amblem", type: "sekil", bicim: "amblem", overlay_id: o.id,
-      amblem: amblemTanim.key, url: amblemTanim.url, renk: secim.amblem_renk,
-      ...o.forma.amblem_kutu,
-    }] : [];
-    return [...arkadakiler, desen, ...amblem, ...ondekiler];
   }
 
   const taban: OverlayLayer = {

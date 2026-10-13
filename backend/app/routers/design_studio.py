@@ -285,6 +285,11 @@ class OverlayAlan(BaseModel):
     # adı kullanmak Pydantic'te ikinci tanımın birinciyi ezmesine ve panelin
     # "Input should be a valid string" hatası almasına yol açmıştı.
     otomatik_kucult: bool | None = None
+    # Yazı yay çizsin (forma sırtındaki isim): yayın toplam açısı, derece.
+    # Artı → ortası yukarı, eksi → ortası aşağı, 0/boş → düz.
+    kavis: Decimal | None = Field(None, ge=-80, le=80)
+    # Yazı yatayda esneyip çerçeveyi kaplasın (dar fontlu forma numarası)
+    esnet: bool | None = None
     # görsel alanı — dosya ayrı uçtan yüklenir, burada yolu taşınır
     image_path: str | None = Field(None, max_length=500)
     # foto alanı — MÜŞTERİNİN yükleyeceği görselin çerçeveye oturma biçimi
@@ -433,6 +438,161 @@ def update_overlay(
     db.commit()
     db.refresh(o)
     return _ser_overlay(o)
+
+
+# ─── Önizleme ve ürün kapak görseli ──────────────────────────
+
+def _overlay_al(db: Session, tenant_id, overlay_id) -> DesignOverlay:
+    o = db.scalar(select(DesignOverlay).where(
+        DesignOverlay.id == overlay_id, DesignOverlay.tenant_id == tenant_id))
+    if not o:
+        raise HTTPException(404, "Hazır şablon bulunamadı")
+    return o
+
+
+def _kilif_sablonu(db: Session, o: DesignOverlay, template_id: uuid.UUID | None) -> CaseTemplate | None:
+    """Verilen, yoksa şablonun kendi kılıfı, o da yoksa mağazanın ilk kılıfı."""
+    if template_id:
+        t = db.scalar(select(CaseTemplate).where(
+            CaseTemplate.id == template_id, CaseTemplate.store_id == o.store_id))
+        if t:
+            return t
+    if o.case_template_id:
+        t = db.get(CaseTemplate, o.case_template_id)
+        if t:
+            return t
+    return db.scalar(select(CaseTemplate).where(
+        CaseTemplate.store_id == o.store_id, CaseTemplate.is_active.is_(True),
+        CaseTemplate.image_path.isnot(None),
+    ).order_by(CaseTemplate.position, CaseTemplate.created_at))
+
+
+class OnizlemeIstek(BaseModel):
+    """Panel önizlemesi — KAYDEDİLMEMİŞ ayarla da çizilebilsin diye alanlar ve
+    forma gövdede gelir (verilmeyen, kayıtlı hâlinden alınır)."""
+    alanlar: list[OverlayAlan] | None = Field(None, max_length=12)
+    forma: dict | None = None
+    degerler: dict[str, str | bool | None] = Field(default_factory=dict)
+    template_id: uuid.UUID | None = None
+    w: int = Field(480, ge=120, le=900)
+    kapak: bool = False          # True → kılıfa giydirilmiş ürün fotoğrafı
+
+
+@router.post("/overlays/{overlay_id}/onizleme")
+def overlay_onizleme(
+    overlay_id: uuid.UUID,
+    body: OnizlemeIstek,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Şablonun BASKI ÇİZİCİSİYLE üretilmiş önizlemesi (JPEG). Kaydetmez."""
+    from types import SimpleNamespace
+
+    from fastapi import Response
+
+    from app.services import forma as forma_svc
+    from app.services import kapak_gorseli, kisitli_sablon
+    from app.services.design_render import render_onizleme
+
+    o = _overlay_al(db, user.tenant_id, overlay_id)
+    alanlar = o.alanlar or []
+    if body.alanlar is not None:
+        alanlar = [{k: (float(v) if isinstance(v, Decimal) else v)
+                    for k, v in a.model_dump().items() if v is not None} for a in body.alanlar]
+    forma = o.forma
+    if body.forma is not None:
+        forma = forma_svc.yapilandirma_temizle(body.forma, o.forma)
+    gecici = SimpleNamespace(id=o.id, alanlar=alanlar, forma=forma)
+    tpl = _kilif_sablonu(db, o, body.template_id)
+    try:
+        if body.kapak:
+            veri = kapak_gorseli.kapak_ciz(db, gecici, tpl, body.degerler, kenar=max(300, body.w))
+        else:
+            en, boy, oran = 70.0, 145.0, 1.0
+            if tpl:
+                en, boy = float(tpl.print_width_mm), float(tpl.print_height_mm)
+                if tpl.area_h:
+                    oran = (float(tpl.area_w) * en) / (float(tpl.area_h) * boy)
+            katmanlar = kisitli_sablon.layers_uret(gecici, body.degerler, db=db, alan_oran=oran)
+            veri = render_onizleme(db, katmanlar, en, boy, body.w)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return Response(content=veri, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/overlays/{overlay_id}/kapak-urunleri", response_model=dict)
+def kapak_urunleri(
+    overlay_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Bu şablonun bağlı olduğu vitrin ürünleri (kapak görseli eklenecekler)."""
+    from app.models import CatalogImage, CatalogProduct
+
+    o = _overlay_al(db, user.tenant_id, overlay_id)
+    urunler = db.scalars(select(CatalogProduct).where(
+        CatalogProduct.store_id == o.store_id,
+        CatalogProduct.studio_overlays.contains([str(o.id)]),
+    ).order_by(CatalogProduct.title)).all()
+    kimlikler = [p.id for p in urunler]
+    sayilar = dict(db.execute(
+        select(CatalogImage.product_id, func.count()).where(
+            CatalogImage.product_id.in_(kimlikler)).group_by(CatalogImage.product_id)
+    ).all()) if kimlikler else {}
+    return {"urunler": [{"id": str(p.id), "title": p.title, "slug": p.slug, "status": p.status,
+                         "gorsel_sayisi": int(sayilar.get(p.id, 0))} for p in urunler]}
+
+
+class KapakEkle(BaseModel):
+    product_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=50)
+    template_id: uuid.UUID | None = None
+    one_al: bool = True          # ilk görsel (kapak) yap; False → sona ekle
+
+
+@router.post("/overlays/{overlay_id}/kapak", response_model=dict)
+def kapak_ekle(
+    overlay_id: uuid.UUID,
+    body: KapakEkle,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Şablonun kapak görselini üretip seçilen ürünlere ekler.
+
+    Var olan görsellere DOKUNMAZ (yalnız sıraları kayar). Dönen image_ids ile
+    panel "Geri al" sunar: eklenenler ürünün görsel silme ucundan kaldırılır."""
+    from app.models import CatalogImage, CatalogProduct
+    from app.services import kapak_gorseli
+
+    o = _overlay_al(db, user.tenant_id, overlay_id)
+    tpl = _kilif_sablonu(db, o, body.template_id)
+    try:
+        veri = kapak_gorseli.kapak_ciz(db, o, tpl)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    urunler = db.scalars(select(CatalogProduct).where(
+        CatalogProduct.tenant_id == user.tenant_id, CatalogProduct.store_id == o.store_id,
+        CatalogProduct.id.in_(body.product_ids))).all()
+    if not urunler:
+        raise HTTPException(404, "Ürün bulunamadı")
+    eklenen = []
+    for p in urunler:
+        mevcut = db.scalars(select(CatalogImage).where(
+            CatalogImage.product_id == p.id).order_by(CatalogImage.position)).all()
+        image_id = uuid.uuid4()
+        rel = storage_svc.save_catalog_image(user.tenant_id, image_id, veri, "kapak.jpg")
+        if body.one_al:
+            for n, im in enumerate(mevcut):
+                im.position = n + 1
+            sira = 0
+        else:
+            sira = max([im.position for im in mevcut], default=-1) + 1
+        db.add(CatalogImage(id=image_id, tenant_id=user.tenant_id, product_id=p.id,
+                            file_path=rel, alt=(p.title or "")[:200] or None, position=sira))
+        eklenen.append({"product_id": str(p.id), "image_id": str(image_id), "title": p.title})
+    activity.record(db, user, "kapak_gorseli_ekle", store_id=o.store_id,
+                    summary=f"{o.label}: {len(eklenen)} ürüne kapak görseli eklendi")
+    db.commit()
+    return {"eklenen": eklenen}
 
 
 @router.post("/overlays/{overlay_id}/alan-gorseli", response_model=dict)

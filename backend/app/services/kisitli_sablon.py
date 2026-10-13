@@ -104,6 +104,10 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                 "color": fsecim["yazi_renk"] if fsecim else str(a.get("renk") or "#ffffff"),
                 **({"kontur": fsecim["kontur"], "kontur_kalinlik": fsecim["kontur_kalinlik"]}
                    if fsecim and fsecim["kontur"] else {}),
+                # Parlama şablon ayarı; kavis ALANIN ayarı (isim yay çizer, numara düz)
+                **({"parlama": fsecim["parlama"]} if fsecim and fsecim.get("parlama") else {}),
+                **({"kavis": _sayi(a.get("kavis"))} if _sayi(a.get("kavis")) else {}),
+                **({"esnet": True} if a.get("esnet") is True else {}),
                 "x": _sayi(a.get("x"), 0.1),
                 "y": _sayi(a.get("y"), 0.1),
                 "w": _sayi(a.get("w"), 0.8),
@@ -188,7 +192,8 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
         # açılabilir öğelerin (bayrak, mağaza logosu) yanında durur.
         taban = {"id": "taban", "type": "sekil", "bicim": "desen",
                  "desen": fsecim["desen"], "yogunluk": fsecim["yogunluk"],
-                 "renkler": fsecim["renkler"]}
+                 "renkler": fsecim["renkler"],
+                 "doku": fsecim["doku"], "efekt": fsecim["efekt"]}
         amblem = []
         if fsecim["amblem"]:
             k = forma_ayar["amblem_kutu"]
@@ -250,6 +255,8 @@ def alan_ozeti(overlay) -> list[dict]:
                 "hiza": a.get("hiza") or "center",
                 "h": _sayi(a.get("h")) or None,
                 "otomatik_kucult": a.get("otomatik_kucult", True) is not False,
+                "kavis": _sayi(a.get("kavis")),
+                "esnet": a.get("esnet") is True,
             })
         elif a.get("tip") == "gorsel":
             ozet.append({

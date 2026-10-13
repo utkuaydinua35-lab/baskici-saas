@@ -76,9 +76,19 @@ def kirp_birim_kare(cokgen: list[tuple[float, float]]) -> list[tuple[float, floa
             break
         n = kes(n, icinde, kesisim)
     return n
+def doku_coz(f: dict) -> str:
+    """Zemin dokusu. Ayarı HİÇ olmayan (zengin görünümden önce kurulmuş)
+    şablon kumaş dokulu sayılır — eski şablonlar elle tek tek açılmadan yeni
+    görünüme geçer. Düz renk isteyen panelden "Düz renk" seçer ("yok" yazılır)."""
+    d = f.get("doku")
+    if d in ("yok", "kumas"):
+        return d
+    return "kumas" if d is None else "yok"
+
+
 # Formaya yakışan, Türkçe harfleri TAM olan fontlar (design_render.FONT_FILES anahtarları)
 VARSAYILAN_FONTLAR = ["anton", "bebas", "oswald", "russo", "staatliches", "montserrat",
-                      "bungee", "alfaslab"]
+                      "bungee", "alfaslab", "kolej"]
 
 # Hazır amblem kütüphanesi — tek renkli maske PNG'leri (scripts/amblem_uret.py üretir).
 # Dosyalar app/sablon_gorselleri/amblem/<anahtar>.png; açılışta /storage/sablon/amblem/
@@ -249,6 +259,8 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
         "yazi_renk": _hex(v.get("yazi_renk"), "#ffffff"),
         "kontur": _hex(v.get("kontur"), "") if v.get("kontur") else "",
         "kontur_kalinlik": v.get("kontur_kalinlik") if v.get("kontur_kalinlik") in KONTUR_ORANLARI else "orta",
+        # Yazının çevresindeki yumuşak hale ("" → yok)
+        "parlama": _hex(v.get("parlama"), "") if v.get("parlama") else "",
         "amblem": amblem or "",
         "amblem_renk": _hex(v.get("amblem_renk"), "#ffffff"),
     }
@@ -266,6 +278,9 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
         # "başlangıç görünümü"nden çizilir. Aynı forma, renkleri hazır ayrı
         # ürünler olarak satılır ("Sarı-Kırmızı", "Siyah-Beyaz"…).
         "kilitli": bool(ham.get("kilitli")),
+        # Zemin görünümü (şablon ayarı; müşteri seçmez) — services/forma_cizim
+        "doku": doku_coz(ham),
+        "efekt": ham.get("efekt") if ham.get("efekt") in ("yok", "firca") else "yok",
         "desenler": desenler,
         "paletler": paletler,
         "serbest_renk": ham.get("serbest_renk", True) is not False,
@@ -298,6 +313,8 @@ def vitrin_ozeti(forma: dict | None) -> dict | None:
         return None
     return {
         "kilitli": bool(forma.get("kilitli")),
+        # zengin: zemin/yazı efektleri var → vitrin önizlemeyi SUNUCUDAN alır
+        "doku": doku_coz(forma), "efekt": forma.get("efekt") or "yok",
         "desenler": [{"key": d, "ad": DESENLER[d]} for d in forma["desenler"] if d in DESENLER],
         "paletler": forma["paletler"],
         "serbest_renk": bool(forma.get("serbest_renk", True)),
@@ -348,6 +365,8 @@ def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
         "font": font, "yazi_renk": yazi_renk, "kontur": kontur,
         "kontur_kalinlik": d.get("_kontur_kalinlik") if d.get("_kontur_kalinlik") in KONTUR_ORANLARI
         else v.get("kontur_kalinlik", "orta"),
+        "parlama": v.get("parlama") or "",
+        "doku": doku_coz(forma), "efekt": forma.get("efekt") or "yok",
         "amblem": amblem, "amblem_url": sunulan[amblem]["url"] if amblem else None,
         "amblem_renk": _hex(d.get("_amblem_renk"), v["amblem_renk"]),
     }

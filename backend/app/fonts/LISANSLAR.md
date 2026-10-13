@@ -6,7 +6,7 @@ ve Google Fonts arşivinden (github.com/google/fonts) alınmıştır. Aynı dosy
 birebir aynı yazı tipiyle üretilsin diye.
 
 ## SIL Open Font License 1.1 (OFL)
-Poppins, Montserrat, Playfair Display, Bebas Neue, Oswald, Anton, Staatliches, Russo One,
+Poppins, Montserrat, Playfair Display, Bebas Neue, Oswald, Anton, Staatliches, Russo One, Alumni Sans Collegiate One,
 UnifrakturCook, Pirata One, Bangers, Bungee, Alfa Slab One, Creepster,
 Dancing Script, Caveat, Great Vibes, Pacifico, Lobster, Monoton, Righteous.
 

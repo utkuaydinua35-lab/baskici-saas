@@ -172,10 +172,10 @@ def render_print_pdf(db, design, template, icc: bytes | None = None) -> bytes:
         tip = katman.get("type")
         try:
             if tip == "text":
-                _yazi(sayfa, katman, W, H, renk_fn)
+                _yazi(sayfa, katman, W, H, renk_fn, icc)
             elif tip == "sekil":
                 if katman.get("bicim") == "desen":
-                    _desen(sayfa, katman, W, H, renk_fn)
+                    _desen(sayfa, katman, W, H, renk_fn, icc)
                 elif katman.get("bicim") == "amblem":
                     _amblem(db, sayfa, katman, W, H, icc)
                 else:
@@ -192,12 +192,50 @@ def render_print_pdf(db, design, template, icc: bytes | None = None) -> bytes:
     return çıktı
 
 
-def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
+RASTER_DPI = 600        # efektli yazı ve dokulu zemin bu çözünürlükte gömülür
+
+
+def _raster_gom(sayfa, tuval: Image.Image, W: float, H: float, icc: bytes | None) -> None:
+    """Sayfa boyutunda çizilmiş saydam görseli (RGBA) içeriğin kapladığı
+    kutuya kırpıp PDF'e maskeyle göm."""
+    import pymupdf
+
+    kutu = tuval.getchannel("A").getbbox()
+    if not kutu:
+        return
+    parca = tuval.crop(kutu)
+    sx, sy = W / tuval.width, H / tuval.height
+    buf = io.BytesIO()
+    parca.getchannel("A").save(buf, "PNG")
+    sayfa.insert_image(
+        pymupdf.Rect(kutu[0] * sx, kutu[1] * sy, kutu[2] * sx, kutu[3] * sy),
+        stream=_baski_jpeg(parca.convert("RGB"), icc), mask=buf.getvalue())
+
+
+def _yazi_raster(sayfa, k: dict, W: float, H: float, icc: bytes | None) -> None:
+    from PIL import ImageDraw
+
+    from app.services.design_render import _ciz_metin
+
+    wpx, hpx = round(W / 72 * RASTER_DPI), round(H / 72 * RASTER_DPI)
+    tuval = Image.new("RGBA", (wpx, hpx), (0, 0, 0, 0))
+    _ciz_metin(tuval, ImageDraw.Draw(tuval), k, wpx, hpx)
+    _raster_gom(sayfa, tuval, W, H, icc)
+
+
+def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01, icc: bytes | None = None) -> None:
     """VEKTÖREL metin — font PDF'e gömülür, punto ne olursa olsun keskin."""
     import pymupdf
 
     metin = (k.get("text") or "").strip()
     if not metin:
+        return
+    if k.get("kavis") or k.get("esnet") is True or k.get("parlama"):
+        # EFEKTLİ YAZI (yay, esnetme, parlama): vektörle birebir aynısı
+        # üretilemiyor (yumuşak hale vektör değildir). PNG çizicisinin AYNI
+        # kodu 600 DPI'da çalıştırılıp saydam görsel olarak gömülür — baskıda
+        # kenarlar keskin kalır, görünüm önizlemeyle aynıdır.
+        _yazi_raster(sayfa, k, W, H, icc)
         return
     dosya = FONT_FILES.get(str(k.get("font") or "poppins")) or FONT_FILES["poppins"]
     yol = FONT_DIR / dosya
@@ -298,11 +336,21 @@ def _yuvarlak_kose(sayfa, onceki: int) -> None:
             log.debug("kontur köşesi yuvarlatılamadı", exc_info=True)
 
 
-def _desen(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01) -> None:
-    """Forma zemini — VEKTÖR çokgenler (services/forma.desen_sekilleri)."""
+def _desen(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01, icc: bytes | None = None) -> None:
+    """Forma zemini — VEKTÖR çokgenler (services/forma.desen_sekilleri).
+    Kumaş dokusu / fırça darbesi varsa zemin vektör olamaz: PNG çizicisinin
+    aynı kodu 300 DPI'da çalıştırılıp tam sayfa görsel olarak gömülür."""
     import pymupdf
 
     from app.services import forma
+
+    if str(k.get("doku") or "yok") != "yok" or str(k.get("efekt") or "yok") != "yok":
+        from app.services.design_render import _ciz_desen
+        wpx, hpx = round(W / 72 * 300), round(H / 72 * 300)
+        tuval = Image.new("RGBA", (wpx, hpx), (0, 0, 0, 0))
+        _ciz_desen(tuval, k, wpx, hpx)
+        sayfa.insert_image(pymupdf.Rect(0, 0, W, H), stream=_baski_jpeg(tuval.convert("RGB"), icc))
+        return
 
     renkler = [renk_fn(r) for r in (k.get("renkler") or [])][:3]
     while len(renkler) < 3:

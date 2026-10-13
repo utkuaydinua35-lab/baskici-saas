@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 
 export default function AccessoriesPage() {
@@ -11,6 +11,7 @@ export default function AccessoriesPage() {
   const [error, setError] = useState('')
   const [onlyAcc, setOnlyAcc] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const istenenRef = useRef('')   // o an istenen mağaza (yarış koruması)
 
   useEffect(() => {
     api.get('/api/stores').then(s => {
@@ -24,24 +25,36 @@ export default function AccessoriesPage() {
     if (!sid) { setAccIds(new Set()); return }
     try {
       const r = await api.get(`/api/accessories?store_id=${sid}`)
+      if (istenenRef.current !== sid) return
       setAccIds(new Set(r.product_ids || []))
-    } catch { setAccIds(new Set()) }
+    } catch { if (istenenRef.current === sid) setAccIds(new Set()) }
   }, [])
 
+  // YARIŞ KORUMASI: Shopify ürün listesi dış API'den saniyeler sürer, vitrin
+  // listesi anında gelir. Mağaza değişince geciken yanıt yeni listenin üstüne
+  // biniyordu → ekranda bir mağazanın ürünleri, seçili mağaza başkası; tıklanan
+  // satır YANLIŞ MAĞAZAYA yazılıyordu. Yanıt artık hâlâ istenen mağazaya
+  // aitse basılır. Arka uçtaki emniyet kemeri: services/urun_kimlik.py
   const loadProducts = useCallback(async (sid) => {
     if (!sid) { setProducts([]); return }
     setLoading(true); setError('')
     try {
       const r = await api.get(`/api/designs/_meta/products?store_id=${sid}`)
+      if (istenenRef.current !== sid) return
       setProducts(r.items || [])
     } catch (e) {
+      if (istenenRef.current !== sid) return
       setError(typeof e?.detail === 'string' ? e.detail : 'Ürünler yüklenemedi')
       setProducts([])
-    } finally { setLoading(false) }
+    } finally { if (istenenRef.current === sid) setLoading(false) }
   }, [])
 
   useEffect(() => {
-    if (selectedStore) { loadProducts(selectedStore); loadAccessories(selectedStore) }
+    if (!selectedStore) return
+    istenenRef.current = selectedStore
+    setProducts([])            // önceki mağazanın ürünleri ekranda kalmasın
+    loadProducts(selectedStore)
+    loadAccessories(selectedStore)
   }, [selectedStore, loadProducts, loadAccessories])
 
   const toggle = async (p) => {

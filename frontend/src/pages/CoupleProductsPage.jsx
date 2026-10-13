@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 
 // Tasarim secici modal — mevcut tasarimlardan birini ara/sec
@@ -91,6 +91,7 @@ export default function CoupleProductsPage() {
   const [picker, setPicker] = useState(null)       // {productId, slot}
   const [draft, setDraft] = useState({})           // product_id -> {design_1, design_2} (kaydedilmemis)
   const [savingId, setSavingId] = useState(null)
+  const istenenRef = useRef('')   // o an istenen mağaza (yarış koruması)
 
   useEffect(() => {
     api.get('/api/stores').then(s => {
@@ -104,25 +105,36 @@ export default function CoupleProductsPage() {
     if (!sid) { setCoupleMap({}); return }
     try {
       const r = await api.get(`/api/couple?store_id=${sid}`)
+      if (istenenRef.current !== sid) return
       const m = {}
       ;(r.items || []).forEach(c => { m[c.product_id] = { design_1: c.design_1, design_2: c.design_2, is_kisiye_ozel: c.is_kisiye_ozel } })
       setCoupleMap(m)
     } catch { setCoupleMap({}) }
   }, [])
 
+  // YARIŞ KORUMASI: Shopify ürün listesi dış API'den saniyeler sürer, vitrin
+  // listesi anında gelir. Mağaza değişince geciken yanıt yeni listenin üstüne
+  // binince ekranda başka mağazanın ürünleri kalıyor ve tıklanan satır YANLIŞ
+  // MAĞAZAYA yazılıyordu. Arka uçtaki emniyet kemeri: services/urun_kimlik.py
   const loadProducts = useCallback(async (sid) => {
     if (!sid) { setProducts([]); return }
     setLoading(true); setError('')
     try {
       const r = await api.get(`/api/designs/_meta/products?store_id=${sid}`)
+      if (istenenRef.current !== sid) return
       setProducts(r.items || [])
     } catch (e) {
+      if (istenenRef.current !== sid) return
       setError(typeof e?.detail === 'string' ? e.detail : 'Ürünler yüklenemedi'); setProducts([])
-    } finally { setLoading(false) }
+    } finally { if (istenenRef.current === sid) setLoading(false) }
   }, [])
 
   useEffect(() => {
-    if (selectedStore) { loadProducts(selectedStore); loadCouple(selectedStore) }
+    if (!selectedStore) return
+    istenenRef.current = selectedStore
+    setProducts([])            // önceki mağazanın ürünleri ekranda kalmasın
+    loadProducts(selectedStore)
+    loadCouple(selectedStore)
   }, [selectedStore, loadProducts, loadCouple])
 
   // bir urunun mevcut secimi: draft varsa draft, yoksa kayitli couple

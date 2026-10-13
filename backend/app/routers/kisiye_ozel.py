@@ -24,7 +24,7 @@ from app.database import get_db
 from app.models import (
     CoupleProduct, Design, KisiyeOzelProduct, LineItem, Order, OrderStatusHistory, Store, User,
 )
-from app.services import storage
+from app.services import storage, urun_kimlik
 
 router = APIRouter(prefix="/api/kisiye-ozel", tags=["kisiye_ozel"],
     dependencies=[Depends(require_permission("kisiye_ozel"))],
@@ -562,11 +562,13 @@ def add_kop_product(
     db: Session = Depends(get_db),
 ):
     """Bir Shopify ürününü kişiye özel olarak işaretle."""
-    _get_store(db, payload.store_id, user.tenant_id)
+    store = _get_store(db, payload.store_id, user.tenant_id)
 
     pid = (payload.product_id or "").strip()
     if not pid:
         raise HTTPException(status_code=400, detail="product_id boş olamaz")
+    # Kimlik gerçekten bu mağazanın ürünü mü (bkz. services/urun_kimlik.py)
+    urun_kimlik.dogrula(db, store, pid)
 
     kop = KisiyeOzelProduct(
         tenant_id=user.tenant_id,

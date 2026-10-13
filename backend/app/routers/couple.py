@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.services import tasarim_kapsam
+from app.services import tasarim_kapsam, urun_kimlik
 from app.models import CoupleProduct, Design, Store, User
 from app.services import storage
 
@@ -87,7 +87,9 @@ def upsert_couple(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_store(db, body.store_id, user.tenant_id)
+    store = _get_store(db, body.store_id, user.tenant_id)
+    # urun kimligi bu magazaya mi ait (bkz. services/urun_kimlik.py)
+    urun_kimlik.dogrula(db, store, body.product_id)
     # tasarimlar bu magazaya mi ait — dogrula
     for did in (body.design_id_1, body.design_id_2):
         if did:

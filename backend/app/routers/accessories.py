@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user, require_permission
 from app.database import get_db
 from app.models import AccessoryProduct, Store, User
+from app.services import urun_kimlik
 
 router = APIRouter(prefix="/api/accessories", tags=["accessories"],
     dependencies=[Depends(require_permission("aksesuar"))],
@@ -68,7 +69,9 @@ def mark_accessory(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_store(db, body.store_id, user.tenant_id)
+    store = _get_store(db, body.store_id, user.tenant_id)
+    # Kimlik gerçekten bu mağazanın ürünü mü (bkz. services/urun_kimlik.py)
+    urun_kimlik.dogrula(db, store, body.product_id)
     existing = db.scalar(
         select(AccessoryProduct).where(
             AccessoryProduct.store_id == body.store_id,

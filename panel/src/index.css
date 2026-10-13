@@ -92,6 +92,13 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   }
 }
 
+/* İçinde pencere (position: fixed) açık olan kart KAYMAZ. transform'lu öğe
+   fixed çocukların "ekranı" olur: kartın içinden açılan pencere, imleç
+   karta girip çıktıkça kartın içine sıkışıp ekrana geri dönüyor, yani
+   kaybolup düzeliyordu (Kılıf Şablonları, 2026-10). Pencereler artık
+   body'ye taşınıyor; bu kural aynı tuzağa düşecek diğer sayfalar için. */
+.card:has(.fixed) { transform: none !important; }
+
 /* ── Üste binen katmanlar: modal, komut paleti, çekmece örtüsü ──
    Sayfa kartı ile üste binen yüzey AYNI ŞEY DEĞİL. Kart yalnız zeminin
    (aurora) üstünde durur; oradaki saydamlık güzel durur ve arkasında

@@ -1503,6 +1503,23 @@ def il_ilce_public(response: Response):
     return IL_ILCE
 
 
+@router.get("/_font/{anahtar}.ttf")
+def studyo_fontu(anahtar: str):
+    """Tasarım stüdyosu fontu — panel önizlemesi yazıyı GERÇEK fontla çizsin.
+    Yalnız tanımlı font anahtarları (dosya yolu istemciden alınmaz). Fontlar
+    açık lisanslıdır (OFL/Apache); vitrin aynı dosyaları /fonts'tan sunar."""
+    from fastapi.responses import FileResponse
+
+    from app.services.design_render import FONT_DIR, FONT_FILES
+
+    dosya = FONT_FILES.get(anahtar)
+    yol = FONT_DIR / dosya if dosya else None
+    if not yol or not yol.is_file():
+        raise HTTPException(404, "Font bulunamadı")
+    return FileResponse(yol, media_type="font/ttf",
+                        headers={"Cache-Control": "public, max-age=2592000, immutable"})
+
+
 @router.get("/_resolve")
 def resolve_host(
     host: str = Query(..., max_length=253),

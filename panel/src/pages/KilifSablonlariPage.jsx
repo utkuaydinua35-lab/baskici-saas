@@ -1,8 +1,54 @@
 import FormaAyari, { AmblemMaske, DesenSvg } from '../components/FormaAyari'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api, fetchYetkili } from '../lib/api'
 import { useStore } from '../lib/store'
 import { mutlak } from '../lib/taban'
+
+// PENCERE (modal) — document.body'ye taşınır (portal).
+//
+// NEDEN: düzenleyiciler bir .card'ın İÇİNDE çiziliyordu. .card imleç üstüne
+// gelince 2px yukarı kayar (transform) ve transform'lu bir öğe, içindeki
+// `position: fixed` çocuklar için "ekran" hâline gelir. İmleç pencerenin
+// üstündeyken kart "hover" sayılıp pencere kartın içine sıkışıyor, imleç
+// kartın hizasından çıkınca (sağdaki boşluk) pencere ekrana geri dönüyordu →
+// pencere kaybolup düzeliyordu.
+//
+// KAPATMA: yalnız örtüye basılıp örtüde bırakılırsa. Eskiden bir alanı
+// sürükleyip fareyi pencerenin DIŞINDA bırakmak "örtüye tıklama" sayılıyor,
+// düzenleyici kapanıp kaydedilmemiş her şey gidiyordu. Değişiklik varsa sorulur.
+function Pencere({ onClose, degisti = false, children }) {
+  const ortudeBasildi = useRef(false)
+  const kapat = useCallback(() => {
+    if (degisti && !window.confirm('Kaydedilmemiş değişiklikler var. Pencere kapatılsın mı?')) return
+    onClose()
+  }, [degisti, onClose])
+  useEffect(() => {
+    const tus = (e) => { if (e.key === 'Escape') kapat() }
+    window.addEventListener('keydown', tus)
+    const eski = document.body.style.overflow
+    document.body.style.overflow = 'hidden'      // arkadaki sayfa kaymasın
+    return () => { window.removeEventListener('keydown', tus); document.body.style.overflow = eski }
+  }, [kapat])
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onPointerDown={e => { ortudeBasildi.current = e.target === e.currentTarget }}
+      onClick={e => { if (e.target === e.currentTarget && ortudeBasildi.current) kapat() }}>
+      {typeof children === 'function' ? children(kapat) : children}
+    </div>,
+    document.body,
+  )
+}
+
+// Stüdyo fontları — önizlemede yazı GERÇEK fontla görünsün (genişlik fontla
+// değişir; yedek fontla "10" başka yere oturuyordu). Dosyalar backend'den.
+const yuklenenFontlar = new Set()
+function fontYukle(anahtar) {
+  if (!anahtar || yuklenenFontlar.has(anahtar) || typeof FontFace === 'undefined') return
+  yuklenenFontlar.add(anahtar)
+  const f = new FontFace(`studyo-${anahtar}`, `url(${mutlak(`/api/shop/_font/${anahtar}.ttf`)})`)
+  f.load().then(yuklu => document.fonts.add(yuklu)).catch(() => yuklenenFontlar.delete(anahtar))
+}
 
 // Kılıf Şablonları — müşterinin tasarım stüdyosunda gördüğü boş kılıflar.
 // Her şablonda: mockup görseli + BASKI ALANI (müşterinin düzenleyebildiği
@@ -136,7 +182,7 @@ export default function KilifSablonlariPage() {
 // Hazır tasarım şablonları (overlay) — müşterinin tasarımının ÜSTÜNE binen
 // şeffaf PNG'ler. Örnek: fotoğraf çerçevesi. Müşterinin yüklediği görsel
 // ALTTA kalır, çerçeve üstüne oturur, yazılar çerçevenin de üstündedir.
-function HazirSablonlar({ storeId, templates }) {
+export function HazirSablonlar({ storeId, templates }) {
   const [items, setItems] = useState([])
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -234,7 +280,14 @@ function HazirSablonlar({ storeId, templates }) {
             <div key={o.id} className="border border-panel-border rounded-xl overflow-hidden">
               <div className="aspect-[9/16] bg-[repeating-conic-gradient(#e5e7eb_0_25%,#fff_0_50%)]
                 bg-[length:14px_14px] flex items-center justify-center">
-                <img src={o.thumb_url} alt={o.label} className="w-full h-full object-contain" />
+                {o.forma?.aktif && o.mod === 'kisitli' ? (
+                  // Forma tasarlayıcı açık: zemin koddan çizilir — yüklenen
+                  // görsel artık kullanılmıyor, kartta gerçek görünüm dursun
+                  <DesenSvg desen={o.forma.varsayilan.desen} yogunluk={o.forma.varsayilan.yogunluk}
+                    renkler={o.forma.varsayilan.renkler} />
+                ) : (
+                  <img src={o.thumb_url} alt={o.label} className="w-full h-full object-contain" />
+                )}
               </div>
               <div className="p-1.5 space-y-1">
                 <div className="text-[11px] truncate" title={o.label}>{o.label}</div>
@@ -246,7 +299,7 @@ function HazirSablonlar({ storeId, templates }) {
                 )}
                 {o.mod === 'kisitli' && (
                   <div className="text-[10px] text-panel-accent">
-                    🔒 Kısıtlı · {o.alanlar?.length || 0} alan
+                    🔒 Kısıtlı · {o.alanlar?.length || 0} alan{o.forma?.aktif ? ' · 👕 forma' : ''}
                   </div>
                 )}
                 <button onClick={() => setAlanDuzenle(o)}
@@ -325,7 +378,7 @@ const TUTAMAKLAR = [
   ['sw', 0, 100, 'nesw-resize'], ['w', 0, 50, 'ew-resize'],
 ]
 
-function AlanEditoru({ template, storeId, onClose, onSaved }) {
+export function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const [t, setT] = useState(template)
   const [sel, setSel] = useState('baski')       // 'baski' | kesik index
   const [saving, setSaving] = useState(false)
@@ -340,12 +393,15 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const [zoom, setZoom] = useState(1)
   // Yakinlastirma seçimi ve devam eden sürüklemeyi etkilemesin
   const zoomla = (v) => { drag.current = null; setZoom(v) }
+  // Tuvalin ölçeksiz boyutu — yakınlaştırınca kaydırma alanı buna göre büyür
+  const [dogal, setDogal] = useState(null)
+  const [degisti, setDegisti] = useState(false)
 
   const kesikler = t.cutouts || []
   const aktif = sel === 'baski' ? t.area : kesikler[sel]
-  const setAktif = (kutu) => setT(p => sel === 'baski'
+  const setAktif = (kutu) => { setDegisti(true); setT(p => sel === 'baski'
     ? { ...p, area: { ...p.area, ...kutu } }
-    : { ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, ...kutu } : c) })
+    : { ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, ...kutu } : c) }) }
 
   // Fare konumunu görsele oransal (0-1) çevir
   const oran = (e) => {
@@ -360,9 +416,25 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const basla = (e, tip) => {
     e.preventDefault(); e.stopPropagation()
     const p0 = oran(e)
-    if (aktif && p0) drag.current = { tip, bas: p0, kutu: { ...aktif },
-                                basX: e.clientX, basY: e.clientY, basladi: false }
+    if (!aktif || !p0) return
+    drag.current = { tip, bas: p0, kutu: { ...aktif },
+                     basX: e.clientX, basY: e.clientY, basladi: false }
+    // Dinleyiciler PENCEREDE: imleç görselin dışına çıksa da sürükleme
+    // sürer (eskiden görselden çıkınca kopuyordu); dokunmatikte de çalışır.
+    const birak = () => {
+      drag.current = null
+      window.removeEventListener('pointermove', hareketRef.current)
+      window.removeEventListener('pointerup', birak)
+      window.removeEventListener('pointercancel', birak)
+    }
+    window.addEventListener('pointermove', hareketRef.current)
+    window.addEventListener('pointerup', birak)
+    window.addEventListener('pointercancel', birak)
   }
+  // hareket her çizimde yenilenir (seçili alanı okur); dinleyici sabit kalsın
+  const hareketRef = useRef(null)
+  if (!hareketRef.current) hareketRef.current = (e) => hareketGuncel.current?.(e)
+  const hareketGuncel = useRef(null)
   const hareket = (e) => {
     if (!drag.current) return
     // Eşiği aşana kadar hiçbir şey değiştirme — tıklama kutuyu bozmasın
@@ -396,21 +468,23 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
     }
     setAktif({ x, y, w, h })
   }
-  const bitir = () => { drag.current = null }
+  hareketGuncel.current = hareket
 
   const kesikEkle = () => {
+    setDegisti(true)
     const yeni = { x: 0.34, y: 0.05, w: 0.32, h: 0.16, radius: 0.25, label: 'Kamera' }
     setT(p => ({ ...p, cutouts: [...(p.cutouts || []), yeni] }))
     setSel(kesikler.length)
   }
   const kesikSil = () => {
+    setDegisti(true)
     setT(p => ({ ...p, cutouts: (p.cutouts || []).filter((_, i) => i !== sel) }))
     setSel('baski')
   }
   const yuvarlaklik = sel === 'baski' ? (t.area.radius ?? 0) : (kesikler[sel]?.radius ?? 0.2)
-  const setYuvarlaklik = (v) => sel === 'baski'
+  const setYuvarlaklik = (v) => { setDegisti(true); return sel === 'baski'
     ? setT(p => ({ ...p, area: { ...p.area, radius: v } }))
-    : setT(p => ({ ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, radius: v } : c) }))
+    : setT(p => ({ ...p, cutouts: p.cutouts.map((c, i) => i === sel ? { ...c, radius: v } : c) })) }
 
   const gorselYukle = async (file) => {
     if (!file) return
@@ -421,11 +495,12 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
       const res = await fetchYetkili(mutlak(`/api/case-templates/${t.id}/image`), {
         method: 'POST', body: fd,
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || '')
       const r = await res.json()
       setT(p => ({ ...p, image_url: r.image_url }))
-    } catch { setErr('Görsel yüklenemedi') }
-    finally { setUploading(false) }
+    } catch (e) {
+      setErr(typeof e?.message === 'string' && e.message ? e.message : 'Görsel yüklenemedi')
+    } finally { setUploading(false) }
   }
 
   const kaydet = async () => {
@@ -449,7 +524,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
 
   const kutuCiz = (kutu, renk, secili, i) => (
     <div key={i ?? 'baski'}
-      onMouseDown={secili ? (e => basla(e, 'tasi')) : undefined}
+      onPointerDown={secili ? (e => basla(e, 'tasi')) : undefined}
       className={`absolute border-2 ${renk === 'yesil'
         ? 'border-emerald-500 bg-emerald-500/15' : 'border-amber-500/30 bg-amber-400/25'}`}
       style={{
@@ -473,7 +548,7 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   const tutamakCiz = () => {
     if (!aktif) return null
     return TUTAMAKLAR.map(([h, lx, ly, cur]) => (
-      <div key={h} onMouseDown={e => basla(e, h)}
+      <div key={h} onPointerDown={e => basla(e, h)}
         className="absolute w-3.5 h-3.5 bg-white border border-panel-border rounded-sm shadow"
         style={{
           left: `${(aktif.x + (lx / 100) * aktif.w) * 100}%`,
@@ -484,13 +559,12 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="absolute inset-0 bg-black/40" />
+    <Pencere onClose={onClose} degisti={degisti || JSON.stringify(t) !== JSON.stringify(template)}>{(kapat) => (
       <div className="relative bg-panel-card rounded-2xl shadow-xl w-full max-w-4xl max-h-[92vh] overflow-y-auto p-4">
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-sm font-semibold">Alanları Düzenle — {t.label}</h3>
-          <button onClick={onClose} className="ml-auto text-panel-muted hover:text-panel-ink">×</button>
+          <button onClick={kapat} aria-label="Kapat"
+            className="ml-auto w-8 h-8 text-lg text-panel-muted hover:text-panel-ink">×</button>
         </div>
 
         {!t.image_url ? (
@@ -509,18 +583,27 @@ function AlanEditoru({ template, storeId, onClose, onSaved }) {
             {/* Yakınlaştırma TUVALİN TAMAMINI ölçekler (transform: scale).
                 Görseli tek başına büyütmek kutuları/tutamakları kaydırıyordu;
                 böyle hepsi tek parça büyür, hiçbiri bozulmaz. */}
-            <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[64vh] flex justify-center">
-              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-                <div ref={boxRef} className="relative select-none inline-block"
-                  onMouseMove={hareket} onMouseUp={bitir} onMouseLeave={bitir}>
+            {/* Kaydırma alanı ÖLÇEKLENMİŞ boyutta bir kutuyla açılır: transform
+                yer kaplamadığı için eskiden yakınlaştırınca görselin sol tarafına
+                kaydırılamıyordu (taşan kısım kaydırma alanının dışında kalıyordu). */}
+            <div className="bg-panel-input rounded-xl p-2 overflow-auto max-h-[64vh]">
+              <div className="mx-auto" style={dogal
+                ? { width: dogal.w * zoom, height: dogal.h * zoom } : { width: 'fit-content' }}>
+              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left',
+                width: dogal ? dogal.w : undefined }}>
+                <div ref={boxRef} className="relative select-none inline-block touch-none">
                   <img src={t.image_url} alt="" draggable={false}
-                    onLoad={(e) => setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
+                    onLoad={(e) => {
+                      setImgOran(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)
+                      setDogal({ w: e.currentTarget.offsetWidth, h: e.currentTarget.offsetHeight })
+                    }}
                     style={{ height: '54vh', width: 'auto' }}
                     className="block pointer-events-none max-w-none" />
                   {kutuCiz(t.area, 'yesil', sel === 'baski')}
                   {kesikler.map((c, i) => kutuCiz(c, 'sari', sel === i, i))}
                   {tutamakCiz()}
                 </div>
+              </div>
               </div>
             </div>
 
@@ -636,13 +719,13 @@ Kutuyu sürükleyerek taşıyın, kenarındaki tutamaklarla boyutlandırın.
 
         {err && <p className="text-sm text-red-300 mt-2">{err}</p>}
         <div className="flex justify-end gap-2 mt-3">
-          <button onClick={onClose} className="btn-ghost">Vazgeç</button>
+          <button onClick={kapat} className="btn-ghost">Vazgeç</button>
           <button onClick={kaydet} disabled={saving || !t.image_url} className="btn-primary">
             {saving ? 'Kaydediliyor…' : 'Kaydet'}
           </button>
         </div>
       </div>
-    </div>
+    )}</Pencere>
   )
 }
 
@@ -724,6 +807,10 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     (overlay.alanlar || []).map(a => ({ ...a })))
   // Forma tasarlayıcı ayarı (null/aktif:false → kapalı)
   const [forma, setForma] = useState(overlay.forma || null)
+  // Kaydedilmemiş değişiklik var mı (kapatırken sorulur) — açılıştaki hâlle karşılaştırılır
+  const ilkHal = useRef(null)
+  const simdikiHal = JSON.stringify([mod, kategori, sadeceUrunde, alanlar, forma])
+  if (ilkHal.current === null) ilkHal.current = simdikiHal
   const [sel, setSel] = useState(0)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -766,7 +853,11 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     ls.map((a, i) => (i === sel ? { ...a, ...yama } : a)))
 
   const ekle = (tip) => {
-    const n = alanlar.length + 1
+    // Anahtar BENZERSİZ olmalı. Eskiden "alan sayısı + 1" kullanılıyordu:
+    // bir alan silinip yenisi eklenince aynı anahtar iki kez oluşuyor,
+    // kayıt "Aynı alan anahtarı iki kez" diye reddediliyordu.
+    let n = alanlar.length + 1
+    while (alanlar.some(a => a.key === `${tip}${n}`)) n += 1
     const yeniler = {
       yazi: { key: `yazi${n}`, tip: 'yazi', etiket: `Yazı ${n}`, varsayilan: 'METİN',
               max: 12, x: 0.2, y: 0.4, w: 0.6, h: 0.12 * 1.3, size: 0.12,
@@ -803,16 +894,20 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
       const dy = (e.clientY - d.sy) / d.r.height
       setAlanlar(ls => ls.map((a, i) => {
         if (i !== d.i) return a
+        // Alan TUVALİN İÇİNDE kalır (eskiden sağa/aşağı taşınıp baskı
+        // alanının dışına çıkabiliyor, müşteride yarım görünüyordu)
+        const ilkH = d.ilk.h ?? (a.tip === 'yazi' ? (d.ilk.size || 0.1) * 1.3
+          : a.tip === 'ilerleme' ? 0.02 : 0.1)
         if (d.tip === 'tasi') {
-          return { ...a, x: Math.min(1, Math.max(0, d.ilk.x + dx)),
-                   y: Math.min(1, Math.max(0, d.ilk.y + dy)) }
+          return { ...a, x: Math.min(Math.max(0, 1 - (d.ilk.w || 0.1)), Math.max(0, d.ilk.x + dx)),
+                   y: Math.min(Math.max(0, 1 - ilkH), Math.max(0, d.ilk.y + dy)) }
         }
-        const w = Math.min(1, Math.max(0.03, d.ilk.w + dx))
+        const w = Math.min(1 - (d.ilk.x || 0), Math.max(0.03, d.ilk.w + dx))
         // Yazıda da ÇERÇEVE kutusu ölçeklenir: metin bu kutuya oturtulur,
         // punto kutudan hesaplanır (eskiden dikey sürükleme puntoyu
         // değiştiriyordu; o zaman "çerçeve" diye bir şey yoktu ve tek
         // haneli metin kutunun dışına taşıyordu)
-        const yeniH = Math.min(1, Math.max(0.02, (d.ilk.h ?? (d.ilk.size || 0.1) * 1.3) + dy))
+        const yeniH = Math.min(1 - (d.ilk.y || 0), Math.max(0.02, (d.ilk.h ?? (d.ilk.size || 0.1) * 1.3) + dy))
         if (a.tip === 'yazi') return { ...a, w, h: yeniH, size: yeniH / 1.3 }
         return { ...a, w, h: yeniH }
       }))
@@ -820,11 +915,20 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     const birak = () => { surukle.current = null }
     window.addEventListener('pointermove', hareket)
     window.addEventListener('pointerup', birak)
+    window.addEventListener('pointercancel', birak)
     return () => {
       window.removeEventListener('pointermove', hareket)
       window.removeEventListener('pointerup', birak)
+      window.removeEventListener('pointercancel', birak)
     }
   }, [])
+
+  // Önizleme yazıları GERÇEK fontla (forma açıksa onun başlangıç fontu)
+  const formaAcik = !!forma?.aktif && mod === 'kisitli'
+  const alanFontu = (a) => (formaAcik ? forma.varsayilan.font : a.font) || 'anton'
+  useEffect(() => {
+    alanlar.filter(a => a.tip === 'yazi').forEach(a => fontYukle(alanFontu(a)))
+  })   // her çizimde: fontYukle aynı fontu bir kez yükler
 
   // Seçili alanı şablona göre yasla (0-1 oransal koordinatlar)
   const yasla = (yon) => {
@@ -898,19 +1002,20 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
     const bitir = () => {
       window.removeEventListener('pointermove', hareket)
       window.removeEventListener('pointerup', bitir)
+      window.removeEventListener('pointercancel', bitir)
     }
     window.addEventListener('pointermove', hareket)
     window.addEventListener('pointerup', bitir)
+    window.addEventListener('pointercancel', bitir)
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <div className="bg-panel-card rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto p-4"
-        onClick={e => e.stopPropagation()}>
+    <Pencere onClose={onClose} degisti={simdikiHal !== ilkHal.current}>{(kapat) => (
+      <div className="bg-panel-card rounded-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto p-4">
         <div className="flex items-center gap-2 mb-3">
           <h2 className="font-semibold text-sm">“{overlay.label}” alanları</h2>
-          <button onClick={onClose} className="ml-auto text-panel-muted text-lg leading-none">×</button>
+          <button onClick={kapat} aria-label="Kapat"
+            className="ml-auto w-8 h-8 text-panel-muted hover:text-panel-ink text-lg leading-none">×</button>
         </div>
 
         {err && <p className="text-sm text-red-300 mb-2">{err}</p>}
@@ -987,8 +1092,10 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                     left: yuzde(a.x), top: yuzde(a.y), width: yuzde(a.w),
                     // Yazıda da gerçek bir ÇERÇEVE var: metin bu kutuya
                     // oturtulur, dışına taşmaz (vitrindeki davranışın aynısı)
-                    height: a.tip === 'gorsel' || a.tip === 'yazi'
-                      ? yuzde(a.h ?? (a.tip === 'yazi' ? (a.size || 0.1) * 1.3 : 0.1))
+                    // Fotoğraf alanı da GERÇEK yüksekliğinde çizilir (eskiden
+                    // yükseklik verilmiyor, çerçeve bir satır yazı kadar görünüyordu)
+                    height: a.tip === 'gorsel' || a.tip === 'yazi' || a.tip === 'foto'
+                      ? yuzde(a.h ?? (a.tip === 'yazi' ? (a.size || 0.1) * 1.3 : a.tip === 'foto' ? 0.3 : 0.1))
                       : undefined,
                     zIndex: i === sel ? 2 : 1,
                   }}>
@@ -1010,9 +1117,10 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                           flex items-center justify-center">görsel yok</div>
                   ) : (
                     <div style={{
-                      color: (forma?.aktif && mod === 'kisitli' ? forma.varsayilan.yazi_renk : a.renk) || '#fff',
+                      color: (formaAcik ? forma.varsayilan.yazi_renk : a.renk) || '#fff',
                       textAlign: a.hiza || 'center',
-                      lineHeight: 1.15, fontWeight: 800,
+                      lineHeight: 1.15,
+                      fontFamily: `'studyo-${alanFontu(a)}', sans-serif`,
                       width: '100%', height: '100%', display: 'flex',
                       alignItems: 'center', overflow: 'hidden',
                       justifyContent: a.hiza === 'center' ? 'center'
@@ -1109,7 +1217,17 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
                 <label className="block text-[11px] text-panel-muted">
                   Alan anahtarı (a-z, rakam, tire)
                   <input value={secili.key} maxLength={30}
-                    onChange={e => yamala({ key: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
+                    onChange={e => {
+                      const yeni = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+                      const eski = secili.key
+                      // İlerleme çubuğu süre alanlarına ANAHTARLA bağlıdır;
+                      // anahtar değişince bağ kopmasın
+                      setAlanlar(ls => ls.map((a, i) => i === sel ? { ...a, key: yeni } : {
+                        ...a,
+                        ...(a.kaynak_gecen === eski && eski ? { kaynak_gecen: yeni } : {}),
+                        ...(a.kaynak_toplam === eski && eski ? { kaynak_toplam: yeni } : {}),
+                      }))
+                    }}
                     className="input !py-1 !text-xs mt-0.5 font-mono" />
                 </label>
 
@@ -1290,13 +1408,13 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
           }))} />
 
         <div className="flex gap-2 mt-4">
-          <button onClick={onClose} className="btn-ghost !py-2 text-sm">Vazgeç</button>
+          <button onClick={kapat} className="btn-ghost !py-2 text-sm">Vazgeç</button>
           <button onClick={kaydet} disabled={busy}
             className="btn !py-2 text-sm flex-1 disabled:opacity-40">
             {busy ? 'Kaydediliyor…' : 'Alanları Kaydet'}
           </button>
         </div>
       </div>
-    </div>
+    )}</Pencere>
   )
 }

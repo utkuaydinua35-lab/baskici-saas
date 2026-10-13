@@ -2730,54 +2730,6 @@ def support_order_status(
                      "Gelen kutunu (ve spam klasörünü) kontrol et."}
 
 
-# "s24 plus var mı" gibi cümlelerde modele ait olmayan dolgu kelimeleri
-_MODEL_STOPWORDS = {
-    "var", "mı", "mi", "mu", "mü", "midir", "kılıf", "kilif", "kılıfı", "kilifi",
-    "case", "uyumlu", "için", "icin", "telefon", "telefonum", "telefonuma",
-    "model", "modeli", "acaba", "merhaba", "selam", "ve", "ile", "bir",
-}
-
-
-# Müşterinin kullandığı marka adı ile katalogdaki marka/model adı çoğu zaman
-# tutmuyor ("samsung s24" ↔ "Galaxy S24"). Marka başına eş anlamlı token'lar.
-_MARKA_ESANLAM: dict[str, list[str]] = {
-    "samsung": ["galaxy", "samsung"],
-    "apple": ["iphone", "apple"],
-    "xiaomi": ["xiaomi", "mi", "redmi", "poco"],
-    "huawei": ["huawei", "nova", "mate"],
-    "honor": ["honor"],
-    "oppo": ["oppo", "reno"],
-    "vivo": ["vivo"],
-    "realme": ["realme"],
-    "tecno": ["tecno"],
-    "infinix": ["infinix"],
-    "reeder": ["reeder"],
-    "general mobile": ["general", "mobile", "gm"],
-    "google": ["google", "pixel"],
-    "oneplus": ["oneplus"],
-}
-
-
-def _norm_model(s: str) -> list[str]:
-    """Model adını karşılaştırma token'larına indirger: küçük harf,
-    +→plus, noktalama temizliği ('S24+' ile 's24 plus' eşleşir)."""
-    s = s.lower().replace("+", " plus ")
-    s = "".join(ch if ch.isalnum() else " " for ch in s)
-    return [t for t in s.split() if t and t not in _MODEL_STOPWORDS]
-
-
-def _model_tokenlari(model_display: str, marka: str | None) -> list[str]:
-    """Bir modelin eşleşebileceği tüm token'lar: model adı + marka + markanın
-    eş anlamlıları. Marka alanı boş olsa da model adından çıkarılır
-    ('Galaxy S24' → samsung), böylece 'samsung s24 plus' da bulur."""
-    tokenlar = _norm_model(model_display) + _norm_model(marka or "")
-    genis = list(tokenlar)
-    for anahtar, esler in _MARKA_ESANLAM.items():
-        if anahtar in tokenlar or any(e in tokenlar for e in esler):
-            genis += esler
-    return genis
-
-
 @router.get("/{store_slug}/support/model-check")
 def support_model_check(
     store_slug: str,
@@ -2785,59 +2737,15 @@ def support_model_check(
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
-    """'Telefonuma uygun kılıf var mı?' — model adına göre aktif varyant arar.
+    """'Telefonuma uygun kılıf var mı?' — toleranslı model araması.
 
-    Tam alt dize yerine token bazlı eşleşme: sorgudaki her anlamlı kelime
-    model adında geçmeli ("s24 plus var mı" → "Galaxy S24 Plus")."""
+    Türkçe harf, büyük/küçük harf, bitişik yazım ve yazım hatası fark etmez;
+    birebir bulunamazsa yakın modeller ÖNERİLİR (tahmini=True). Kurallar ve
+    gerekçe: services/model_bul.py."""
+    from app.services import model_bul
+
     store = _resolve_store(db, store_slug)
-    q_tokens = _norm_model(q or "")
-    if not q_tokens:
-        return {"models": []}
-    # MODEL BAŞINA tek satır: sayım ve örnek ürün veritabanında hesaplanır.
-    # (Eskiden mağazadaki tüm varyant satırları Python'a çekiliyordu —
-    # on binlerce satırda destek botu saniyelerce bekletiyordu.)
-    rows = db.execute(
-        select(
-            CatalogVariant.model_display,
-            func.min(CatalogVariant.brand).label("brand"),
-            func.count(func.distinct(CatalogProduct.id)).label("urun_sayisi"),
-            func.min(CatalogProduct.title).label("ornek_baslik"),
-            func.min(CatalogProduct.slug).label("ornek_slug"),
-        )
-        .join(CatalogProduct, CatalogVariant.product_id == CatalogProduct.id)
-        .where(
-            CatalogProduct.store_id == store.id,
-            CatalogProduct.status == "active",
-            CatalogVariant.is_active.is_(True),
-            # Sorgunun en uzun kelimesi model veya marka adında geçmeli —
-            # token kontrolüne kalan aday sayısını SQL'de daraltır
-            or_(
-                CatalogVariant.model_display.ilike(f"%{max(q_tokens, key=len)}%"),
-                CatalogVariant.brand.ilike(f"%{max(q_tokens, key=len)}%"),
-            ),
-        )
-        .group_by(CatalogVariant.model_display)
-    ).all()
-
-    bulunan: list[dict] = []
-    for model_display, marka, urun_sayisi, ornek_baslik, ornek_slug in rows:
-        # Eşleşme havuzuna MARKA da girer: müşteri "samsung s24 plus" yazınca
-        # model adı "Galaxy S24 Plus" olsa da bulunur (marka Samsung).
-        m_tokens = _model_tokenlari(model_display, marka)
-        if not all(t in m_tokens for t in q_tokens):
-            continue
-        bulunan.append({
-            "model": model_display,
-            "product_count": urun_sayisi,      # VARYANT değil, benzersiz ürün
-            "sample_title": ornek_baslik,
-            "sample_slug": ornek_slug,
-            # Az token farkı = daha isabetli eşleşme, üste gelsin
-            "_extra": len(_norm_model(model_display)) - len(q_tokens),
-        })
-    ranked = sorted(bulunan, key=lambda m: m["_extra"])[:10]
-    for m in ranked:
-        m.pop("_extra", None)
-    return {"models": ranked}
+    return model_bul.bul(q or "", model_bul.magaza_modelleri(db, store))
 
 
 # ═════════════════════════════════════════════════════════════

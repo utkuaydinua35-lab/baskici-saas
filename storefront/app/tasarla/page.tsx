@@ -24,7 +24,19 @@ import type {
   StudioOverlay, TextLayer,
 } from "@/components/studio/types";
 
-const TASLAK_ANAHTAR = "studyo_taslak";
+// Yerel taslak ÜRÜNE (ve hazır tasarım modülüne) ÖZEL saklanır.
+// Eskiden tek bir anahtar vardı: bir kişiye özel üründe tasarım yapıp sipariş
+// vermeden başka bir ürüne geçen müşteri, önceki ürünün tasarımını yeni
+// ürünün tuvalinde buluyordu — ürünler arası tasarımlar karışıyordu.
+const ESKI_TASLAK_ANAHTAR = "studyo_taslak";
+function taslakAnahtari(): string {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    return `studyo_taslak:${q.get("urun") || "genel"}:${q.get("modul") || ""}`;
+  } catch {
+    return "studyo_taslak:genel:";
+  }
+}
 const UYARI_ANAHTAR = "studyo_uyari_onay";
 const OGRETICI_ANAHTAR = "studyo_ogretici_goruldu";
 
@@ -201,7 +213,8 @@ export default function TasarlaPage() {
   // Giriş yapılmamışken tarayıcıda taslak tut — girişten sonra devam edilir
   useEffect(() => {
     try {
-      const ham = localStorage.getItem(TASLAK_ANAHTAR);
+      localStorage.removeItem(ESKI_TASLAK_ANAHTAR);   // ürünler arası paylaşılan eski taslak
+      const ham = localStorage.getItem(taslakAnahtari());
       if (!ham) return;
       const t = JSON.parse(ham);
       if (t?.layers?.length) { setLayers(t.layers); setAd(t.ad || "Tasarımım"); }
@@ -215,7 +228,9 @@ export default function TasarlaPage() {
   useEffect(() => {
     if (designId) return;   // sunucuda kayıtlıysa yerel taslağa gerek yok
     try {
-      localStorage.setItem(TASLAK_ANAHTAR, JSON.stringify({ layers, ad }));
+      // Boş tuval için kayıt tutulmaz (her ziyaret edilen ürün için anahtar birikmesin)
+      if (layers.length === 0) localStorage.removeItem(taslakAnahtari());
+      else localStorage.setItem(taslakAnahtari(), JSON.stringify({ layers, ad }));
     } catch { /* kota dolabilir — kritik değil */ }
   }, [layers, ad, designId]);
 
@@ -516,7 +531,7 @@ export default function TasarlaPage() {
       if (!res.ok) throw new Error(d?.detail || "Kaydedilemedi");
       setDesignId(d.id);
       setDurum(durumDeger === "ready" ? "Tasarımın hazır ✓" : "Kaydedildi ✓");
-      try { localStorage.removeItem(TASLAK_ANAHTAR); } catch { /* yok */ }
+      try { localStorage.removeItem(taslakAnahtari()); } catch { /* yok */ }
       fetch("/api/account/designs").then((r) => r.json())
         .then((l) => Array.isArray(l) && setKayitli(l)).catch(() => {});
     } catch (e) {
@@ -567,7 +582,7 @@ export default function TasarlaPage() {
       setSepetAcik(false);
       setDrawerOpen(true);
       setDurum("Tasarımın sepete eklendi ✓");
-      try { localStorage.removeItem(TASLAK_ANAHTAR); } catch { /* yok */ }
+      try { localStorage.removeItem(taslakAnahtari()); } catch { /* yok */ }
     } catch (e) {
       setDurum(e instanceof Error ? e.message : "Sepete eklenemedi");
     } finally { setYukleniyor(false); }

@@ -156,7 +156,14 @@ export default function SupportChat({
       const res = await fetch(`/api/support/model-check?q=${encodeURIComponent(raw)}`);
       const data = res.ok ? await res.json() : { models: [] };
       if ((data.models || []).length === 0) {
-        push({ from: "bot", text: `"${raw}" için şu an listede kılıf görünmüyor. Model listemiz sürekli genişliyor — WhatsApp'tan sorarsanız üretim ekibimiz kontrol eder.` });
+        // "Yok" deyip bırakmak yerine tekrar denemeye ve tüm modellere yönlendir:
+        // müşteri burada çıkarsa satış kaybedilir. Mod "model"de kalır.
+        push({ from: "bot", text: `"${raw}" adında bir model bulamadım. Marka ve modeli birlikte yazar mısınız? Örn. "iPhone 15 Pro Max", "Samsung S24 Ultra", "Redmi Note 13". Listede yoksa WhatsApp'tan yazın, üretim ekibimiz hemen kontrol etsin.` });
+      } else if (data.tahmini) {
+        // Birebir tutmadı (yazım farkı olabilir): yakın modelleri öner
+        push({ from: "bot", text: "Şunlardan biri mi? Modelinize tıklayın:" },
+          { from: "bot", models: data.models },
+          { from: "bot", text: "Listede yoksa modeli tekrar yazabilirsiniz." });
       } else {
         push({ from: "bot", models: data.models },
           { from: "bot", text: "Modelinize tıklayarak ürünleri inceleyebilirsiniz. Başka bir sorunuz var mı?" });

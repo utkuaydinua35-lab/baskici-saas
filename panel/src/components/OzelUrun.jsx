@@ -1,8 +1,9 @@
 // Tasarım talebine ÖZEL ürün — yalnız linki bilen görür (vitrinde hiçbir
-// listede, aramada, site haritasında çıkmaz). Baskı dosyası tasarım kaydı
-// olur (kalıp planlayıcı siparişte bulur); fotoğraf verilmezse tasarım kılıf
-// görseline giydirilir. Kargo/kampanya sepetteki her ürün gibi işler.
-import { useEffect, useState } from 'react'
+// listede, aramada, site haritasında çıkmaz). Yüklenen görseller ürünün
+// görselleri olur (ilki kapak). Baskı dosyası isteğe bağlı: verilirse tasarım
+// kaydı olur ve kalıp planlayıcı siparişte bulur. Kargo/kampanya sepetteki
+// her ürün gibi işler.
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 
 export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
@@ -14,7 +15,14 @@ export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
   const [setId, setSetId] = useState('')
   const [kilifId, setKilifId] = useState('')
   const [baski, setBaski] = useState(null)
-  const [gorsel, setGorsel] = useState(null)
+  const [gorseller, setGorseller] = useState([])
+  // Seçilen görsellerin önizlemesi (yüklemeden önce görülsün)
+  const onizlemeler = useMemo(() => gorseller.map(f => URL.createObjectURL(f)), [gorseller])
+  useEffect(() => () => onizlemeler.forEach(u => URL.revokeObjectURL(u)), [onizlemeler])
+  const gorselEkle = (liste) => {
+    const yeni = [...liste].filter(f => /^image\/(png|jpe?g|webp)$/.test(f.type))
+    setGorseller(g => [...g, ...yeni].slice(0, 8))
+  }
   const [busy, setBusy] = useState(false)
   const [kopyalandi, setKopyalandi] = useState(false)
 
@@ -34,9 +42,9 @@ export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
       if (!u && setId) fd.append('variant_set_id', setId)
       if (kilifId) fd.append('template_id', kilifId)
       if (baski) fd.append('baski', baski)
-      if (gorsel) fd.append('gorsel', gorsel)
+      gorseller.forEach(f => fd.append('gorsel', f))
       await api.postForm(`/api/design-requests/${talep.id}/urun`, fd)
-      setAcik(false); setBaski(null); setGorsel(null)
+      setAcik(false); setBaski(null); setGorseller([])
       onDegisti()
     } catch (e) {
       onHata(typeof e?.detail === 'string' ? e.detail : 'Ürün kaydedilemedi')
@@ -72,6 +80,9 @@ export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
           {u.image_url && <img src={u.image_url} alt="" className="w-12 h-12 rounded-lg object-cover border border-panel-border" />}
           <div className="flex-1 min-w-40">
             <div className="text-sm font-medium truncate">{u.title}</div>
+            {!u.baski_var && (
+              <div className="text-[10px] text-amber-300">Baskı dosyası yüklenmedi — siparişte üretim dosyasını Düzenle'den ekleyin</div>
+            )}
             <div className="text-xs text-panel-muted">
               {Number(u.price).toLocaleString('tr-TR')} TL · {u.satista
                 ? <span className="text-emerald-300">Satışta — yalnız linkle görünür</span>
@@ -104,10 +115,38 @@ export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
 
       {acik && (
         <div className="mt-2.5 grid sm:grid-cols-2 gap-2.5">
-          {dosyaSecici(u ? 'Baskı dosyası (değiştirmek için)' : 'Baskı dosyası *',
-            'PNG/JPG/PDF — siparişte üretime giden dosya', baski, setBaski, '.png,.jpg,.jpeg,.pdf,.svg')}
-          {dosyaSecici('Ürün fotoğrafı (isteğe bağlı)',
-            'Boşsa tasarım kılıf görseline giydirilir', gorsel, setGorsel, 'image/png,image/jpeg,image/webp')}
+          <div className="sm:col-span-2">
+            <div className="text-[11px] text-panel-muted mb-1">
+              Ürün görselleri {u ? '(yüklerseniz mevcutların YERİNE geçer)' : '*'} — müşteri ürün sayfasında bunları görür, ilki kapak
+            </div>
+            <label
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); gorselEkle(e.dataTransfer.files) }}
+              className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-panel-border p-2 cursor-pointer hover:border-panel-accent">
+              <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden"
+                onChange={e => { gorselEkle(e.target.files || []); e.target.value = '' }} />
+              {onizlemeler.map((src, i) => (
+                <span key={src} className="relative">
+                  <img src={src} alt="" className="w-16 h-16 rounded-lg object-cover border border-panel-border" />
+                  {i === 0 && <span className="absolute bottom-0.5 left-0.5 text-[9px] px-1 rounded bg-black/70 text-white">Kapak</span>}
+                  <button type="button" title="Kaldır"
+                    onClick={e => { e.preventDefault(); setGorseller(g => g.filter((_, k) => k !== i)) }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-[11px] leading-5">×</button>
+                </span>
+              ))}
+              <span className="text-xs text-panel-muted px-2">
+                {gorseller.length ? '+ görsel ekle' : '📷 Görsel seçin ya da buraya sürükleyin (JPG/PNG/WEBP, en çok 8)'}
+              </span>
+            </label>
+            {u?.gorseller?.length > 0 && !gorseller.length && (
+              <div className="flex gap-1.5 mt-1.5 items-center">
+                <span className="text-[10px] text-panel-muted">Şu anki görseller:</span>
+                {u.gorseller.map(g => <img key={g} src={g} alt="" className="w-9 h-9 rounded object-cover border border-panel-border" />)}
+              </div>
+            )}
+          </div>
+          {dosyaSecici(u?.baski_var ? 'Baskı dosyası (değiştirmek için)' : 'Baskı dosyası (isteğe bağlı)',
+            'PNG/JPG/PDF — üretime giden dosya; şimdi ya da sonra yükleyebilirsiniz', baski, setBaski, '.png,.jpg,.jpeg,.pdf,.svg')}
           <label className="block text-[11px] text-panel-muted">
             Fiyat (TL) *
             <input value={fiyat} onChange={e => setFiyat(e.target.value)} inputMode="decimal" placeholder="örn. 449"
@@ -136,7 +175,7 @@ export default function OzelUrun({ talep, storeId, onDegisti, onHata }) {
             </label>
           )}
           <div className="sm:col-span-2 flex items-center gap-2 flex-wrap">
-            <button onClick={kaydet} disabled={busy || !fiyatGecerli || (!u && !baski)}
+            <button onClick={kaydet} disabled={busy || !fiyatGecerli || (!u && !baski && !gorseller.length)}
               className="btn !py-1.5 text-xs disabled:opacity-40">
               {busy ? 'Kaydediliyor…' : u ? 'Ürünü güncelle' : 'Ürünü oluştur'}
             </button>

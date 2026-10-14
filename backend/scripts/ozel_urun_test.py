@@ -81,10 +81,16 @@ buf = io.BytesIO()
 Image.new("RGB", (700, 1450), (220, 30, 60)).save(buf, "PNG")
 baski = buf.getvalue()
 urun_id = None
+ekstra_talepler: list = []
+ekstra_urunler: list = []
 try:
     print("\n── Ürün oluşturma ──")
     yok = c.post(f"/api/design-requests/{rid}/urun", headers=H, data={"fiyat": "449"})
-    es("baskı dosyası olmadan ürün kurulmaz", 422, yok.status_code)
+    es("görsel de baskı dosyası da yoksa ürün kurulmaz", 422, yok.status_code)
+    pdf_gorsel = c.post(f"/api/design-requests/{rid}/urun", headers=H, data={"fiyat": "449"},
+                        files=[("gorsel", ("x.pdf", b"%PDF-1.4", "application/pdf"))])
+    es("görsel yerine PDF yüklenirse anlaşılır hata", (422, True),
+       (pdf_gorsel.status_code, "görsel değil" in pdf_gorsel.text))
     s = c.get(f"/api/design-requests/secenekler?store_id={st.id}", headers=H).json()
     es("seçenekler: varsayılan model seti ve kılıf", (str(vs.id), [str(tpl.id)]),
        (s["varsayilan_set"], [k["id"] for k in s["kiliflar"]]))
@@ -162,8 +168,55 @@ try:
     es("kaldırılan ürün sepetten satın alınamaz", False, q3.get("valid", True))
     c.post(f"/api/design-requests/{rid}/urun", headers=H, data={"fiyat": "399"})
     es("yeniden kaydedince link tekrar açılır", 200, c.get(f"/api/shop/{st.slug}/products/{p.slug}").status_code)
+
+    print("\n── Yüklenen görsel = ürün görseli ──")
+    def png(renk, boyut=(800, 800)):
+        b2 = io.BytesIO(); Image.new("RGB", boyut, renk).save(b2, "PNG"); return b2.getvalue()
+    yg = c.post(f"/api/design-requests/{rid}/urun", headers=H, data={"fiyat": "399"},
+                files=[("gorsel", ("on.png", png((0, 200, 0)), "image/png")),
+                       ("gorsel", ("arka.png", png((0, 0, 200)), "image/png"))]).json()
+    db.expire_all()
+    ims = sorted(db.scalars(select(CatalogImage).where(CatalogImage.product_id == p.id)).all(),
+                 key=lambda im: im.position)
+    renkler = [Image.open(storage_svc.STORAGE_ROOT / im.file_path).convert("RGB").getpixel((5, 5)) for im in ims]
+    es("ürünün görselleri TAM OLARAK yüklenenler, sırası korunur (ilki kapak)", 2, len(ims))
+    es("kapak ilk yüklenen (yeşil), ikinci mavi", (True, True),
+       (renkler[0][1] > 150 and renkler[0][0] < 60, renkler[1][2] > 150 and renkler[1][1] < 60) if len(renkler) == 2 else None)
+    es("panel özeti görselleri listeler", 2, len(yg["urun"]["gorseller"]))
+    yb = c.post(f"/api/design-requests/{rid}/urun", headers=H, data={"fiyat": "399"},
+                files={"baski": ("yeni.png", baski, "image/png")}).json()
+    db.expire_all()
+    es("yalnız baskı dosyası değişince yüklenen görseller KORUNUR", 2,
+       len(db.scalars(select(CatalogImage).where(CatalogImage.product_id == p.id)).all()))
+    es("baskı dosyası var", True, yb["urun"]["baski_var"])
+
+    print("\n── Yalnız görselle yeni ürün ──")
+    r2 = DesignRequest(tenant_id=tenant.id, store_id=st.id, customer_email=eposta, customer_name="Ali",
+                       image_url="/storage/yok.png")
+    db.add(r2); db.commit()
+    ekstra_talepler.append(r2.id)
+    y2 = c.post(f"/api/design-requests/{r2.id}/urun", headers=H, data={"fiyat": "300"},
+                files=[("gorsel", ("mockup.jpg", png((250, 250, 0)), "image/png"))])
+    es("baskı dosyası olmadan, yalnız görselle ürün kurulur", 200, y2.status_code)
+    u2 = y2.json()["urun"]
+    ekstra_urunler.append(u2["id"])
+    es("tek görsel = yüklenen; baskı dosyası yok uyarısı için işaret", (1, False),
+       (len(u2["gorseller"]), u2["baski_var"]))
+    es("vitrinde açılır", 200, c.get(f"/api/shop/{st.slug}/products/{u2['slug']}").status_code)
 finally:
     db.rollback()
+    for tid in ekstra_talepler:
+        x = db.get(DesignRequest, tid)
+        if x:
+            db.delete(x)
+    db.flush()
+    for uid in ekstra_urunler:
+        x = db.get(CatalogProduct, uuid.UUID(uid))
+        if x:
+            for im in db.scalars(select(CatalogImage).where(CatalogImage.product_id == x.id)).all():
+                storage_svc.delete_catalog_image(im.file_path)
+            db.delete(x)
+    db.flush()
     if urun_id:
         for im in db.scalars(select(CatalogImage).where(CatalogImage.product_id == uuid.UUID(urun_id))).all():
             storage_svc.delete_catalog_image(im.file_path)

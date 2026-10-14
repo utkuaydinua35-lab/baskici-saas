@@ -112,14 +112,23 @@ def _tasarim_kaydet(db: Session, store: Store, r: DesignRequest, veri: bytes, ad
 
 
 def urun_kur(db: Session, store: Store, r: DesignRequest, *, fiyat: float, baslik: str | None,
-             baski: tuple[bytes, str] | None, gorsel: tuple[bytes, str] | None,
+             baski: tuple[bytes, str] | None, gorseller: list[tuple[bytes, str]] | None,
              variant_set_id=None, template_id=None) -> CatalogProduct:
-    """Talebin özel ürününü kur ya da güncelle (dosya verilmezse görseller kalır)."""
+    """Talebin özel ürününü kur ya da güncelle.
+
+    Ürünün görselleri = mağazanın YÜKLEDİĞİ görseller (sırasıyla, ilki kapak).
+    Görsel yüklenmezse: yeni üründe baskı dosyası kılıfa giydirilip görsel
+    yapılır; güncellemede mevcut görseller aynen kalır. Baskı dosyası isteğe
+    bağlıdır (üretim dosyası; siparişte kalıp planlayıcı bunu kullanır)."""
     from app.routers.catalog import sync_set_to_product
 
     urun = db.get(CatalogProduct, r.product_id) if r.product_id else None
-    if urun is None and baski is None:
-        raise ValueError("Baskı dosyasını yükleyin")
+    gorseller = [g for g in (gorseller or []) if g and g[0]][:8]
+    if urun is None and baski is None and not gorseller:
+        raise ValueError("Ürün görselini yükleyin")
+    for veri, ad in gorseller:
+        if storage_svc.get_extension(ad) not in storage_svc.CATALOG_IMAGE_EXTENSIONS:
+            raise ValueError(f"“{ad}” görsel değil — JPG, PNG veya WEBP yükleyin")
     ad = (r.customer_name or "").strip().split(" ")[0]
     baslik = (baslik or "").strip() or (f"Özel Tasarım Kılıf — {ad}" if ad else "Özel Tasarım Kılıf")
 
@@ -153,25 +162,27 @@ def urun_kur(db: Session, store: Store, r: DesignRequest, *, fiyat: float, basli
         urun.design_id = d.id
         d.product_title = urun.title
 
-    if baski is not None or gorsel is not None:
+    yeni_urun = not db.scalar(select(func.count()).select_from(CatalogImage)
+                              .where(CatalogImage.product_id == urun.id))
+    if gorseller:
+        # Mağazanın yüklediği görseller ürünün görselleri olur (ilki kapak)
         _gorselleri_sil(db, urun)
-        sira = 0
-        if gorsel is not None:
-            _gorsel_ekle(db, urun, gorsel[0], gorsel[1], sira)
-            sira += 1
-        duz = raster(*baski) if baski is not None else None
+        for sira, (veri, ad) in enumerate(gorseller):
+            _gorsel_ekle(db, urun, veri, ad, sira)
+    elif baski is not None and yeni_urun:
+        # Görsel yüklenmedi: baskı dosyasından ürün görseli üret
+        duz = raster(*baski)
         if duz is not None:
-            if gorsel is None:
-                # Ürün fotoğrafı verilmedi: tasarımı kılıfa giydir
-                from app.services import kapak_gorseli
-                tpl = _kilif(db, store, template_id)
-                if tpl is not None:
-                    try:
-                        kapak = kapak_gorseli.kare_kapak(kapak_gorseli.gorsel_giydir(tpl, duz))
-                        _gorsel_ekle(db, urun, kapak, "kapak.jpg", sira)
-                        sira += 1
-                    except ValueError:
-                        pass
+            sira = 0
+            from app.services import kapak_gorseli
+            tpl = _kilif(db, store, template_id)
+            if tpl is not None:
+                try:
+                    _gorsel_ekle(db, urun, kapak_gorseli.kare_kapak(
+                        kapak_gorseli.gorsel_giydir(tpl, duz)), "kapak.jpg", sira)
+                    sira += 1
+                except ValueError:
+                    pass
             _gorsel_ekle(db, urun, _jpeg(duz), "tasarim.jpg", sira)
     r.status = "teklif" if r.status in ("acik", "incelendi") else r.status
     return urun
@@ -196,11 +207,14 @@ def urun_ozeti(db: Session, store: Store, r: DesignRequest) -> dict | None:
         return None
     from app.services.site import site_url
     site = site_url(store)
-    kapak = min(u.images, key=lambda im: im.position, default=None)
+    gorseller = sorted(u.images, key=lambda im: im.position)
+    kapak = gorseller[0] if gorseller else None
     return {"id": str(u.id), "slug": u.slug, "title": u.title, "status": u.status,
             "price": float(u.base_price or 0),
             "url": f"{site}/urun/{u.slug}" if site else f"/urun/{u.slug}",
             "image_url": f"/storage/{kapak.file_path}" if kapak else None,
+            "gorseller": [f"/storage/{im.file_path}" for im in gorseller],
+            "baski_var": bool(u.design_id),
             "satista": u.status in SATILABILIR}
 
 

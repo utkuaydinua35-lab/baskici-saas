@@ -99,12 +99,13 @@ def ozel_urun_kaydet(
     variant_set_id: uuid.UUID | None = Form(None),
     template_id: uuid.UUID | None = Form(None),
     baski: UploadFile | None = File(None),
-    gorsel: UploadFile | None = File(None),
+    # Ürünün görselleri — sırasıyla, ilki kapak (en çok 8)
+    gorsel: list[UploadFile] | None = File(None),
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
-    """Talebe özel ürünü kur/güncelle. Dosya gönderilmezse görseller aynen kalır
-    (yalnız fiyat/başlık değişir). Ürün YALNIZ linkle açılır."""
+    """Talebe özel ürünü kur/güncelle. Yüklenen görseller ürünün görselleri olur;
+    görsel gönderilmezse mevcutlar aynen kalır. Ürün YALNIZ linkle açılır."""
     r, store = _talep(db, user, request_id)
     def oku(f: UploadFile | None):
         if f is None or not f.filename:
@@ -113,7 +114,8 @@ def ozel_urun_kaydet(
         return (veri, f.filename) if veri else None
     try:
         urun = ozel_urun.urun_kur(db, store, r, fiyat=fiyat, baslik=baslik,
-                                  baski=oku(baski), gorsel=oku(gorsel),
+                                  baski=oku(baski),
+                                  gorseller=[x for x in (oku(g) for g in (gorsel or [])) if x],
                                   variant_set_id=variant_set_id, template_id=template_id)
     except ValueError as e:
         db.rollback()

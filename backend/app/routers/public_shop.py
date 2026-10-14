@@ -1258,7 +1258,9 @@ def _urun_tipi(p) -> str:
     adlar = [c.title for c in (p.collections or []) if c.title][:2]
     if not adlar:
         return ""
-    return f"<g:product_type>{escape(' &gt; '.join(adlar)[:250])}</g:product_type>"
+    # Ayraç KAÇIŞTAN ÖNCE eklenir; önceden " &gt; " yazılıp bir kez daha
+    # kaçırılıyordu → akışta "&amp;gt;" (Meta'da "Kılıf &gt; Anime") çıkıyordu
+    return f"<g:product_type>{escape(' > '.join(adlar)[:250])}</g:product_type>"
 
 
 def _fiyat_bandi(fiyat) -> str:
@@ -1276,12 +1278,53 @@ def _fiyat_bandi(fiyat) -> str:
     return f"<g:custom_label_0>{band}</g:custom_label_0>"
 
 
+# Akışlar ağır (625 ürün; Google'da 190 bin varyant satırı, 175 MB) ve Meta /
+# Google saatte bir çeker. Her istekte yeniden üretmek sunucuyu 15-30 sn
+# meşgul ediyordu → dosya önbelleği (tüm worker'lar paylaşır), süre dolunca
+# bir sonraki istekte yenilenir.
+FEED_TTL_SN = 3600
+
+
+def _feed_onbellekli(anahtar: str, uret) -> bytes:
+    import os
+    import tempfile
+    import time
+    from pathlib import Path
+
+    dizin = Path(tempfile.gettempdir()) / "baskici-feed"
+    yol = dizin / f"{anahtar}.xml"
+    try:
+        if time.time() - yol.stat().st_mtime < FEED_TTL_SN:
+            return yol.read_bytes()
+    except OSError:
+        pass
+    veri = uret().encode("utf-8")
+    try:
+        dizin.mkdir(parents=True, exist_ok=True)
+        gecici = yol.with_suffix(f".{os.getpid()}.tmp")
+        gecici.write_bytes(veri)
+        gecici.replace(yol)            # yarım dosya okunmasın
+    except OSError:
+        pass
+    return veri
+
+
 @router.get("/{store_slug}/feed/meta.xml")
 def meta_catalog_feed(
     store_slug: str,
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
+    """Meta (Facebook/Instagram) katalog akışı — Commerce Manager › Veri
+    kaynakları › Veri akışı › "Zamanlanmış akış"a vitrinin /feed/meta.xml
+    adresi verilir; Meta saatlik/günlük kendisi çeker (Shopify kanalı gibi)."""
+    store = _resolve_store(db, store_slug)
+    veri = _feed_onbellekli(f"{store.id}-meta", lambda: _meta_feed_xml(db, store))
+    return Response(content=veri, media_type="application/xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=900"})
+
+
+def _meta_feed_xml(db: Session, store: Store) -> str:
     """Meta (Facebook/Instagram) katalog feed'i — ÜRÜN bazlı tek item.
 
     g:id = ürün slug'ı: pikselin ViewContent/AddToCart/Purchase content_ids'i
@@ -1290,26 +1333,34 @@ def meta_catalog_feed(
     aynı ürünün yüzlerce kopyası anlamsız olacağından ayrı uç gerekir.
     Commerce Manager → Veri Kaynakları → Veri Akışı'na bu URL verilir.
     """
+    from sqlalchemy import or_
     from xml.sax.saxutils import escape
 
-    store = _resolve_store(db, store_slug)
     config = store.config or {}
     site = site_url(config)
 
     products = db.scalars(
         select(CatalogProduct)
         .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active")
-        .options(selectinload(CatalogProduct.variants),
-                 selectinload(CatalogProduct.images),
+        .options(selectinload(CatalogProduct.images),
                  selectinload(CatalogProduct.collections))
         .order_by(CatalogProduct.position)
     ).all()
+    # Stok durumu TEK sorguda: ürün başına yüzlerce varyantı belleğe almak
+    # akışı 14 sn'ye çıkarıyordu
+    stokta = set(db.scalars(
+        select(CatalogVariant.product_id).join(
+            CatalogProduct, CatalogProduct.id == CatalogVariant.product_id)
+        .where(CatalogProduct.store_id == store.id, CatalogProduct.status == "active",
+               CatalogVariant.is_active.is_(True),
+               or_(CatalogVariant.track_stock.is_(False), CatalogVariant.quantity > 0))
+        .distinct()
+    ).all())
 
     kargo = _kargo_xml(config)
     items_xml = []
     for p in products:
-        active = [v for v in p.variants if v.is_active]
-        in_stock = any((not v.track_stock) or v.quantity > 0 for v in active) if active else False
+        in_stock = p.id in stokta
         desc = re.sub(r"<[^>]*>", " ", p.seo_description or p.description or p.title or "")
         desc = re.sub(r"\s+", " ", desc).strip()[:5000] or p.title
         image = f"{site}/storage/{p.images[0].file_path}" if p.images else ""
@@ -1348,8 +1399,7 @@ def meta_catalog_feed(
         + "".join(items_xml)
         + "</channel></rss>"
     )
-    return Response(content=xml, media_type="application/xml",
-                    headers={"Cache-Control": "public, max-age=900"})
+    return xml
 
 
 @router.get("/{store_slug}/feed/google.xml")
@@ -1363,9 +1413,15 @@ def google_shopping_feed(
     Varyant bazlı: her model ayrı item (item_group_id = ürün). Merchant
     Center'a bu URL doğrudan 'scheduled fetch' olarak verilir.
     """
+    store = _resolve_store(db, store_slug)
+    veri = _feed_onbellekli(f"{store.id}-google", lambda: _google_feed_xml(db, store))
+    return Response(content=veri, media_type="application/xml; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=1800"})
+
+
+def _google_feed_xml(db: Session, store: Store) -> str:
     from xml.sax.saxutils import escape
 
-    store = _resolve_store(db, store_slug)
     config = store.config or {}
     site = site_url(config)
 
@@ -1383,6 +1439,9 @@ def google_shopping_feed(
     for p in products:
         link = f"{site}/urun/{p.slug}"
         image = f"{site}/storage/{p.images[0].file_path}" if p.images else ""
+        ek_gorseller = "".join(
+            f"<g:additional_image_link>{escape(f'{site}/storage/{im.file_path}')}</g:additional_image_link>"
+            for im in p.images[1:11])
         # Zengin metin açıklamadan etiketleri ayıkla (feed düz metin ister)
         desc = re.sub(r"<[^>]*>", " ", p.seo_description or p.description or p.title or "")
         desc = re.sub(r"\s+", " ", desc).strip()[:5000]
@@ -1400,11 +1459,16 @@ def google_shopping_feed(
                 f"<description>{escape(desc)}</description>"
                 f"<link>{escape(link)}</link>"
                 + (f"<g:image_link>{escape(image)}</g:image_link>" if image else "")
+                + ek_gorseller
                 + f"<g:price>{price} TRY</g:price>"
                 f"<g:availability>{'in_stock' if in_stock else 'out_of_stock'}</g:availability>"
                 f"<g:condition>new</g:condition>"
                 f"<g:brand>{escape(store.name)}</g:brand>"
                 + (f"<g:mpn>{escape(v.sku)}</g:mpn>" if v.sku else "")
+                # Sipariş üzerine üretilen ürünün barkodu (GTIN) yok. Bu
+                # bildirilmezse Merchant Center her satıra "GTIN eksik"
+                # uyarısı verip reklam erişimini kısıyordu.
+                + "<g:identifier_exists>no</g:identifier_exists>"
                 # Merchant Center kategori olmadan ürünü "eksik veri" sayıyordu
                 + f"<g:google_product_category>{TELEFON_KILIFI_KATEGORI}</g:google_product_category>"
                 + _urun_tipi(p)
@@ -1422,11 +1486,7 @@ def google_shopping_feed(
         + "".join(items_xml)
         + "</channel></rss>"
     )
-    return Response(
-        content=xml,
-        media_type="application/xml; charset=utf-8",
-        headers={"Cache-Control": "public, max-age=1800"},
-    )
+    return xml
 
 
 def _has_blog(db: Session, store: Store) -> bool:

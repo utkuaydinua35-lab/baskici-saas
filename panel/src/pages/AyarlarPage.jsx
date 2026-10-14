@@ -6,6 +6,7 @@ import SaveBar from '../components/SaveBar'
 import { passkeySupported, registerPasskey } from '../lib/webauthn'
 import { mutlak } from '../lib/taban'
 import PikselRehberi, { pikselUyarisi } from '../components/PikselRehberi'
+import UrunAkisi from '../components/UrunAkisi'
 
 // Mağaza Ayarları — kargo, min. sepet, ödeme, iletişim, yasal metinler.
 // Tek kaynak Store.config; maskeli ('••') secretlar değiştirilmezse yazılmaz.
@@ -587,6 +588,9 @@ export default function AyarlarPage() {
             reklam raporlarına gitmez. Unutulmasın diye kod kaydedildikten <b>3 saat sonra
             kendiliğinden devre dışı kalır</b>; yine de doğrulama bitince alanı boşaltın.
           </p>
+        </div>
+        <div className="border-t border-panel-border pt-3 mt-1">
+          <UrunAkisi cfg={cfg} />
         </div>
         <div className="border-t border-panel-border pt-3 mt-1">
           <PikselRehberi cfg={cfg} />

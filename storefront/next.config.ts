@@ -76,6 +76,9 @@ const nextConfig: NextConfig = {
       { source: "/.well-known/security.txt", destination: "/api/security-txt" },
       // app/favicon.ico Next'te özel dosya adı (klasör olarak rota açılmıyor)
       { source: "/favicon.ico", destination: "/api/simge" },
+      // Ürün akışları (Meta katalogu / Google Merchant) — bkz. app/api/feed
+      { source: "/feed/meta.xml", destination: "/api/feed/meta" },
+      { source: "/feed/google.xml", destination: "/api/feed/google" },
     ];
   },
 };

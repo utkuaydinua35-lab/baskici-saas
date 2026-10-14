@@ -43,14 +43,22 @@ function cerez(ad: string): string | undefined {
   } catch { return undefined; }
 }
 
+/** Ödeme formundan bilinen kişi bilgileri — sunucu hash'leyip Meta'ya
+ *  eşleşme sinyali olarak iletir (raporlanan dönüşüm artar). Saklanmaz. */
+export interface Kisi {
+  eposta?: string; telefon?: string; ad?: string; soyad?: string;
+  il?: string; posta_kodu?: string;
+}
+
 function beacon(olay: string, eventId: string, veri: {
   deger?: number; para?: string; icerik?: string[]; adet?: number;
-}) {
+}, kisi?: Kisi) {
   try {
     const govde = JSON.stringify({
       olay, event_id: eventId, url: location.href,
       deger: veri.deger, para: veri.para || "TRY",
       icerik: veri.icerik || [], adet: veri.adet,
+      ...(kisi || {}),
       fbp: cerez("_fbp"), fbc: cerez("_fbc"), vid: cerez("bz_vid"),
     });
     // sendBeacon: sayfa kapanırken bile gider ve akışı bloklamaz
@@ -119,7 +127,7 @@ export function trackAddToCart(item: Item) {
   });
 }
 
-export function trackInitiateCheckout(data: EventData) {
+export function trackInitiateCheckout(data: EventData, kisi?: Kisi) {
   const currency = data.currency || "TRY";
   const eid = olayKimligi("ic");
   const adet = (data.items || []).reduce((s, i) => s + i.quantity, 0);
@@ -129,7 +137,7 @@ export function trackInitiateCheckout(data: EventData) {
     content_type: "product", num_items: adet,
   }, { eventID: eid });
   beacon("InitiateCheckout", eid, { deger: data.value, para: currency,
-    icerik: (data.items || []).map((i) => i.id), adet });
+    icerik: (data.items || []).map((i) => i.id), adet }, kisi);
   window.gtag?.("event", "begin_checkout", {
     currency, value: data.value, items: ga4Items(data.items),
   });
@@ -138,7 +146,7 @@ export function trackInitiateCheckout(data: EventData) {
 
 // Kart bilgisi aşaması — barındırmalı ödemede (iyzico/PayTR sayfası) kartın
 // girildiği an bizde olmadığından, ödeme sağlayıcısına yönlenme anında atılır.
-export function trackAddPaymentInfo(data: EventData) {
+export function trackAddPaymentInfo(data: EventData, kisi?: Kisi) {
   const currency = data.currency || "TRY";
   const eid = olayKimligi("api");
   window.fbq?.("track", "AddPaymentInfo", {
@@ -147,7 +155,7 @@ export function trackAddPaymentInfo(data: EventData) {
   }, { eventID: eid });
   beacon("AddPaymentInfo", eid, { deger: data.value, para: currency,
     icerik: (data.items || []).map((i) => i.id),
-    adet: (data.items || []).reduce((s, i) => s + i.quantity, 0) || undefined });
+    adet: (data.items || []).reduce((s, i) => s + i.quantity, 0) || undefined }, kisi);
   window.gtag?.("event", "add_payment_info", {
     currency, value: data.value, items: ga4Items(data.items),
   });

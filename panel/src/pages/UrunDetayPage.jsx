@@ -155,14 +155,16 @@ export default function UrunDetayPage() {
             kendi satırına iniyor ve sarıyor. */}
         <div className="ml-auto flex gap-2 items-center flex-wrap
                         w-full sm:w-auto justify-end">
-          {p.status === 'active' && (
+          {(p.status === 'active' || p.status === 'ozel') && (
             <a href={`${(store?.config?.storefront_url
                 || (store?.config?.shop_domain ? `https://${store.config.shop_domain}` : '')
               ).replace(/\/$/, '')}/urun/${p.slug}`}
               target="_blank" rel="noopener noreferrer"
               className="btn-ghost !py-1.5 text-xs">👁 Vitrinde Gör</a>
           )}
-          {p.status !== 'active'
+          {p.status === 'ozel'
+            ? <span className="text-[11px] text-indigo-300" title="Tasarım talebine özel ürün">🔒 Yalnız linkle görünür</span>
+            : p.status !== 'active'
             ? <button disabled={busy} onClick={() => patchStatus('active')}
                 className="px-3 py-1.5 rounded-xl text-xs bg-emerald-500/10 text-emerald-300">Yayınla</button>
             : <button disabled={busy} onClick={() => patchStatus('draft')}

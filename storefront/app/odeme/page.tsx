@@ -1,12 +1,12 @@
 "use client";
 
 // Misafir checkout — form + KVKK onayı → backend ödeme oturumu → redirect/iframe.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import CouponInput from "@/components/CouponInput";
-import { trackAddPaymentInfo, trackInitiateCheckout } from "@/lib/track";
+import { type Kisi, trackAddPaymentInfo, trackInitiateCheckout } from "@/lib/track";
 import TrustBadges from "@/components/TrustBadges";
 import IlIlceSelect from "@/components/IlIlceSelect";
 import { useAutoQuote } from "@/lib/useAutoQuote";
@@ -84,6 +84,8 @@ export default function CheckoutPage() {
   const [adresler, setAdresler] = useState<AdresKaydi[]>([]);
   const [adresIdx, setAdresIdx] = useState(0);
   const [hesap, setHesap] = useState<{ name?: string; email?: string; phone?: string } | null>(null);
+  // Girişli müşterinin kayıtlı bilgileri (hesap yüklenince ödeme olayı bunlarla gider)
+  const [hesapKisi, setHesapKisi] = useState<Kisi | null>(null);
 
   const adresiUygula = useCallback((a: AdresKaydi, me: typeof hesap) => {
     setPrefill({
@@ -109,21 +111,56 @@ export default function CheckoutPage() {
           : (me.default_address ? [me.default_address] : []);
         setAdresler(liste);
         adresiUygula(liste[0] || {}, me);
+        const a = liste[0] || {};
+        const ad = (me.name || "").trim();
+        setHesapKisi({
+          eposta: me.email, telefon: a.phone || me.phone,
+          ad: a.first_name || ad.split(" ")[0], soyad: a.last_name || ad.split(" ").slice(1).join(" "),
+          il: a.city, posta_kodu: a.zip,
+        });
       })
       .catch(() => {});
   }, [adresiUygula]);
 
-  useEffect(() => {
-    if (items.length === 0) return;
+  // ÖDEME BAŞLATILDI olayı — müşteriyi TANIYINCA gönderilir (Meta e-posta
+  // ve telefonla eşleştirince raporlanan dönüşüm artıyor; sayfa açılır
+  // açılmaz atılan olayda hiçbiri yoktu):
+  //   • girişli müşteri: hesap bilgisi gelince, kayıtlı bilgilerle
+  //   • misafir: e-postayı ya da telefonu yazıp alandan çıkınca
+  //   • hiç yazmadan ayrılan / doğrudan gönderen: bilgisiz ya da formla
+  // Sayfa başına TEK sefer.
+  const icGitti = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const icGonder = (kisi?: Kisi) => {
+    if (icGitti.current || items.length === 0) return;
+    icGitti.current = true;
     trackInitiateCheckout({
       value: subtotal,
       // id = ürün slug'ı — Meta katalog (g:id) ile aynı anahtar
       items: items.map((i) => ({
         id: i.productSlug, name: i.title, price: Number(i.price), quantity: i.quantity,
       })),
-    });
+    }, kisi);
+  };
+  const formKisi = (form: HTMLFormElement | null): Kisi => {
+    if (!form) return {};
+    const fd = new FormData(form);
+    const al = (k: string) => String(fd.get(k) || "").trim() || undefined;
+    return { eposta: al("email"), telefon: al("phone"), ad: al("first_name"), soyad: al("last_name"),
+      il: al("city"), posta_kodu: al("zip") };
+  };
+  const tanindi = (k: Kisi) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(k.eposta || "") || (k.telefon || "").replace(/\D/g, "").length >= 10;
+  useEffect(() => {
+    if (hesapKisi) icGonder(hesapKisi);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hesapKisi]);
+  useEffect(() => {
+    const ayrilirken = () => icGonder();
+    window.addEventListener("pagehide", ayrilirken);
+    return () => window.removeEventListener("pagehide", ayrilirken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, subtotal]);
 
   if (items.length === 0 && !iframeUrl) {
     return (
@@ -162,6 +199,8 @@ export default function CheckoutPage() {
     setBusy(true);
     setError("");
     const fd = new FormData(e.currentTarget);
+    const kisi = formKisi(e.currentTarget);
+    icGonder(kisi);
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -211,7 +250,7 @@ export default function CheckoutPage() {
         items: items.map((i) => ({
           id: i.productSlug, name: i.title, price: Number(i.price), quantity: i.quantity,
         })),
-      });
+      }, kisi);
       if (out.mode === "redirect") {
         window.location.href = out.url; // iyzico barındırmalı ödeme sayfası
       } else {
@@ -254,7 +293,14 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <form key={`${prefill.email || "misafir"}-${adresIdx}`} onSubmit={submit} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
+      <form key={`${prefill.email || "misafir"}-${adresIdx}`} onSubmit={submit} ref={formRef}
+        onBlur={(e) => {
+          // Misafir: e-posta/telefon yazılıp alandan çıkılınca olay bilgilerle gider
+          const ad = (e.target as unknown as HTMLInputElement).name;
+          if (icGitti.current || (ad !== "email" && ad !== "phone")) return;
+          const k = formKisi(formRef.current);
+          if (tanindi(k)) icGonder(k);
+        }} className="grid md:grid-cols-[1fr_260px] gap-6 items-start">
         <div className="space-y-4 bg-white border border-zinc-200 rounded-2xl p-5">
           <div className="grid grid-cols-2 gap-3">
             <Input name="first_name" label="Ad" required autoComplete="given-name" defaultValue={prefill.first_name} />

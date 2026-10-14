@@ -70,6 +70,8 @@ export interface CustomField {
 }
 
 export interface ProductDetail {
+  /** Tasarım talebine özel ürün — yalnız linkle açılır, arama motoruna kapalı */
+  ozel?: boolean;
   slug: string;
   title: string;
   custom_fields?: CustomField[];

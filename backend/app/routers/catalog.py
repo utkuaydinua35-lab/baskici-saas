@@ -79,7 +79,7 @@ class ProductCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
     slug: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=20000)
-    status: str = Field("draft", pattern="^(draft|active|archived)$")
+    status: str = Field("draft", pattern="^(draft|active|archived|ozel)$")
     seo_title: str | None = Field(None, max_length=200)
     seo_description: str | None = Field(None, max_length=400)
     base_price: Decimal = Field(..., ge=0)
@@ -97,7 +97,7 @@ class ProductUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=300)
     slug: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=20000)
-    status: str | None = Field(None, pattern="^(draft|active|archived)$")
+    status: str | None = Field(None, pattern="^(draft|active|archived|ozel)$")
     seo_title: str | None = Field(None, max_length=200)
     seo_description: str | None = Field(None, max_length=400)
     base_price: Decimal | None = Field(None, ge=0)
@@ -1169,7 +1169,7 @@ class ImageOrderRequest(BaseModel):
 
 class BulkStatusRequest(BaseModel):
     ids: list[uuid.UUID] = Field(..., min_length=1, max_length=200)
-    status: str = Field(..., pattern="^(draft|active|archived)$")
+    status: str = Field(..., pattern="^(draft|active|archived|ozel)$")
 
 
 class StokTakibiRequest(BaseModel):

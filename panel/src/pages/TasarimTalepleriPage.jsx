@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
+import OzelUrun from '../components/OzelUrun'
 
 // Müşterilerin vitrindeki hesaplarından yükledikleri tasarım talepleri —
 // incele, durum güncelle, not yaz (not müşterinin hesabında görünür).
@@ -35,19 +36,27 @@ export default function TasarimTalepleriPage() {
   }, [storeId, tab])
   useEffect(() => { load() }, [load])
 
+  const [bilgi, setBilgi] = useState('')
   const update = async (id, patch) => {
-    setBusyId(id)
+    setBusyId(id); setBilgi(''); setError('')
+    // WhatsApp sekmesi tıklama anında açılır (bekledikten sonra açılan pencereyi
+    // tarayıcı engelliyor); bağlantı gelince oraya yönlenir
+    const sekme = patch.notify_customer ? window.open('', '_blank') : null
     try {
       const r = await api.patch(`/api/design-requests/${id}`, patch)
       if (patch.notify_customer) {
-        setError(r.notified ? '' : 'Kaydedildi ama e-posta gönderilemedi (SMTP ayarlarını kontrol edin)')
+        if (r.whatsapp_url && sekme) sekme.location.href = r.whatsapp_url
+        else sekme?.close()
+        const parca = [r.notified ? 'e-posta gönderildi ✓' : 'e-posta GÖNDERİLEMEDİ (SMTP ayarlarını kontrol edin)',
+          r.whatsapp_url ? 'WhatsApp mesajı yeni sekmede hazır — Gönder’e basın' : 'müşterinin telefonu kayıtlı değil, WhatsApp açılamadı']
+        if (r.notified) setBilgi(parca.join(' · '))
+        else setError(parca.join(' · '))
       }
       await load()
     }
-    catch (e) { setError(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
+    catch (e) { sekme?.close(); setError(typeof e?.detail === 'string' ? e.detail : 'Güncellenemedi') }
     finally { setBusyId(null) }
   }
-
   return (
     <div className="max-w-4xl space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
@@ -72,6 +81,7 @@ export default function TasarimTalepleriPage() {
         Yazdığınız not müşterinin hesabında görünür — teklif ve yanıtları buradan iletin.
       </p>
       {error && <p className="text-sm text-red-300">{error}</p>}
+      {bilgi && <p className="text-sm text-emerald-300">{bilgi}</p>}
 
       <div className="space-y-3">
         {items.map(r => {
@@ -98,11 +108,16 @@ export default function TasarimTalepleriPage() {
                     {r.phone_model && (
                       <span className="text-xs text-panel-muted">📱 {r.phone_model}</span>
                     )}
+                    {r.customer_phone && (
+                      <span className="text-xs text-panel-muted">☎ {r.customer_phone}</span>
+                    )}
                     <span className="text-xs text-panel-muted ml-auto">
                       {r.created_at ? new Date(r.created_at).toLocaleString('tr-TR') : ''}
                     </span>
                   </div>
                   {r.message && <p className="text-sm mt-1.5 text-panel-ink">{r.message}</p>}
+
+                  <OzelUrun talep={r} storeId={storeId} onDegisti={load} onHata={setError} />
 
                   <div className="flex items-center gap-2 mt-3 flex-wrap">
                     <select value={r.status} disabled={busyId === r.id}
@@ -119,12 +134,17 @@ export default function TasarimTalepleriPage() {
                       className="px-3 py-1.5 rounded-lg text-xs bg-emerald-500/10 text-emerald-300 disabled:opacity-40">
                       Notu Kaydet
                     </button>
-                    <button disabled={busyId === r.id || (draft === (r.admin_note || '') && !draft)}
+                    <button disabled={busyId === r.id || (!draft && !r.urun?.satista)}
                       onClick={() => update(r.id, { admin_note: draft, notify_customer: true })}
-                      title="Notu kaydet ve müşteriye durum+not e-postası gönder"
+                      title="Notu kaydet; müşteriye e-posta gönder ve WhatsApp mesajını aç (özel ürün varsa link + fiyat dahil)"
                       className="px-3 py-1.5 rounded-lg text-xs bg-emerald-600 text-white disabled:opacity-40">
-                      📧 Kaydet + Bildir
+                      📧💬 Kaydet + Bildir
                     </button>
+                    {r.bildirildi_at && (
+                      <span className="text-[10px] text-panel-muted">
+                        Son bildirim: {new Date(r.bildirildi_at).toLocaleString('tr-TR')}
+                      </span>
+                    )}
                     <a href={r.image_url} download target="_blank" rel="noopener noreferrer"
                       className="px-3 py-1.5 rounded-lg text-xs border border-panel-border text-panel-muted hover:text-panel-ink">
                       ⬇ Görseli İndir

@@ -188,7 +188,7 @@ export default function UrunlerPage() {
           </div>
 
           <div className="flex gap-1.5 flex-wrap items-center">
-            {[['', 'Tümü'], ['active', 'Yayında'], ['draft', 'Taslak'], ['archived', 'Arşiv']].map(([v, l]) => (
+            {[['', 'Tümü'], ['active', 'Yayında'], ['draft', 'Taslak'], ['archived', 'Arşiv'], ['ozel', 'Özel']].map(([v, l]) => (
               <button key={v} onClick={() => setDurum(v)}
                 className={`px-2.5 py-2 sm:py-1 rounded-lg text-xs border transition ${durum === v
                   ? 'border-panel-accent bg-emerald-500/10 text-emerald-300 font-medium'
@@ -397,6 +397,7 @@ export function StatusBadge({ status }) {
     draft: ['Taslak', 'bg-white/5 text-panel-muted'],
     active: ['Yayında', 'bg-emerald-500/10 text-emerald-300'],
     archived: ['Arşiv', 'bg-amber-500/10 text-amber-300'],
+    ozel: ['Özel (linkle)', 'bg-indigo-500/10 text-indigo-300'],
   }
   const [label, cls] = map[status] || [status, 'bg-white/5 text-panel-muted']
   return <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${cls} shrink-0`}>{label}</span>
@@ -1218,6 +1219,7 @@ export function TabloDuzenleyici({ urunler, onClose, onDone }) {
                         <option value="active">Yayında</option>
                         <option value="draft">Taslak</option>
                         <option value="archived">Arşiv</option>
+                        {r.status === 'ozel' && <option value="ozel">Özel (linkle)</option>}
                       </select>
                     </td>
                   </tr>

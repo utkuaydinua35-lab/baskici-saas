@@ -32,10 +32,45 @@ logger = logging.getLogger("meta_capi")
 GRAPH_URL = "https://graph.facebook.com/v21.0/{pixel_id}/events"
 
 
+def _kucuk(value: str | None) -> str:
+    """Türkçe doğru küçük harf. Python'un .lower()'ı "İ"yi "i̇" (i + birleşen
+    nokta) yapıyor: "İbrahim"in hash'i Meta'daki "ibrahim" ile HİÇ tutmuyordu."""
+    return (value or "").strip().replace("İ", "i").replace("I", "ı").lower()
+
+
 def _h(value: str | None) -> str | None:
     """Meta user_data normalizasyonu: küçük harf + trim + sha256."""
-    v = (value or "").strip().lower()
+    v = _kucuk(value)
     return hashlib.sha256(v.encode()).hexdigest() if v else None
+
+
+_ASCII = str.maketrans("çğıöşüâîû", "cgiosuaiu")
+
+
+def _yer(value: str | None) -> str | None:
+    """Şehir/posta kodu: Meta "küçük harf, boşluk/noktalama/özel harf YOK"
+    istiyor → "Kahramanmaraş" → "kahramanmaras"."""
+    v = "".join(ch for ch in _kucuk(value).translate(_ASCII) if ch.isascii() and ch.isalnum())
+    return hashlib.sha256(v.encode()).hexdigest() if v else None
+
+
+def kisi_sinyalleri(*, eposta=None, telefon=None, ad=None, soyad=None,
+                    il=None, posta_kodu=None) -> dict:
+    """Müşterinin bildiği kişi bilgileri → Meta eşleşme alanları (hash'li).
+    Ülke her zaman Türkiye; yalnız başka bir bilgi varsa eklenir (tek başına
+    ülke eşleşmeye bir şey katmaz)."""
+    veri = {
+        "em": _h(eposta) if eposta and "@" in str(eposta) else None,
+        "ph": _h(tr_telefon(telefon)) if telefon else None,
+        "fn": _h(ad),
+        "ln": _h(soyad),
+        "ct": _yer(il),
+        "zp": _yer(posta_kodu),
+    }
+    veri = {k: v for k, v in veri.items() if v}
+    if veri:
+        veri["country"] = _h("tr")
+    return veri
 
 
 # Beacon ile kabul edilen olaylar — beyaz liste dışındakiler sessizce atılır.
@@ -160,10 +195,9 @@ def build_purchase_payload(store, session) -> dict | None:
 
     user_data = {
         k: v for k, v in {
-            "em": _h(cust.get("email")),
-            "ph": _h(tr_telefon(cust.get("phone"))),
-            "fn": _h(cust.get("first_name")),
-            "ln": _h(cust.get("last_name")),
+            **kisi_sinyalleri(eposta=cust.get("email"), telefon=cust.get("phone"),
+                              ad=cust.get("first_name"), soyad=cust.get("last_name"),
+                              il=cust.get("city"), posta_kodu=cust.get("zip")),
             "client_ip_address": meta.get("ip") or None,
             "client_user_agent": meta.get("ua") or None,
             "fbp": meta.get("fbp") or None,

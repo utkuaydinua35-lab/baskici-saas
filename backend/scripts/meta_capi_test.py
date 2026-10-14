@@ -66,6 +66,30 @@ try:
             cd = e.get("custom_data", {})
             es(f"{olay}: değer/para/içerik", (199.9, "TRY", ["urun-a"]), (cd.get("value"), cd.get("currency"), cd.get("content_ids")))
         es(f"{olay}: test kodu yok (canlı)", None, giden[0].get("test_event_code") if giden else "?")
+    print("\n── Ödeme olaylarında kişi bilgileri ──")
+    giden.clear()
+    c.post(f"/api/shop/{st.slug}/piksel", headers=H, json={
+        "olay": "InitiateCheckout", "event_id": "ic_kisi1", "eposta": " Ayse@Ornek.com ",
+        "telefon": "0532 123 45 67", "ad": "İrem", "soyad": "IŞIK", "il": "Kahramanmaraş",
+        "posta_kodu": "46 100", "vid": "abc123vid"})
+    u = giden[0]["data"][0]["user_data"]
+    es("e-posta küçük harf + trim", meta_capi._h("ayse@ornek.com"), u.get("em"))
+    es("telefon ülke koduyla", meta_capi._h("905321234567"), u.get("ph"))
+    import hashlib
+    sha = lambda x: hashlib.sha256(x.encode()).hexdigest()
+    es("ad Türkçe küçük harf (İrem → irem, nokta artığı yok)", sha("irem"), u.get("fn"))
+    es("soyad Türkçe küçük harf (IŞIK → ışık)", sha("ışık"), u.get("ln"))
+    es("şehir ASCII, boşluksuz (kahramanmaras)", sha("kahramanmaras"), u.get("ct"))
+    es("posta kodu boşluksuz", sha("46100"), u.get("zp"))
+    es("ülke tr", sha("tr"), u.get("country"))
+    es("external_id: ziyaretçi + e-posta", [meta_capi._h("abc123vid"), sha("ayse@ornek.com")], u.get("external_id"))
+    giden.clear()
+    c.post(f"/api/shop/{st.slug}/piksel", headers=H, json={
+        "olay": "InitiateCheckout", "event_id": "ic_kisi2", "eposta": "yazilmamis", "telefon": "12"})
+    u = giden[0]["data"][0]["user_data"]
+    es("geçersiz e-posta/telefon ve tek başına ülke GÖNDERİLMEZ", (None, None, None),
+       (u.get("em"), u.get("ph"), u.get("country")))
+
     giden.clear()
     r = c.post(f"/api/shop/{st.slug}/piksel", headers=H, json={"olay": "Purchase", "event_id": "purchase_x123"})
     es("Purchase beacon'dan KABUL EDİLMEZ (yalnız sunucu, ödeme doğrulanınca)", (False, 0), (r.json()["ok"], len(giden)))
@@ -82,6 +106,7 @@ try:
     sess = SimpleNamespace(
         token="tok123", currency="TRY", amount=Decimal("598.80"), paid_at=simdi,
         customer={"email": " Ali@Ornek.com ", "phone": "05321234567", "first_name": "Ali", "last_name": "Yılmaz",
+                  "city": "İstanbul", "province": "Kadıköy", "zip": "34710",
                   "_meta": {"ip": "88.1.2.3", "ua": "TestUA/1.0", "fbp": "fb.1.1.2", "fbc": "fb.1.1.3", "vid": "abc123vid"}},
         cart_snapshot=[{"product_slug": "urun-a", "quantity": 2, "unit_price": "299.40"}])
     p = meta_capi.build_purchase_payload(st, sess)
@@ -95,6 +120,9 @@ try:
     es("external_id: ziyaretçi + e-posta", [meta_capi._h("abc123vid"), meta_capi._h("ali@ornek.com")], u["external_id"])
     es("fbp/fbc/ip/ua", ("fb.1.1.2", "fb.1.1.3", "88.1.2.3", "TestUA/1.0"),
        (u["fbp"], u["fbc"], u["client_ip_address"], u["client_user_agent"]))
+    import hashlib as _hl
+    es("Purchase'ta şehir/posta kodu/ülke de var", tuple(_hl.sha256(x.encode()).hexdigest()
+       for x in ("istanbul", "34710", "tr")), (u.get("ct"), u.get("zp"), u.get("country")))
     es("olay zamanı = ödeme zamanı", int(simdi.timestamp()), e["event_time"])
     es("telefon biçimleri", ["905321234567"] * 5,
        [meta_capi.tr_telefon(x) for x in ("05321234567", "5321234567", "+90 532 123 45 67", "905321234567", "0090 532 123 4567")])

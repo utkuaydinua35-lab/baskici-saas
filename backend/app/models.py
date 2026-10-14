@@ -2173,6 +2173,12 @@ class DesignRequest(Base):
         String(20), default="acik", server_default=text("'acik'")
     )
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Talebe özel ürün (status='ozel': yalnız linki bilen görür, hiçbir listede
+    # çıkmaz). Bkz. services/ozel_urun.py
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("catalog_products.id", ondelete="SET NULL"), nullable=True
+    )
+    bildirildi_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

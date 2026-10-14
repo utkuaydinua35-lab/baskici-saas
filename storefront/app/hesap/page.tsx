@@ -395,6 +395,8 @@ interface DesignReq {
   status: string;
   status_label: string;
   admin_note: string | null;
+  /** Talebe özel hazırlanan ürün (yalnız linkle açılır) */
+  urun?: { slug: string; title: string; price: number; image_url: string | null } | null;
   created_at: string | null;
 }
 
@@ -532,6 +534,22 @@ function DesignRequests() {
                   <p className="mt-1 text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1">
                     💬 {r.admin_note}
                   </p>
+                )}
+                {r.urun && (
+                  <Link href={`/urun/${r.urun.slug}`}
+                    className="mt-2 flex items-center gap-2 rounded-xl border border-zinc-200 p-2 hover:border-zinc-400">
+                    {r.urun.image_url && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={r.urun.image_url} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium text-zinc-800 truncate">{r.urun.title}</span>
+                      <span className="text-zinc-500">{formatPrice(r.urun.price)}</span>
+                    </span>
+                    <span className="rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-white whitespace-nowrap">
+                      Ürünüme git
+                    </span>
+                  </Link>
                 )}
               </div>
             </div>

@@ -103,7 +103,8 @@ def validate_and_snapshot(
         if not variant:
             raise CheckoutError("Sepetteki bir ürün artık satışta değil")
         product = db.get(CatalogProduct, variant.product_id)
-        if not product or product.store_id != store.id or product.status != "active":
+        # 'ozel' = tasarım talebine özel, yalnız linkle açılan ürün (satılabilir)
+        if not product or product.store_id != store.id or product.status not in ("active", "ozel"):
             raise CheckoutError("Sepetteki bir ürün artık satışta değil")
         varyant_adedi[vid] = varyant_adedi.get(vid, 0) + qty
         if variant.track_stock and variant.quantity < varyant_adedi[vid]:

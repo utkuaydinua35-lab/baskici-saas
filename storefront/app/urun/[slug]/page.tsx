@@ -35,6 +35,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       // ürün tanımını miras bırakmaktansa)
       (isletme.urun_turu ? `${product.title} — ${isletme.urun_turu}.` : product.title),
     alternates: { canonical: `${SITE_URL}/urun/${product.slug}` },
+    // Tasarım talebine ÖZEL ürün: yalnız linki bilen görür, arama motoruna kapalı
+    ...(product.ozel ? { robots: { index: false, follow: false } } : {}),
     openGraph: product.images[0]
       ? { images: [{ url: product.images[0].url }] }
       : undefined,

@@ -531,7 +531,9 @@ def get_product(
         .where(
             CatalogProduct.store_id == store.id,
             CatalogProduct.slug == product_slug,
-            CatalogProduct.status == "active",
+            # 'ozel': tasarım talebine özel ürün — HİÇBİR listede yok, yalnız
+            # adresini bilen açar (bkz. services/ozel_urun.py)
+            CatalogProduct.status.in_(("active", "ozel")),
         )
         .options(selectinload(CatalogProduct.variants), selectinload(CatalogProduct.images))
     )
@@ -539,6 +541,7 @@ def get_product(
         raise HTTPException(404, "Ürün bulunamadı")
 
     detail = _serialize_product_detail(product, db, store)
+    detail["ozel"] = product.status == "ozel"     # vitrin: arama motoruna kapalı
 
     # Onaylı yorum özeti (yıldız ortalaması + sayı)
     from sqlalchemy import func as sql_func
@@ -1068,7 +1071,7 @@ def restore_cart(
     items = []
     for i in (session.cart_snapshot or []):
         product = db.get(CatalogProduct, i.get("product_id")) if i.get("product_id") else None
-        if not product or product.status != "active":
+        if not product or product.status not in ("active", "ozel"):
             continue  # artık satışta olmayan kalemler geri yüklenmez
         items.append({
             "variant_id": i.get("variant_id"),
@@ -2232,6 +2235,7 @@ def account_design_requests(request: Request, db: Session = Depends(get_db)):
             DesignRequest.customer_email == customer.email,
         ).order_by(DesignRequest.created_at.desc()).limit(20)
     ).all()
+    from app.services import ozel_urun
     STATUS_TR = {"acik": "İnceleme bekliyor", "incelendi": "İncelendi",
                  "teklif": "Teklif hazırlandı", "tamam": "Tamamlandı", "red": "Uygun değil"}
     return {"requests": [
@@ -2239,6 +2243,9 @@ def account_design_requests(request: Request, db: Session = Depends(get_db)):
          "phone_model": r.phone_model, "status": r.status,
          "status_label": STATUS_TR.get(r.status, r.status),
          "admin_note": r.admin_note,
+         # Talebe özel hazırlanan ürün (satıştaysa) — hesapta "Ürünüme git"
+         "urun": (lambda o: {k: o[k] for k in ("slug", "title", "price", "image_url")}
+                  if o and o.get("satista") else None)(ozel_urun.urun_ozeti(db, store, r)),
          "created_at": r.created_at.isoformat() if r.created_at else None}
         for r in rows
     ]}
@@ -2560,6 +2567,13 @@ class PikselOlayi(BaseModel):
     fbp: str | None = Field(None, max_length=120)
     fbc: str | None = Field(None, max_length=400)
     eposta: str | None = Field(None, max_length=200)
+    # Ödeme formundan bilinen kişi bilgileri (yalnız ödeme olaylarında gelir;
+    # sunucu hash'leyip Meta'ya iletir, hiçbir yerde saklanmaz)
+    telefon: str | None = Field(None, max_length=30)
+    ad: str | None = Field(None, max_length=80)
+    soyad: str | None = Field(None, max_length=80)
+    il: str | None = Field(None, max_length=60)
+    posta_kodu: str | None = Field(None, max_length=12)
     vid: str | None = Field(None, max_length=64)   # birinci taraf ziyaretçi kimliği
 
 
@@ -2595,9 +2609,11 @@ def piksel_olayi(
         "client_user_agent": request.headers.get("user-agent"),
         "fbp": body.fbp,
         "fbc": body.fbc,
-        "em": meta_capi._h(body.eposta) if body.eposta else None,
+        **meta_capi.kisi_sinyalleri(eposta=body.eposta, telefon=body.telefon, ad=body.ad,
+                                    soyad=body.soyad, il=body.il, posta_kodu=body.posta_kodu),
         "external_id": [x for x in (meta_capi.ziyaretci_kimligi(body.vid),
-                                    meta_capi._h(body.eposta) if body.eposta else None) if x] or None,
+                                    meta_capi._h(body.eposta) if body.eposta and "@" in body.eposta else None)
+                        if x] or None,
     }
     custom: dict = {"content_type": "product"}
     if body.olay == "PageView":

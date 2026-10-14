@@ -30,29 +30,32 @@ def _yuvarlak_maske(w: int, h: int, yaricap_oran: float) -> Image.Image:
     return m.resize((w, h), Image.LANCZOS)
 
 
-def kilif_giydir(db, overlay, tpl, degerler: dict | None = None, yukseklik: int = 1040) -> Image.Image:
-    """Kılıf görseli + tasarım (RGBA, kılıf görselinin oranında)."""
+def _kilif_ac(tpl, yukseklik: int) -> Image.Image:
     if not tpl or not tpl.image_path:
         raise ValueError("Kılıf şablonunun görseli yok")
     yol = storage_svc.STORAGE_ROOT / tpl.image_path
     if not yol.is_file():
         raise ValueError("Kılıf şablonunun görseli bulunamadı")
     kilif = Image.open(yol).convert("RGBA")
-    H = yukseklik
-    W = max(1, round(H * kilif.width / kilif.height))
-    kilif = kilif.resize((W, H), Image.LANCZOS)
+    W = max(1, round(yukseklik * kilif.width / kilif.height))
+    return kilif.resize((W, yukseklik), Image.LANCZOS)
 
-    ax, ay = float(tpl.area_x) * W, float(tpl.area_y) * H
-    aw, ah = max(1, round(float(tpl.area_w) * W)), max(1, round(float(tpl.area_h) * H))
-    en, boy = float(tpl.print_width_mm), float(tpl.print_height_mm)
-    oran = (float(tpl.area_w) * en) / (float(tpl.area_h) * boy) if tpl.area_h else 1.0
-    katmanlar = kisitli_sablon.layers_uret(overlay, degerler or {}, db=db, alan_oran=oran)
-    tasarim = _tuval_ciz(db, katmanlar, aw, ah, "kapak")
+
+def _alan(tpl, W: int, H: int) -> tuple[int, int, int, int]:
+    return (round(float(tpl.area_x) * W), round(float(tpl.area_y) * H),
+            max(1, round(float(tpl.area_w) * W)), max(1, round(float(tpl.area_h) * H)))
+
+
+def _giydir(kilif: Image.Image, tpl, tasarim: Image.Image) -> Image.Image:
+    """Baskı alanı ölçüsündeki tasarımı (RGBA) kılıfa oturt, kesikleri üste al."""
+    W, H = kilif.size
+    ax, ay, aw, ah = _alan(tpl, W, H)
+    if tasarim.size != (aw, ah):
+        tasarim = tasarim.resize((aw, ah), Image.LANCZOS)
     maske = ImageChops.multiply(tasarim.getchannel("A"),
                                 _yuvarlak_maske(aw, ah, float(tpl.area_radius or 0)))
-
     sonuc = kilif.copy()
-    sonuc.paste(tasarim, (round(ax), round(ay)), maske)
+    sonuc.paste(tasarim, (ax, ay), maske)
     # Kamera/kesik bölgeleri: kılıf görselinin o parçası tasarımın üstüne döner
     for c in tpl.cutouts or []:
         try:
@@ -67,12 +70,34 @@ def kilif_giydir(db, overlay, tpl, degerler: dict | None = None, yukseklik: int 
     return sonuc
 
 
-def kapak_ciz(db, overlay, tpl, degerler: dict | None = None, kenar: int = KENAR) -> bytes:
-    """Kare, açık zeminli, hafif gölgeli ürün fotoğrafı (JPEG)."""
+def kilif_giydir(db, overlay, tpl, degerler: dict | None = None, yukseklik: int = 1040) -> Image.Image:
+    """Kılıf görseli + şablonun tasarımı (RGBA, kılıf görselinin oranında)."""
+    kilif = _kilif_ac(tpl, yukseklik)
+    _, _, aw, ah = _alan(tpl, *kilif.size)
+    en, boy = float(tpl.print_width_mm), float(tpl.print_height_mm)
+    oran = (float(tpl.area_w) * en) / (float(tpl.area_h) * boy) if tpl.area_h else 1.0
+    katmanlar = kisitli_sablon.layers_uret(overlay, degerler or {}, db=db, alan_oran=oran)
+    return _giydir(kilif, tpl, _tuval_ciz(db, katmanlar, aw, ah, "kapak"))
+
+
+def gorsel_giydir(tpl, tasarim: Image.Image, yukseklik: int = 1040) -> Image.Image:
+    """Hazır bir baskı görselini (müşteriye özel tasarım) kılıfa giydir.
+    Görsel baskı alanını KAPLAR (oran farkı ortadan kırpılır)."""
+    kilif = _kilif_ac(tpl, yukseklik)
+    _, _, aw, ah = _alan(tpl, *kilif.size)
+    t = tasarim.convert("RGBA")
+    olcek = max(aw / t.width, ah / t.height)
+    t = t.resize((max(aw, round(t.width * olcek)), max(ah, round(t.height * olcek))), Image.LANCZOS)
+    sol, ust = (t.width - aw) // 2, (t.height - ah) // 2
+    return _giydir(kilif, tpl, t.crop((sol, ust, sol + aw, ust + ah)))
+
+
+def kare_kapak(kilif: Image.Image, kenar: int = KENAR) -> bytes:
+    """Kılıfı kare, açık zeminli, hafif gölgeli ürün fotoğrafına koy (JPEG)."""
     kenar = max(300, min(2000, int(kenar)))
-    kilif = kilif_giydir(db, overlay, tpl, degerler, yukseklik=round(kenar * (1 - 2 * DOLGU)))
-    if kilif.width > kenar * (1 - 2 * DOLGU):          # yatay/kare kılıf görseli
-        o = kenar * (1 - 2 * DOLGU) / kilif.width
+    sinir = kenar * (1 - 2 * DOLGU)
+    o = min(sinir / kilif.width, sinir / kilif.height)
+    if abs(o - 1) > 0.001:
         kilif = kilif.resize((max(1, round(kilif.width * o)), max(1, round(kilif.height * o))), Image.LANCZOS)
     zemin = Image.new("RGB", (kenar, kenar), ZEMIN)
     x, y = (kenar - kilif.width) // 2, (kenar - kilif.height) // 2
@@ -86,3 +111,10 @@ def kapak_ciz(db, overlay, tpl, degerler: dict | None = None, kenar: int = KENAR
     buf = io.BytesIO()
     zemin.save(buf, "JPEG", quality=92)
     return buf.getvalue()
+
+
+def kapak_ciz(db, overlay, tpl, degerler: dict | None = None, kenar: int = KENAR) -> bytes:
+    """Şablonun kare ürün fotoğrafı (JPEG)."""
+    kenar = max(300, min(2000, int(kenar)))
+    return kare_kapak(kilif_giydir(db, overlay, tpl, degerler,
+                                   yukseklik=round(kenar * (1 - 2 * DOLGU))), kenar)

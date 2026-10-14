@@ -740,39 +740,63 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
             </div>
           )}
           {item.studyo && (
-            <div className="mt-1.5 bg-violet-500/5 border border-violet-500/20 rounded-lg p-2">
-              <div className="flex items-center gap-1 text-[10px] text-violet-300 font-medium mb-1.5">
-                <span>🎨</span><span>Müşterinin stüdyo tasarımı</span>
-                {item.studyo.kilif && <span className="text-gray-500 font-normal">· {item.studyo.kilif}</span>}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  [item.studyo.baski_pdf_url, '⬇ Baskı PDF'],
-                  [item.studyo.baski_png_url, '⬇ Baskı PNG'],
-                  [item.studyo.onizleme_url, '⬇ Önizleme'],
-                ].filter(([u]) => u).map(([u, ad]) => (
-                  <a key={ad} href={u} download target="_blank" rel="noreferrer"
-                    className="text-[11px] px-2 py-1 rounded-md border border-brand-border text-gray-200 hover:border-violet-400">
-                    {ad}
-                  </a>
-                ))}
-                {!item.studyo.baski_pdf_url && !item.studyo.baski_png_url && (
-                  <span className="text-[11px] text-amber-300">Baskı dosyası henüz yok — “Müşteri tasarımını ata” üretir</span>
-                )}
-              </div>
+            <div className="mt-1.5 space-y-1.5">
+              {/* 1) MÜŞTERİNİN GÖNDERDİĞİ ORİJİNAL — dokunulmamış, tam çözünürlük */}
               {item.studyo.orijinaller?.length > 0 && (
-                <div className="mt-1.5">
-                  <div className="text-[10px] text-gray-500 mb-1">Müşterinin yüklediği görseller (rötuş için):</div>
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="bg-sky-500/5 border border-sky-500/20 rounded-lg p-2">
+                  <div className="text-[10px] text-sky-300 font-medium mb-1.5">
+                    📎 Müşterinin gönderdiği orijinal görsel{item.studyo.orijinaller.length > 1 ? 'ler' : ''}
+                    <span className="text-gray-500 font-normal"> — dokunulmamış, yüklendiği gibi</span>
+                  </div>
+                  <div className="space-y-1.5">
                     {item.studyo.orijinaller.map((o, i) => (
-                      <a key={i} href={o.url} download={o.ad} target="_blank" rel="noreferrer" title={`${o.ad} — indir`}
-                        className="block w-12 h-12 rounded-md overflow-hidden border border-brand-border hover:border-violet-400">
-                        <img src={o.url} alt="" className="w-full h-full object-cover" />
-                      </a>
+                      <div key={i} className="flex items-center gap-2">
+                        <a href={o.url} target="_blank" rel="noreferrer" title="Büyük aç"
+                          className="block w-14 h-14 shrink-0 rounded-md overflow-hidden border border-brand-border hover:border-sky-400">
+                          <img src={o.url} alt="" className="w-full h-full object-cover" />
+                        </a>
+                        <div className="min-w-0 flex-1 text-[11px]">
+                          <div className="text-gray-200 truncate">{o.ad}</div>
+                          <div className="text-gray-500">
+                            {o.en && o.boy ? `${o.en}×${o.boy} px` : ''}{o.bayt ? ` · ${(o.bayt / 1024 / 1024).toFixed(1)} MB` : ''}
+                          </div>
+                        </div>
+                        <a href={o.url} download={o.ad}
+                          className="text-[11px] px-2 py-1 rounded-md bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 shrink-0">
+                          ⬇ Orijinali indir
+                        </a>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
+              {/* 2) BASKI DOSYASI — müşterinin stüdyodaki yerleşimiyle (kırpma, yazılar) */}
+              <div className="bg-violet-500/5 border border-violet-500/20 rounded-lg p-2">
+                <div className="text-[10px] text-violet-300 font-medium mb-1.5">
+                  🖨 Baskı dosyası — müşterinin stüdyodaki yerleşimiyle
+                  {item.studyo.kilif && <span className="text-gray-500 font-normal"> · {item.studyo.kilif}</span>}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    [item.studyo.baski_pdf_url, '⬇ Baskı PDF'],
+                    [item.studyo.baski_png_url, '⬇ Baskı PNG'],
+                    [item.studyo.onizleme_url, '⬇ Kılıf önizlemesi'],
+                  ].filter(([u]) => u).map(([u, ad]) => (
+                    <a key={ad} href={u} download target="_blank" rel="noreferrer"
+                      className="text-[11px] px-2 py-1 rounded-md border border-brand-border text-gray-200 hover:border-violet-400">
+                      {ad}
+                    </a>
+                  ))}
+                  {!item.studyo.baski_pdf_url && !item.studyo.baski_png_url && (
+                    <span className="text-[11px] text-amber-300">Baskı dosyası henüz yok — “Müşteri tasarımını ata” üretir</span>
+                  )}
+                </div>
+                {item.studyo.ek_katman > 0 && (
+                  <div className="text-[10px] text-gray-400 mt-1.5">
+                    Müşteri görselin üstüne {item.studyo.ek_katman} öğe (yazı vb.) ekledi — baskı dosyası orijinalle aynı değil.
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {item.customer_props && item.customer_props.length > 0 && (

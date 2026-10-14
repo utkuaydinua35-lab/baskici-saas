@@ -158,7 +158,8 @@ def _studyo_tasarimi(li: LineItem) -> dict | None:
     orijinaller = []
     if asset_ids:
         for a in db.scalars(select(DesignAsset).where(DesignAsset.id.in_(asset_ids))).all():
-            orijinaller.append({"url": f"/storage/{a.original_path}", "ad": a.filename or "gorsel"})
+            orijinaller.append({"url": f"/storage/{a.original_path}", "ad": a.filename or "gorsel",
+                                "en": a.width, "boy": a.height, "bayt": a.bytes_size})
     gorunen = d.proof_path or d.preview_path
     return {
         "id": str(d.id),
@@ -168,6 +169,9 @@ def _studyo_tasarimi(li: LineItem) -> dict | None:
         "baski_png_url": storage.design_render_url(d.print_path),
         "baski_pdf_url": storage.design_render_url(d.print_pdf_path),
         "orijinaller": orijinaller,
+        # Müşteri görselin üstüne yazı/başka öğe eklediyse baskı dosyası
+        # orijinalle AYNI değildir — panel bunu söyler
+        "ek_katman": sum(1 for x in (d.layers or []) if isinstance(x, dict) and x.get("type") != "image"),
     }
 
 

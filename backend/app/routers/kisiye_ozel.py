@@ -127,6 +127,50 @@ def _ser_design(d):
     }
 
 
+# Vitrin tasarım stüdyosundan gelen siparişte müşterinin tasarımı satırda
+# yalnız "Tasarım No" (CustomerDesign kimliği) olarak durur — görsel adresi
+# değil. Panel bu yüzden "📷" gösteriyor, indirme yoktu.
+_STUDYO_GIZLI = {"Tasarım No", "Önizleme"}
+
+
+def _studyo_tasarimi(li: LineItem) -> dict | None:
+    """Satırdaki stüdyo tasarımı: önizleme, baskı dosyaları, müşterinin yüklediği
+    orijinal görseller (rötuş için)."""
+    from sqlalchemy.orm import object_session
+
+    from app.models import CaseTemplate, CustomerDesign, DesignAsset
+
+    no = next((str(p.get("value")) for p in (li.properties or [])
+               if isinstance(p, dict) and p.get("name") == "Tasarım No" and p.get("value")), None)
+    db = object_session(li)
+    if not no or db is None:
+        return None
+    try:
+        d = db.get(CustomerDesign, uuid.UUID(no))
+    except ValueError:
+        return None
+    if not d or d.tenant_id != li.tenant_id:
+        return None
+    t = db.scalar(select(CaseTemplate).where(
+        CaseTemplate.store_id == d.store_id, CaseTemplate.key == d.template_key))
+    asset_ids = [str(x.get("asset_id")) for x in (d.layers or [])
+                 if isinstance(x, dict) and x.get("type") == "image" and x.get("asset_id")]
+    orijinaller = []
+    if asset_ids:
+        for a in db.scalars(select(DesignAsset).where(DesignAsset.id.in_(asset_ids))).all():
+            orijinaller.append({"url": f"/storage/{a.original_path}", "ad": a.filename or "gorsel"})
+    gorunen = d.proof_path or d.preview_path
+    return {
+        "id": str(d.id),
+        "ad": d.name,
+        "kilif": t.label if t else d.template_key,
+        "onizleme_url": storage.design_render_url(gorunen) if gorunen else None,
+        "baski_png_url": storage.design_render_url(d.print_path),
+        "baski_pdf_url": storage.design_render_url(d.print_pdf_path),
+        "orijinaller": orijinaller,
+    }
+
+
 def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[str] | None = None) -> dict:
     is_kisiye = _is_li_kisiye_ozel(li, product_ids)
     is_couple = bool(couple_ids) and bool(li.product_id) and str(li.product_id) in couple_ids
@@ -140,7 +184,7 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
             continue
         name = p.get("name") or ""
         val = p.get("value") or ""
-        if name.startswith("_") or not val:
+        if name.startswith("_") or not val or name in _STUDYO_GIZLI:
             continue
         if isinstance(val, str) and val.startswith("http") and not customer_image_url:
             customer_image_url = val
@@ -167,6 +211,10 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
     else:
         model_info = _m1
 
+    studyo = _studyo_tasarimi(li)
+    if studyo and not customer_image_url:
+        customer_image_url = studyo["onizleme_url"]
+
     assigned = _ser_design(li.assigned_design if li.assigned_design_id else None)
     assigned_2 = _ser_design(li.assigned_design_2 if li.assigned_design_id_2 else None)
     status = (("hazir" if (assigned and assigned_2) else "bekliyor") if is_couple
@@ -185,6 +233,7 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
         "customer_image_url": customer_image_url,
         "customer_note": customer_note,
         "customer_props": customer_props_text,
+        "studyo": studyo,
         "assigned_design": assigned,
         "assigned_design_2": assigned_2,
         "device_model_override": li.device_model_override,
@@ -512,6 +561,95 @@ def update_line_item(
 
     # Bu line item'ın bağlı olduğu mağazadaki kişiye özel + couple ürün ID'leri
     order = db.scalar(select(Order).where(Order.id == li.order_id))
+    product_ids = _get_kop_product_ids(db, order.store_id) if order else set()
+    couple_ids = _get_couple_ko_ids(db, order.store_id) if order else set()
+    return _serialize_line_item(li, product_ids, couple_ids)
+
+
+def _kilif_tipi(tpl) -> str | None:
+    """Kılıf şablonundan kalıp varyasyonu — YALNIZ adında açıkça geçiyorsa.
+    (normalize_variation bilinmeyeni SİYAH sayar; tahminle yanlış kılıfa
+    basılmasın, bilinmiyorsa boş kalır ve panel elle seçtirir.)"""
+    from app.services.placement_rules import normalize_text
+    metin = normalize_text(f"{tpl.key} {tpl.label}").upper() if tpl else ""
+    for anahtar in ("SEFFAF", "ŞEFFAF", "BEYAZ", "SIYAH", "SİYAH", "PARLAK", "MAGSAFE"):
+        if anahtar in metin:
+            return anahtar
+    return None
+
+
+@router.post("/line-items/{line_item_id}/studyo-ata", response_model=None)
+def studyo_tasarimini_ata(
+    line_item_id: uuid.UUID,
+    slot: int = Query(1, ge=1, le=2),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Müşterinin stüdyoda hazırladığı tasarımı TEK TIKLA baskı tasarımı yap.
+
+    Baskı dosyası (vektörel PDF; olmazsa PNG) bir Tasarım kaydı olur ve satıra
+    atanır → kalem "hazır", onaya gönderilebilir, kalıba girer. Rötuş gerekirse
+    "Kaldır" deyip düzenlenmiş dosya "Yükle" ile atanır (eski akış aynen)."""
+    from app.models import CaseTemplate, CustomerDesign
+    from app.services.design_pdf import render_print_pdf
+    from app.services.design_render import render_print_file
+
+    li = db.scalar(select(LineItem).where(LineItem.id == line_item_id, LineItem.tenant_id == user.tenant_id)
+                   .options(selectinload(LineItem.assigned_design), selectinload(LineItem.assigned_design_2)))
+    if not li:
+        raise HTTPException(404, "Line item bulunamadı")
+    st = _studyo_tasarimi(li)
+    if not st:
+        raise HTTPException(422, "Bu satırda stüdyo tasarımı yok")
+    d = db.get(CustomerDesign, uuid.UUID(st["id"]))
+    tpl = db.scalar(select(CaseTemplate).where(
+        CaseTemplate.store_id == d.store_id, CaseTemplate.key == d.template_key))
+    # Baskı dosyası sipariş anında üretilir; üretilemediyse şimdi üret
+    if not d.print_pdf_path and not d.print_path:
+        if not tpl:
+            raise HTTPException(422, "Tasarımın kılıf şablonu bulunamadı — baskı dosyası üretilemiyor")
+        try:
+            d.print_path = storage.save_design_render(
+                d.tenant_id, d.store_id, d.id, render_print_file(db, d, tpl), "baski").removeprefix("/storage/")
+            from app.services.icc import magaza_icc
+            d.print_pdf_path = storage.save_design_render(
+                d.tenant_id, d.store_id, d.id,
+                render_print_pdf(db, d, tpl, icc=magaza_icc(db, d.store_id)), "baski-pdf").removeprefix("/storage/")
+        except Exception as e:  # noqa: BLE001
+            if not d.print_path:
+                raise HTTPException(422, f"Baskı dosyası üretilemedi: {str(e)[:150]}")
+    kaynak = d.print_pdf_path or d.print_path
+    yol = storage.STORAGE_ROOT / kaynak
+    if not yol.is_file():
+        raise HTTPException(422, "Baskı dosyası diskte bulunamadı — Vitrin › sipariş detayından yeniden üretin")
+    order = db.get(Order, li.order_id)
+    sira = (order.name or order.external_id or "").lstrip("#") if order else ""
+    tasarim = Design(
+        tenant_id=li.tenant_id, store_id=order.store_id if order else d.store_id,
+        code=f"STD-{sira}-{slot}-{uuid.uuid4().hex[:4].upper()}"[:50],
+        name=f"Stüdyo: {d.name}"[:200], product_title=li.title,
+        kalip_tipi=_kilif_tipi(tpl), is_kisiye_ozel=True,
+        notes=f"Müşterinin stüdyo tasarımı ({d.id})",
+        file_path="", file_format="", file_size_bytes=0,
+    )
+    db.add(tasarim)
+    db.flush()
+    bilgi = storage.save_design_file(tenant_id=li.tenant_id, design_id=tasarim.id,
+                                     file_data=yol.read_bytes(), original_filename=yol.name)
+    tasarim.file_path, tasarim.file_format, tasarim.file_size_bytes = (
+        bilgi["relative_path"], bilgi["format"], bilgi["size"])
+    if slot == 2:
+        li.assigned_design_id_2 = tasarim.id
+    else:
+        li.assigned_design_id = tasarim.id
+    db.commit()
+    if tasarim.file_format == "pdf":
+        from app.services import mold_pdf as _mp
+        try:
+            _mp.onbellek_hazirla(tasarim.file_path)
+        except Exception:  # noqa: BLE001 — önbellek kalıp anında da üretilir
+            pass
+    db.refresh(li)
     product_ids = _get_kop_product_ids(db, order.store_id) if order else set()
     couple_ids = _get_couple_ko_ids(db, order.store_id) if order else set()
     return _serialize_line_item(li, product_ids, couple_ids)

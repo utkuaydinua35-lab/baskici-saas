@@ -626,6 +626,9 @@ function ApprovalModal({ data, onClose }) {
 // ═══════════════════════════════════════════════════════════
 
 function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIndex, totalKisiyeOzel }) {
+  // Eskiden tanımsızdı: hata yolundaki toast.error ReferenceError atıp
+  // asıl hatayı gizliyordu
+  const toast = useToast()
   const [showUpload, setShowUpload] = useState(false)  // false | 1 | 2 (couple slot)
   const [savingColor, setSavingColor] = useState(false)
   const isCouple = !!item.is_couple
@@ -672,6 +675,17 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
     if (!confirmIfInMold('Varyasyon')) return
     patchLi({ [f]: value, fields_to_update: [f] })
   }
+  // Müşterinin vitrin stüdyosunda hazırladığı tasarım → tek tıkla baskı tasarımı
+  const [atiyor, setAtiyor] = useState(false)
+  const studyoAta = async (slot) => {
+    setAtiyor(true)
+    try {
+      await api.post(`/api/kisiye-ozel/line-items/${item.id}/studyo-ata?slot=${slot}`)
+      toast.success('Müşterinin tasarımı baskıya atandı')
+      onRefresh()
+    } catch (e) { toast.error(e.detail || 'Atanamadı') }
+    finally { setAtiyor(false) }
+  }
   const renderDesign = (design, slot) => design ? (
     <div className="flex items-center gap-1">
       {design.thumbnail_url ? <img src={design.thumbnail_url} alt="" className="w-8 h-8 object-cover rounded border border-emerald-500/30" /> : <span className="text-emerald-400">📄</span>}
@@ -679,7 +693,19 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
       <button onClick={() => removeDesign(slot)} className="text-[10px] text-red-400 hover:underline ml-1">Kaldır</button>
     </div>
   ) : (
-    <button onClick={() => setShowUpload(slot)} className="btn-primary !text-xs !py-1 !px-3">↑ Yükle</button>
+    <div className="flex flex-col items-end gap-1.5">
+      {item.studyo && slot === 1 && (
+        <button onClick={() => studyoAta(slot)} disabled={atiyor}
+          title="Müşterinin stüdyoda hazırladığı tasarımın baskı dosyasını bu ürüne ata"
+          className="btn-primary !text-xs !py-1 !px-3 disabled:opacity-50">
+          {atiyor ? 'Atanıyor…' : '✓ Müşteri tasarımını ata'}
+        </button>
+      )}
+      <button onClick={() => setShowUpload(slot)}
+        className={item.studyo ? 'btn-secondary !text-xs !py-1 !px-3' : 'btn-primary !text-xs !py-1 !px-3'}>
+        ↑ {item.studyo ? 'Düzenlenmiş dosya yükle' : 'Yükle'}
+      </button>
+    </div>
   )
 
   return (
@@ -711,6 +737,42 @@ function LineItemCard({ item, storeId, productId, onRefresh, orderNumber, itemIn
             <div className="text-[11px] text-gray-300 mt-1.5 flex items-start gap-1">
               <span className="text-gray-500">💬</span>
               <span className="line-clamp-2">{item.customer_note}</span>
+            </div>
+          )}
+          {item.studyo && (
+            <div className="mt-1.5 bg-violet-500/5 border border-violet-500/20 rounded-lg p-2">
+              <div className="flex items-center gap-1 text-[10px] text-violet-300 font-medium mb-1.5">
+                <span>🎨</span><span>Müşterinin stüdyo tasarımı</span>
+                {item.studyo.kilif && <span className="text-gray-500 font-normal">· {item.studyo.kilif}</span>}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  [item.studyo.baski_pdf_url, '⬇ Baskı PDF'],
+                  [item.studyo.baski_png_url, '⬇ Baskı PNG'],
+                  [item.studyo.onizleme_url, '⬇ Önizleme'],
+                ].filter(([u]) => u).map(([u, ad]) => (
+                  <a key={ad} href={u} download target="_blank" rel="noreferrer"
+                    className="text-[11px] px-2 py-1 rounded-md border border-brand-border text-gray-200 hover:border-violet-400">
+                    {ad}
+                  </a>
+                ))}
+                {!item.studyo.baski_pdf_url && !item.studyo.baski_png_url && (
+                  <span className="text-[11px] text-amber-300">Baskı dosyası henüz yok — “Müşteri tasarımını ata” üretir</span>
+                )}
+              </div>
+              {item.studyo.orijinaller?.length > 0 && (
+                <div className="mt-1.5">
+                  <div className="text-[10px] text-gray-500 mb-1">Müşterinin yüklediği görseller (rötuş için):</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.studyo.orijinaller.map((o, i) => (
+                      <a key={i} href={o.url} download={o.ad} target="_blank" rel="noreferrer" title={`${o.ad} — indir`}
+                        className="block w-12 h-12 rounded-md overflow-hidden border border-brand-border hover:border-violet-400">
+                        <img src={o.url} alt="" className="w-full h-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {item.customer_props && item.customer_props.length > 0 && (
@@ -1126,6 +1188,7 @@ function LineItemUploadDialog({ lineItem, storeId, productId, orderNumber, itemI
 // ═══════════════════════════════════════════════════════════
 
 function ProductsDialog({ storeId, onClose, onChanged }) {
+  const toast = useToast()
   const [selected, setSelected] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

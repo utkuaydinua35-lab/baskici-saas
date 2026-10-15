@@ -23,7 +23,7 @@ function Kopyala({ deger }) {
   )
 }
 
-function Satir({ baslik, aciklama, url }) {
+function Satir({ baslik, aciklama, url, acilmaz = false }) {
   return (
     <div>
       <div className="text-[12px] font-medium">{baslik}</div>
@@ -31,8 +31,8 @@ function Satir({ baslik, aciklama, url }) {
       <div className="flex items-center gap-2">
         <code className="flex-1 min-w-0 truncate rounded-lg bg-panel-input px-2.5 py-1.5 text-[11px]">{url}</code>
         <Kopyala deger={url} />
-        <a href={url} target="_blank" rel="noopener noreferrer"
-          className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs border border-panel-border text-panel-muted hover:text-panel-ink">Aç ↗</a>
+        {!acilmaz && <a href={url} target="_blank" rel="noopener noreferrer"
+          className="shrink-0 px-2.5 py-1.5 rounded-lg text-xs border border-panel-border text-panel-muted hover:text-panel-ink">Aç ↗</a>}
       </div>
     </div>
   )
@@ -61,14 +61,14 @@ export default function UrunAkisi({ cfg }) {
         aciklama="Ürün başına bir satır; kimlik pikselin gönderdiği ürün kimliğiyle aynı (dinamik reklamlar eşleşir)."
         url={`${site}/feed/meta.xml`} />
       <Satir baslik="Google Merchant Center"
-        aciklama="Model (varyant) başına bir satır — büyük dosyadır, Google çeker."
-        url={`${site}/feed/google.xml`} />
+        aciklama="Model (varyant) başına bir satır, ~180 MB. Tarayıcıda açılmaz (sekme donar) — bu normal; adresi yalnız Merchant Center'a verin, Google indirir."
+        url={`${site}/feed/google.xml`} acilmaz />
       <details className="text-[12px]">
         <summary className="cursor-pointer text-panel-muted hover:text-panel-ink">Meta'ya nasıl bağlanır? (bir kez)</summary>
         <ol className="list-decimal pl-5 mt-2 space-y-1 text-panel-ink/90">
           <li><a className="underline" href="https://business.facebook.com/commerce" target="_blank" rel="noopener noreferrer">Commerce Manager ↗</a> › kataloğunuzu seçin (yoksa "Katalog oluştur" › E-ticaret).</li>
-          <li><b>Kataloğ › Veri kaynakları › Öğe ekle › Veri akışı</b> ("Data feed") seçin.</li>
-          <li>"Zamanlanmış akış" › yukarıdaki <b>Meta</b> adresini yapıştırın; sıklık <b>Saatlik</b> (ya da Günlük), para birimi TRY.</li>
+          <li><b>Katalog › Veri kaynakları › Öğe ekle › Veri akışı</b> seçin (dosya YÜKLEMEYİN).</li>
+          <li>"Zamanlanmış akış" (URL'den) › yukarıdaki <b>Meta</b> adresini yapıştırın; sıklık <b>Saatlik</b> (ya da Günlük), para birimi TRY.</li>
           <li>Kataloğu <b>Olay Yöneticisi'ndeki pikselinize bağlayın</b> (Katalog › Ayarlar › Olay kaynakları) — dinamik reklamlar ve
             "katalog eşleşmesi" bundan sonra çalışır.</li>
           <li>Eski Shopify kataloğu duruyorsa ürünler iki kez görünmesin diye o veri kaynağını silin ya da duraklatın.</li>

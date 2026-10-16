@@ -15,6 +15,8 @@ import Gallery from "@/components/sections/Gallery";
 import ContactSection from "@/components/sections/ContactSection";
 import Countdown from "@/components/sections/Countdown";
 import Kurdele from "@/components/sections/Kurdele";
+import KayanSerit from "@/components/sections/KayanSerit";
+import BuyukKarusel from "@/components/sections/BuyukKarusel";
 import StilOnerici from "@/components/sections/StilOnerici";
 import Adimlar from "@/components/sections/Adimlar";
 import KilifOnizleme from "@/components/sections/KilifOnizleme";
@@ -31,12 +33,22 @@ export default async function HomePage() {
         switch (section.type) {
           case "hero_slider":
             return (
-              <HeroSlider key={section.id} slides={s.slides ?? []}
-                autoplaySec={s.autoplay_sec ?? 5}
-                radius_scope={s.radius_scope} radius_pct={s.radius_pct}
-                align={s.align} height={s.height}
-                stil={s.stil} panelRenk={s.panel_renk}
-                magaza={store_name} tanitim={isletme.tanitim} />
+              <div key={section.id}>
+                {/* Slaytın üstünde/altında kayan şerit (markalar, yeni model duyurusu) */}
+                <KayanSerit ayar={s.ust_serit} />
+                <HeroSlider slides={s.slides ?? []}
+                  autoplaySec={s.autoplay_sec ?? 5}
+                  radius_scope={s.radius_scope} radius_pct={s.radius_pct}
+                  align={s.align} height={s.height}
+                  stil={s.stil} panelRenk={s.panel_renk}
+                  magaza={store_name} tanitim={isletme.tanitim} />
+                <KayanSerit ayar={s.alt_serit} />
+              </div>
+            );
+          case "buyuk_karusel":
+            return (
+              <BuyukKarusel key={section.id} eyebrow={s.eyebrow} title={s.title} subtitle={s.subtitle}
+                ogeler={s.karusel ?? []} goster={s.goster} otoSn={s.oto_sn} />
             );
           case "featured_collections":
             return (

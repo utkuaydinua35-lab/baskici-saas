@@ -93,7 +93,7 @@ export interface ProductDetail {
   compare_at_price: string | null;
   currency: string;
   tags: string | null;
-  images: { url: string; alt: string | null; variant_id: string | null }[];
+  images: { url: string; alt: string | null; variant_id: string | null; varyantlar?: string[] }[];
   variants: ProductVariant[];
   rating_avg?: number | null;
   rating_count?: number;
@@ -150,6 +150,8 @@ export interface Collection {
   title: string;
   description: string | null;
   image_url?: string | null;
+  /** Sayfa başlığındaki görselin oranı/kırpımı/düzeni (panel) */
+  gorsel_kirp?: import("@/components/KirpikGorsel").Kirp | null;
 }
 
 export function getProducts(params?: {

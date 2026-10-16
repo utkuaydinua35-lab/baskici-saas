@@ -1705,6 +1705,13 @@ class CatalogProduct(Base):
     custom_fields: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # Sepette 'bunu da ekleyin' önerileri — panelden elle seçilen ürün slug'ları
     cross_sell_slugs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Sepette önerilecek KOLEKSİYONLAR (slug) — vitrinde koleksiyonun ürünleri
+    # olarak açılır (cross_sell_slugs'taki elle seçilenlerden sonra)
+    cross_sell_koleksiyonlar: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Ürün sayfasında varyant seçilince ona eşlenmiş görsel öne gelsin mi
+    # (CatalogImage.varyant_anahtarlari). Ürün başına açılır.
+    varyant_gorsel: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False)
     # Ürün başına seçilecek model sayısı (couple kılıflar = 2)
     models_per_item: Mapped[int] = mapped_column(
         Integer, default=1, server_default=text("1")
@@ -1829,6 +1836,9 @@ class CatalogImage(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     alt: Mapped[str | None] = mapped_column(String(200), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # Görselin bağlı olduğu varyantlar (model_key listesi). Varyant id'si değil
+    # anahtar: model seti yeniden senkronlansa da bağ kopmaz.
+    varyant_anahtarlari: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -2275,6 +2285,9 @@ class CatalogCollection(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Görselin vitrindeki oranı ve kırpımı: {"oran": "16:9"|"1:1"|"4:3"|"3:4"|"9:16"|"dogal",
+    # "x": 0-100, "y": 0-100 (odak noktası %), "zoom": 1-3}
+    gorsel_kirp: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 

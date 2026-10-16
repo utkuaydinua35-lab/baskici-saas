@@ -7,6 +7,8 @@ interface Image {
   url: string;
   alt: string | null;
   variant_id?: string | null;
+  /** Bu görsele eşlenmiş varyantların model_key'leri (ürünün varyant görseli açıksa) */
+  varyantlar?: string[];
 }
 
 // Varyant seçici galeriye "variant-selected" olayı yollar (bileşenler kardeş
@@ -35,10 +37,19 @@ export default function ProductGallery({
 
   useEffect(() => {
     const onVariant = (e: Event) => {
-      const variantId = (e as CustomEvent<{ variantId: string }>).detail?.variantId;
-      if (!variantId) return;
-      const idx = images.findIndex((im) => im.variant_id === variantId);
-      if (idx >= 0) setActive(idx);
+      const d = (e as CustomEvent<{ variantId: string; modelKey?: string }>).detail;
+      if (!d?.variantId) return;
+      const idx = images.findIndex((im) =>
+        im.variant_id === d.variantId || (!!d.modelKey && (im.varyantlar || []).includes(d.modelKey)));
+      if (idx >= 0) { setActive(idx); return; }
+      // Eşlenmemiş varyant seçildi: ekranda BAŞKA bir varyantın görseli
+      // kaldıysa yanlış ürünü gösteriyor olur → ilk genel görsele dön
+      setActive((a) => {
+        const su = images[a];
+        if (!su || !(su.varyantlar?.length || su.variant_id)) return a;
+        const genel = images.findIndex((im) => !(im.varyantlar?.length || im.variant_id));
+        return genel >= 0 ? genel : a;
+      });
     };
     window.addEventListener("variant-selected", onVariant);
     return () => window.removeEventListener("variant-selected", onVariant);

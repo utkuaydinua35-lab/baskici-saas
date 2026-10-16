@@ -76,7 +76,7 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
     if (!selected) return;
     setQty(1); // varyant değişince adet sıfırlanır (stok sınırı farklı olabilir)
     window.dispatchEvent(
-      new CustomEvent("variant-selected", { detail: { variantId: selected.id } }),
+      new CustomEvent("variant-selected", { detail: { variantId: selected.id, modelKey: selected.model_key } }),
     );
   }, [selected]);
 

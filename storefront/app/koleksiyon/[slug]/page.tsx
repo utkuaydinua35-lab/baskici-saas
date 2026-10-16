@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCollections, getProducts } from "@/lib/api";
+import KirpikGorsel, { oranCss } from "@/components/KirpikGorsel";
 import { getThemePayload } from "@/lib/theme";
 import ProductCard from "@/components/ProductCard";
 import FilterBar from "@/components/FilterBar";
@@ -80,11 +81,33 @@ export default async function CollectionPage({ params, searchParams }: Props) {
         {" / "}
         <span className="text-zinc-700">{collection.title}</span>
       </nav>
-      {collection.image_url ? (
+      {collection.image_url && (collection.gorsel_kirp?.duzen ?? "yan") === "yan" ? (
+        // Yan yana: yazı bir yanda (ortalı, büyük başlık), görsel öbür yanda —
+        // oran ve kırpım panelden (Koleksiyonlar › Sayfa görünümü)
+        <div className={`grid items-center gap-6 md:gap-12 md:grid-cols-2 ${
+          collection.gorsel_kirp?.taraf === "sol" ? "md:[&>*:first-child]:order-2" : ""}`}>
+          <div className="text-center px-2">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">{collection.title}</h1>
+            {collection.description && (
+              <p className="mt-4 text-base sm:text-lg leading-relaxed text-zinc-700 whitespace-pre-line max-w-xl mx-auto">
+                {collection.description}
+              </p>
+            )}
+          </div>
+          {/* Panelde ayarlanmadıysa ortalanmış 4:3 (dikey görsel sayfayı uzatmasın) */}
+          <KirpikGorsel src={collection.image_url} alt={collection.title}
+            kirp={collection.gorsel_kirp ?? { oran: "4:3", x: 50, y: 50, zoom: 1 }}
+            className="rounded-2xl" />
+        </div>
+      ) : collection.image_url ? (
         <div className="relative rounded-2xl overflow-hidden border border-zinc-200">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={collection.image_url} alt={collection.title}
-            className="w-full max-h-56 object-cover" />
+          {collection.gorsel_kirp && oranCss(collection.gorsel_kirp.oran) ? (
+            <KirpikGorsel src={collection.image_url} alt={collection.title} kirp={collection.gorsel_kirp} />
+          ) : (
+            <img src={collection.image_url} alt={collection.title}
+              className="w-full max-h-56 object-cover" />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
           <div className="absolute bottom-0 inset-x-0 p-5">
             <h1 className="text-2xl font-bold text-white">{collection.title}</h1>

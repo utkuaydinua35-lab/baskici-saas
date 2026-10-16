@@ -1,3 +1,5 @@
+import KoleksiyonGorselDuzen from '../components/KoleksiyonGorselDuzen'
+import GeminiKoleksiyonGorseli from '../components/GeminiKoleksiyonGorseli'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { useStore } from '../lib/store'
@@ -31,6 +33,8 @@ export default function KoleksiyonlarPage() {
   const [editing, setEditing] = useState(null)   // kural editörü açık koleksiyon
   const [creatingSmart, setCreatingSmart] = useState(false)
   const [urunSecim, setUrunSecim] = useState(null)   // koleksiyona ürün ekle/çıkar
+  const [gorunum, setGorunum] = useState(null)   // sayfa görünümü (görsel/kırpma) penceresi
+  const [gemini, setGemini] = useState(null)     // Gemini koleksiyon görseli yardımcısı
 
   const load = useCallback(async () => {
     if (!storeId) return
@@ -156,6 +160,9 @@ export default function KoleksiyonlarPage() {
                 <button onClick={() => clearImage(c)}
                   className="text-xs text-panel-muted hover:text-red-300">Görseli kaldır</button>
               )}
+              <button onClick={() => setGorunum(c)} className="text-xs text-panel-accent hover:underline">🖼 Sayfa görünümü</button>
+              <button onClick={() => setGemini(c)} className="text-xs text-panel-muted hover:text-panel-ink"
+                title="Koleksiyondan 3-5 ürünle Gemini'de koleksiyon görseli oluşturmak için hazır prompt">✨ Görsel hazırla</button>
               <button onClick={() => rename(c)} className="text-xs text-panel-muted hover:text-panel-ink">Adlandır</button>
               <button onClick={() => remove(c)} className="text-xs text-red-300 hover:text-red-300">Sil</button>
             </div>
@@ -169,6 +176,13 @@ export default function KoleksiyonlarPage() {
           </div>
         )}
       </div>
+
+      {gemini && <GeminiKoleksiyonGorseli collection={gemini} onClose={() => setGemini(null)} />}
+
+      {gorunum && (
+        <KoleksiyonGorselDuzen storeId={storeId} collection={gorunum}
+          onClose={() => setGorunum(null)} onSaved={() => { setGorunum(null); load() }} />
+      )}
 
       {urunSecim && (
         <KoleksiyonUrunleri storeId={storeId} collection={urunSecim}

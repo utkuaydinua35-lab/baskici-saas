@@ -113,6 +113,10 @@ class ProductUpdate(BaseModel):
     custom_fields: list[dict] | None = None   # kişiye özel alanlar (aşağıda temizlenir)
     # Sepette 'bunu da ekleyin' önerileri — ürün slug listesi (en fazla 6)
     cross_sell_slugs: list[str] | None = None
+    # Sepette önerilecek koleksiyonlar (slug) — vitrinde ürünleri gösterilir
+    cross_sell_koleksiyonlar: list[str] | None = Field(None, max_length=5)
+    # Varyant seçilince eşlenmiş görsel öne gelsin (ürün başına)
+    varyant_gorsel: bool | None = None
     models_per_item: int | None = Field(None, ge=1, le=2)
     # Couple: her kılıfın model seçicisinin başlığı ("McQueen için model", "Sally için model")
     model_basliklari: list[str] | None = Field(None, max_length=2)
@@ -274,6 +278,7 @@ def _serialize_image(im: CatalogImage) -> dict:
         "id": str(im.id),
         "url": f"/storage/{im.file_path}",
         "variant_id": str(im.variant_id) if im.variant_id else None,
+        "varyant_anahtarlari": im.varyant_anahtarlari or [],
         "alt": im.alt,
         "position": im.position,
     }
@@ -302,6 +307,8 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "variant_set_id": str(p.variant_set_id) if p.variant_set_id else None,
         "custom_fields": p.custom_fields or [],
         "cross_sell_slugs": p.cross_sell_slugs or [],
+        "cross_sell_koleksiyonlar": p.cross_sell_koleksiyonlar or [],
+        "varyant_gorsel": bool(p.varyant_gorsel),
         "models_per_item": p.models_per_item or 1,
         "model_basliklari": p.model_basliklari or [],
         "video_url": p.video_url,
@@ -467,6 +474,12 @@ def update_product(
         ))
         if _d is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Tasarım bulunamadı")
+    if "cross_sell_koleksiyonlar" in updates:
+        updates["cross_sell_koleksiyonlar"] = [
+            str(x).strip()[:200] for x in (updates["cross_sell_koleksiyonlar"] or []) if str(x).strip()
+        ][:5] or None
+    if updates.get("varyant_gorsel") is None:
+        updates.pop("varyant_gorsel", None)       # null = değiştirme
     if "studio_overlays" in updates:
         # JSONB'ye UUID nesnesi yazılamaz — metne çevrilir
         updates["studio_overlays"] = [str(x) for x in (updates["studio_overlays"] or [])]
@@ -790,6 +803,35 @@ def upload_images(
     return {"images": uploaded, "errors": errors}
 
 
+class ImageVaryantlar(BaseModel):
+    # Görselin bağlı olduğu varyantların model_key'leri (boş = hiçbiri)
+    varyant_anahtarlari: list[str] = Field(default_factory=list, max_length=500)
+
+
+@router.patch("/images/{image_id}/varyantlar", response_model=dict)
+def set_image_variants(
+    image_id: uuid.UUID,
+    body: ImageVaryantlar,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Görseli varyant(lar)a eşle — ürün sayfasında o varyant seçilince öne gelir
+    (ürünün 'varyant görseli' ayarı açıksa). Yalnız ürünün KENDİ varyantları kabul."""
+    im = db.scalar(select(CatalogImage).where(
+        CatalogImage.id == image_id, CatalogImage.tenant_id == user.tenant_id))
+    if not im:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Görsel bulunamadı")
+    gecerli = set(db.scalars(select(CatalogVariant.model_key).where(
+        CatalogVariant.product_id == im.product_id)).all())
+    istenen = list(dict.fromkeys(str(k) for k in body.varyant_anahtarlari))
+    bilinmeyen = [k for k in istenen if k not in gecerli]
+    if bilinmeyen:
+        raise HTTPException(422, f"Bu üründe olmayan varyant: {', '.join(bilinmeyen[:3])}")
+    im.varyant_anahtarlari = istenen or None
+    db.commit()
+    return _serialize_image(im)
+
+
 @router.delete("/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_image(
     image_id: uuid.UUID,
@@ -848,6 +890,28 @@ class CollectionUpdate(BaseModel):
     is_smart: bool | None = None
     rules: list[SmartRule] | None = Field(None, max_length=smart_collections.MAX_RULES)
     rules_match: str | None = None
+    # Görselin vitrindeki oranı/kırpımı — {"oran","x","y","zoom"}; null = sıfırla
+    gorsel_kirp: dict | None = None
+
+
+KIRP_ORANLARI = {"dogal", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "4:5"}
+
+
+def _kirp_temizle(k: dict | None) -> dict | None:
+    if not k:
+        return None
+    def sayi(v, alt, ust, vars_):
+        try:
+            return max(alt, min(ust, float(v)))
+        except (TypeError, ValueError):
+            return vars_
+    return {"oran": k.get("oran") if k.get("oran") in KIRP_ORANLARI else "dogal",
+            "x": sayi(k.get("x"), 0, 100, 50), "y": sayi(k.get("y"), 0, 100, 50),
+            "zoom": sayi(k.get("zoom"), 1, 3, 1),
+            # Sayfa başlığı düzeni: yan (yazı bir yanda, görsel öbür yanda) |
+            # kaplama (görsel üstte, yazı üzerinde — eski görünüm)
+            "duzen": k.get("duzen") if k.get("duzen") in ("yan", "kaplama") else "yan",
+            "taraf": k.get("taraf") if k.get("taraf") in ("sag", "sol") else "sag"}
 
 
 class SmartPreviewRequest(BaseModel):
@@ -868,6 +932,7 @@ def _serialize_collection(c, product_count: int | None = None) -> dict:
         "title": c.title,
         "description": c.description,
         "image_url": f"/storage/{c.image_path}" if c.image_path else None,
+        "gorsel_kirp": c.gorsel_kirp,
         "position": c.position,
         "is_active": c.is_active,
         "is_smart": c.is_smart,
@@ -952,6 +1017,8 @@ def update_collection(
     updates = body.model_dump(exclude_unset=True)
     if updates.get("image_path"):
         updates["image_path"] = updates["image_path"].removeprefix("/storage/")
+    if "gorsel_kirp" in updates:
+        updates["gorsel_kirp"] = _kirp_temizle(updates["gorsel_kirp"])
     if "rules_match" in updates:
         updates["rules_match"] = "any" if updates["rules_match"] == "any" else "all"
     for k, v in updates.items():
@@ -1032,6 +1099,7 @@ class KoleksiyonUrunleri(BaseModel):
 @router.get("/collections/{collection_id}/products", response_model=dict)
 def list_collection_products(
     collection_id: uuid.UUID,
+    detay: bool = Query(False),
     user: User = Depends(require_permission("vitrin")),
     db: Session = Depends(get_db),
 ):
@@ -1043,10 +1111,19 @@ def list_collection_products(
         CatalogCollection.tenant_id == user.tenant_id))
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Koleksiyon bulunamadı")
-    return {
+    out = {
         "id": str(c.id), "title": c.title, "is_smart": c.is_smart,
         "product_ids": [str(p.id) for p in c.products],
     }
+    if detay:
+        # Koleksiyon görseli yardımcısı (Gemini) — ürün ve görselleri
+        out["urunler"] = [
+            {"id": str(p.id), "title": p.title, "slug": p.slug, "status": p.status,
+             "gorseller": [f"/storage/{im.file_path}"
+                           for im in sorted(p.images, key=lambda im: im.position)][:6]}
+            for p in sorted(c.products, key=lambda p: p.position)[:80]
+        ]
+    return out
 
 
 @router.post("/collections/{collection_id}/products", response_model=dict)

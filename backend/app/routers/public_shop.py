@@ -289,7 +289,10 @@ def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
         "tags": p.tags,
         "images": [
             {"url": f"/storage/{im.file_path}", "alt": im.alt,
-             "variant_id": str(im.variant_id) if im.variant_id else None}
+             "variant_id": str(im.variant_id) if im.variant_id else None,
+             # Varyant görseli açıksa: bu görsele eşlenmiş varyantların
+             # model_key'leri — müşteri o varyantı seçince görsel öne gelir
+             "varyantlar": (im.varyant_anahtarlari or []) if p.varyant_gorsel else []}
             for im in p.images
         ],
         "variants": [
@@ -332,7 +335,8 @@ def list_collections(
     response.headers["Cache-Control"] = "public, max-age=60"
     return [
         {"slug": c.slug, "title": c.title, "description": c.description,
-         "image_url": f"/storage/{c.image_path}" if c.image_path else None}
+         "image_url": f"/storage/{c.image_path}" if c.image_path else None,
+         "gorsel_kirp": c.gorsel_kirp}
         for c in collections
     ]
 
@@ -2414,7 +2418,7 @@ def account_address(
 def cart_suggestions(
     store_slug: str,
     slugs: str = Query("", max_length=2000),   # sepetteki ürün slug'ları (virgüllü)
-    limit: int = Query(3, ge=1, le=6),
+    limit: int = Query(3, ge=1, le=12),
     _rl: None = Depends(read_rate_limit),
     db: Session = Depends(get_db),
 ):
@@ -2446,11 +2450,30 @@ def cart_suggestions(
         ).all()
     }
 
-    # 1) Panelden elle seçilen öneriler (ürün.cross_sell_slugs)
+    # 1) Panelden elle seçilen öneriler (ürün.cross_sell_slugs), ardından
+    #    seçilen KOLEKSİYONLARIN ürünleri (koleksiyon değil ürünleri gösterilir)
+    elle = False
     for slug in in_cart:
         p = products.get(slug)
         if p:
             _add(p.cross_sell_slugs or [])
+            elle = elle or bool(p.cross_sell_slugs)
+    koleksiyonlar = list(dict.fromkeys(
+        k for slug in in_cart if products.get(slug)
+        for k in (products[slug].cross_sell_koleksiyonlar or [])))
+    if koleksiyonlar:
+        elle = True
+        # Akıllı koleksiyonların üyeliği de tabloya senkronlanır
+        # (services/smart_collections.sync_collection) → ikisi aynı okunur
+        for kol in db.scalars(select(CatalogCollection).where(
+                CatalogCollection.store_id == store.id,
+                CatalogCollection.slug.in_(koleksiyonlar))).all():
+            uyan = [p for p in kol.products if p.status == "active"]
+            _add([p.slug for p in sorted(uyan, key=lambda x: x.position)])
+    # Elle/koleksiyonla seçim varsa liste biraz daha uzun gösterilir
+    # (koleksiyonun ürünleri kayan listede) — otomatik doldurma yalnız boşsa
+    if elle:
+        limit = max(limit, min(12, len(picked)))
 
     # 2) Birlikte satılanlar — aynı siparişte geçmiş ürünler
     if in_cart and len(picked) < limit:

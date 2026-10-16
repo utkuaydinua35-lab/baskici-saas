@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast'
 import { StatusBadge } from './UrunlerPage'
 import RichTextEditor from '../components/RichTextEditor'
 import { gorselSec, nativeMi } from '../lib/kamera'
+import VaryantGorselSecici from '../components/VaryantGorselSecici'
 
 // Tam sayfa ürün editörü — görsel sıralama (drag), inline varyant editi, SEO.
 export default function UrunDetayPage() {
@@ -535,6 +536,25 @@ function ImagesSection({ product, onChanged, setMsg }) {
   const [progress, setProgress] = useState(null)   // "3/5"
   const [dropActive, setDropActive] = useState(false)
   const dragId = useRef(null)
+  const [esleyen, setEsleyen] = useState(null)      // varyant penceresi açık görsel
+  const [varyantAcik, setVaryantAcik] = useState(!!product.varyant_gorsel)
+  useEffect(() => { setVaryantAcik(!!product.varyant_gorsel) }, [product.varyant_gorsel])
+  const modelAdi = Object.fromEntries((product.variants || []).map(v => [v.model_key, v.model_display]))
+
+  const varyantAyari = async (acik) => {
+    setVaryantAcik(acik)
+    try {
+      await api.patch(`/api/catalog/products/${product.id}`, { varyant_gorsel: acik })
+      setMsg({ ok: true, text: acik ? 'Varyant görseli açıldı — görsellere varyant atayın' : 'Varyant görseli kapatıldı' })
+      await onChanged()
+    } catch { setVaryantAcik(!acik); setMsg({ ok: false, text: 'Kaydedilemedi' }) }
+  }
+  const varyantKaydet = async (anahtarlar) => {
+    try {
+      await api.patch(`/api/catalog/images/${esleyen.id}/varyantlar`, { varyant_anahtarlari: anahtarlar })
+      setEsleyen(null); await onChanged()
+    } catch (e) { setMsg({ ok: false, text: typeof e?.detail === 'string' ? e.detail : 'Eşleştirme kaydedilemedi' }) }
+  }
 
   useEffect(() => { setOrder(product.images.map(im => im.id)) }, [product.images])
   const byId = Object.fromEntries(product.images.map(im => [im.id, im]))
@@ -601,6 +621,16 @@ function ImagesSection({ product, onChanged, setMsg }) {
         </span>
         {progress && <span className="text-[11px] text-panel-accent ml-auto">Yükleniyor {progress}…</span>}
       </div>
+      {(product.variants || []).length > 1 && (
+        <label className="flex items-start gap-2 text-[12px] cursor-pointer">
+          <input type="checkbox" className="mt-0.5" checked={varyantAcik} onChange={e => varyantAyari(e.target.checked)} />
+          <span>
+            <b>Varyant görseli</b> — müşteri bir varyant seçince ona eşlenmiş görsel ekrana gelsin.
+            {varyantAcik && <span className="text-panel-muted"> Her görselin altındaki “Varyant” düğmesiyle eşleyin;
+              eşlenmeyen görseller genel görseldir.</span>}
+          </span>
+        </label>
+      )}
       <div className="flex gap-2.5 flex-wrap">
         {order.map((id, idx) => {
           const im = byId[id]
@@ -630,6 +660,17 @@ function ImagesSection({ product, onChanged, setMsg }) {
               )}
               <button onClick={() => remove(id)}
                 className="absolute -top-1.5 -right-1.5 hidden group-hover:flex bg-red-600 text-white rounded-full w-5 h-5 text-xs items-center justify-center">×</button>
+              {varyantAcik && (
+                <button type="button" onClick={() => setEsleyen(im)}
+                  title={(im.varyant_anahtarlari || []).map(k => modelAdi[k] || k).join(', ') || 'Genel görsel — varyant ata'}
+                  className={`mt-1 w-24 truncate rounded-md px-1 py-0.5 text-[10px] border ${
+                    (im.varyant_anahtarlari || []).length
+                      ? 'border-indigo-400/40 bg-indigo-500/10 text-indigo-200' : 'border-panel-border text-panel-muted'}`}>
+                  {(im.varyant_anahtarlari || []).length === 0 ? '+ Varyant'
+                    : (im.varyant_anahtarlari.length === 1 ? (modelAdi[im.varyant_anahtarlari[0]] || '1 varyant')
+                      : `${im.varyant_anahtarlari.length} varyant`)}
+                </button>
+              )}
             </div>
           )
         })}
@@ -660,6 +701,10 @@ function ImagesSection({ product, onChanged, setMsg }) {
           </button>
         )}
       </div>
+      {esleyen && (
+        <VaryantGorselSecici gorsel={esleyen} varyantlar={product.variants}
+          onKaydet={varyantKaydet} onKapat={() => setEsleyen(null)} />
+      )}
     </section>
   )
 }
@@ -903,10 +948,22 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
   const { storeId } = useStore()
   const [all, setAll] = useState([])
   const [picked, setPicked] = useState(product.cross_sell_slugs || [])
+  const [kols, setKols] = useState(product.cross_sell_koleksiyonlar || [])
+  const [tumKol, setTumKol] = useState([])
   const [q, setQ] = useState('')
   const [dirty, setDirty] = useState(false)
 
-  useEffect(() => { setPicked(product.cross_sell_slugs || []); setDirty(false) }, [product.id])
+  useEffect(() => {
+    setPicked(product.cross_sell_slugs || []); setKols(product.cross_sell_koleksiyonlar || []); setDirty(false)
+  }, [product.id])
+  useEffect(() => {
+    if (!storeId) return
+    api.get(`/api/catalog/collections?store_id=${storeId}`).then(r => setTumKol(r || [])).catch(() => {})
+  }, [storeId])
+  const kolDegistir = (slug) => {
+    setKols(k => k.includes(slug) ? k.filter(x => x !== slug) : [...k, slug].slice(0, 5))
+    setDirty(true)
+  }
   useEffect(() => {
     if (!storeId) return
     // slim=1: yalnız id/slug/ad — seçiciye varyant ve görsel gerekmiyor
@@ -922,7 +979,8 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
 
   const save = async () => {
     try {
-      await api.patch(`/api/catalog/products/${product.id}`, { cross_sell_slugs: picked })
+      await api.patch(`/api/catalog/products/${product.id}`,
+        { cross_sell_slugs: picked, cross_sell_koleksiyonlar: kols })
       setMsg({ ok: true, text: 'Öneriler kaydedildi' })
       setDirty(false); onChanged()
     } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
@@ -942,9 +1000,29 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
         {dirty && <button onClick={save} className="ml-auto btn-primary !py-1 text-xs">Kaydet</button>}
       </div>
       <p className="text-[11px] text-panel-muted -mt-1">
-        Bu ürün sepetteyken müşteriye önerilecek ürünler. Boş bırakırsanız sistem
-        <b> birlikte satılanlardan</b> otomatik seçer.
+        Bu ürün sepetteyken müşteriye önerilecek ürünler ve koleksiyonlar. Koleksiyon seçerseniz
+        müşteri koleksiyonu değil, <b>içindeki ürünleri</b> görür (önce elle seçtiğiniz ürünler).
+        Hiçbiri seçilmezse sistem <b>birlikte satılanlardan</b> otomatik seçer.
       </p>
+      {tumKol.length > 0 && (
+        <div>
+          <div className="text-[11px] text-panel-muted mb-1">Koleksiyonlar (en fazla 5)</div>
+          <div className="flex gap-1.5 flex-wrap max-h-28 overflow-y-auto">
+            {tumKol.map(c => {
+              const on = kols.includes(c.slug)
+              return (
+                <button key={c.id} type="button" onClick={() => kolDegistir(c.slug)}
+                  className={`px-2.5 py-1 rounded-full text-xs border ${on
+                    ? 'border-indigo-400/50 bg-indigo-500/15 text-indigo-200'
+                    : 'border-panel-border text-panel-muted hover:text-panel-ink'}`}>
+                  {on ? '✓ ' : '+ '}{c.title}{c.product_count != null ? ` (${c.product_count})` : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      <div className="text-[11px] text-panel-muted">Ürünler (en fazla 6)</div>
       {picked.length > 0 && (
         <div className="flex gap-2 flex-wrap">
           {picked.map(slug => (

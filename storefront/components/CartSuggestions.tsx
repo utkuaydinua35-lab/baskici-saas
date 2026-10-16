@@ -1,8 +1,8 @@
 "use client";
 
 // Sepette "bunu da ekleyin" (cross-sell) — ortalama sepeti büyütür.
-// Öneriler sunucudan gelir: panelden seçilenler > birlikte satılanlar >
-// aynı koleksiyon. Sepettekiler ve stoksuzlar zaten elenmiştir.
+// Öneriler sunucudan gelir: panelden seçilen ürünler > seçilen koleksiyonların
+// ürünleri > birlikte satılanlar > aynı koleksiyon. Sepettekiler ve stoksuzlar zaten elenmiştir.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
@@ -35,7 +35,8 @@ export default function CartSuggestions({ onNavigate }: { onNavigate?: () => voi
   return (
     <div className="border-t border-zinc-200 pt-3 mt-1">
       <div className="text-xs font-semibold text-zinc-700 mb-2">✨ Bunu da ekleyin</div>
-      <div className="space-y-2">
+      {/* Panelden koleksiyon seçildiyse liste uzun olabilir: kendi içinde kayar */}
+      <div className="space-y-2 max-h-56 overflow-y-auto overscroll-contain pr-1">
         {list.map((s) => (
           <Link key={s.slug} href={`/urun/${s.slug}`} onClick={onNavigate}
             className="flex items-center gap-2.5 group">

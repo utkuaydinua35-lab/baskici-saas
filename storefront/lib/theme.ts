@@ -6,6 +6,16 @@ import { getStoreSlug } from "./api";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
+export interface KayanSeritAyari {
+  aktif: boolean;
+  ogeler: { text: string; link?: string }[];
+  sembol: string;
+  zemin: string;
+  yazi: string;
+  hiz: number;
+  yon: "sola" | "saga";
+}
+
 export interface HeroSlide {
   image: string | null;
   eyebrow?: string;
@@ -29,7 +39,8 @@ export interface ThemeSection {
   type: "hero_slider" | "featured_collections" | "products_grid" | "featured_products"
     | "rich_text" | "banner" | "image_with_text" | "faq" | "newsletter"
     | "icon_bar" | "comparison" | "testimonials" | "gallery" | "contact" | "countdown"
-    | "kurdele" | "stil_onerici" | "adimlar" | "kilif_onizleme" | "son_bakilanlar";
+    | "kurdele" | "stil_onerici" | "adimlar" | "kilif_onizleme" | "son_bakilanlar"
+    | "buyuk_karusel";
   settings: {
     slides?: HeroSlide[];
     autoplay_sec?: number;
@@ -78,6 +89,13 @@ export interface ThemeSection {
       urun: string; urunler?: string[]; zemin: string }[];
     /** Stil önerici: öneriler kendi kendine dönsün mü */
     otomatik?: boolean;
+    /** Hero: slaytın üstünde/altında kayan şerit */
+    ust_serit?: KayanSeritAyari;
+    alt_serit?: KayanSeritAyari;
+    /** Büyük görsel karuseli */
+    karusel?: { gorsel: string; link?: string; etiket?: string }[];
+    goster?: "1" | "2" | "3";
+    oto_sn?: number;
     /** Kılıf önizleme: "Yüzey: Parlak / Mat" seçeneği görünsün mü */
     yuzey_goster?: boolean;
     buton?: string;

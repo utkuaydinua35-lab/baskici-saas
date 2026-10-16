@@ -39,6 +39,7 @@ export const SECTION_TYPES = {
   adimlar: { label: 'Numaralı Adımlar', icon: '🔢' },
   kilif_onizleme: { label: 'Canlı Kılıf Önizleme', icon: '📱' },
   son_bakilanlar: { label: 'Son Baktıkların', icon: '🕘' },
+  buyuk_karusel: { label: 'Büyük Görsel Karuseli (saydam PNG)', icon: '🎠' },
 }
 
 export const SECTION_DEFAULTS = {
@@ -80,6 +81,8 @@ export const SECTION_DEFAULTS = {
     cta_text: 'Bu tasarımla sipariş ver', cta_url: '/tasarla', logo_yazi: '{magaza}',
     not: 'Önizlemedir; baskı renkleri ekrana göre küçük farklar gösterebilir.' },
   son_bakilanlar: { eyebrow: 'SON BAKTIKLARIN', title: 'Son baktığın tasarımlar', subtitle: '' },
+  buyuk_karusel: { eyebrow: 'SONBAHARIN FAVORİLERİ', title: 'Autumn Koleksiyonu',
+    subtitle: 'Sonbaharın sıcak tonları, göz alıcı tasarımlarla buluşuyor. 🍂', karusel: [], goster: '2', oto_sn: 0 },
 }
 
 // Bölüm vitrinde HİÇBİR ŞEY çizmeyecekse nedeni (yoksa null). Kurallar
@@ -106,6 +109,7 @@ export function bosBolumNedeni(sec) {
     case 'kurdele': return dolu(s.items, 'text') ? null : 'yazı eklenmedi'
     case 'stil_onerici': return (s.secenekler || []).some(o => o?.etiket && (o?.urun || o?.urunler?.length)) ? null : 'ürün seçilmedi'
     case 'adimlar': return dolu(s.items, 'title') ? null : 'adım eklenmedi'
+    case 'buyuk_karusel': return dolu(s.karusel, 'gorsel') ? null : 'görsel bekliyor'
     default: return null
   }
 }
@@ -282,6 +286,56 @@ export function SectionSettings({ sec, collections, products = [], pages = [], p
             options={[['normal', 'Normal'], ['tall', 'Yüksek vitrin']]} onChange={v => patch({ height: v })} />
         </>)}
         <RadiusControl s={s} patch={patch} />
+        <SeritAyari baslik="Slaytın ÜSTÜNDE kayan şerit" deger={s.ust_serit} varsayilanYon="sola"
+          onChange={v => patch({ ust_serit: v })} collections={collections} products={products} pages={pages} />
+        <SeritAyari baslik="Slaytın ALTINDA kayan şerit" deger={s.alt_serit} varsayilanYon="saga"
+          onChange={v => patch({ alt_serit: v })} collections={collections} products={products} pages={pages} />
+      </>
+    )
+  }
+
+  if (sec.type === 'buyuk_karusel') {
+    const ogeler = s.karusel || []
+    const patchOge = (i, p2) => patch({ karusel: ogeler.map((o, j) => j === i ? { ...o, ...p2 } : o) })
+    const tasi = (i, d) => {
+      const j = i + d
+      if (j < 0 || j >= ogeler.length) return
+      const n = [...ogeler]; [n[i], n[j]] = [n[j], n[i]]; patch({ karusel: n })
+    }
+    return (
+      <>
+        <HeadingFields s={s} patch={patch} titlePlaceholder="Büyük başlık — örn. Autumn Koleksiyonu" />
+        <p className="text-[11px] text-panel-muted">
+          Arkası <b>saydam PNG</b> yükleyin: zemin sitenin rengini alır, görseller kartsız ve büyük görünür.
+        </p>
+        {ogeler.map((o, i) => (
+          <div key={i} className="border border-panel-border rounded-xl p-2 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-medium">{i + 1}. görsel</span>
+              <button onClick={() => tasi(i, -1)} disabled={i === 0} className="ml-auto text-xs px-1 disabled:opacity-30">↑</button>
+              <button onClick={() => tasi(i, 1)} disabled={i === ogeler.length - 1} className="text-xs px-1 disabled:opacity-30">↓</button>
+              <button onClick={() => patch({ karusel: ogeler.filter((_, j) => j !== i) })}
+                className="text-xs text-red-300 px-1">Sil</button>
+            </div>
+            <AssetField label="Görsel (saydam PNG)" current={o.gorsel} kind="hero"
+              onUrl={url => patchOge(i, { gorsel: url })} onClear={() => patchOge(i, { gorsel: '' })} />
+            <UrlPicker value={o.link} collections={collections} products={products} pages={pages}
+              placeholder="Tıklayınca gideceği yer (ürün/koleksiyon)" onChange={url => patchOge(i, { link: url })} />
+            <input className="input !py-1.5 text-xs" value={o.etiket || ''} maxLength={80}
+              onChange={e => patchOge(i, { etiket: e.target.value })} placeholder="Alt yazı (isteğe bağlı)" />
+          </div>
+        ))}
+        {ogeler.length < 12 && (
+          <button onClick={() => patch({ karusel: [...ogeler, { gorsel: '', link: '', etiket: '' }] })}
+            className="btn-ghost !py-1.5 text-xs w-full">+ Görsel Ekle</button>
+        )}
+        <Choice label="Masaüstünde yan yana" value={s.goster || '2'}
+          options={[['1', '1 (tam genişlik)'], ['2', '2'], ['3', '3']]} onChange={v => patch({ goster: v })} />
+        <label className="block text-sm">
+          <span className="text-panel-muted text-xs">Kendiliğinden kayma (saniye; 0 = kapalı)</span>
+          <input className="input mt-1 !w-24" type="number" min="0" max="20" value={s.oto_sn ?? 0}
+            onChange={e => patch({ oto_sn: Math.max(0, Math.min(20, Number(e.target.value) || 0)) })} />
+        </label>
       </>
     )
   }
@@ -981,6 +1035,61 @@ export function Section({ title, icon, children }) {
       <h2 className="text-sm font-semibold flex items-center gap-2"><span>{icon}</span> {title}</h2>
       {children}
     </section>
+  )
+}
+
+// Slayt gösterisinin üstü/altındaki kayan şerit (markalar, yeni model duyurusu)
+function SeritAyari({ baslik, deger, onChange, varsayilanYon, collections, products, pages }) {
+  const d = { aktif: false, ogeler: [], sembol: '✦', zemin: '#111111', yazi: '#ffffff', hiz: 30,
+    yon: varsayilanYon, ...(deger || {}) }
+  const yama = (p) => onChange({ ...d, ...p })
+  const ogeler = d.ogeler || []
+  const patchOge = (i, p) => yama({ ogeler: ogeler.map((o, j) => j === i ? { ...o, ...p } : o) })
+  return (
+    <div className="border border-panel-border rounded-xl p-2.5 space-y-2">
+      <Toggle checked={!!d.aktif} onChange={v => yama({ aktif: v, ogeler: ogeler.length ? ogeler
+        : [{ text: 'Apple', link: '' }, { text: 'Samsung', link: '' }, { text: 'Xiaomi', link: '' }] })}
+        label={<b className="text-xs">{baslik}</b>} />
+      {d.aktif && (<>
+        {ogeler.map((o, i) => (
+          <div key={i} className="flex gap-1.5 items-center">
+            <input className="input !py-1.5 text-xs flex-1" value={o.text || ''} maxLength={80}
+              onChange={e => patchOge(i, { text: e.target.value })} placeholder="Örn. iPhone 17 geldi!" />
+            <div className="w-36 shrink-0">
+              <UrlPicker value={o.link} collections={collections} products={products} pages={pages}
+                placeholder="Link (ops.)" onChange={url => patchOge(i, { link: url })} />
+            </div>
+            <button onClick={() => yama({ ogeler: ogeler.filter((_, j) => j !== i) })}
+              className="text-red-300 px-1">×</button>
+          </div>
+        ))}
+        {ogeler.length < 16 && (
+          <button onClick={() => yama({ ogeler: [...ogeler, { text: '', link: '' }] })}
+            className="btn-ghost !py-1 text-xs">+ Yazı Ekle</button>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField label="Zemin" value={d.zemin} onChange={v => yama({ zemin: v })} />
+          <ColorField label="Yazı" value={d.yazi} onChange={v => yama({ yazi: v })} />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <label className="text-panel-muted">Yön
+            <select className="input mt-1 !py-1" value={d.yon} onChange={e => yama({ yon: e.target.value })}>
+              <option value="sola">← Sola</option><option value="saga">Sağa →</option>
+            </select>
+          </label>
+          <label className="text-panel-muted">Hız
+            <select className="input mt-1 !py-1" value={d.hiz <= 18 ? 15 : d.hiz >= 45 ? 50 : 30}
+              onChange={e => yama({ hiz: Number(e.target.value) })}>
+              <option value={15}>Hızlı</option><option value={30}>Normal</option><option value={50}>Yavaş</option>
+            </select>
+          </label>
+          <label className="text-panel-muted">Ayraç
+            <input className="input mt-1 !py-1 text-center" value={d.sembol} maxLength={4}
+              onChange={e => yama({ sembol: e.target.value })} />
+          </label>
+        </div>
+      </>)}
+    </div>
   )
 }
 

@@ -38,6 +38,13 @@ SECTION_DEFAULTS: dict[str, dict] = {
         "stil": "kaplama",
         # Bölünmüş panonun zemin rengi (#rrggbb)
         "panel_renk": "#efefef",
+        # Slaytın ÜSTÜNDE / ALTINDA sürekli kayan şerit — telefon markaları,
+        # "iPhone 17 geldi" duyuruları. ogeler: [{text, link}]
+        # yon: sola | saga ; hiz: bir turun saniyesi (küçük = hızlı)
+        "ust_serit": {"aktif": False, "ogeler": [], "sembol": "✦",
+                      "zemin": "#111111", "yazi": "#ffffff", "hiz": 30, "yon": "sola"},
+        "alt_serit": {"aktif": False, "ogeler": [], "sembol": "✦",
+                      "zemin": "#111111", "yazi": "#ffffff", "hiz": 30, "yon": "saga"},
     },
     # Bölüm başlığı üçlüsü (eyebrow/title/subtitle) — "SENİN İÇİN SEÇTİK /
     # Çok Satanlar / En sevilen tasarımlar" kalıbı. Boş alan gösterilmez.
@@ -115,6 +122,13 @@ SECTION_DEFAULTS: dict[str, dict] = {
                        "buton": "FOTOĞRAF SEÇ", "cta_text": "", "cta_url": "/tasarla",
                        "logo_yazi": "{magaza}",
                        "not": "Önizlemedir; baskı renkleri ekrana göre küçük farklar gösterebilir."},
+    # Büyük görsel karuseli ("Autumn Koleksiyonu" kalıbı): üstte küçük harf
+    # aralıklı üst başlık + kalın büyük başlık + alt metin; altında arka planı
+    # SAYDAM büyük ürün görselleri (zemin tema rengi görünür), oklarla kayar.
+    # karusel: [{gorsel, link, etiket}] ; goster: masaüstünde yan yana kaç (1-3)
+    # oto_sn: kendiliğinden kayma aralığı (0 = kapalı)
+    "buyuk_karusel": {"eyebrow": "", "title": "", "subtitle": "", "karusel": [],
+                      "goster": "2", "oto_sn": 0},
     # Son bakılanlar: ziyaretçinin ürün sayfalarında gezdikleri (tarayıcısında
     # saklanır); ilk kez gelende liste boş → bölüm görünmez
     "son_bakilanlar": {"eyebrow": "", "title": "Son baktığın tasarımlar", "subtitle": ""},
@@ -148,6 +162,7 @@ _SECTION_ENUMS: dict[tuple[str, str], tuple[str, ...]] = {
     ("icon_bar", "stil"): ("kart", "serit"),
     ("testimonials", "stil"): ("kart", "fotografli"),
     ("kurdele", "palet"): ("neon", "tema"),
+    ("buyuk_karusel", "goster"): ("2", "1", "3"),
 }
 # Başlık üçlüsü olan bölümlerde metin alanı uzunluk sınırları
 _HEADING_LIMITS = {"eyebrow": 60, "title": 100, "subtitle": 200}
@@ -667,6 +682,28 @@ def _metin(v, limit: int) -> str:
     return str(v or "").strip()[:limit]
 
 
+def _serit_temizle(ham, varsayilan: dict) -> dict:
+    """Kayan şerit ayarı (hero üstü/altı). Bozuk/eksik değer varsayılana döner."""
+    ham = ham if isinstance(ham, dict) else {}
+    try:
+        hiz = min(120, max(8, int(ham.get("hiz") or varsayilan["hiz"])))
+    except (TypeError, ValueError):
+        hiz = varsayilan["hiz"]
+    return {
+        "aktif": bool(ham.get("aktif")),
+        "ogeler": [
+            {"text": _metin(o.get("text"), 80), "link": _guvenli_link(o.get("link"))}
+            for o in (ham.get("ogeler") or [])[:16]
+            if isinstance(o, dict) and _metin(o.get("text"), 80)
+        ],
+        "sembol": _metin(ham.get("sembol"), 4) if "sembol" in ham else varsayilan["sembol"],
+        "zemin": _renk(ham.get("zemin"), varsayilan["zemin"]),
+        "yazi": _renk(ham.get("yazi"), varsayilan["yazi"]),
+        "hiz": hiz,
+        "yon": ham.get("yon") if ham.get("yon") in ("sola", "saga") else varsayilan["yon"],
+    }
+
+
 def _sinirli_sayi(v, alt: int, ust: int, varsayilan: int) -> int:
     try:
         return min(ust, max(alt, int(v)))
@@ -742,6 +779,9 @@ def _normalize_sections(sections: list) -> list:
                 if sl.get("gorsel_kip") not in ("sigdir", "kapla"):
                     sl["gorsel_kip"] = "sigdir"
             settings["panel_renk"] = _renk(settings.get("panel_renk"), "#efefef")
+            for anahtar in ("ust_serit", "alt_serit"):
+                settings[anahtar] = _serit_temizle(settings.get(anahtar),
+                                                   SECTION_DEFAULTS["hero_slider"][anahtar])
             try:
                 settings["autoplay_sec"] = min(30, max(0, int(settings.get("autoplay_sec") or 5)))
             except (TypeError, ValueError):
@@ -820,6 +860,17 @@ def _normalize_sections(sections: list) -> list:
             settings["images"] = [o["url"] for o in settings["ogeler"]]
             settings["baglanti"] = _guvenli_link(settings.get("baglanti"))
             settings["baglanti_metni"] = _metin(settings.get("baglanti_metni"), 40)
+        elif stype == "buyuk_karusel":
+            settings["karusel"] = [
+                {"gorsel": g, "link": _guvenli_link(o.get("link")), "etiket": _metin(o.get("etiket"), 80)}
+                for o in (settings.get("karusel") or [])[:12] if isinstance(o, dict)
+                for g in [_metin(o.get("gorsel"), 500)]
+                if g.startswith("/storage/") or g.startswith("https://")
+            ]
+            try:
+                settings["oto_sn"] = min(20, max(0, int(settings.get("oto_sn") or 0)))
+            except (TypeError, ValueError):
+                settings["oto_sn"] = 0
         elif stype == "kurdele":
             settings["items"] = [
                 {"text": _metin(i.get("text"), 60), "buyuk": bool(i.get("buyuk"))}

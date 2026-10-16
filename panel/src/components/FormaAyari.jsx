@@ -53,7 +53,7 @@ export function AmblemMaske({ url, renk = '#fff', className = '', style = {} }) 
     style={{ background: renk, WebkitMask: maske, mask: maske, ...style }} />
 }
 
-export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi, kisitli, onProDuzen }) {
+export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi, kisitli }) {
   const [sec, setSec] = useState(null)        // sabit listeler (desen, hazır amblem…)
   const [err, setErr] = useState('')
   const [yukleniyor, setYukleniyor] = useState(false)
@@ -120,16 +120,13 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
                   </button>
                 ))}
             </div>
-            {f.stil === 'pro' && onProDuzen && (
-              <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
-                <button type="button" onClick={onProDuzen} className="btn-ghost !py-1 text-xs">
-                  📐 Pro düzenini alanlara uygula
-                </button>
-                <span className="text-panel-muted">
-                  İsim yay çizerek üstte, numara altında (referanstaki yerleşim). Rakamlı varsayılanı olan alan numara sayılır.
-                  Kaydetmeden önce yukarıdaki önizlemede görebilir, beğenmezseniz Vazgeç'e basabilirsiniz.
-                </span>
-              </div>
+            {f.stil === 'pro' && (
+              <p className="mt-2 text-[11px] text-panel-muted">
+                Pro'da görünüm sabittir: isim yay çizerek üstte, numara altında (baskı alanının ~%30'u), amblem yok;
+                yazı tipi ve kenar çizgisi stile aittir. Şablonda bir isim ve bir numara alanı olması yeterli
+                (rakamlı varsayılanı olan alan numara sayılır) — alanların panel konumu Pro'da kullanılmaz.
+                Koyu renk her zaman kenar şeritlere gelir.
+              </p>
             )}
           </div>
           <label className="flex items-start gap-2 text-xs rounded-xl bg-panel-input p-2.5">

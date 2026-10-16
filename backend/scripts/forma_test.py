@@ -282,14 +282,23 @@ else:
             {"key": "isim", "tip": "yazi", "etiket": "İsim", "varsayilan": "MURAT", **D["isim"]},
             {"key": "no", "tip": "yazi", "etiket": "Numara", "varsayilan": "10", **D["numara"]}])
         pk = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_font": "pacifico", "_kontur": ""})}
-        es("pro: isim kolej harfi + kavis, numara blok + dikey uzatma (müşteri fontu yok sayılır)",
-           ("alfaslab", 22.0, "bungee", 1.55),
-           (pk["alan-isim"]["font"], pk["alan-isim"]["kavis"], pk["alan-no"]["font"], pk["alan-no"]["dikey"]))
-        es("pro: siyah yazıda iç halka zeminin AÇIK rengi, dış çizgi yazı rengi",
-           ("#f5a800", "#111111"), (pk["alan-no"]["kontur"], pk["alan-no"]["kontur2"]))
-        es("pro: ışık yazı bloğunun ortasında", True, pk["taban"].get("isik_merkez") is not None)
+        es("pro: isim kolej harfi + kavis + daraltma, numara kolej (müşteri fontu yok sayılır)",
+           ("alfaslab", 12.0, 0.74, "kolej", True),
+           (pk["alan-isim"]["font"], pk["alan-isim"]["kavis"], pk["alan-isim"]["en_oran"],
+            pk["alan-no"]["font"], pk["alan-no"]["murekkep"]))
+        es("pro: yerleşim SABİT (alanın panel konumu kullanılmaz)", (0.21, 0.46, 0.58, 0.305),
+           tuple(pk["alan-no"][k2] for k2 in ("x", "y", "w", "h")))
+        es("pro: siyah yazıda kenar çizgisi ve parıltı zeminin AÇIK rengi",
+           ("#f5a800", "#f5a800"), (pk["alan-no"]["kontur"], pk["alan-no"]["parlama"]))
+        es("pro: koyu renk kenar şeritlerde (renk sırası ne olursa olsun)", ["#a3141a", "#f5a800"],
+           pk["taban"]["renkler"][:2])
+        ters = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_renk1": "#f5a800", "_renk2": "#a3141a"})}
+        es("pro: renkler ters seçilse de kenar koyu", ["#a3141a", "#f5a800"], ters["taban"]["renkler"][:2])
+        es("pro: amblem çizilmez", False, any(x.get("bicim") == "amblem" for x in kisitli_sablon.layers_uret(
+            SimpleNamespace(id=ov.id, forma=dict(pro, amblemler=["kalkan"], varsayilan=dict(pro["varsayilan"], amblem="kalkan")),
+                            alanlar=pov.alanlar), {"_amblem": "kalkan"})))
         pb = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_yazi_renk": "#ffffff"})}
-        es("pro: beyaz yazı (#ffffff → baskı beyazı), halka zeminin KOYU rengi",
+        es("pro: beyaz yazı (#ffffff → baskı beyazı), çizgi zeminin KOYU rengi",
            ("#f2f2f2", "#a3141a"), (pb["alan-no"]["color"], pb["alan-no"]["kontur"]))
         pk2 = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_yazi_renk": "#eeeeaa"})}
         es("pro: siyah/beyaz dışı renk en yakınına düşer", "#f2f2f2", pk2["alan-no"]["color"])
@@ -303,13 +312,19 @@ else:
             gg = Image.open(io.BytesIO(design_render.render_print_file(
                 db, SimpleNamespace(id="pr", layers=[katman]), sablon)))
             return gg.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox(), gg
-        uz, gg = kutu_al(pk["alan-no"])
-        duz, _ = kutu_al({k2: v for k2, v in pk["alan-no"].items() if k2 != "dikey"})
-        es("dikey uzatılan numara düzünden UZUN", True, (uz[3] - uz[1]) > (duz[3] - duz[1]) * 1.25)
-        es("uzatılan numara çerçeveden taşmaz", True, (uz[3] - uz[1]) <= round(D["numara"]["h"] * 315) + 2)
+        nk, _ = kutu_al({k2: v for k2, v in pk["alan-no"].items() if k2 != "parlama"})   # harfler
+        _, gg = kutu_al(pk["alan-no"])
+        W_, H_ = gg.size
+        cer = pk["alan-no"]
+        es("numara çerçeveyi DOLDURUR (mürekkep yüksekliği ≥ %85)", True,
+           (nk[3] - nk[1]) >= cer["h"] * H_ * 0.85)
+        es("numara çerçeveden taşmaz", True,
+           (nk[3] - nk[1]) <= cer["h"] * H_ * 1.06 and (nk[2] - nk[0]) <= cer["w"] * W_ * 1.06)
+        orta_y = (nk[1] + nk[3]) / 2 / H_
+        es("numara çerçeveye dikey ORTALI", True, abs(orta_y - (cer["y"] + cer["h"] / 2)) < 0.02)
         renkler_ = {c[:3] for _, c in gg.convert("RGBA").getcolors(1_000_000) if c[3] > 250}
-        es("çift kontur: iç halka rengi basıldı", True,
-           any(abs(r - 0xf5) < 12 and abs(g_ - 0xa8) < 12 and b < 30 for r, g_, b in renkler_))
+        es("kenar çizgisi/iç çizgi rengi basıldı", True,
+           any(abs(r - 0xf5) < 14 and abs(g_ - 0xa8) < 14 and b < 40 for r, g_, b in renkler_))
         pz = Image.open(io.BytesIO(design_render.render_onizleme(db, list(pk.values()), 40, 80, 200)))
         pz2 = Image.open(io.BytesIO(design_render.render_onizleme(db, list(pk.values()), 40, 80, 200)))
         es("pro zemin tohumlu (iki çizim aynı)", True, pz.tobytes() == pz2.tobytes())

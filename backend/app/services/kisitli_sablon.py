@@ -79,6 +79,8 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
     # müşterinin seçimidir — hepsi şablonun izin verdikleriyle doğrulanır.
     forma_ayar = getattr(overlay, "forma", None) or None
     fsecim = None      # DİKKAT: aşağıdaki "gorsel" dalında `secim` adlı ayrı bir değişken var
+    pro_roller: set[str] = set()
+    pro_yerlesen: set[str] = set()
     if forma_ayar and forma_ayar.get("aktif"):
         from app.services import forma as _forma
         fsecim = _forma.secimleri_coz(forma_ayar, degerler)
@@ -96,21 +98,26 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
             if not metin:
                 continue
             if fsecim and fsecim.get("stil") == "pro":
-                # FORMA PRO: yazı tipi, çift kontur, kavis ve uzatma stile ait
+                # FORMA PRO: yazı tipi, kenar çizgisi, parıltı ve YERLEŞİM stile
+                # ait (referans görselden ölçülü) — alanın panel konumu kullanılmaz
                 from app.services import forma as _forma
                 numara = _forma.numara_mi(a.get("varsayilan")) or _forma.numara_mi(metin)
+                if anahtar in pro_yerlesen or ("numara" if numara else "isim") in pro_roller:
+                    continue           # aynı rolde ikinci alan (Pro'da tek isim + tek numara)
+                pro_roller.add("numara" if numara else "isim")
+                pro_yerlesen.add(anahtar)
                 renk = fsecim["yazi_renk"]
+                halka = _forma.pro_halka(fsecim["renkler"], renk)
+                kutu = _forma.PRO_DUZEN["numara" if numara else "isim"]
                 hedef.append({
                     "id": f"alan-{anahtar}", "type": "text", "text": metin,
                     "font": _forma.PRO_NUMARA_FONT if numara else _forma.PRO_ISIM_FONT,
-                    "size": _sayi(a.get("size"), 0.1), "color": renk,
-                    "kontur": _forma.pro_halka(fsecim["renkler"], renk), "kontur2": renk,
-                    "kontur_kalinlik": "ince",
-                    **({"dikey": _forma.PRO_NUMARA_DIKEY} if numara else
-                       {"kavis": _sayi(a.get("kavis")) or _forma.PRO_ISIM_KAVIS}),
-                    "x": _sayi(a.get("x")), "y": _sayi(a.get("y")), "w": _sayi(a.get("w"), 0.8),
-                    **({"h": _sayi(a.get("h"))} if a.get("h") else {}),
-                    "rot": 0, "align": str(a.get("hiza") or "center"), "sigdir": True,
+                    "size": 0.1, "color": renk,
+                    "kontur": halka, "kontur_kalinlik": "ince", "parlama": halka,
+                    **({"esnet": True, "dikey": _forma.PRO_NUMARA_DIKEY} if numara else
+                       {"kavis": kutu["kavis"], "en_oran": kutu["en_oran"]}),
+                    "x": kutu["x"], "y": kutu["y"], "w": kutu["w"], "h": kutu["h"],
+                    "rot": 0, "align": "center", "sigdir": True, "murekkep": True,
                 })
                 continue
             hedef.append({
@@ -212,11 +219,16 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                  "desen": fsecim["desen"], "yogunluk": fsecim["yogunluk"],
                  "renkler": fsecim["renkler"],
                  "doku": fsecim["doku"], "efekt": fsecim["efekt"],
-                 # Pro: sıcak ışık yazı bloğunun ortasına
-                 **({"isik_merkez": _isik_merkezi(overlay.alanlar or [])}
+                 # Pro: ışık sabit yazı bloğunun ortasına
+                 **({"isik_merkez": _forma_mod().PRO_ISIK_MERKEZ}
                     if fsecim.get("stil") == "pro" else {})}
+        if fsecim.get("stil") == "pro":
+            # Koyu renk HER ZAMAN kenar şeritlerde (referans: kırmızı kenar,
+            # yazının arkası sarı) — müşteri renkleri hangi sırayla seçerse seçsin
+            koyu, acik = _forma_mod().pro_koyu_acik(fsecim["renkler"])
+            taban["renkler"] = [koyu, acik, *fsecim["renkler"][2:]]
         amblem = []
-        if fsecim["amblem"]:
+        if fsecim["amblem"] and fsecim.get("stil") != "pro":   # referansta amblem yok
             k = forma_ayar["amblem_kutu"]
             amblem.append({
                 "id": "amblem", "type": "sekil", "bicim": "amblem",
@@ -229,6 +241,11 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
 
     taban = {"id": "taban", "type": "overlay", "overlay_id": str(overlay.id)}
     return [*arkadakiler, taban, *ondekiler]
+
+
+def _forma_mod():
+    from app.services import forma
+    return forma
 
 
 def _isik_merkezi(alanlar: list) -> list[float]:

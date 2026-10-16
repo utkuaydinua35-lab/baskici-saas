@@ -84,15 +84,17 @@ def kirp_birim_kare(cokgen: list[tuple[float, float]]) -> list[tuple[float, floa
 # aynı kalır (hepsi zeminin renklerinden türetilir).
 PRO_YAZI_RENKLERI = {"#111111": "Siyah", "#f2f2f2": "Beyaz"}
 PRO_ISIM_FONT = "alfaslab"
-PRO_NUMARA_FONT = "bungee"
-PRO_NUMARA_DIKEY = 1.55
-PRO_ISIM_KAVIS = 22.0
-# Pro düzen (panelde "Pro düzenini uygula"): isim yay çizerek üstte, uzun
-# numara altında — referans görseldeki yerleşim (baskı alanına oransal)
+PRO_NUMARA_FONT = "kolej"          # kendi iç çizgisi referanstaki "siyah-sarı-siyah" görünümü verir
+# Pro yerleşim SABİT (referans görselden ölçüldü, baskı alanına oransal):
+# isim hafif yay çizerek üstte, numara altında baskı alanının ~%30'u. Alanların
+# panelde nerede durduğu Pro'da kullanılmaz — her şablon aynı görünür.
 PRO_DUZEN = {
-    "isim": {"x": 0.12, "y": 0.27, "w": 0.76, "h": 0.11, "size": 0.08, "kavis": 22},
-    "numara": {"x": 0.22, "y": 0.39, "w": 0.56, "h": 0.38, "size": 0.3},
+    "isim": {"x": 0.14, "y": 0.335, "w": 0.72, "h": 0.105, "kavis": 12.0, "en_oran": 0.74},
+    "numara": {"x": 0.21, "y": 0.46, "w": 0.58, "h": 0.305},
 }
+PRO_ISIK_MERKEZ = [0.5, 0.55]
+# Referansta rakamlar uzun-dar: kolej rakamı boyuna bu kadar uzatılır
+PRO_NUMARA_DIKEY = 1.25
 
 
 def _parlaklik(h: str) -> float:
@@ -104,11 +106,15 @@ def _parlaklik(h: str) -> float:
     return 0.299 * r + 0.587 * g + 0.114 * b
 
 
-def pro_halka(renkler: list[str], yazi_renk: str) -> str:
-    """Çift konturun iç halkası: koyu yazıda zeminin AÇIK rengi (sarı-kırmızıda
-    sarı), açık yazıda KOYU rengi — her renk ikilisinde okunur kalır."""
+def pro_koyu_acik(renkler: list[str]) -> tuple[str, str]:
     iki = sorted(renkler[:2], key=_parlaklik)
-    koyu, acik = iki[0], iki[-1]
+    return iki[0], iki[-1]
+
+
+def pro_halka(renkler: list[str], yazi_renk: str) -> str:
+    """Yazının ince kenar çizgisi ve parıltısı: koyu yazıda zeminin AÇIK rengi
+    (sarı-kırmızıda sarı — referans), açık yazıda KOYU rengi (okunurluk)."""
+    koyu, acik = pro_koyu_acik(renkler)
     return acik if _parlaklik(yazi_renk) < 128 else koyu
 
 

@@ -184,7 +184,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur =
         )}
       </div>)}
 
-      {!yalnizKontur && f.amblemler.length > 0 && (
+      {!pro && !yalnizKontur && f.amblemler.length > 0 && (
         <div>
           <div className={baslik}>Amblem</div>
           <div className="grid grid-cols-6 gap-1.5">

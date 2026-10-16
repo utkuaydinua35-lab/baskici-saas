@@ -515,6 +515,9 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # DİKEY UZATMA: harfler çizildikten sonra boyuna uzatılır (uzun forma
     # numarası). Punto çerçeveye bu pay düşülerek sığdırılır.
     dikey = max(1.0, min(DIKEY_TAVAN, _isaretli(k.get("dikey")) or 1.0))
+    # YATAY DARALTMA (forma ismi gibi uzun-dar harf): çizimden sonra eni küçülür;
+    # punto çerçeveye bu pay hesaba katılarak sığdırılır (dar = daha büyük punto)
+    en_oran = max(0.6, min(1.0, _isaretli(k.get("en_oran")) or 1.0))
 
     # ÇERÇEVEYİ DOLDUR: metin kutuya BİREBİR oturtulur — kısa metin büyür,
     # uzun metin küçülür. Hem GENİŞLİK hem YÜKSEKLİK sınırlar: "1" gibi tek
@@ -525,11 +528,28 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
         # Harf aralığı puntoyla orantılı olduğundan oran hesabı aynen geçerli
         gen = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
         if gen > 0:
-            en = boy * kutu_gen / gen               # genişliğe göre punto
+            en = boy * kutu_gen / gen / en_oran     # genişliğe göre punto (daraltma payı)
             yuk = kutu_yuk / oran / dikey           # yüksekliğe göre punto (uzatma payı)
             boy = max(4, int(min(en, yuk, H * TAVAN_PUNTO)))
             font = _font(ad, boy)
             oran = _satir_orani(font, boy)
+
+    # MÜREKKEBE SIĞDIR (Forma Pro): punto, harflerin GERÇEK mürekkep kutusuna
+    # göre — satır yüksekliğine göre değil. Kolej gibi fontlarda rakamlar
+    # satırın ancak yarısını kaplıyor, çerçeve dolmuyordu (referansta numara
+    # baskı alanının %30'u). Yazı sonra mürekkep kutusundan kırpılıp çerçeveye
+    # ORTALANIR (bkz. aşağıda murekkep_kirp).
+    murekkep = k.get("murekkep") is True
+    if murekkep:
+        sol_, ust_, sag_, alt_ = font.getbbox(metin)
+        ink_w = max(1, sag_ - sol_ + _kontur(k, boy)[1] * max(0, len(metin) - 1))
+        ink_h = max(1, alt_ - ust_)
+        # Genişlik sınırı KESİN: esnetme yalnız dar yazıyı çerçeveye kadar açar
+        # (eskiden payla gevşetilmişti, numara çerçeveden %18 taşıyordu)
+        olcek = min(kutu_yuk / (ink_h * dikey), kutu_gen / (ink_w * en_oran))
+        boy = max(4, int(min(boy * olcek, H)))
+        font = _font(ad, boy)
+        oran = _satir_orani(font, boy)
 
     # ÇERÇEVEYE ESNET: dar fontlar (kolej) çerçevenin YÜKSEKLİĞİNE sığınca
     # genişliği dolduramıyor; yazı yatayda esnetilip çerçeveyi kaplar (forma
@@ -606,13 +626,23 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
             # Oran, çizilen MÜREKKEBİN gerçek genişliğinden: ölçülen ilerleme
             # genişliği harfin (ve konturun) kenar taşmasını saymaz, yazı
             # çerçeveden birkaç yüzde taşıyordu.
-            murekkep = kat.getchannel("A").getbbox()
-            if murekkep:
-                esnet = max(1.0, min(ESNET_TAVAN, esnet, (kutu_gen - 2) / max(1, murekkep[2] - murekkep[0])))
+            cizilen = kat.getchannel("A").getbbox()
+            if cizilen:
+                esnet = max(1.0, min(ESNET_TAVAN, esnet, (kutu_gen - 2) / max(1, cizilen[2] - cizilen[0])))
             kat = kat.resize((max(1, round(kat.width * esnet)), kat.height), Image.LANCZOS)
 
     if dikey > 1.0:
         kat = kat.resize((kat.width, max(1, round(kat.height * dikey))), Image.LANCZOS)
+    if en_oran < 1.0:
+        kat = kat.resize((max(1, round(kat.width * en_oran)), kat.height), Image.LANCZOS)
+    if murekkep:
+        # Katmanı mürekkebin etrafına kırp: ortalama satır kutusuna değil
+        # harflere göre yapılır (parlama payı korunur)
+        kutu = kat.getchannel("A").getbbox()
+        if kutu:
+            p = hale_pay + 2
+            kat = kat.crop((max(0, kutu[0] - p), max(0, kutu[1] - p),
+                            min(kat.width, kutu[2] + p), min(kat.height, kutu[3] + p)))
 
     # PARLAMA: yazının çevresinde yumuşak hale (yazının ALTINA konur)
     if hale_renk:

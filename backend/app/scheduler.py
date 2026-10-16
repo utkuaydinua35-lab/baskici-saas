@@ -245,6 +245,20 @@ def _review_invite_job():
         db.close()
 
 
+def _meta_urun_setleri_job():
+    """Koleksiyon → Meta ürün seti eşitlemesi — her gece (yeni ürün/koleksiyon
+    değişiklikleri reklamdaki setlere yansısın)."""
+    from app.database import SessionLocal
+    from app.services.meta_katalog import tum_magazalari_esitle
+    db = SessionLocal()
+    try:
+        logger.info("[scheduler] meta ürün setleri: %s", tum_magazalari_esitle(db))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[scheduler] meta ürün setleri hatası: %s", e)
+    finally:
+        db.close()
+
+
 def _abonelik_hatirlatma_job():
     """Kiracılara abonelik bitiş/gecikme e-postası — günde bir (kurallar
     services/abonelik_hatirlatma)."""
@@ -339,6 +353,9 @@ def start_scheduler():
                        id="review_invite", replace_existing=True)
     # Kiralama: abonelik bitiş/gecikme e-postası — her sabah 09:30. Kaçan gün
     # olursa ertesi gün aralık kuralıyla yine gönderilir (misfire önemsiz).
+    _scheduler.add_job(_meta_urun_setleri_job, "cron", hour=5, minute=15,
+                       id="meta_urun_setleri", max_instances=1, coalesce=True,
+                       misfire_grace_time=3600)
     _scheduler.add_job(_abonelik_hatirlatma_job, "cron", hour=9, minute=30,
                        id="abonelik_hatirlatma", max_instances=1, coalesce=True,
                        misfire_grace_time=3600)

@@ -590,7 +590,7 @@ export default function AyarlarPage() {
           </p>
         </div>
         <div className="border-t border-panel-border pt-3 mt-1">
-          <UrunAkisi cfg={cfg} />
+          <UrunAkisi cfg={cfg} set={set} storeId={storeId} />
         </div>
         <div className="border-t border-panel-border pt-3 mt-1">
           <PikselRehberi cfg={cfg} />

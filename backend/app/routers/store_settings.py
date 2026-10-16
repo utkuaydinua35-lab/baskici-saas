@@ -42,6 +42,8 @@ _TEXT_KEYS = {
     "kvkk_text", "mesafeli_satis_text", "iade_text", "sla_days",
     "iyzico_base_url", "paytr_test_mode",
     "meta_pixel_id", "ga4_id", "tiktok_pixel_id",
+    # Meta katalog kimliği — koleksiyonlar bu kataloğa ürün seti olarak gider
+    "meta_catalog_id",
     "meta_test_event_code",
     "storefront_password",
     # Tasarım stüdyosu: fiyat ve telefon modelleri bu üründen alınır
@@ -60,6 +62,8 @@ _SECRET_CFG_KEYS = {
     "iyzico_api_key", "iyzico_secret_key",
     "paytr_merchant_id", "paytr_merchant_key", "paytr_merchant_salt",
     "meta_capi_token",
+    # Katalog yönetimi anahtarı (catalog_management izinli sistem kullanıcısı)
+    "meta_catalog_token",
 }
 _BOOL_KEYS = {"abandoned_reminder_enabled", "shipping_email_enabled", "gift_wrap_enabled",
               "support_chat_enabled", "welcome_email_enabled", "review_invite_enabled",
@@ -143,6 +147,8 @@ def get_settings(
         "store_name": store.name,
         "slug": store.slug,
         "config": {k: config.get(k) for k in sorted(ALLOWED_KEYS)},
+        # Meta ürün seti eşitlemesinin son sonucu (salt okunur — config'e yazılmaz)
+        "meta_urun_setleri_son": (store.config or {}).get("meta_urun_setleri_son"),
     }
 
 
@@ -219,6 +225,22 @@ def patch_settings(
         "slug": store.slug,
         "config": {k: _mask_config(store.config).get(k) for k in sorted(ALLOWED_KEYS)},
     }
+
+
+@router.post("/{store_id}/meta-urun-setleri", response_model=dict)
+def meta_urun_setleri(
+    store_id: uuid.UUID,
+    user: User = Depends(require_permission("vitrin")),
+    db: Session = Depends(get_db),
+):
+    """Koleksiyonları Meta kataloğuna ÜRÜN SETİ olarak gönder (şimdi).
+    Her gece kendiliğinden de çalışır (scheduler)."""
+    from app.services import meta_katalog
+    store = _get_store(db, user, store_id, for_update=True)
+    try:
+        return meta_katalog.esitle(db, store)
+    except meta_katalog.KatalogHatasi as e:
+        raise HTTPException(422, str(e))
 
 
 @router.get("/{store_id}/arama-raporu", response_model=dict)

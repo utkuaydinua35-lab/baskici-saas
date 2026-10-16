@@ -70,7 +70,17 @@ def _kontur(k: dict, boy: float) -> tuple[float, float]:
         return 0.0, 0.0
     from app.services.forma import kontur_orani
     t = boy * kontur_orani(k.get("kontur_kalinlik"))
+    # Çift kontur (Forma Pro): iç halkanın dışında ikinci, ince bir çizgi —
+    # harf arası toplam kalınlığa göre açılır
+    if k.get("kontur2"):
+        return t, 2 * t * (1 + DIS_KONTUR_ORANI)
     return t, 2 * t
+
+
+# Çift konturda dış çizginin kalınlığı, iç halkanın bu katı kadar EK
+DIS_KONTUR_ORANI = 0.6
+# Dikey uzatma tavanı (uzun forma numarası)
+DIKEY_TAVAN = 1.6
 
 
 def _aralikli_genislik(ciz, metin: str, font, aralik: float) -> float:
@@ -257,7 +267,11 @@ def _ciz_desen(tuval: Image.Image, k: dict, W: int, H: int) -> None:
         g = g.resize((W, H), Image.LANCZOS)
     # Kumaş dokusu / fırça darbeleri (şablon ayarı; müşteri seçmez)
     from app.services import forma_cizim
-    g = forma_cizim.zemin_susle(g, renkler, str(k.get("doku") or "yok"), str(k.get("efekt") or "yok"))
+    if k.get("doku") == "pro":
+        merkez = k.get("isik_merkez") or [0.5, 0.55]
+        g = forma_cizim.pro_zemin(g, renkler, (float(merkez[0]), float(merkez[1])))
+    else:
+        g = forma_cizim.zemin_susle(g, renkler, str(k.get("doku") or "yok"), str(k.get("efekt") or "yok"))
     tuval.alpha_composite(g, (0, 0))
 
 
@@ -441,7 +455,7 @@ def kavis_yerlesimi(genler: list[float], aralik: float, kavis: float) -> tuple[l
 
 def _kavisli_katman(metin: str, font, boy: int, oran: float, kavis: float, aralik: float,
                     kontur_px: int, kontur_renk, dolgu, pay_x: int, pay_y: int,
-                    esnet: float = 1.0) -> Image.Image:
+                    esnet: float = 1.0, kontur2_px: int = 0, kontur2_renk=None) -> Image.Image:
     """Yay üzerine dizilmiş tek satır yazı (forma sırtındaki isim gibi).
     Katmanın ORTASI yazının yay üzerindeki kutusunun ortasıdır: konumlama kutu
     merkezine göre yapıldığı için düz yazıyla aynı yere oturur."""
@@ -468,7 +482,8 @@ def _kavisli_katman(metin: str, font, boy: int, oran: float, kavis: float, arali
             t = t.resize((max(1, round(t.width * esnet)), t.height), Image.LANCZOS)
         return t
 
-    gecisler = ([(kontur_renk, kontur_px)] if kontur_px else []) + [(dolgu, 0)]
+    gecisler = ([(kontur2_renk, kontur2_px)] if kontur2_px else []) \
+        + ([(kontur_renk, kontur_px)] if kontur_px else []) + [(dolgu, 0)]
     for renk, cizgi in gecisler:                       # önce tüm konturlar, sonra dolgular
         for h, gen, (dx, dy, derece) in zip(metin, genler, konumlar):
             if h.isspace():
@@ -497,6 +512,9 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # satır kutusu kabul edilir → o alanda metin BÜYÜMEZ, yalnız küçülür
     # (eski alanlar böyle; taşma yerine tanımlı punto korunur).
     kutu_yuk = max(1, round(_sayi_yoksa(k.get("h"), 0) * H) or round(boy * oran))
+    # DİKEY UZATMA: harfler çizildikten sonra boyuna uzatılır (uzun forma
+    # numarası). Punto çerçeveye bu pay düşülerek sığdırılır.
+    dikey = max(1.0, min(DIKEY_TAVAN, _isaretli(k.get("dikey")) or 1.0))
 
     # ÇERÇEVEYİ DOLDUR: metin kutuya BİREBİR oturtulur — kısa metin büyür,
     # uzun metin küçülür. Hem GENİŞLİK hem YÜKSEKLİK sınırlar: "1" gibi tek
@@ -508,7 +526,7 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
         gen = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
         if gen > 0:
             en = boy * kutu_gen / gen               # genişliğe göre punto
-            yuk = kutu_yuk / oran                   # yüksekliğe göre punto
+            yuk = kutu_yuk / oran / dikey           # yüksekliğe göre punto (uzatma payı)
             boy = max(4, int(min(en, yuk, H * TAVAN_PUNTO)))
             font = _font(ad, boy)
             oran = _satir_orani(font, boy)
@@ -539,15 +557,17 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     kontur_px = max(1, round(kalinlik)) if kontur else 0
     dolgu = _basilabilir_renk(k.get("color"))
     kontur_renk = _basilabilir_renk(kontur) if kontur else None
+    kontur2_renk = _basilabilir_renk(k.get("kontur2")) if kontur and k.get("kontur2") else None
+    kontur2_px = round(kontur_px * (1 + DIS_KONTUR_ORANI)) if kontur2_renk else 0
     hale_renk = k.get("parlama")
     hale_pay = round(boy * 0.30) if hale_renk else 0
-    pay_y = max(1, round(boy * 0.35)) + hale_pay
-    pay_x = max(1, round(boy * 0.15)) + hale_pay
+    pay_y = max(1, round(boy * 0.35)) + hale_pay + kontur2_px
+    pay_x = max(1, round(boy * 0.15)) + hale_pay + kontur2_px
     hiza = k.get("align") or "left"
 
     if kavis:
         kat = _kavisli_katman(metin, font, boy, oran, kavis, aralik, kontur_px, kontur_renk, dolgu,
-                              pay_x, pay_y, esnet)
+                              pay_x, pay_y, esnet, kontur2_px, kontur2_renk)
     else:
         if esnet > 1:
             # Dar bir katmana ORTALI çiz, sonra yatayda esnet (aşağıda)
@@ -572,6 +592,10 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
             for h in s:
                 konumlar.append((cx, h))
                 cx += kciz.textlength(h, font=font) + aralik
+            if kontur2_px:      # çift kontur: önce dış çizgi
+                for hx, h in konumlar:
+                    kciz.text((hx, y), h, font=font, fill=kontur2_renk,
+                              stroke_width=kontur2_px, stroke_fill=kontur2_renk)
             for hx, h in konumlar:
                 kciz.text((hx, y), h, font=font, fill=kontur_renk,
                           stroke_width=kontur_px, stroke_fill=kontur_renk)
@@ -586,6 +610,9 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
             if murekkep:
                 esnet = max(1.0, min(ESNET_TAVAN, esnet, (kutu_gen - 2) / max(1, murekkep[2] - murekkep[0])))
             kat = kat.resize((max(1, round(kat.width * esnet)), kat.height), Image.LANCZOS)
+
+    if dikey > 1.0:
+        kat = kat.resize((kat.width, max(1, round(kat.height * dikey))), Image.LANCZOS)
 
     # PARLAMA: yazının çevresinde yumuşak hale (yazının ALTINA konur)
     if hale_renk:

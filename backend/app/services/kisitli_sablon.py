@@ -95,6 +95,24 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
             metin = metin[:min(sinir, MAX_METIN)]
             if not metin:
                 continue
+            if fsecim and fsecim.get("stil") == "pro":
+                # FORMA PRO: yazı tipi, çift kontur, kavis ve uzatma stile ait
+                from app.services import forma as _forma
+                numara = _forma.numara_mi(a.get("varsayilan")) or _forma.numara_mi(metin)
+                renk = fsecim["yazi_renk"]
+                hedef.append({
+                    "id": f"alan-{anahtar}", "type": "text", "text": metin,
+                    "font": _forma.PRO_NUMARA_FONT if numara else _forma.PRO_ISIM_FONT,
+                    "size": _sayi(a.get("size"), 0.1), "color": renk,
+                    "kontur": _forma.pro_halka(fsecim["renkler"], renk), "kontur2": renk,
+                    "kontur_kalinlik": "ince",
+                    **({"dikey": _forma.PRO_NUMARA_DIKEY} if numara else
+                       {"kavis": _sayi(a.get("kavis")) or _forma.PRO_ISIM_KAVIS}),
+                    "x": _sayi(a.get("x")), "y": _sayi(a.get("y")), "w": _sayi(a.get("w"), 0.8),
+                    **({"h": _sayi(a.get("h"))} if a.get("h") else {}),
+                    "rot": 0, "align": str(a.get("hiza") or "center"), "sigdir": True,
+                })
+                continue
             hedef.append({
                 "id": f"alan-{anahtar}",
                 "type": "text",
@@ -193,7 +211,10 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
         taban = {"id": "taban", "type": "sekil", "bicim": "desen",
                  "desen": fsecim["desen"], "yogunluk": fsecim["yogunluk"],
                  "renkler": fsecim["renkler"],
-                 "doku": fsecim["doku"], "efekt": fsecim["efekt"]}
+                 "doku": fsecim["doku"], "efekt": fsecim["efekt"],
+                 # Pro: sıcak ışık yazı bloğunun ortasına
+                 **({"isik_merkez": _isik_merkezi(overlay.alanlar or [])}
+                    if fsecim.get("stil") == "pro" else {})}
         amblem = []
         if fsecim["amblem"]:
             k = forma_ayar["amblem_kutu"]
@@ -208,6 +229,17 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
 
     taban = {"id": "taban", "type": "overlay", "overlay_id": str(overlay.id)}
     return [*arkadakiler, taban, *ondekiler]
+
+
+def _isik_merkezi(alanlar: list) -> list[float]:
+    """Yazı alanlarının ortak kutusunun merkezi (0-1). Yazı yoksa ortası."""
+    kutular = [(_sayi(a.get("x")), _sayi(a.get("y")), _sayi(a.get("w"), 0.8), _sayi(a.get("h"), 0.1))
+               for a in alanlar if a.get("tip") == "yazi"]
+    if not kutular:
+        return [0.5, 0.55]
+    x0 = min(k[0] for k in kutular); y0 = min(k[1] for k in kutular)
+    x1 = max(k[0] + k[2] for k in kutular); y1 = max(k[1] + k[3] for k in kutular)
+    return [round((x0 + x1) / 2, 4), round((y0 + y1) / 2, 4)]
 
 
 def _alan_varsayilan_sn(overlay, key) -> float | None:

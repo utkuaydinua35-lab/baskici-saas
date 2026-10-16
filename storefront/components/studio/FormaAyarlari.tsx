@@ -46,6 +46,8 @@ export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur =
   const f = overlay.forma;
   const s = formaSecimi(overlay, degerler);
   if (!f || !s) return null;
+  // Forma Pro: yazı tipi ve kontur stile ait (seçici gizli), yazı siyah/beyaz
+  const pro = f.stil === "pro";
 
   const baslik = "text-xs font-medium text-zinc-700 mb-1.5";
   const secili = (aktif: boolean) =>
@@ -115,7 +117,26 @@ export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur =
         </div>
       )}
 
-      {!yalnizKontur && f.fontlar.length > 1 && (
+      {pro && (
+        <div>
+          <div className={baslik}>Yazı rengi</div>
+          <div className="flex gap-1.5">
+            {(f.pro_yazi_renkleri || [{ renk: "#111111", ad: "Siyah" }, { renk: "#f2f2f2", ad: "Beyaz" }]).map((r) => {
+              const aktif = s.yazi_renk.toLowerCase() === r.renk.toLowerCase()
+                || (r.renk === "#f2f2f2" && s.yazi_renk.toLowerCase() === "#ffffff");
+              return (
+                <button key={r.renk} type="button" aria-pressed={aktif} onClick={() => onYaz({ _yazi_renk: r.renk })}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${secili(aktif)}`}>
+                  <span className="h-4 w-4 rounded-full border border-black/20" style={{ background: r.renk }} />
+                  {r.ad}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!pro && !yalnizKontur && f.fontlar.length > 1 && (
         <div>
           <div className={baslik}>Yazı tipi</div>
           <div className="grid grid-cols-4 gap-1.5">
@@ -134,7 +155,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur =
         </div>
       )}
 
-      <div>
+      {!pro && (<div>
         <div className={baslik}>{yalnizKontur ? "Yazı konturu" : "Yazı rengi"}</div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           {!yalnizKontur && (
@@ -161,7 +182,7 @@ export default function FormaAyarlari({ overlay, degerler, onYaz, yalnizKontur =
             ))}
           </div>
         )}
-      </div>
+      </div>)}
 
       {!yalnizKontur && f.amblemler.length > 0 && (
         <div>

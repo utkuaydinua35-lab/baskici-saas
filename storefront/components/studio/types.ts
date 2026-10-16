@@ -165,6 +165,9 @@ export interface StudioOverlay {
 export interface StudioForma {
   /** Hazır ürün: müşteri deseni/rengi değiştiremez, yalnız yazıları doldurur */
   kilitli?: boolean;
+  /** Forma Pro: yazı tipi/kontur/efekt stile ait; yazı yalnız siyah ya da beyaz */
+  stil?: "klasik" | "pro";
+  pro_yazi_renkleri?: { renk: string; ad: string }[];
   desenler: { key: string; ad: string }[];
   paletler: { ad: string; renkler: string[] }[];
   serbest_renk: boolean;

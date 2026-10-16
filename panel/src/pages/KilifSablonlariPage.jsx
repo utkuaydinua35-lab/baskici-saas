@@ -1436,6 +1436,23 @@ function SablonAlanEditoru({ overlay, templates = [], onClose, onSaved }) {
         </div>
 
         <FormaAyari overlayId={overlay.id} forma={forma} onChange={setForma}
+          onProDuzen={() => {
+            // Forma Pro yerleşimi (backend forma.PRO_DUZEN ile aynı): isim
+            // yay çizerek üstte, uzun numara altında. Rakamlı varsayılanı olan
+            // yazı alanı numara, ilk diğer yazı alanı isim sayılır.
+            const D = {
+              isim: { x: 0.12, y: 0.27, w: 0.76, h: 0.11, size: 0.08, kavis: 22 },
+              numara: { x: 0.22, y: 0.39, w: 0.56, h: 0.38, size: 0.3 },
+            }
+            const yazilar = alanlar.filter(a => a.tip === 'yazi')
+            const numara = yazilar.find(a => /^\d+$/.test(String(a.varsayilan || '').trim()))
+            const isim = yazilar.find(a => a !== numara)
+            if (!numara && !isim) return
+            setAlanlar(alanlar.map(a => a === numara ? { ...a, ...D.numara, kavis: null, esnet: null }
+              : a === isim ? { ...a, ...D.isim, esnet: null } : a))
+            // Referansta amblem yok: başlangıçta kapalı (müşteri isterse seçer)
+            setForma(f => ({ ...f, varsayilan: { ...f.varsayilan, amblem: '' } }))
+          }}
           kisitli={mod === 'kisitli'}
           onAmblemEklendi={(sunucu) => setForma(f => ({
             ...(f || sunucu),

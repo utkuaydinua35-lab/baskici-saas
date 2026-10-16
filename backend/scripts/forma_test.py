@@ -273,6 +273,54 @@ else:
         pfark = sum(abs(a - b) for pa, pb2 in zip(tam.getdata(), pim.getdata()) for a, b in zip(pa, pb2)) / (30 * 60 * 3)
         es("zengin PDF ile PNG AYNI görüntü (ortalama fark < 10/255)", True, pfark < 10)
 
+        # ── FORMA PRO: referans stil — fontlar/kontur/efekt stile ait ──
+        pro = forma.yapilandirma_temizle({"aktif": True, "stil": "pro", "amblemler": [],
+            "varsayilan": {"renkler": ["#a3141a", "#f5a800", "#111111"], "yazi_renk": "#111111"}}, None)
+        es("pro stil korunur, doku 'pro'", ("pro", "pro"), (pro["stil"], forma.doku_coz(pro)))
+        D = forma.PRO_DUZEN
+        pov = SimpleNamespace(id=ov.id, forma=pro, alanlar=[
+            {"key": "isim", "tip": "yazi", "etiket": "İsim", "varsayilan": "MURAT", **D["isim"]},
+            {"key": "no", "tip": "yazi", "etiket": "Numara", "varsayilan": "10", **D["numara"]}])
+        pk = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_font": "pacifico", "_kontur": ""})}
+        es("pro: isim kolej harfi + kavis, numara blok + dikey uzatma (müşteri fontu yok sayılır)",
+           ("alfaslab", 22.0, "bungee", 1.55),
+           (pk["alan-isim"]["font"], pk["alan-isim"]["kavis"], pk["alan-no"]["font"], pk["alan-no"]["dikey"]))
+        es("pro: siyah yazıda iç halka zeminin AÇIK rengi, dış çizgi yazı rengi",
+           ("#f5a800", "#111111"), (pk["alan-no"]["kontur"], pk["alan-no"]["kontur2"]))
+        es("pro: ışık yazı bloğunun ortasında", True, pk["taban"].get("isik_merkez") is not None)
+        pb = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_yazi_renk": "#ffffff"})}
+        es("pro: beyaz yazı (#ffffff → baskı beyazı), halka zeminin KOYU rengi",
+           ("#f2f2f2", "#a3141a"), (pb["alan-no"]["color"], pb["alan-no"]["kontur"]))
+        pk2 = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_yazi_renk": "#eeeeaa"})}
+        es("pro: siyah/beyaz dışı renk en yakınına düşer", "#f2f2f2", pk2["alan-no"]["color"])
+        kil = dict(pro, kilitli=True)
+        kov = SimpleNamespace(id=ov.id, forma=kil, alanlar=pov.alanlar)
+        kk = {x["id"]: x for x in kisitli_sablon.layers_uret(kov, {"_yazi_renk": "#f2f2f2", "_renk1": "#00ff00"})}
+        es("pro hazır üründe: yazı rengi seçilebilir, zemin rengi DEĞİŞMEZ",
+           ("#f2f2f2", "#a3141a"), (kk["alan-no"]["color"], kk["taban"]["renkler"][0]))
+
+        def kutu_al(katman):
+            gg = Image.open(io.BytesIO(design_render.render_print_file(
+                db, SimpleNamespace(id="pr", layers=[katman]), sablon)))
+            return gg.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox(), gg
+        uz, gg = kutu_al(pk["alan-no"])
+        duz, _ = kutu_al({k2: v for k2, v in pk["alan-no"].items() if k2 != "dikey"})
+        es("dikey uzatılan numara düzünden UZUN", True, (uz[3] - uz[1]) > (duz[3] - duz[1]) * 1.25)
+        es("uzatılan numara çerçeveden taşmaz", True, (uz[3] - uz[1]) <= round(D["numara"]["h"] * 315) + 2)
+        renkler_ = {c[:3] for _, c in gg.convert("RGBA").getcolors(1_000_000) if c[3] > 250}
+        es("çift kontur: iç halka rengi basıldı", True,
+           any(abs(r - 0xf5) < 12 and abs(g_ - 0xa8) < 12 and b < 30 for r, g_, b in renkler_))
+        pz = Image.open(io.BytesIO(design_render.render_onizleme(db, list(pk.values()), 40, 80, 200)))
+        pz2 = Image.open(io.BytesIO(design_render.render_onizleme(db, list(pk.values()), 40, 80, 200)))
+        es("pro zemin tohumlu (iki çizim aynı)", True, pz.tobytes() == pz2.tobytes())
+        ppdf = pymupdf.open("pdf", design_pdf.render_print_pdf(db, SimpleNamespace(id="pp", layers=list(pk.values())), sablon))[0]
+        ppix = ppdf.get_pixmap(dpi=100)
+        pim = Image.frombytes("RGB", (ppix.width, ppix.height), ppix.samples).resize((30, 60))
+        ptam = Image.open(io.BytesIO(design_render.render_print_file(
+            db, SimpleNamespace(id="pt", layers=list(pk.values())), sablon))).convert("RGB").resize((30, 60))
+        pfark2 = sum(abs(a - b) for pa, pb2 in zip(ptam.getdata(), pim.getdata()) for a, b in zip(pa, pb2)) / (30 * 60 * 3)
+        es("pro PDF ile PNG AYNI görüntü", True, pfark2 < 10)
+
         # KAPAK GÖRSELİ: tasarım kılıf görselinin baskı alanına giydirilir
         from app.services import storage as storage_svc
         kyol = storage_svc.STORAGE_ROOT / "tenants" / "_test" / f"kilif-{uuid.uuid4().hex[:6]}.png"

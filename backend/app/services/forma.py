@@ -76,10 +76,52 @@ def kirp_birim_kare(cokgen: list[tuple[float, float]]) -> list[tuple[float, floa
             break
         n = kes(n, icinde, kesisim)
     return n
+# ─── Forma Pro ───────────────────────────────────────────────────────────
+# Referans görsele birebir stil: örgü + kenarda fırça + yazı arkasında ışık
+# (forma_cizim.pro_zemin), kolej harfli kavisli isim, dikey uzatılmış ve çift
+# konturlu numara. Yazı tipi, kontur ve efekt STİLE AİTTİR (müşteri değiştirmez);
+# müşteri yalnız yazıyı SİYAH ya da BEYAZ seçer, renkleri değiştirse de efekt
+# aynı kalır (hepsi zeminin renklerinden türetilir).
+PRO_YAZI_RENKLERI = {"#111111": "Siyah", "#f2f2f2": "Beyaz"}
+PRO_ISIM_FONT = "alfaslab"
+PRO_NUMARA_FONT = "bungee"
+PRO_NUMARA_DIKEY = 1.55
+PRO_ISIM_KAVIS = 22.0
+# Pro düzen (panelde "Pro düzenini uygula"): isim yay çizerek üstte, uzun
+# numara altında — referans görseldeki yerleşim (baskı alanına oransal)
+PRO_DUZEN = {
+    "isim": {"x": 0.12, "y": 0.27, "w": 0.76, "h": 0.11, "size": 0.08, "kavis": 22},
+    "numara": {"x": 0.22, "y": 0.39, "w": 0.56, "h": 0.38, "size": 0.3},
+}
+
+
+def _parlaklik(h: str) -> float:
+    s = (h or "#000000").lstrip("#")
+    try:
+        r, g, b = (int(s[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return 0.0
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def pro_halka(renkler: list[str], yazi_renk: str) -> str:
+    """Çift konturun iç halkası: koyu yazıda zeminin AÇIK rengi (sarı-kırmızıda
+    sarı), açık yazıda KOYU rengi — her renk ikilisinde okunur kalır."""
+    iki = sorted(renkler[:2], key=_parlaklik)
+    koyu, acik = iki[0], iki[-1]
+    return acik if _parlaklik(yazi_renk) < 128 else koyu
+
+
+def numara_mi(metin: str | None) -> bool:
+    return bool(str(metin or "").strip()) and str(metin).strip().isdigit()
+
+
 def doku_coz(f: dict) -> str:
     """Zemin dokusu. Ayarı HİÇ olmayan (zengin görünümden önce kurulmuş)
     şablon kumaş dokulu sayılır — eski şablonlar elle tek tek açılmadan yeni
     görünüme geçer. Düz renk isteyen panelden "Düz renk" seçer ("yok" yazılır)."""
+    if f.get("stil") == "pro":
+        return "pro"
     d = f.get("doku")
     if d in ("yok", "kumas"):
         return d
@@ -278,6 +320,8 @@ def yapilandirma_temizle(ham: dict | None, mevcut: dict | None = None) -> dict |
         # "başlangıç görünümü"nden çizilir. Aynı forma, renkleri hazır ayrı
         # ürünler olarak satılır ("Sarı-Kırmızı", "Siyah-Beyaz"…).
         "kilitli": bool(ham.get("kilitli")),
+        # Görünüm stili: klasik (ayarlar tek tek) | pro (referans forma stili)
+        "stil": "pro" if ham.get("stil") == "pro" else "klasik",
         # Zemin görünümü (şablon ayarı; müşteri seçmez) — services/forma_cizim
         "doku": doku_coz(ham),
         "efekt": ham.get("efekt") if ham.get("efekt") in ("yok", "firca") else "yok",
@@ -313,6 +357,9 @@ def vitrin_ozeti(forma: dict | None) -> dict | None:
         return None
     return {
         "kilitli": bool(forma.get("kilitli")),
+        # Forma Pro: yazı tipi/kontur stile ait, müşteri yalnız siyah/beyaz seçer
+        "stil": forma.get("stil") or "klasik",
+        "pro_yazi_renkleri": [{"renk": k, "ad": a} for k, a in PRO_YAZI_RENKLERI.items()],
         # zengin: zemin/yazı efektleri var → vitrin önizlemeyi SUNUCUDAN alır
         "doku": doku_coz(forma), "efekt": forma.get("efekt") or "yok",
         "desenler": [{"key": d, "ad": DESENLER[d]} for d in forma["desenler"] if d in DESENLER],
@@ -336,7 +383,9 @@ def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
     # kalınlık): tasarımı değiştirmez, yalnız yazının okunurluğunu.
     d = degerler or {}
     if forma.get("kilitli"):
-        d = {k: v for k, v in d.items() if k in ("_kontur", "_kontur_kalinlik")}
+        # Forma Pro hazır üründe de yazı rengi (siyah/beyaz) müşterinin seçimi
+        serbest = ("_yazi_renk",) if forma.get("stil") == "pro" else ("_kontur", "_kontur_kalinlik")
+        d = {k: v for k, v in d.items() if k in serbest}
     v = forma["varsayilan"]
 
     desen = d.get("_desen") if d.get("_desen") in forma["desenler"] else v["desen"]
@@ -352,6 +401,11 @@ def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
 
     font = d.get("_font") if d.get("_font") in forma["fontlar"] else v["font"]
     yazi_renk = _hex(d.get("_yazi_renk"), v["yazi_renk"])
+    if forma.get("stil") == "pro":
+        # Pro: yazı yalnız siyah ya da beyaz; başka değer → koyu/açık hangisine
+        # yakınsa o (eski kayıtlı "#ffffff" beyaz sayılır)
+        if yazi_renk.lower() not in PRO_YAZI_RENKLERI:
+            yazi_renk = "#f2f2f2" if _parlaklik(yazi_renk) >= 128 else "#111111"
     kontur_ham = d.get("_kontur")
     kontur = v["kontur"] if kontur_ham is None else (_hex(kontur_ham, "") if kontur_ham else "")
 
@@ -367,6 +421,7 @@ def secimleri_coz(forma: dict, degerler: dict | None) -> dict:
         else v.get("kontur_kalinlik", "orta"),
         "parlama": v.get("parlama") or "",
         "doku": doku_coz(forma), "efekt": forma.get("efekt") or "yok",
+        "stil": forma.get("stil") or "klasik",
         "amblem": amblem, "amblem_url": sunulan[amblem]["url"] if amblem else None,
         "amblem_renk": _hex(d.get("_amblem_renk"), v["amblem_renk"]),
     }

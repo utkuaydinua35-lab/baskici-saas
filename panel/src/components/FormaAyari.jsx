@@ -53,7 +53,7 @@ export function AmblemMaske({ url, renk = '#fff', className = '', style = {} }) 
     style={{ background: renk, WebkitMask: maske, mask: maske, ...style }} />
 }
 
-export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi, kisitli }) {
+export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi, kisitli, onProDuzen }) {
   const [sec, setSec] = useState(null)        // sabit listeler (desen, hazır amblem…)
   const [err, setErr] = useState('')
   const [yukleniyor, setYukleniyor] = useState(false)
@@ -106,6 +106,32 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
 
       {f?.aktif && (
         <div className="space-y-3.5">
+          <div>
+            <div className={baslik}>Görünüm stili</div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {[['klasik', 'Klasik', 'Yazı tipi, kontur, doku ve efektleri aşağıdan tek tek seçersiniz.'],
+                ['pro', 'Forma Pro', 'Örgülü kumaş, kenarlarda fırça darbeleri, yazının arkasında sıcak ışık; kolej harfli kavisli isim, çift konturlu uzun numara. Müşteri yazıyı yalnız siyah ya da beyaz seçer; renkler değişse de efekt aynı kalır.']]
+                .map(([v, ad, acik]) => (
+                  <button key={v} type="button" onClick={() => yama({ stil: v })}
+                    className={`text-left rounded-xl border p-2.5 text-[11px] ${(f.stil || 'klasik') === v
+                      ? 'border-panel-accent bg-emerald-500/10' : 'border-panel-border'}`}>
+                    <b className="text-xs">{ad}</b>
+                    <span className="block text-panel-muted mt-0.5">{acik}</span>
+                  </button>
+                ))}
+            </div>
+            {f.stil === 'pro' && onProDuzen && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+                <button type="button" onClick={onProDuzen} className="btn-ghost !py-1 text-xs">
+                  📐 Pro düzenini alanlara uygula
+                </button>
+                <span className="text-panel-muted">
+                  İsim yay çizerek üstte, numara altında (referanstaki yerleşim). Rakamlı varsayılanı olan alan numara sayılır.
+                  Kaydetmeden önce yukarıdaki önizlemede görebilir, beğenmezseniz Vazgeç'e basabilirsiniz.
+                </span>
+              </div>
+            )}
+          </div>
           <label className="flex items-start gap-2 text-xs rounded-xl bg-panel-input p-2.5">
             <input type="checkbox" checked={!!f.kilitli} className="mt-0.5"
               onChange={e => yama({ kilitli: e.target.checked })} />
@@ -181,7 +207,7 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
             </label>
           </div>
 
-          <div>
+          {f.stil !== 'pro' && <div>
             <div className={baslik}>Yazı tipleri</div>
             <div className="flex flex-wrap gap-1.5">
               {[...new Set([...sec.fontlar, ...Object.keys(FONT_AD)])].map(k => (
@@ -196,7 +222,7 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <div>
             <div className={baslik}>Amblemler
@@ -257,7 +283,7 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
             </div>
           </div>
 
-          <div>
+          {f.stil !== 'pro' && <div>
             <div className={baslik}>Zengin görünüm <span className="font-normal text-panel-muted">— gerçek forma hissi (müşteri değiştiremez)</span></div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
               <label className="flex items-center gap-1.5">
@@ -287,7 +313,7 @@ export default function FormaAyari({ overlayId, forma, onChange, onAmblemEklendi
               İsim alanına kavis, numaraya "çerçeveye esnet" vermek için yukarıdan alanı seçin.
               Doku, fırça ve parlama yukarıdaki kutuda görünmez — en alttaki <b>gerçek önizleme</b>ye bakın.
             </p>
-          </div>
+          </div>}
 
           <div>
             <div className={baslik}>Başlangıç görünümü <span className="font-normal text-panel-muted">— müşteri sayfayı açtığında</span></div>

@@ -20,7 +20,7 @@ import random
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-DOKULAR = {"yok": "Düz", "kumas": "Kumaş dokusu"}
+DOKULAR = {"yok": "Düz", "kumas": "Kumaş dokusu", "pro": "Forma Pro (örgü + fırça + ışık)"}
 EFEKTLER = {"yok": "Yok", "firca": "Fırça darbeleri"}
 
 REF_W = 900          # doku/efekt bu genişlikte üretilir, sonra ölçeklenir
@@ -159,3 +159,113 @@ def parlama(katman: Image.Image, renk: str, punto: float) -> Image.Image:
     cikti = Image.new("RGBA", katman.size, _hex_rgb(renk) + (255,))
     cikti.putalpha(hale)
     return cikti
+
+
+# ─── "Forma Pro" zemini ─────────────────────────────────────────────────
+# Referans: parlak, dokulu maç forması — belirgin örgü (elmas desenli
+# file), kenarlara yığılan çapraz kuru fırça darbeleri, yazının arkasında
+# sıcak bir ışık ve kenarlara doğru koyulaşma. Renkler değişse de efekt
+# AYNI kalır: hepsi zeminin kendi renklerinden türetilir (sabit renk yok).
+
+def _acik(rgb: tuple[int, int, int], oran: float) -> tuple[int, int, int]:
+    return tuple(min(255, round(c + (255 - c) * oran)) for c in rgb)  # type: ignore[return-value]
+
+
+@functools.lru_cache(maxsize=8)
+def _orgu(rw: int, rh: int) -> tuple[Image.Image, Image.Image]:
+    """Elmas örgü: (gölge, ışık) maskeleri. Karo ~ genişliğin 1/75'i."""
+    s = max(6, rw // 75)
+    karo_g = Image.new("L", (s, s), 0)
+    karo_i = Image.new("L", (s, s), 0)
+    cg, ci = ImageDraw.Draw(karo_g), ImageDraw.Draw(karo_i)
+    for k in (-s, 0, s):
+        cg.line([(k, 0), (k + s, s)], fill=150, width=max(1, s // 6))
+        cg.line([(k + s, 0), (k, s)], fill=150, width=max(1, s // 6))
+        ci.line([(k + 1, 0), (k + s + 1, s)], fill=120, width=1)
+    golge = Image.new("L", (rw, rh), 0)
+    isik = Image.new("L", (rw, rh), 0)
+    for y in range(0, rh, s):
+        for x in range(0, rw, s):
+            golge.paste(karo_g, (x, y))
+            isik.paste(karo_i, (x, y))
+    # Örgü düzgün tekrar etmesin: hafif dalgalı yoğunluk
+    leke = _gurultu((max(2, rw // 60), max(2, rh // 60)), 3101).resize((rw, rh), Image.BICUBIC) \
+        .filter(ImageFilter.GaussianBlur(rw / 40))
+    golge = ImageChops.multiply(golge, leke.point(lambda v: 110 + v // 2))
+    return golge.point(lambda v: v * 55 // 100), isik.point(lambda v: v * 30 // 100)
+
+
+@functools.lru_cache(maxsize=8)
+def _kenar_agirligi(rw: int, rh: int) -> Image.Image:
+    """Fırça darbeleri kenarlarda yoğun, ortada (yazı bölgesi) seyrek."""
+    m = Image.new("L", (rw, rh), 255)
+    ImageDraw.Draw(m).ellipse([rw * 0.2, rh * 0.22, rw * 0.8, rh * 0.82], fill=40)
+    return m.filter(ImageFilter.GaussianBlur(rw * 0.12))
+
+
+@functools.lru_cache(maxsize=8)
+def _pro_firca(rw: int, rh: int) -> tuple[Image.Image, Image.Image]:
+    """Kuru fırça çizikleri: ince, uzun, uçları sivrilen, '/' yönünde."""
+    def maske(tohum: int, adet: int) -> Image.Image:
+        rnd = random.Random(tohum)
+        kose = int((rw ** 2 + rh ** 2) ** 0.5) + 40
+        m = Image.new("L", (kose, kose), 0)
+        c = ImageDraw.Draw(m)
+        for _ in range(adet):
+            x, y = rnd.uniform(0, kose), rnd.uniform(0, kose)
+            uzun = rnd.uniform(kose * 0.05, kose * 0.26)
+            kalin = rnd.uniform(2.5, 8.0) if rnd.random() < 0.75 else rnd.uniform(10, 24)
+            c.polygon([(x, y - kalin / 2), (x + uzun * 0.75, y - kalin * 0.2), (x + uzun, y),
+                       (x + uzun * 0.75, y + kalin * 0.2), (x, y + kalin / 2)],
+                      fill=rnd.randint(170, 255))
+        grn = _gurultu((kose, kose), tohum + 11)
+        m = ImageChops.multiply(m, grn.point(lambda v: 255 if v > 70 else 0))   # kuru fırça boşlukları
+        m = m.rotate(55, resample=Image.BICUBIC)
+        sol, ust = (kose - rw) // 2, (kose - rh) // 2
+        return ImageChops.multiply(m.crop((sol, ust, sol + rw, ust + rh)), _kenar_agirligi(rw, rh))
+    return maske(4401, 700), maske(4423, 560)
+
+
+def pro_zemin(g: Image.Image, renkler: list[str], merkez: tuple[float, float] = (0.5, 0.55),
+              isik_renk: str | None = None) -> Image.Image:
+    """Forma Pro zemini — düz desen görselinin (RGBA, W×H) üstüne.
+
+    merkez: yazı bloğunun merkezi (0-1) — sıcak ışık oraya konur.
+    isik_renk: ışığın rengi; verilmezse 1. renkten (zemin) açılarak türetilir."""
+    W, H = g.size
+    rw, rh = _ref_boyut(W, H)
+
+    def hedefe(m: Image.Image) -> Image.Image:
+        return m if (rw, rh) == (W, H) else m.resize((W, H), Image.LANCZOS)
+
+    def boya(maske: Image.Image, renk) -> None:
+        nonlocal g
+        k = Image.new("RGBA", (W, H), (renk if isinstance(renk, tuple) else _hex_rgb(renk)) + (255,))
+        k.putalpha(hedefe(maske))
+        g = Image.alpha_composite(g, k)
+
+    r1, r2 = _hex_rgb(renkler[0]), _hex_rgb(renkler[1])
+    # 1) Fırça darbeleri: zemin rengi koyu çizgilere, çizgi rengi açık zemine
+    f1, f2 = _pro_firca(rw, rh)
+    boya(f1, r2)
+    boya(f2, _acik(r1, 0.08))
+    # 2) Yazının arkasında sıcak ışık (zeminin açık tonu) — elips, yumuşak
+    # Işık her zaman AÇIK renkten türer (sarı-kırmızıda sarı ışık): renk
+    # sırası değişse de efekt aynı kalır
+    parlak = max((r1, r2), key=lambda c: 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2])
+    isik = _hex_rgb(isik_renk) if isik_renk else _acik(parlak, 0.5)
+    mx, my = merkez
+    hale = Image.new("L", (rw, rh), 0)
+    hd = ImageDraw.Draw(hale)
+    hd.ellipse([rw * (mx - 0.40), rh * (my - 0.24), rw * (mx + 0.40), rh * (my + 0.24)], fill=150)
+    hd.ellipse([rw * (mx - 0.27), rh * (my - 0.16), rw * (mx + 0.27), rh * (my + 0.16)], fill=235)
+    boya(hale.filter(ImageFilter.GaussianBlur(rw * 0.09)), isik)
+    # 3) Örgü dokusu (ışığın da üstünde — kumaş her yerde görünür)
+    golge, parilti = _orgu(rw, rh)
+    boya(golge, (0, 0, 0))
+    boya(parilti, (255, 255, 255))
+    # 4) Kenarlara doğru koyulaşma
+    kenar = Image.new("L", (rw, rh), 70)
+    ImageDraw.Draw(kenar).rounded_rectangle([rw * 0.06, rh * 0.04, rw * 0.94, rh * 0.96], radius=int(rw * 0.25), fill=0)
+    boya(kenar.filter(ImageFilter.GaussianBlur(rw * 0.08)), (0, 0, 0))
+    return g

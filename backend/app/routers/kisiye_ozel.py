@@ -190,7 +190,10 @@ def _serialize_line_item(li: LineItem, product_ids: set[str], couple_ids: set[st
         val = p.get("value") or ""
         if name.startswith("_") or not val or name in _STUDYO_GIZLI:
             continue
-        if isinstance(val, str) and val.startswith("http") and not customer_image_url:
+        # Görsel: dış adres (Shopify) ya da kendi depomuz (vitrin kişiye özel
+        # alan) — ikincisi eskiden düz metin olarak görünüyordu
+        if isinstance(val, str) and (val.startswith("http") or val.startswith("/storage/")) \
+                and not customer_image_url:
             customer_image_url = val
             continue
         name_lower = name.lower()

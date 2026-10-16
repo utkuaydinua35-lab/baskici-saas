@@ -240,8 +240,31 @@ def _clean_custom_fields(raw) -> list[dict]:
                 entry["option_images"] = gorseller
         elif (u := _ek_ucret(f.get("price"))):
             entry["price"] = u
+        if ftype == "image" and (k := _kirp_ayari(f.get("kirp"))):
+            entry["kirp"] = k
         out.append(entry)
     return out
+
+
+GORSEL_ORANLARI = ("1:1", "4:3", "3:4", "4:5", "16:9", "9:16")
+
+
+def _kirp_ayari(k) -> dict | None:
+    """Görsel alanının kırpma ayarı. {"oran": "9:16"} ya da piksel ölçüsü
+    {"oran": "px", "px_w": 1080, "px_h": 1920}. Serbest/geçersiz → None (kırpma yok)."""
+    if not isinstance(k, dict):
+        return None
+    oran = k.get("oran")
+    if oran in GORSEL_ORANLARI:
+        return {"oran": oran}
+    if oran == "px":
+        try:
+            w, h = int(k.get("px_w")), int(k.get("px_h"))
+        except (TypeError, ValueError):
+            return None
+        if 100 <= w <= 10000 and 100 <= h <= 10000:
+            return {"oran": "px", "px_w": w, "px_h": h}
+    return None
 
 
 def _get_product(db: Session, tenant_id, product_id, *, eager: bool = False) -> CatalogProduct:

@@ -2,6 +2,7 @@
 
 // Marka → model → renk seçici ve "Sepete Ekle" — ürün sayfasının istemci parçası.
 // Tek marka varsa marka adımı atlanır; markası olmayan varyantlar "Diğer"de.
+import GorselKirpici, { type KirpAyari, kirpAciklama, kirpOrani } from "@/components/GorselKirpici";
 import { sepeteUcur } from "@/lib/sepeteUcur";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -54,6 +55,24 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
   const fields = product.custom_fields ?? [];
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState<string | null>(null);
+  // Kırpılmayı bekleyen görsel (ürün panelde bir oran/piksel ölçüsü istediyse)
+  const [kirpilacak, setKirpilacak] = useState<{ alan: string; dosya: File; ayar: KirpAyari } | null>(null);
+  const [yuklemeHatasi, setYuklemeHatasi] = useState("");
+  const gorselYukle = async (alan: string, file: File) => {
+    setUploading(alan); setYuklemeHatasi("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) setCustom((c) => ({ ...c, [alan]: data.url }));
+      else setYuklemeHatasi(typeof data?.detail === "string" ? data.detail : "Görsel yüklenemedi, tekrar deneyin.");
+    } catch {
+      setYuklemeHatasi("Görsel yüklenemedi, bağlantını kontrol et.");
+    } finally {
+      setUploading(null);
+    }
+  };
 
   // Seçilen ek seçeneklerin ücreti — YALNIZ gösterim; ödemede sunucu ürün
   // tanımından yeniden hesaplar (services/checkout).
@@ -197,29 +216,31 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
             ) : (
               <label className="flex items-center gap-2 w-fit rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 cursor-pointer hover:border-zinc-500">
                 {uploading === f.key ? "Yükleniyor…" : "📷 Fotoğraf yükle (25MB'a kadar)"}
+                {kirpOrani(f.kirp) && uploading !== f.key && (
+                  <span className="text-[11px] text-zinc-400">· {kirpAciklama(f.kirp)} kırpılır</span>
+                )}
                 <input type="file" accept="image/*" className="hidden"
                   disabled={uploading !== null}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
+                    e.target.value = "";
                     if (!file) return;
-                    setUploading(f.key);
-                    try {
-                      const fd = new FormData();
-                      fd.append("file", file);
-                      const res = await fetch("/api/upload", { method: "POST", body: fd });
-                      const data = await res.json();
-                      if (res.ok && data.url) {
-                        setCustom((c) => ({ ...c, [f.key]: data.url }));
-                      }
-                    } finally {
-                      setUploading(null);
-                    }
+                    // Ürün bir orana kırpma istiyorsa önce kırpıcı açılır
+                    if (kirpOrani(f.kirp)) { setKirpilacak({ alan: f.key, dosya: file, ayar: f.kirp! }); return; }
+                    await gorselYukle(f.key, file);
                   }} />
               </label>
             )
           )}
         </div>
       ))}
+
+      {yuklemeHatasi && <p className="text-xs text-red-600">{yuklemeHatasi}</p>}
+      {kirpilacak && (
+        <GorselKirpici dosya={kirpilacak.dosya} ayar={kirpilacak.ayar}
+          onVazgec={() => setKirpilacak(null)}
+          onBitti={(kirpik) => { const alan = kirpilacak.alan; setKirpilacak(null); gorselYukle(alan, kirpik); }} />
+      )}
 
       {selected && !selected.in_stock && (
         <StockAlertForm variantId={selected.id} />

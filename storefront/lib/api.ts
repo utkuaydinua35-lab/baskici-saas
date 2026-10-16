@@ -67,6 +67,8 @@ export interface CustomField {
   option_prices?: Record<string, string>;   // seçenek → "50.00"
   price?: string;                           // yazı/fotoğraf alanı doldurulursa
   option_images?: Record<string, string>;   // seçenek → görsel ("Farkı gör")
+  /** Görsel alanı: müşteri yüklerken bu orana/piksel ölçüsüne kırpar */
+  kirp?: { oran: string; px_w?: number; px_h?: number } | null;
 }
 
 export interface ProductDetail {

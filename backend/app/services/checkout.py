@@ -48,6 +48,13 @@ def _shipping_fee(store: Store, items_total: Decimal) -> Decimal:
     return fee
 
 
+def _depo_gorseli(val: str, store) -> bool:
+    """/storage/tenants/<kiracı>/store-assets/<mağaza>/musteri-… biçimi mi?"""
+    import re
+    on_ek = f"/storage/tenants/{store.tenant_id}/store-assets/{store.id}/musteri-"
+    return val.startswith(on_ek) and ".." not in val and bool(re.fullmatch(r"[\w\-./]+", val))
+
+
 def kargo_ucreti(store: Store, items_total: Decimal, plan: "DiscountPlan") -> Decimal:
     """Ödenecek kargo — TEK KAYNAK. Ücretsiz kargo eşiği İNDİRİMLİ ürün
     toplamına bakar (Shopify davranışı). Eskiden indirimsiz toplama bakıyordu:
@@ -153,6 +160,10 @@ def validate_and_snapshot(
                     continue
                 if f["type"] == "color" and f.get("options") and val not in f["options"]:
                     raise CheckoutError(f"'{f['label']}' için geçersiz seçim")
+                # Görsel alanı yalnız KENDİ depomuza yüklenmiş dosya olabilir —
+                # dış adres siparişe/üretime sızmasın
+                if f["type"] == "image" and not _depo_gorseli(val, store):
+                    raise CheckoutError(f"'{f['label']}' için görseli yeniden yükleyin")
                 custom_clean[f["key"]] = val[:500]
                 fiyat = (f.get("option_prices") or {}).get(val) if f["type"] == "color" \
                     else f.get("price")

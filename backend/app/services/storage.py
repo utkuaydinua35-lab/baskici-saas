@@ -443,8 +443,10 @@ def save_store_asset(tenant_id, store_id, kind: str, file_data: bytes, original_
 
     if ext != "ico":  # ico binary formatı Pillow round-trip'ine sokulmaz
         from app.services.images import optimize_image
+        # Müşterinin kişiye özel ürün görseli BASKIYA gider: panelde istenen
+        # piksel ölçüsü (ör. 3000×3000) korunmalı — 2560'a küçültülmez
         file_data, ext = optimize_image(
-            file_data, max_px=512 if kind == "favicon" else 2560)
+            file_data, max_px=512 if kind == "favicon" else 8000 if kind == "musteri" else 2560)
 
     import time
     rel_dir = Path("tenants") / str(tenant_id) / "store-assets" / str(store_id)

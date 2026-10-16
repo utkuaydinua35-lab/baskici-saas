@@ -1186,6 +1186,38 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
               </div>
             )}
           </>)}
+          {f.type === 'image' && (
+            <div className="space-y-1.5">
+              <div className="text-[11px] text-panel-muted">
+                Müşteri görseli yüklerken <b>kırpma</b> — önizleme gösterilmez, görsel yalnız bu orana/ölçüye kırpılır:
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {[['', 'Serbest (kırpma yok)'], ['1:1', '1:1'], ['4:3', '4:3'], ['3:4', '3:4'], ['4:5', '4:5'],
+                  ['16:9', '16:9'], ['9:16', '9:16'], ['px', 'Piksel ölçüsü']].map(([v, ad]) => {
+                  const su = f.kirp?.oran || ''
+                  return (
+                    <button key={v || 'serbest'} type="button"
+                      onClick={() => patchF(i, { kirp: v ? (v === 'px'
+                        ? { oran: 'px', px_w: f.kirp?.px_w || 1080, px_h: f.kirp?.px_h || 1080 } : { oran: v }) : null })}
+                      className={`px-2 py-0.5 rounded-md text-[11px] border ${su === v
+                        ? 'border-panel-accent bg-emerald-500/10 text-emerald-300' : 'border-panel-border text-panel-muted'}`}>
+                      {ad}
+                    </button>
+                  )
+                })}
+              </div>
+              {f.kirp?.oran === 'px' && (
+                <div className="flex items-center gap-1.5 text-[11px] text-panel-muted">
+                  <input className="input !py-1 !px-1.5 !w-20 text-xs" type="number" min="100" max="10000"
+                    value={f.kirp.px_w || ''} onChange={e => patchF(i, { kirp: { ...f.kirp, px_w: Number(e.target.value) } })} />
+                  ×
+                  <input className="input !py-1 !px-1.5 !w-20 text-xs" type="number" min="100" max="10000"
+                    value={f.kirp.px_h || ''} onChange={e => patchF(i, { kirp: { ...f.kirp, px_h: Number(e.target.value) } })} />
+                  px — yüklenen dosya tam bu ölçüde çıkar; görsel küçükse müşteri uyarılır
+                </div>
+              )}
+            </div>
+          )}
           {(f.type === 'text' || f.type === 'image' || !f.type) && (
             <label className="flex items-center gap-1.5 text-[11px] text-panel-muted">
               Doldurulursa ek ücret +

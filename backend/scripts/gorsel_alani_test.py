@@ -79,5 +79,24 @@ finally:
     import shutil
     shutil.rmtree(storage.STORAGE_ROOT / "tenants" / str(tid), ignore_errors=True)
 
+print("\n── Saydam ürün görseli: dolu kutu ──")
+import tempfile  # noqa: E402
+
+from app.services.images import dolu_kutu  # noqa: E402
+with tempfile.TemporaryDirectory() as td:
+    seffaf = Path(td) / "kilif.png"
+    g = Image.new("RGBA", (1000, 1000), (0, 0, 0, 0))
+    g.paste((120, 120, 200, 255), (300, 200, 700, 800))
+    g.save(seffaf)
+    k = dolu_kutu(seffaf)
+    es("saydam PNG'de ürünün kutusu ölçülür", True,
+       bool(k) and abs(k["x0"] - 0.3) < 0.01 and abs(k["y1"] - 0.8) < 0.01)
+    dolu = Path(td) / "dolu.png"
+    Image.new("RGBA", (500, 500), (10, 10, 10, 255)).save(dolu)
+    es("zaten dolu görselde büyütme yok", None, dolu_kutu(dolu))
+    jpg = Path(td) / "foto.jpg"
+    Image.new("RGB", (500, 500), (10, 10, 10)).save(jpg)
+    es("saydam olmayan görselde büyütme yok", None, dolu_kutu(jpg))
+
 print(f"\n{GECTI} GECTI, {KALDI} KALDI")
 sys.exit(1 if KALDI else 0)

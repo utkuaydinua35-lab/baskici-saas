@@ -136,3 +136,44 @@ def optimize_image(
         img = img.convert("RGB")
     img.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
     return buf.getvalue(), "jpg"
+
+
+# ─── Saydam görselin dolu kutusu ───────────────────────────────────────
+# Arkası saydam ürün PNG'lerinde (kılıf mockup'ı) ürün görselin ancak %60'ını
+# kaplıyor; kutuya "sığdır" gösterilince ürün küçük kalıyordu. Dolu kısmın
+# sınırları bir kez ölçülür (dosya değişmedikçe önbellekten), vitrin görseli
+# bu kutu çerçeveyi dolduracak şekilde büyütür. Dosyaya dokunulmaz.
+import functools as _functools
+
+
+@_functools.lru_cache(maxsize=4096)
+def _dolu_kutu_hesapla(yol: str, _mtime: float) -> tuple[float, float, float, float, int, int] | None:
+    try:
+        with Image.open(yol) as img:
+            if img.mode not in ("RGBA", "LA") and not (img.mode == "P" and "transparency" in img.info):
+                return None
+            W, H = img.size
+            kucuk = img.convert("RGBA").getchannel("A")
+            kucuk.thumbnail((400, 400))
+            kutu = kucuk.point(lambda v: 255 if v > 12 else 0).getbbox()
+    except Exception:  # noqa: BLE001 — ölçülemeyen görsel normal gösterilir
+        return None
+    if not kutu:
+        return None
+    kw, kh = kucuk.size
+    x0, y0, x1, y1 = kutu[0] / kw, kutu[1] / kh, kutu[2] / kw, kutu[3] / kh
+    if (x1 - x0) > 0.92 and (y1 - y0) > 0.92:
+        return None            # zaten dolu — büyütmeye gerek yok
+    return (round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4), W, H)
+
+
+def dolu_kutu(yol: Path) -> dict | None:
+    """{"x0","y0","x1","y1"} (0-1) + {"w","h"} ya da None (saydam değil/zaten dolu)."""
+    try:
+        mtime = yol.stat().st_mtime
+    except OSError:
+        return None
+    r = _dolu_kutu_hesapla(str(yol), mtime)
+    if not r:
+        return None
+    return {"x0": r[0], "y0": r[1], "x1": r[2], "y1": r[3], "w": r[4], "h": r[5]}

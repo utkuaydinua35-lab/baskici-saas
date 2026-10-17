@@ -95,7 +95,8 @@ export interface ProductDetail {
   compare_at_price: string | null;
   currency: string;
   tags: string | null;
-  images: { url: string; alt: string | null; variant_id: string | null; varyantlar?: string[] }[];
+  images: { url: string; alt: string | null; variant_id: string | null; varyantlar?: string[];
+    dolu?: { x0: number; y0: number; x1: number; y1: number; w: number; h: number } | null }[];
   variants: ProductVariant[];
   rating_avg?: number | null;
   rating_count?: number;

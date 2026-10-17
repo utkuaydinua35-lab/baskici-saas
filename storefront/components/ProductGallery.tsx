@@ -9,6 +9,27 @@ interface Image {
   variant_id?: string | null;
   /** Bu görsele eşlenmiş varyantların model_key'leri (ürünün varyant görseli açıksa) */
   varyantlar?: string[];
+  /** Arkası saydam görselde ürünün dolu kutusu (0-1) + görselin piksel ölçüsü */
+  dolu?: { x0: number; y0: number; x1: number; y1: number; w: number; h: number } | null;
+}
+
+// Saydam PNG'de ürün görselin küçük bir kısmını kaplıyor: dolu kutu kare
+// çerçevenin ~%92'sini dolduracak şekilde ORTALANIP büyütülür (dosya aynı).
+// Kare kutuda "object-contain" ile görselin kapladığı alan hesaplanır, dolu
+// kutunun merkezi etrafında ölçeklenip merkeze taşınır.
+function doluStil(d?: Image["dolu"]): React.CSSProperties | undefined {
+  if (!d || !d.w || !d.h) return undefined;
+  const oran = d.w / d.h;
+  const rw = oran >= 1 ? 1 : oran, rh = oran >= 1 ? 1 / oran : 1;   // kutudaki görsel ölçüsü
+  const bw = (d.x1 - d.x0) * rw, bh = (d.y1 - d.y0) * rh;
+  const olcek = Math.min(0.92 / bw, 0.92 / bh, 2.6);
+  if (olcek <= 1.03) return undefined;
+  const cx = 0.5 + ((d.x0 + d.x1) / 2 - 0.5) * rw;
+  const cy = 0.5 + ((d.y0 + d.y1) / 2 - 0.5) * rh;
+  return {
+    transformOrigin: `${cx * 100}% ${cy * 100}%`,
+    transform: `translate(${(0.5 - cx) * 100}%, ${(0.5 - cy) * 100}%) scale(${olcek})`,
+  };
 }
 
 // Varyant seçici galeriye "variant-selected" olayı yollar (bileşenler kardeş
@@ -93,6 +114,7 @@ export default function ProductGallery({
             fetchPriority="high" decoding="async"
             onClick={() => setLightbox(true)}
             data-urun-ana-gorsel=""
+            style={doluStil(current.dolu)}
             className="absolute inset-0 w-full h-full object-contain cursor-zoom-in" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-6xl text-zinc-200">📱</div>

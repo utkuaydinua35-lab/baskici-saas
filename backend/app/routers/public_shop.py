@@ -263,6 +263,14 @@ def _serialize_product_card(p: CatalogProduct, ozet: dict | None = None) -> dict
     }
 
 
+def _dolu(file_path: str) -> dict | None:
+    if not file_path.lower().endswith((".png", ".webp")):
+        return None            # JPEG saydam olamaz
+    from app.services import storage as _st
+    from app.services.images import dolu_kutu
+    return dolu_kutu(_st.STORAGE_ROOT / file_path)
+
+
 def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
     return {
         "slug": p.slug,
@@ -292,7 +300,9 @@ def _serialize_product_detail(p: CatalogProduct, db=None, store=None) -> dict:
              "variant_id": str(im.variant_id) if im.variant_id else None,
              # Varyant görseli açıksa: bu görsele eşlenmiş varyantların
              # model_key'leri — müşteri o varyantı seçince görsel öne gelir
-             "varyantlar": (im.varyant_anahtarlari or []) if p.varyant_gorsel else []}
+             "varyantlar": (im.varyant_anahtarlari or []) if p.varyant_gorsel else [],
+             # Arkası saydam görselde ürünün dolu kutusu — vitrin büyütüp gösterir
+             "dolu": _dolu(im.file_path)}
             for im in p.images
         ],
         "variants": [

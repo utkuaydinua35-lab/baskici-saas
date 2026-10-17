@@ -95,7 +95,7 @@ export default function ProductGallery({
   return (
     <div>
       {/* relative: mutlak konumlu görsel/video için konumlanmış kap */}
-      <div className="relative aspect-square rounded-2xl border border-zinc-200 bg-white overflow-hidden">
+      <div className="relative aspect-square rounded-2xl bg-white overflow-hidden">
         {showingVideo ? (
           ytId ? (
             <iframe

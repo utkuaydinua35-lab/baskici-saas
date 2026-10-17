@@ -1073,6 +1073,8 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
   }, [storeId])
 
   const patchF = (i, p2) => { setFields(f => f.map((x, j) => j === i ? { ...x, ...p2 } : x)); setDirtyF(true) }
+  // Seçenek görselini ürünün kendi görsellerinden seçme (hangi satır açık)
+  const [gorselSec, setGorselSec] = useState(null)
   const [yukleniyor, setYukleniyor] = useState(null)   // "alan-seçenek"
 
   // Seçenek görseli (karşılaştırma penceresi için) — tema varlığı olarak yüklenir
@@ -1149,13 +1151,17 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
               className="text-red-300 hover:text-red-300 px-1">×</button>
           </div>
           {f.type === 'color' && (<>
-            <input className="input !py-1.5 text-xs" value={(f.options || []).join(', ')}
-              onChange={e => patchF(i, { options: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
+            {/* Yazılan metin OLDUĞU GİBİ tutulur (_metin), seçenekler arkada
+                ayrılır. Eskiden her tuşta bölünüp yeniden birleştiriliyordu:
+                yazılan virgül boş parça bırakıp anında siliniyordu. */}
+            <input className="input !py-1.5 text-xs" value={f._metin ?? (f.options || []).join(', ')}
+              onChange={e => patchF(i, { _metin: e.target.value,
+                options: e.target.value.split(',').map(x => x.trim()).filter(Boolean) })}
               placeholder="Seçenekler (virgülle): Evet, Hayır  ·  Beyaz, Siyah, Altın" />
             {(f.options || []).length > 0 && (
               <div className="space-y-1">
                 {f.options.map(o => (
-                  <div key={o} className="flex items-center gap-1.5 text-[11px] text-panel-muted">
+                  <div key={o} className="flex flex-wrap items-center gap-1.5 text-[11px] text-panel-muted">
                     <span className="w-20 truncate text-panel-ink">{o}</span>
                     <span>+</span>
                     <input className="input !py-1 !px-1.5 !w-16 text-xs" type="number" min="0" step="0.01"
@@ -1171,17 +1177,35 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
                         <button type="button" onClick={() => secenekGorseliKaldir(i, o)} className="text-red-300 underline">kaldır</button>
                       </>
                     ) : (
-                      <label className="ml-1 cursor-pointer underline">
-                        {yukleniyor === `${i}-${o}` ? 'yükleniyor…' : '+ görsel'}
-                        <input type="file" accept="image/*" className="hidden" disabled={!!yukleniyor}
-                          onChange={e => secenekGorseli(i, o, e.target.files?.[0])} />
-                      </label>
+                      <>
+                        <label className="ml-1 cursor-pointer underline">
+                          {yukleniyor === `${i}-${o}` ? 'yükleniyor…' : '+ görsel yükle'}
+                          <input type="file" accept="image/*" className="hidden" disabled={!!yukleniyor}
+                            onChange={e => secenekGorseli(i, o, e.target.files?.[0])} />
+                        </label>
+                        {(product.images || []).length > 0 && (
+                          <button type="button" onClick={() => setGorselSec(gorselSec === `${i}-${o}` ? null : `${i}-${o}`)}
+                            className="underline">ürün görsellerinden seç</button>
+                        )}
+                      </>
+                    )}
+                    {gorselSec === `${i}-${o}` && (
+                      <div className="basis-full flex gap-1 flex-wrap pl-20 pt-1">
+                        {(product.images || []).map(im => (
+                          <button key={im.id} type="button" title="Bu seçenek seçilince bu görsel gösterilsin"
+                            onClick={() => { patchF(i, { option_images: { ...(f.option_images || {}), [o]: im.url } }); setGorselSec(null) }}
+                            className="h-10 w-10 rounded overflow-hidden border border-panel-border hover:border-panel-accent">
+                            <img src={im.url} alt="" className="h-full w-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))}
                 <p className="text-[10px] text-panel-muted">
-                  En az iki seçeneğe görsel eklerseniz ürün sayfasında <b>"Farkı gör"</b> karşılaştırma
-                  penceresi çıkar (ör. mat ve parlak aynı kılıf, aynı açıdan).
+                  Müşteri bir seçeneği seçince o seçeneğin görseli ürün görselinde <b>öne gelir</b>
+                  (görseller arasında yine gezebilir; seçimi değişmez). En az iki seçeneğe görsel eklerseniz
+                  ürün sayfasında <b>"Farkı gör"</b> karşılaştırma penceresi de çıkar.
                 </p>
               </div>
             )}

@@ -185,7 +185,13 @@ export default function VariantPicker({ product }: { product: ProductDetail }) {
               {(f.options ?? []).map((opt) => (
                 <button
                   key={opt} type="button"
-                  onClick={() => setCustom((c) => ({ ...c, [f.key]: opt }))}
+                  onClick={() => {
+                    setCustom((c) => ({ ...c, [f.key]: opt }));
+                    // Seçeneğin görseli varsa galeride öne gelir (yalnız müşteri
+                    // seçince — galeride gezinmek seçimi DEĞİŞTİRMEZ)
+                    const url = f.option_images?.[opt];
+                    if (url) window.dispatchEvent(new CustomEvent("secenek-gorseli", { detail: { url, ad: opt } }));
+                  }}
                   className={`px-3 py-1.5 rounded-full border text-sm transition ${
                     custom[f.key] === opt
                       ? "border-zinc-900 bg-zinc-900 text-white"

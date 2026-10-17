@@ -29,10 +29,13 @@ export default function ProductGallery({
 }) {
   const [active, setActive] = useState(0);
   const [lightbox, setLightbox] = useState(false);
+  // Seçenek görseli ürün görsellerinde yoksa galerinin SONUNA eklenir
+  const [ekGorsel, setEkGorsel] = useState<Image | null>(null);
+  const gorseller = ekGorsel ? [...images, ekGorsel] : images;
   const hasVideo = !!videoUrl;
-  const videoIndex = images.length;          // video, galerinin son karesi
+  const videoIndex = gorseller.length;       // video, galerinin son karesi
   const showingVideo = hasVideo && active === videoIndex;
-  const current = images[active];
+  const current = gorseller[active];
   const ytId = videoUrl ? youtubeId(videoUrl) : null;
 
   useEffect(() => {
@@ -51,8 +54,21 @@ export default function ProductGallery({
         return genel >= 0 ? genel : a;
       });
     };
+    // Kişiye özel seçenek (mat/parlak…) seçildi: görseli öne gelsin
+    const onSecenek = (e: Event) => {
+      const d = (e as CustomEvent<{ url: string; ad?: string }>).detail;
+      if (!d?.url) return;
+      const idx = images.findIndex((im) => im.url === d.url);
+      if (idx >= 0) { setEkGorsel(null); setActive(idx); return; }
+      setEkGorsel({ url: d.url, alt: d.ad || null });
+      setActive(images.length);
+    };
     window.addEventListener("variant-selected", onVariant);
-    return () => window.removeEventListener("variant-selected", onVariant);
+    window.addEventListener("secenek-gorseli", onSecenek);
+    return () => {
+      window.removeEventListener("variant-selected", onVariant);
+      window.removeEventListener("secenek-gorseli", onSecenek);
+    };
   }, [images]);
 
   return (
@@ -94,9 +110,9 @@ export default function ProductGallery({
           </button>
         </div>
       )}
-      {(images.length + (hasVideo ? 1 : 0)) > 1 && (
+      {(gorseller.length + (hasVideo ? 1 : 0)) > 1 && (
         <div className="mt-3 flex gap-2 overflow-x-auto">
-          {images.map((im, i) => (
+          {gorseller.map((im, i) => (
             <button
               key={im.url}
               onClick={() => setActive(i)}
@@ -108,6 +124,8 @@ export default function ProductGallery({
               {/* 64px kutu: en küçük varyant (400w) yeterli, tembel yüklenir */}
               <img src={urunGorsel(im.url).srcSet ? urunGorsel(im.url).src.replace(/(\.[a-z]+)$/, "-400$1") : im.url}
                 alt={im.alt || ""} loading="lazy" decoding="async"
+                // Küçük sürümü olmayan görsel (ör. seçenek görseli) → asıl dosya
+                onError={(e) => { if (e.currentTarget.src !== new URL(im.url, location.href).href) e.currentTarget.src = im.url; }}
                 className="w-full h-full object-cover" />
             </button>
           ))}

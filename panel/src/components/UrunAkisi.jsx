@@ -86,7 +86,9 @@ function UrunSetleri({ cfg, set, storeId }) {
         <ol className="list-decimal pl-5 mt-1.5 space-y-1 text-panel-ink/90">
           <li><b>Katalog kimliği:</b> Commerce Manager › kataloğunuz › Ayarlar › “Katalog Kimliği”.</li>
           <li><b>Anahtar:</b> <a className="underline" href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer">İşletme Ayarları › Sistem Kullanıcıları ↗</a> › bir sistem kullanıcısı (yoksa “Ekle”, rol: Yönetici) ›
-            “Varlık ata” › Kataloglar › kataloğunuz (Tam kontrol) › “Yeni Belirteç Oluştur” › izinlerden <b>catalog_management</b> seçin › belirteci buraya yapıştırın.</li>
+            “Varlık ata” › <b>Kataloglar</b> › kataloğunuz (Tam kontrol) › yine “Varlık ata” › <b>Uygulamalar</b> › uygulamanız (Tam kontrol —
+            bu adım atlanırsa “Uygun izin yok” hatası çıkar) › “Jeton oluştur” › aynı uygulamayı seçin › süre “Asla” › izinlerden
+            <b> catalog_management</b> işaretleyin › jetonu buraya yapıştırın.</li>
           <li>Ayarları <b>Kaydet</b>'e basın, sonra aşağıdaki düğmeyle ilk gönderimi yapın.</li>
         </ol>
       </details>

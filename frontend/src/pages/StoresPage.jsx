@@ -171,7 +171,7 @@ export default function StoresPage({ embedded = false }) {
                   <SlaEditor store={store} onSaved={loadData} />
 
                   {/* Kargo firması (Basit Kargo handlerCode) — gönderide kullanılır */}
-                  {store.platform === 'shopify' && <KargoEditor store={store} onSaved={loadData} />}
+                  {store.platform !== 'bayii' && <KargoEditor />}
 
                   {/* Test sonucu */}
                   {result && (
@@ -363,61 +363,15 @@ function SlaEditor({ store, onSaved }) {
 }
 
 
-// Basit Kargo firma seçenekleri (handlerCode -> etiket). Backend HANDLER_NAMES ile eş.
-// SELF_* = kendi kargo anlaşman (firma doğrudan faturalandırır, Basit Kargo bakiyesi düşmez).
-const KARGO_GROUPS = [
-  ['Basit Kargo anlaşmalı (bakiyeden düşer)', [
-    ['ECONOMIC', 'Ekonomik (en ucuz)'],
-    ['FAST', 'Hızlı (en hızlı)'],
-    ['ARAS', 'Aras Kargo'],
-    ['YURTICI', 'Yurtiçi Kargo'],
-    ['MNG', 'MNG Kargo'],
-    ['PTT', 'PTT Kargo'],
-    ['SURAT', 'Sürat Kargo'],
-  ]],
-  ['Kendi anlaşmam (firma faturalandırır)', [
-    ['SELF_ARAS', 'Aras — Kendi Anlaşmam'],
-    ['SELF_YURTICI', 'Yurtiçi — Kendi Anlaşmam'],
-    ['SELF_MNG', 'MNG — Kendi Anlaşmam'],
-    ['SELF_PTT', 'PTT — Kendi Anlaşmam'],
-    ['SELF_SURAT', 'Sürat — Kendi Anlaşmam'],
-  ]],
-  ['Aracısız (doğrudan kargo firması)', [
-    ['DIRECT_SURAT', 'Sürat Kargo — Doğrudan (e-kargo)'],
-  ]],
-]
-
-function KargoEditor({ store, onSaved }) {
-  const toast = useToast()
-  const [val, setVal] = useState(store.config?.kargo_handler || 'ECONOMIC')
-  const [busy, setBusy] = useState(false)
-
-  const save = async (next) => {
-    setVal(next)
-    setBusy(true)
-    try {
-      await api.patch(`/api/stores/${store.id}`, { config: { kargo_handler: next } })
-      toast.success('Kargo firması güncellendi')
-      onSaved?.()
-    } catch (e) {
-      toast.error(e.detail || 'Kaydedilemedi')
-    } finally {
-      setBusy(false)
-    }
-  }
-
+function KargoEditor() {
+  // Kargo yolu artık mağaza başına seçilmiyor: tüm gönderiler Sürat'a doğrudan
+  // gider (backend packaging.kargo_handler_kodu). Basit Kargo aracısı kapalı;
+  // eskiden bayi/vitrin mağazalarında ayar boş kalıp Basit Kargo'ya düşüyor ve
+  // Sürat takip kodu oluşmuyordu.
   return (
     <div className="mt-2 flex items-center gap-2">
-      <span className="text-xs text-gray-500">📦 Kargo firması:</span>
-      <select value={val} onChange={e => save(e.target.value)} disabled={busy}
-        className="input !text-xs !py-1 w-56">
-        {KARGO_GROUPS.map(([grp, opts]) => (
-          <optgroup key={grp} label={grp}>
-            {opts.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-          </optgroup>
-        ))}
-      </select>
-      <span className="text-[10px] text-gray-600">(gönderide kullanılır)</span>
+      <span className="text-xs text-gray-500">📦 Kargo:</span>
+      <span className="text-xs text-gray-300">Sürat Kargo — doğrudan</span>
     </div>
   )
 }

@@ -27,7 +27,7 @@ from app.auth.security import create_access_token  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import (LineItem, Order, OrderStatusHistory, Store, Tenant, User)  # noqa: E402
-from app.services import basit_kargo  # noqa: E402
+from app.services import basit_kargo, surat  # noqa: E402
 
 GECTI = KALDI = 0
 IZ = f"tktest{uuid.uuid4().hex[:6]}"
@@ -41,24 +41,32 @@ def es(ad, beklenen, gercek):
         KALDI += 1; print(f"  ✗ {ad}\n      beklenen: {beklenen!r}\n      gercek  : {gercek!r}")
 
 
-# Kargo firmasına GERÇEK istek atılmaz — sahte gönderi
+# Kargo firmasına GERÇEK istek atılmaz — sahte gönderi.
+# Basit Kargo aracısı KAPALI: tüm gönderiler Sürat'a doğrudan gider
+# (packaging.kargo_handler_kodu), bu yüzden sahte olan Sürat servisidir.
 _cagri = {"sayi": 0}
+
+
+def _sahte_pdf_b64() -> str:
+    import base64
+    import fitz
+    d = fitz.open()
+    d.new_page(width=283, height=425)   # ~100x150 mm
+    return base64.b64encode(d.tobytes()).decode()
 
 
 def _sahte_shipment(order_raw, **kw):
     _cagri["sayi"] += 1
-    return {"ok": True, "id": f"{IZ}-bk", "barcode": "1234567890",
-            "takip_no": f"{IZ}-TAKIP", "handler_code": kw.get("handler_code") or "ECONOMIC",
-            "handler_name": "Ekonomik", "status": "created",
-            "label_svg": '<svg width="100mm" height="150mm"></svg>', "etiket_var": True}
+    return {"ok": True, "takip_no": f"{IZ}-TAKIP", "barkod_no": "1234567890",
+            "barkod_base64": _sahte_pdf_b64(), "message": "created"}
 
 
-basit_kargo.create_shipment = _sahte_shipment
+surat.is_configured = lambda: True
+surat.create_shipment = _sahte_shipment
+# Eski Basit Kargo çağrılırsa test bunu YAKALASIN
+basit_kargo.create_shipment = lambda *a, **k: (_ for _ in ()).throw(
+    AssertionError("Basit Kargo çağrıldı — aracı kapalı olmalı"))
 basit_kargo.delete_barcode = lambda *a, **k: {"ok": True}
-# Etiket okuma da sahte: gerçek kargo firmasına istek atılmaz
-basit_kargo.get_label_svg = lambda *a, **k: (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="150mm">'
-    '<rect width="100" height="150" fill="white"/></svg>')
 
 db = SessionLocal()
 tenant = db.scalar(select(Tenant).limit(1))
@@ -103,12 +111,13 @@ try:
     r = c.post(f"/api/telafiler/{tel.id}/kargo-barkod", headers=H, json={})
     es("200 döner", 200, r.status_code)
     es("takip no döner", f"{IZ}-TAKIP", r.json().get("takip_no"))
-    es("etiket (SVG) döner", True, bool(r.json().get("label_svg")))
+    es("Sürat PDF etiketi yazıldı (SVG yok)", None, r.json().get("label_svg"))
     db.expire_all()
     tel = db.get(Order, tel.id)
     es("aşama 8 (Kargoda)", 8, tel.current_stage)
     es("kargo bilgisi saklandı", f"{IZ}-TAKIP", (tel.kargo_info or {}).get("takip_no"))
-    es("mağazanın kargo firması kullanıldı", "ECONOMIC", (tel.kargo_info or {}).get("handler_code"))
+    es("Sürat doğrudan kullanıldı (mağaza ayarı ECONOMIC olsa da)", ("DIRECT_SURAT", "surat"),
+       ((tel.kargo_info or {}).get("handler_code"), (tel.kargo_info or {}).get("provider")))
     gecmis = db.scalars(select(OrderStatusHistory).where(
         OrderStatusHistory.order_id == tel.id)).all()
     es("durum geçmişine düştü", True, any(h.action == "kargoya_verildi" for h in gecmis))

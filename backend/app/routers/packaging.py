@@ -131,6 +131,22 @@ def il_ilce(user: User = Depends(get_current_user)):
 SURAT_DOGRUDAN = "DIRECT_SURAT"
 
 
+def kargo_handler_kodu(cfg: dict | None = None) -> str:
+    """Yeni gönderi için kargo yolu. TEK KAYNAK.
+
+    Basit Kargo aracısı DEVRE DIŞI: tüm mağazalar (Shopify, vitrin, bayi)
+    Sürat'ın kendi servisine gider. Eskiden yalnız Shopify mağazası
+    DIRECT_SURAT'a ayarlıydı; bayi ve vitrin mağazalarında ayar boş olduğu
+    için varsayılan Basit Kargo (ECONOMIC) devreye giriyor ve bayi
+    gönderilerinin Sürat takip kodu oluşmuyordu (son 40 günde 24 sipariş).
+
+    ``cfg`` kullanılmaz; imza, mağaza ayarına bakan eski çağıranlar için
+    korundu. Basit Kargo ile açılmış ESKİ gönderilerin iptali/etiketi
+    ``kargo_info.provider`` üzerinden çalışmaya devam eder.
+    """
+    return SURAT_DOGRUDAN
+
+
 def _surat_etiket_yolu(order_id) -> Path:
     d = storage.STORAGE_ROOT / "cache" / "kargo_etiket"
     d.mkdir(parents=True, exist_ok=True)
@@ -231,8 +247,7 @@ def magaza_kargo_adi(cfg: dict | None) -> str:
     Onizlemede bu SABIT "Surat Kargo" yaziliydi: magaza Yurtici'ye ayarli olsa
     bile etiket onizlemesi SURAT KARGO gosteriyordu.
     """
-    return basit_kargo.handler_name(
-        (cfg or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER)
+    return basit_kargo.handler_name(kargo_handler_kodu(cfg))
 
 
 class _OrnekSiparis:
@@ -343,8 +358,8 @@ def kargo_gonder(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Basit Kargo ile gönderi + barkod oluştur -> Shopify fulfillment + takip no -> stage 8.
-    Kargo firması mağaza ayarından (store.config.kargo_handler) gelir.
+    """Sürat'a doğrudan gönderi + barkod oluştur -> takip no -> stage 8.
+    Kargo yolu tek kaynaktan gelir (kargo_handler_kodu); Basit Kargo kapalı.
     Döner: {ok, takip_no, handler_name, label_svg, id, barcode, shopify_ok, shopify_err}
     """
     order = _resolve_order(db, order_ref, user.tenant_id)
@@ -354,7 +369,7 @@ def kargo_gonder(
     if not store:
         raise HTTPException(404, "Mağaza bulunamadı")
 
-    handler_code = (store.config or {}).get("kargo_handler") or basit_kargo.DEFAULT_HANDLER
+    handler_code = kargo_handler_kodu(store.config)
 
     # 1) Gönderi + barkod. Mağaza DIRECT_SURAT seçtiyse Sürat'a DOĞRUDAN gidilir,
     #    aksi halde Basit Kargo agregatörü üzerinden.
@@ -389,12 +404,19 @@ def kargo_gonder(
     handler_label = res.get("handler_name") or basit_kargo.handler_name(handler_code)
 
     # 2) Shopify'a fulfillment + takip no yaz (hata olsa da kargo gönderisi oluştu, devam)
-    shopify_ok = False
+    # shopify_ok üç durumlu: None = hiç denenmedi (bayi/vitrin ya da Shopify
+    # kapalı), True = yazıldı, False = denendi ve BAŞARISIZ. Eskiden varsayılan
+    # False'tu: bayi ve vitrin gönderilerinde de "Shopify'a yazılamadı" uyarısı
+    # ve sipariş detayında rozet çıkıyordu.
+    shopify_ok = None
     shopify_err = None
     fulfillment_id = None
     try:
         shopify_oid = order.external_id or str((order.raw or {}).get("id") or "")
-        if shopify_oid and store.platform == "shopify" and takip_no:
+        # Pasif (artık kullanılmayan) Shopify mağazasına istek atılmaz: ödeme
+        # yapılmadığı için "402 Payment Required" dönüyor ve her kargoda uyarı
+        # bildirimi açıyordu.
+        if shopify_oid and store.platform == "shopify" and store.is_active and takip_no:
             adapter = get_adapter(store)
             tr = adapter.add_tracking(shopify_oid, takip_no, handler_label)
             shopify_ok = bool(tr.get("ok"))
@@ -423,7 +445,7 @@ def kargo_gonder(
         # yalnız durum geçmişindeki bir not satırına düşüyordu, yani ancak elle
         # bakınca fark ediliyordu. Canlıda 111 sipariş bu durumdaydı.
         "shopify_ok": shopify_ok,
-        "shopify_err": (shopify_err or None) if not shopify_ok else None,
+        "shopify_err": (shopify_err or None) if shopify_ok is False else None,
     }
 
     # 4) Stage 8 (Kargoda) + history + stok düşümü
@@ -442,13 +464,13 @@ def kargo_gonder(
         to_stage=8,
         action="kargoya_verildi",
         note=f"{handler_label} · takip {takip_no}"
-             + ("" if shopify_ok or store.platform != "shopify" else f" · Shopify yazılamadı: {shopify_err}"),
+             + (f" · Shopify yazılamadı: {shopify_err}" if shopify_ok is False else ""),
         created_by=user.full_name or user.email,
     ))
 
     # Yalnız SHOPIFY mağazasında: bayi/vitrin siparişinde yazılacak bir Shopify
     # siparişi yok — "yazılamadı" uyarısı her kargoda boşuna düşüyordu.
-    if not shopify_ok and store.platform == "shopify":
+    if shopify_ok is False and store.platform == "shopify":
         # Sessiz kalmıyoruz: operatör kargoyu verdi ama mağaza tarafı eksik.
         _no = order.name or f"#{order.order_number or ''}"
         db.add(Notification(
@@ -532,7 +554,7 @@ def kargo_iptal(
         fid = ki.get("fulfillment_id")
         if fid and order.store_id:
             store = db.scalar(select(Store).where(Store.id == order.store_id))
-            if store and store.platform == "shopify":
+            if store and store.platform == "shopify" and store.is_active:
                 rr = get_adapter(store).cancel_fulfillment(str(fid))
                 shopify_ok = bool(rr.get("ok"))
                 shopify_err = rr.get("error")

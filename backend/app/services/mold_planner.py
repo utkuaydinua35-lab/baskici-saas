@@ -439,21 +439,53 @@ def plan_molds(
     eksikler: list[dict] = []
     eksik_keys: set = set()
 
-    def add_eksik(reason, li, order, model):
-        key = (str(li.product_id), reason)
+    # Eksik satırında "hangi bayinin hangi siparişi, hangi tasarım" görünsün:
+    # eskiden yalnız kalem başlığı vardı; bayi kalemlerinin başlığı dosya adı
+    # ("B9f61-260902154328-PDF2") olduğundan hangi siparişin eksik olduğu
+    # anlaşılmıyordu.
+    from app.models import Dealer as _Dealer
+    _magaza_adlari = {
+        s_.id: s_.name for s_ in db.scalars(
+            select(Store).where(Store.tenant_id == tenant_id)).all()
+    }
+    _bayi_adlari = {
+        str(d_.id): d_.name for d_ in db.scalars(
+            select(_Dealer).where(_Dealer.tenant_id == tenant_id)).all()
+    }
+
+    def _bayi_adi(order) -> str | None:
+        d_id = (order.raw or {}).get("dealer_id")
+        return _bayi_adlari.get(str(d_id)) if d_id else None
+
+    def add_eksik(reason, li, order, model, design=None):
+        # Ürün kimliği olan kalemler (vitrin/Shopify) ürün bazında birleşir;
+        # kimliği olmayanlar (bayi dosya yüklemeleri) kalem bazında KALIR —
+        # yoksa farklı bayilerin kalemleri tek satıra gömülüyordu.
+        ref = str(li.product_id) if li.product_id else f"li:{li.id}"
+        key = (ref, reason)
+        etiket = f"#{order.order_number}" + (f" · {_bayi_adi(order)}" if _bayi_adi(order) else "")
+        tasarim = design or getattr(li, "assigned_design", None)
         if key in eksik_keys:
             for e in eksikler:
-                if e["product_id"] == str(li.product_id) and e["reason"] == reason:
+                if e["_ref"] == ref and e["reason"] == reason:
                     e["count"] += li.quantity or 1
+                    if etiket not in e["siparisler"] and len(e["siparisler"]) < 8:
+                        e["siparisler"].append(etiket)
                     return
         eksik_keys.add(key)
         eksikler.append({
+            "_ref": ref,
             "reason": reason,
             "product_id": str(li.product_id) if li.product_id else None,
             "title": li.title,
             "model": model,
             "order_number": order.order_number,
+            "order_id": str(order.id),
             "store_id": str(order.store_id),
+            "magaza_adi": _magaza_adlari.get(order.store_id),
+            "bayi_adi": _bayi_adi(order),
+            "tasarim_kodu": getattr(tasarim, "code", None) if tasarim else None,
+            "siparisler": [etiket],
             "count": li.quantity or 1,
         })
 
@@ -546,13 +578,13 @@ def plan_molds(
                     # Slot'a özel seçilen varyasyon > property > ürün adı > tasarımın kalip_tipi
                     _var = resolve_line_variation(li, _cd, slot=_slot)
                     if not _var:   # varyasyon yok -> SİYAH'a düşme, eksik olarak işaretle
-                        add_eksik("varyasyon_eksik", li, order, _cm)
+                        add_eksik("varyasyon_eksik", li, order, _cm, _cd)
                         _ok = False
                         break
                     _var = pr.effective_variation(pr.get_model_group(_cm), _var)
                     _kod = pr.resolve_kalip_kodu(_cm, _var, k)
                     if not _kod:
-                        add_eksik("model_taninmadi", li, order, _cm)
+                        add_eksik("model_taninmadi", li, order, _cm, _cd)
                         _ok = False
                         break
                     _pending.append((_cd, _var, _kod, _cm, _adet))
@@ -621,11 +653,11 @@ def plan_molds(
 
             # Temiz baskı dosyası yok (hazır mockup/kılıflı görsel) -> kalıba girmesin
             if design is not None and getattr(design, "baski_dosyasi_yok", False):
-                add_eksik("baski_dosyasi_yok", li, order, model)
+                add_eksik("baski_dosyasi_yok", li, order, model, design)
                 continue
 
             if not model:
-                add_eksik("model_belirsiz", li, order, model)
+                add_eksik("model_belirsiz", li, order, model, design)
                 continue
 
             # Kılıf varyasyonu önceliği:
@@ -643,12 +675,12 @@ def plan_molds(
             # Hiçbir kaynakta varyasyon yoksa SESSİZCE SİYAH'a düşme — eksik olarak işaretle
             # (yanlış varyasyonla kalıba girip hatalı üretim olmasın).
             if not variation:
-                add_eksik("varyasyon_eksik", li, order, model)
+                add_eksik("varyasyon_eksik", li, order, model, design)
                 continue
             variation = pr.effective_variation(pr.get_model_group(model), variation)
             kod = pr.resolve_kalip_kodu(model, variation, k)
             if not kod:
-                add_eksik("model_taninmadi", li, order, model)
+                add_eksik("model_taninmadi", li, order, model, design)
                 continue
 
             qty = li.quantity or 1

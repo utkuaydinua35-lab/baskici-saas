@@ -28,7 +28,7 @@ const REASON_LABELS = {
   model_belirsiz: 'Telefon modeli belirsiz',
   model_taninmadi: 'Model tanınmadı',
   baski_dosyasi_yok: 'Baskı dosyası yüklenmemiş (hazır mockup)',
-  varyasyon_eksik: 'Varyasyon eksik — kalıp oluşturmadan önce tamamlanmalı',
+  varyasyon_eksik: 'Varyasyon (kalıp tipi) eksik',
 }
 
 export default function MoldGeneratorPage() {
@@ -248,17 +248,35 @@ export default function MoldGeneratorPage() {
               {plan.eksik_count > 0 && (
                 <div className="card mb-4 border-amber-500/30 bg-amber-500/5">
                   <h2 className="text-sm font-medium text-amber-300 mb-2">
-                    ⚠ {plan.eksik_count} kalem için tasarım eksik — kalıp oluşturmadan önce tamamlanmalı
+                    ⚠ {plan.eksik_count} kalemde eksik bilgi var — kalıp oluşturmadan önce tamamlanmalı
                   </h2>
                   <div className="space-y-1 max-h-60 overflow-y-auto">
                     {plan.eksikler.slice(0, 50).map((e, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs bg-brand-input/40 rounded px-2 py-1.5">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">
-                          {REASON_LABELS[e.reason] || e.reason}
-                        </span>
-                        <span className="text-gray-300 truncate flex-1">{e.title || '(başlıksız)'}</span>
-                        {e.model && <span className="text-gray-500 shrink-0">{e.model}</span>}
-                        <span className="text-gray-600 shrink-0">×{e.count}</span>
+                      <div key={i} className="text-xs bg-brand-input/40 rounded px-2 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0">
+                            {REASON_LABELS[e.reason] || e.reason}
+                          </span>
+                          <span className="text-gray-300 truncate flex-1">{e.title || '(başlıksız)'}</span>
+                          {e.model && <span className="text-gray-500 shrink-0">{e.model}</span>}
+                          <span className="text-gray-600 shrink-0">×{e.count}</span>
+                        </div>
+                        {/* Kim / hangi sipariş / hangi tasarım — bayi kalemlerinin başlığı
+                            dosya adı olduğundan tek başına neyin eksik olduğunu söylemiyordu */}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-gray-500">
+                          <span className="text-gray-400">
+                            {e.bayi_adi ? `🏪 ${e.bayi_adi}` : (e.magaza_adi || '')}
+                          </span>
+                          {(e.siparisler?.length ? e.siparisler : [`#${e.order_number}`]).map(no => (
+                            e.order_id && (e.siparisler?.length || 0) <= 1
+                              ? <a key={no} href={`/orders/${e.order_id}`}
+                                   className="text-accent hover:underline">{no}</a>
+                              : <span key={no}>{no}</span>
+                          ))}
+                          {e.tasarim_kodu && (
+                            <span className="font-mono text-gray-400">🎨 {e.tasarim_kodu}</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {plan.eksikler.length > 50 && <div className="text-[11px] text-gray-500 px-2">+{plan.eksikler.length - 50} daha...</div>}

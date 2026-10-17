@@ -220,7 +220,7 @@ export default function PackagingPage() {
         { il: opts.il || '', ilce: opts.ilce || '' })
       const tn = r.takip_no || '—'
       const firma = r.handler_name || 'Kargo'
-      const extra = r.shopify_ok ? '' : ' (Shopify\'a yazılamadı, takip no panelde)'
+      const extra = r.shopify_ok === false ? ' (Shopify\'a yazılamadı, takip no panelde)' : ''
       setManualAddr(false)
       // Barkodu yazdır (svg boşsa kargo-label'dan retry ile çek). Sadece yazdırınca ilerle.
       const printed = await printKargoLabel(order.id, r.label_svg, tn, etiketCtx())

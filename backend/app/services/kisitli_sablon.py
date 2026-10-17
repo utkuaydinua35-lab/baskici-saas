@@ -114,7 +114,10 @@ def layers_uret(overlay, degerler: dict | None, db=None, alan_oran: float = 1.0)
                     "font": _forma.PRO_NUMARA_FONT if numara else _forma.PRO_ISIM_FONT,
                     "size": 0.1, "color": renk,
                     "kontur": halka, "kontur_kalinlik": "ince", "parlama": halka,
-                    **({"esnet": True, "dikey": _forma.PRO_NUMARA_DIKEY} if numara else
+                    "kalin": _forma.PRO_KALIN,
+                    # Numara: yazı renginde dış kenar → halka içeride çizgi gibi görünür
+                    **({"dikey": _forma.PRO_NUMARA_DIKEY, "kontur2": renk, "sik": True}
+                       if numara else
                        {"kavis": kutu["kavis"], "en_oran": kutu["en_oran"]}),
                     "x": kutu["x"], "y": kutu["y"], "w": kutu["w"], "h": kutu["h"],
                     "rot": 0, "align": "center", "sigdir": True, "murekkep": True,

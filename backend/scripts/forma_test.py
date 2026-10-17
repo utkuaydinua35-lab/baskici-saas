@@ -282,10 +282,11 @@ else:
             {"key": "isim", "tip": "yazi", "etiket": "İsim", "varsayilan": "MURAT", **D["isim"]},
             {"key": "no", "tip": "yazi", "etiket": "Numara", "varsayilan": "10", **D["numara"]}])
         pk = {x["id"]: x for x in kisitli_sablon.layers_uret(pov, {"_font": "pacifico", "_kontur": ""})}
-        es("pro: isim kolej harfi + kavis + daraltma, numara kolej (müşteri fontu yok sayılır)",
-           ("alfaslab", 12.0, 0.74, "kolej", True),
-           (pk["alan-isim"]["font"], pk["alan-isim"]["kavis"], pk["alan-isim"]["en_oran"],
-            pk["alan-no"]["font"], pk["alan-no"]["murekkep"]))
+        es("pro: kolej blok harfi (Graduate) kalınlaştırılmış; isim yay+daraltma, numara sıkı dizim+uzatma",
+           ("graduate", "graduate", forma.PRO_KALIN, 12.0, forma.PRO_DUZEN["isim"]["en_oran"], True, forma.PRO_NUMARA_DIKEY),
+           (pk["alan-isim"]["font"], pk["alan-no"]["font"], pk["alan-no"]["kalin"], pk["alan-isim"]["kavis"],
+            pk["alan-isim"]["en_oran"], pk["alan-no"]["sik"], pk["alan-no"]["dikey"]))
+        es("pro: numarada iç çizgi için yazı renginde dış kenar", "#111111", pk["alan-no"].get("kontur2"))
         es("pro: yerleşim SABİT (alanın panel konumu kullanılmaz)", (0.21, 0.46, 0.58, 0.305),
            tuple(pk["alan-no"][k2] for k2 in ("x", "y", "w", "h")))
         es("pro: siyah yazıda kenar çizgisi ve parıltı zeminin AÇIK rengi",

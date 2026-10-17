@@ -230,7 +230,7 @@ def _yazi(sayfa, k: dict, W: float, H: float, renk_fn=_rgb01, icc: bytes | None 
     metin = (k.get("text") or "").strip()
     if not metin:
         return
-    if k.get("kavis") or k.get("esnet") is True or k.get("parlama") or k.get("kontur2") or k.get("dikey") or k.get("en_oran") or k.get("murekkep"):
+    if k.get("kavis") or k.get("esnet") is True or k.get("parlama") or k.get("kontur2") or k.get("dikey") or k.get("en_oran") or k.get("murekkep") or k.get("kalin") or k.get("sik"):
         # EFEKTLİ YAZI (yay, esnetme, parlama): vektörle birebir aynısı
         # üretilemiyor (yumuşak hale vektör değildir). PNG çizicisinin AYNI
         # kodu 600 DPI'da çalıştırılıp saydam görsel olarak gömülür — baskıda

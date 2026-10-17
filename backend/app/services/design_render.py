@@ -49,6 +49,9 @@ FONT_FILES = {
     # Kolej/forma: kalın, köşeli, İÇ ÇİZGİLİ (harfin içinde ince boşluk var —
     # kontur rengi o boşluğu doldurur, çift çizgili forma yazısı olur)
     "kolej": "AlumniSansCollegiateOne-Regular.ttf",
+    # Kolej/forma blok harfi (Forma Pro). İnce çizgili font; Pro'da harfin
+    # kendi renginde kalınlaştırılır (katman "kalin") ve iç çizgi verilir.
+    "graduate": "Graduate-Regular.ttf",
 }
 MAX_PRINT_PX = 8000     # güvenlik tavanı (10.000×10.000 PNG belleği yer)
 # "Çerçeveye esnet" açık alanlarda yatay esneme tavanı
@@ -66,27 +69,56 @@ def _kontur(k: dict, boy: float) -> tuple[float, float]:
     üstüne binmesin diye harf arası kontur kalınlığının İKİ KATI kadar açılır
     (canlıda "10" yazınca rakamlar üst üste biniyordu). Aynı kural tuvalde,
     önizlemede ve PDF'te de uygulanır."""
+    # Kalınlaştırma harfi dışa büyütür ama fontun kendi harf boşluğu bunu
+    # büyük ölçüde karşılar: payın yarısı kadar açılır (forma yazısında
+    # harflerin kenarları birbirine yakın durur — referans)
+    kalin = boy * _kalin_orani(k) * 0.5
     if not k.get("kontur"):
-        return 0.0, 0.0
+        return 0.0, 2 * kalin
     from app.services.forma import kontur_orani
     t = boy * kontur_orani(k.get("kontur_kalinlik"))
     # Çift kontur (Forma Pro): iç halkanın dışında ikinci, ince bir çizgi —
     # harf arası toplam kalınlığa göre açılır
     if k.get("kontur2"):
-        return t, 2 * t * (1 + DIS_KONTUR_ORANI)
-    return t, 2 * t
+        return t, 2 * (t * (1 + DIS_KONTUR_ORANI) + kalin)
+    return t, 2 * (t + kalin)
+
+
+def _kalin_orani(k: dict) -> float:
+    """Harfi KENDİ renginde kalınlaştırma (puntoya oran, en çok %6) — ince
+    çizgili kolej fontunu forma numarası kalınlığına getirir."""
+    try:
+        return max(0.0, min(0.06, float(k.get("kalin") or 0)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # Çift konturda dış çizginin kalınlığı, iç halkanın bu katı kadar EK
 DIS_KONTUR_ORANI = 0.6
 # Dikey uzatma tavanı (uzun forma numarası)
-DIKEY_TAVAN = 1.6
+DIKEY_TAVAN = 2.2
 
 
-def _aralikli_genislik(ciz, metin: str, font, aralik: float) -> float:
+def _aralikli_genislik(ciz, metin: str, font, aralik: float, sik: bool = False) -> float:
+    if sik:
+        # SIKI DİZİM: her harf, metnin EN GENİŞ şekli kadar bir hücreye ortalanır
+        # (forma numarası: "1" ile "0" aynı genişlikte durur), hücreler arası
+        # yalnız çizgi payı — fontun kendi geniş harf boşluğu kullanılmaz
+        return _sik_hucre(font, metin) * len(metin) + aralik * max(0, len(metin) - 1)
     if not aralik:
         return ciz.textlength(metin, font=font)
     return sum(ciz.textlength(h, font=font) for h in metin) + aralik * max(0, len(metin) - 1)
+
+
+def _sik_hucre(font, metin: str) -> float:
+    return max((_murekkep_eni(font, h) for h in metin), default=1)
+
+
+def _murekkep_eni(font, h: str) -> float:
+    if h.isspace():
+        return font.getlength(h)
+    sol, _u, sag, _a = font.getbbox(h)
+    return max(1, sag - sol)
 
 # BASKI RENK KURALI (storefront/components/studio/renk.ts ile aynı):
 # CMYK bileşenlerinin tamamı ~0 olan renk (saf beyaz) baskı makinesinde
@@ -455,7 +487,8 @@ def kavis_yerlesimi(genler: list[float], aralik: float, kavis: float) -> tuple[l
 
 def _kavisli_katman(metin: str, font, boy: int, oran: float, kavis: float, aralik: float,
                     kontur_px: int, kontur_renk, dolgu, pay_x: int, pay_y: int,
-                    esnet: float = 1.0, kontur2_px: int = 0, kontur2_renk=None) -> Image.Image:
+                    esnet: float = 1.0, kontur2_px: int = 0, kontur2_renk=None,
+                    kalin_px: int = 0) -> Image.Image:
     """Yay üzerine dizilmiş tek satır yazı (forma sırtındaki isim gibi).
     Katmanın ORTASI yazının yay üzerindeki kutusunun ortasıdır: konumlama kutu
     merkezine göre yapıldığı için düz yazıyla aynı yere oturur."""
@@ -482,8 +515,8 @@ def _kavisli_katman(metin: str, font, boy: int, oran: float, kavis: float, arali
             t = t.resize((max(1, round(t.width * esnet)), t.height), Image.LANCZOS)
         return t
 
-    gecisler = ([(kontur2_renk, kontur2_px)] if kontur2_px else []) \
-        + ([(kontur_renk, kontur_px)] if kontur_px else []) + [(dolgu, 0)]
+    gecisler = ([(kontur2_renk, kontur2_px + kalin_px)] if kontur2_px else []) \
+        + ([(kontur_renk, kontur_px + kalin_px)] if kontur_px else []) + [(dolgu, kalin_px)]
     for renk, cizgi in gecisler:                       # önce tüm konturlar, sonra dolgular
         for h, gen, (dx, dy, derece) in zip(metin, genler, konumlar):
             if h.isspace():
@@ -498,6 +531,12 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     if not metin:
         return
     ad = str(k.get("font") or "poppins")
+    if ad == "graduate":
+        # Bu fontun sıfırı ortası noktalı; forma numarasında köşeli "O" kullanılır
+        # (aynı genişlik/yükseklik — referanstaki "0" ile birebir)
+        metin = metin.replace("0", "O")
+    # Sıkı dizim (forma numarası): harfler çizilen şekillerine göre yan yana
+    sik = k.get("sik") is True and not _isaretli(k.get("kavis"))
     boy = max(4, round(float(k.get("size", 0.1)) * H))
     kutu_gen = max(1, round(float(k.get("w", 0.8)) * W))
     font = _font(ad, boy)
@@ -526,7 +565,7 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # yazar); serbest editörde punto müşterinin kendi ayarıdır, dokunulmaz.
     if k.get("sigdir") is True:
         # Harf aralığı puntoyla orantılı olduğundan oran hesabı aynen geçerli
-        gen = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
+        gen = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1], sik)
         if gen > 0:
             en = boy * kutu_gen / gen / en_oran     # genişliğe göre punto (daraltma payı)
             yuk = kutu_yuk / oran / dikey           # yüksekliğe göre punto (uzatma payı)
@@ -542,8 +581,13 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     murekkep = k.get("murekkep") is True
     if murekkep:
         sol_, ust_, sag_, alt_ = font.getbbox(metin)
-        ink_w = max(1, sag_ - sol_ + _kontur(k, boy)[1] * max(0, len(metin) - 1))
-        ink_h = max(1, alt_ - ust_)
+        if sik:
+            sag_ = sol_ + _aralikli_genislik(ciz, metin, font, 0, True)
+        # Dış çizgilerin (kalınlaştırma + halka + dış çizgi) toplam payı
+        _t, _ara = _kontur(k, boy)
+        cizgi = _t * (1 + DIS_KONTUR_ORANI if k.get("kontur2") else 1) + boy * _kalin_orani(k)
+        ink_w = max(1, sag_ - sol_ + _ara * max(0, len(metin) - 1) + 2 * cizgi)
+        ink_h = max(1, alt_ - ust_ + 2 * cizgi)
         # Genişlik sınırı KESİN: esnetme yalnız dar yazıyı çerçeveye kadar açar
         # (eskiden payla gevşetilmişti, numara çerçeveden %18 taşıyordu)
         olcek = min(kutu_yuk / (ink_h * dikey), kutu_gen / (ink_w * en_oran))
@@ -556,7 +600,7 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     # numarası gibi). En çok 2,4 kat — daha fazlası harfi tanınmaz yapar.
     esnet = 1.0
     if k.get("esnet") is True:
-        dogal = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1])
+        dogal = _aralikli_genislik(ciz, metin, font, _kontur(k, boy)[1], sik)
         if dogal > 0:
             # Tek karakter ("7") tam tavana esnerse şişman ve tanınmaz olur
             tavan = ESNET_TAVAN if len(metin.strip()) > 1 else 1.6
@@ -579,15 +623,16 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
     kontur_renk = _basilabilir_renk(kontur) if kontur else None
     kontur2_renk = _basilabilir_renk(k.get("kontur2")) if kontur and k.get("kontur2") else None
     kontur2_px = round(kontur_px * (1 + DIS_KONTUR_ORANI)) if kontur2_renk else 0
+    kalin_px = round(boy * _kalin_orani(k))
     hale_renk = k.get("parlama")
     hale_pay = round(boy * 0.30) if hale_renk else 0
-    pay_y = max(1, round(boy * 0.35)) + hale_pay + kontur2_px
-    pay_x = max(1, round(boy * 0.15)) + hale_pay + kontur2_px
+    pay_y = max(1, round(boy * 0.35)) + hale_pay + kontur2_px + kalin_px
+    pay_x = max(1, round(boy * 0.15)) + hale_pay + kontur2_px + kalin_px
     hiza = k.get("align") or "left"
 
     if kavis:
         kat = _kavisli_katman(metin, font, boy, oran, kavis, aralik, kontur_px, kontur_renk, dolgu,
-                              pay_x, pay_y, esnet, kontur2_px, kontur2_renk)
+                              pay_x, pay_y, esnet, kontur2_px, kontur2_renk, kalin_px)
     else:
         if esnet > 1:
             # Dar bir katmana ORTALI çiz, sonra yatayda esnet (aşağıda)
@@ -600,27 +645,36 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
             (0, 0, 0, 0))
         kciz = ImageDraw.Draw(kat)
         for i, s in enumerate(satirlar):
-            gen = _aralikli_genislik(kciz, s, font, aralik)
+            gen = _aralikli_genislik(kciz, s, font, aralik, sik)
             x = 0 if hiza == "left" else (kutu_gen_ciz - gen) / 2 if hiza == "center" else kutu_gen_ciz - gen
             y = pay_y + i * satir_yuk
-            if not kontur_px:
-                kciz.text((x + pay_x, y), s, font=font, fill=dolgu)
+            if not kontur_px and not sik:
+                kciz.text((x + pay_x, y), s, font=font, fill=dolgu,
+                          **({"stroke_width": kalin_px, "stroke_fill": dolgu} if kalin_px else {}))
                 continue
             # Konturlu: harfler tek tek, aralıklı. ÖNCE tüm konturlar, SONRA tüm
             # dolgular — bir harfin konturu komşusunun dolgusunu örtmesin.
             konumlar, cx = [], x + pay_x
             for h in s:
-                konumlar.append((cx, h))
-                cx += kciz.textlength(h, font=font) + aralik
+                if sik:
+                    hucre = _sik_hucre(font, s)
+                    sol_h = font.getbbox(h)[0] if not h.isspace() else 0
+                    # şekil hücrenin ORTASINA
+                    konumlar.append((cx + (hucre - _murekkep_eni(font, h)) / 2 - sol_h, h))
+                    cx += hucre + aralik
+                else:
+                    konumlar.append((cx, h))
+                    cx += kciz.textlength(h, font=font) + aralik
             if kontur2_px:      # çift kontur: önce dış çizgi
                 for hx, h in konumlar:
                     kciz.text((hx, y), h, font=font, fill=kontur2_renk,
-                              stroke_width=kontur2_px, stroke_fill=kontur2_renk)
+                              stroke_width=kontur2_px + kalin_px, stroke_fill=kontur2_renk)
             for hx, h in konumlar:
                 kciz.text((hx, y), h, font=font, fill=kontur_renk,
-                          stroke_width=kontur_px, stroke_fill=kontur_renk)
+                          stroke_width=kontur_px + kalin_px, stroke_fill=kontur_renk)
             for hx, h in konumlar:
-                kciz.text((hx, y), h, font=font, fill=dolgu)
+                kciz.text((hx, y), h, font=font, fill=dolgu,
+                          **({"stroke_width": kalin_px, "stroke_fill": dolgu} if kalin_px else {}))
 
         if esnet > 1:
             # Oran, çizilen MÜREKKEBİN gerçek genişliğinden: ölçülen ilerleme
@@ -640,9 +694,17 @@ def _ciz_metin(tuval: Image.Image, ciz: ImageDraw.ImageDraw, k: dict, W: int, H:
         # harflere göre yapılır (parlama payı korunur)
         kutu = kat.getchannel("A").getbbox()
         if kutu:
+            kat = kat.crop(kutu)
+            # Çizgi payları tahminle hesaplanınca yazı çerçevenin ancak %85'ini
+            # dolduruyordu: ÇİZİLEN harfin gerçek ölçüsü çerçeveye oturtulur
+            olc = min(kutu_gen / kat.width, kutu_yuk / kat.height)
+            if abs(olc - 1) > 0.01:
+                kat = kat.resize((max(1, round(kat.width * olc)), max(1, round(kat.height * olc))),
+                                 Image.LANCZOS)
             p = hale_pay + 2
-            kat = kat.crop((max(0, kutu[0] - p), max(0, kutu[1] - p),
-                            min(kat.width, kutu[2] + p), min(kat.height, kutu[3] + p)))
+            dolgu_kat = Image.new("RGBA", (kat.width + 2 * p, kat.height + 2 * p), (0, 0, 0, 0))
+            dolgu_kat.alpha_composite(kat, (p, p))
+            kat = dolgu_kat
 
     # PARLAMA: yazının çevresinde yumuşak hale (yazının ALTINA konur)
     if hale_renk:

@@ -1138,7 +1138,7 @@ function CustomFieldsEditor({ product, onChanged, setMsg }) {
             <select className="input !py-1.5 text-xs !w-28" value={f.type || 'text'}
               onChange={e => patchF(i, { type: e.target.value })}>
               <option value="text">Yazı</option>
-              <option value="image">Fotoğraf</option>
+              <option value="image">Görsel yükleme (müşteri yükler)</option>
               <option value="color">Seçenek</option>
             </select>
             <label className="text-[11px] flex items-center gap-1 whitespace-nowrap">

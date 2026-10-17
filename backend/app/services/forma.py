@@ -83,18 +83,22 @@ def kirp_birim_kare(cokgen: list[tuple[float, float]]) -> list[tuple[float, floa
 # müşteri yalnız yazıyı SİYAH ya da BEYAZ seçer, renkleri değiştirse de efekt
 # aynı kalır (hepsi zeminin renklerinden türetilir).
 PRO_YAZI_RENKLERI = {"#111111": "Siyah", "#f2f2f2": "Beyaz"}
-PRO_ISIM_FONT = "alfaslab"
-PRO_NUMARA_FONT = "kolej"          # kendi iç çizgisi referanstaki "siyah-sarı-siyah" görünümü verir
+# Kolej blok harfi (Graduate, OFL): ince çizgili fonttur, harfin kendi
+# renginde kalınlaştırılır (PRO_KALIN). Numarada iç çizgi = yazı rengi dış
+# kenar + zeminin açık rengi halka (referanstaki "siyah-sarı-siyah").
+PRO_ISIM_FONT = "graduate"
+PRO_NUMARA_FONT = "graduate"
+PRO_KALIN = 0.06
 # Pro yerleşim SABİT (referans görselden ölçüldü, baskı alanına oransal):
 # isim hafif yay çizerek üstte, numara altında baskı alanının ~%30'u. Alanların
 # panelde nerede durduğu Pro'da kullanılmaz — her şablon aynı görünür.
 PRO_DUZEN = {
-    "isim": {"x": 0.14, "y": 0.335, "w": 0.72, "h": 0.105, "kavis": 12.0, "en_oran": 0.74},
+    "isim": {"x": 0.14, "y": 0.335, "w": 0.72, "h": 0.105, "kavis": 12.0, "en_oran": 0.72},
     "numara": {"x": 0.21, "y": 0.46, "w": 0.58, "h": 0.305},
 }
 PRO_ISIK_MERKEZ = [0.5, 0.55]
 # Referansta rakamlar uzun-dar: kolej rakamı boyuna bu kadar uzatılır
-PRO_NUMARA_DIKEY = 1.25
+PRO_NUMARA_DIKEY = 1.6
 
 
 def _parlaklik(h: str) -> float:

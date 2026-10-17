@@ -1708,6 +1708,10 @@ class CatalogProduct(Base):
     # Sepette önerilecek KOLEKSİYONLAR (slug) — vitrinde koleksiyonun ürünleri
     # olarak açılır (cross_sell_slugs'taki elle seçilenlerden sonra)
     cross_sell_koleksiyonlar: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Ürün sayfası "Bu ürüne benzer ürünler": elle seçilen ürünler (slug) ve
+    # koleksiyonlar. İkisi de boşsa aynı koleksiyondan otomatik doldurulur.
+    benzer_slugs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    benzer_koleksiyonlar: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # Ürün sayfasında varyant seçilince ona eşlenmiş görsel öne gelsin mi
     # (CatalogImage.varyant_anahtarlari). Ürün başına açılır.
     varyant_gorsel: Mapped[bool] = mapped_column(

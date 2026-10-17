@@ -365,7 +365,18 @@ export default function UrunDetayPage() {
         <CustomFieldsEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
       </section>
 
-      <CrossSellEditor product={p} onChanged={reloadMeta} setMsg={setMsg} />
+      <OneriEditor product={p} onChanged={reloadMeta} setMsg={setMsg}
+        alanUrun="cross_sell_slugs" alanKol="cross_sell_koleksiyonlar" urunSinir={6}
+        baslik="🛍 Yanında Al (ürün sayfası + sepet)"
+        aciklama={<>Ürün sayfasında “Sepete Ekle”nin altında ve sepette önerilir. Koleksiyon seçerseniz müşteri
+          koleksiyonu değil <b>içindeki ürünleri</b> görür (önce elle seçtikleriniz). Tek seçenekli ürünler (aksesuar)
+          sayfadan çıkmadan sepete eklenir. Hiçbiri seçilmezse ürün sayfasında gösterilmez; sepette sistem
+          birlikte satılanlardan otomatik seçer.</>} />
+      <OneriEditor product={p} onChanged={reloadMeta} setMsg={setMsg}
+        alanUrun="benzer_slugs" alanKol="benzer_koleksiyonlar" urunSinir={12}
+        baslik="🔁 Bu ürüne benzer ürünler"
+        aciklama={<>Ürün sayfasının altındaki kayan şerit. Ürün ve/veya koleksiyon seçin; hiçbiri seçilmezse
+          ürünün kendi koleksiyonundan otomatik doldurulur.</>} />
 
       <section className="card space-y-3">
         <div className="flex items-center gap-2">
@@ -944,17 +955,21 @@ function ModelBasliklari({ product, onChanged, setMsg }) {
 // Kişiye özel alanlar — müşteriden checkout'ta istenecek girdiler.
 // Sepette "bunu da ekleyin" — bu ürün sepetteyken önerilecek ürünler.
 // Boş bırakılırsa sistem birlikte satılanlardan otomatik seçer.
-function CrossSellEditor({ product, onChanged, setMsg }) {
+// Ürün + koleksiyon öneri listesi düzenleyicisi. İki yerde kullanılır:
+//  • "Yanında Al" (cross_sell_*): ürün sayfasında sepet düğmesinin altı + sepet
+//  • "Bu ürüne benzer ürünler" (benzer_*): ürün sayfasının altındaki şerit
+// Koleksiyon seçilince vitrinde koleksiyonun ÜRÜNLERİ gösterilir.
+function OneriEditor({ product, onChanged, setMsg, alanUrun, alanKol, baslik, aciklama, urunSinir = 6 }) {
   const { storeId } = useStore()
   const [all, setAll] = useState([])
-  const [picked, setPicked] = useState(product.cross_sell_slugs || [])
-  const [kols, setKols] = useState(product.cross_sell_koleksiyonlar || [])
+  const [picked, setPicked] = useState(product[alanUrun] || [])
+  const [kols, setKols] = useState(product[alanKol] || [])
   const [tumKol, setTumKol] = useState([])
   const [q, setQ] = useState('')
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
-    setPicked(product.cross_sell_slugs || []); setKols(product.cross_sell_koleksiyonlar || []); setDirty(false)
+    setPicked(product[alanUrun] || []); setKols(product[alanKol] || []); setDirty(false)
   }, [product.id])
   useEffect(() => {
     if (!storeId) return
@@ -973,14 +988,14 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
   }, [storeId, product.id])
 
   const toggle = (slug) => {
-    setPicked(p => p.includes(slug) ? p.filter(s => s !== slug) : [...p, slug].slice(0, 6))
+    setPicked(p => p.includes(slug) ? p.filter(s => s !== slug) : [...p, slug].slice(0, urunSinir))
     setDirty(true)
   }
 
   const save = async () => {
     try {
       await api.patch(`/api/catalog/products/${product.id}`,
-        { cross_sell_slugs: picked, cross_sell_koleksiyonlar: kols })
+        { [alanUrun]: picked, [alanKol]: kols })
       setMsg({ ok: true, text: 'Öneriler kaydedildi' })
       setDirty(false); onChanged()
     } catch { setMsg({ ok: false, text: 'Kaydedilemedi' }) }
@@ -996,14 +1011,10 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
   return (
     <section className="card space-y-2.5">
       <div className="flex items-center gap-2">
-        <h2 className="text-sm font-semibold">✨ Sepette Öner (Cross-sell)</h2>
+        <h2 className="text-sm font-semibold">{baslik}</h2>
         {dirty && <button onClick={save} className="ml-auto btn-primary !py-1 text-xs">Kaydet</button>}
       </div>
-      <p className="text-[11px] text-panel-muted -mt-1">
-        Bu ürün sepetteyken müşteriye önerilecek ürünler ve koleksiyonlar. Koleksiyon seçerseniz
-        müşteri koleksiyonu değil, <b>içindeki ürünleri</b> görür (önce elle seçtiğiniz ürünler).
-        Hiçbiri seçilmezse sistem <b>birlikte satılanlardan</b> otomatik seçer.
-      </p>
+      <p className="text-[11px] text-panel-muted -mt-1">{aciklama}</p>
       {tumKol.length > 0 && (
         <div>
           <div className="text-[11px] text-panel-muted mb-1">Koleksiyonlar (en fazla 5)</div>
@@ -1035,7 +1046,7 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
           ))}
         </div>
       )}
-      {picked.length < 6 && (
+      {picked.length < urunSinir && (
         <>
           <input className="input" value={q} onChange={e => setQ(e.target.value)}
             placeholder="Ürün ara ve ekle…" />
@@ -1053,7 +1064,7 @@ function CrossSellEditor({ product, onChanged, setMsg }) {
           ) : (
             <p className="text-xs text-panel-muted px-1">{aranan ? 'Eşleşen ürün yok' : 'Ürünler yükleniyor…'}</p>
           )}
-          <p className="text-[11px] text-panel-muted">{results.length} ürün · en fazla 6 seçilebilir</p>
+          <p className="text-[11px] text-panel-muted">{results.length} ürün · en fazla {urunSinir} seçilebilir</p>
         </>
       )}
     </section>

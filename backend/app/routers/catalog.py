@@ -115,6 +115,9 @@ class ProductUpdate(BaseModel):
     cross_sell_slugs: list[str] | None = None
     # Sepette önerilecek koleksiyonlar (slug) — vitrinde ürünleri gösterilir
     cross_sell_koleksiyonlar: list[str] | None = Field(None, max_length=5)
+    # Ürün sayfası "Bu ürüne benzer ürünler" — ürün slug'ları + koleksiyonlar
+    benzer_slugs: list[str] | None = Field(None, max_length=12)
+    benzer_koleksiyonlar: list[str] | None = Field(None, max_length=5)
     # Varyant seçilince eşlenmiş görsel öne gelsin (ürün başına)
     varyant_gorsel: bool | None = None
     models_per_item: int | None = Field(None, ge=1, le=2)
@@ -331,6 +334,8 @@ def _serialize_product(p: CatalogProduct, *, full: bool = False,
         "custom_fields": p.custom_fields or [],
         "cross_sell_slugs": p.cross_sell_slugs or [],
         "cross_sell_koleksiyonlar": p.cross_sell_koleksiyonlar or [],
+        "benzer_slugs": p.benzer_slugs or [],
+        "benzer_koleksiyonlar": p.benzer_koleksiyonlar or [],
         "varyant_gorsel": bool(p.varyant_gorsel),
         "models_per_item": p.models_per_item or 1,
         "model_basliklari": p.model_basliklari or [],
@@ -501,6 +506,9 @@ def update_product(
         updates["cross_sell_koleksiyonlar"] = [
             str(x).strip()[:200] for x in (updates["cross_sell_koleksiyonlar"] or []) if str(x).strip()
         ][:5] or None
+    for alan, sinir in (("benzer_slugs", 12), ("benzer_koleksiyonlar", 5)):
+        if alan in updates:
+            updates[alan] = [str(x).strip()[:200] for x in (updates[alan] or []) if str(x).strip()][:sinir] or None
     if updates.get("varyant_gorsel") is None:
         updates.pop("varyant_gorsel", None)       # null = değiştirme
     if "studio_overlays" in updates:

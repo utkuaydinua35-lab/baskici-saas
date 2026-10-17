@@ -580,15 +580,77 @@ def get_product(
             catalog_product_collections,
             catalog_product_collections.c.product_id == CatalogProduct.id,
         ).where(catalog_product_collections.c.collection_id.in_(col_ids)).distinct()
-    related = db.scalars(
-        related_q.order_by(CatalogProduct.position, CatalogProduct.created_at.desc()).limit(4)
+    elle_benzer = _oneri_urunleri(db, store, product, product.benzer_slugs, product.benzer_koleksiyonlar, 12)
+    related = elle_benzer or db.scalars(
+        related_q.order_by(CatalogProduct.position, CatalogProduct.created_at.desc()).limit(8)
     ).all()
-    rel_ozet = _kart_ozetleri(db, [r.id for r in related])
-    detail["related"] = [_serialize_product_card(r, rel_ozet.get(r.id, {"model_count": 0, "total_stock": None}))
-                         for r in related]
+    # "Bu ürüne benzer ürünler": panelden seçildiyse o (ürün + koleksiyon),
+    # seçilmediyse yukarıdaki otomatik liste (aynı koleksiyon) 8'e kadar
+    detail["related"] = _oneri_kartlari(db, related)
+    # "Yanında al": panelin cross-sell ayarı (ürün + koleksiyon) — sepetteki
+    # "Bunu da ekleyin" ile aynı liste. Seçim yoksa bölüm gösterilmez.
+    detail["yaninda_al"] = _oneri_kartlari(db, _oneri_urunleri(
+        db, store, product, product.cross_sell_slugs, product.cross_sell_koleksiyonlar, 6), hizli=True)
 
     response.headers["Cache-Control"] = "public, max-age=60"
     return detail
+
+
+def _oneri_urunleri(db: Session, store, product, sluglar, koleksiyonlar, sinir: int) -> list:
+    """Elle seçilen ürünler (sırasıyla), ardından seçilen koleksiyonların
+    ürünleri; tekrarsız, yalnız yayındakiler, ürünün kendisi hariç."""
+    from app.models import CatalogCollection
+    sluglar = [s for s in (sluglar or []) if s and s != product.slug]
+    sonuc: list = []
+    gorulen = {product.id}
+    if sluglar:
+        bul = {p.slug: p for p in db.scalars(select(CatalogProduct).where(
+            CatalogProduct.store_id == store.id, CatalogProduct.status == "active",
+            CatalogProduct.slug.in_(sluglar)).options(selectinload(CatalogProduct.images))).all()}
+        for sl in sluglar:
+            p = bul.get(sl)
+            if p and p.id not in gorulen:
+                sonuc.append(p); gorulen.add(p.id)
+    if koleksiyonlar and len(sonuc) < sinir:
+        for kol in db.scalars(select(CatalogCollection).where(
+                CatalogCollection.store_id == store.id,
+                CatalogCollection.slug.in_([k for k in koleksiyonlar if k]))).all():
+            for p in sorted((x for x in kol.products if x.status == "active"), key=lambda x: x.position):
+                if p.id not in gorulen:
+                    sonuc.append(p); gorulen.add(p.id)
+    return sonuc[:sinir]
+
+
+def _oneri_kartlari(db: Session, urunler: list, hizli: bool = False) -> list[dict]:
+    """Ürün kartları. hizli=True: tek seçenekli (tek aktif, stokta varyant; özel
+    alan/çift kılıf/stüdyo yok) üründe sayfadan çıkmadan sepete ekleme bilgisi."""
+    if not urunler:
+        return []
+    ozet = _kart_ozetleri(db, [u.id for u in urunler])
+    tekler: dict = {}
+    if hizli:
+        from sqlalchemy import func as _f
+        satirlar = db.execute(
+            select(CatalogVariant.product_id, _f.count(), _f.min(CatalogVariant.id.cast(String)))
+            .where(CatalogVariant.product_id.in_([u.id for u in urunler]), CatalogVariant.is_active.is_(True))
+            .group_by(CatalogVariant.product_id)).all()
+        tek_idler = {pid: vid for pid, adet, vid in satirlar if adet == 1}
+        if tek_idler:
+            for v in db.scalars(select(CatalogVariant).where(
+                    CatalogVariant.id.in_(list(tek_idler.values())))).all():
+                tekler[v.product_id] = v
+    kartlar = []
+    for u in urunler:
+        kart = _serialize_product_card(u, ozet.get(u.id, {"model_count": 0, "total_stock": None}))
+        v = tekler.get(u.id)
+        if v is not None and not u.custom_fields and (u.models_per_item or 1) == 1 \
+                and not (u.studio_overlays or u.studio_templates) \
+                and ((not v.track_stock) or v.quantity > 0):
+            kart["hizli"] = {"variant_id": str(v.id), "model_display": v.model_display,
+                             "variation": v.variation,
+                             "price": str(v.price_override if v.price_override is not None else u.base_price)}
+        kartlar.append(kart)
+    return kartlar
 
 
 # ─── Checkout + Ödeme ────────────────────────────────────────

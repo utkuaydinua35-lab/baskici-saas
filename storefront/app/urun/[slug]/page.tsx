@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getProduct, getReviews } from "@/lib/api";
-import ProductCard from "@/components/ProductCard";
+import ProductRow from "@/components/sections/ProductRow";
+import YanindaAl from "@/components/YanindaAl";
 import Reveal from "@/components/Reveal";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
@@ -132,6 +133,7 @@ export default async function ProductPage({ params }: Props) {
                 çıkar (VariantPicker); ayrı bir özelleştir düğmesi yok */}
             <VariantPicker product={product} />
           </div>
+          <YanindaAl items={product.yaninda_al ?? []} />
           {trustEnabled && (
             <div className="mt-5">
               <TrustBadges />
@@ -203,6 +205,14 @@ export default async function ProductPage({ params }: Props) {
             ))}
           </div>
         </section>
+      )}
+
+      {/* Bu ürüne benzer ürünler — panelde seçildiyse o ürün/koleksiyonlar,
+          seçilmediyse aynı koleksiyondan otomatik */}
+      {(product.related?.length ?? 0) > 0 && (
+        <div className="mt-12">
+          <ProductRow items={product.related!} title="Bu ürüne benzer ürünler" layout="carousel" href="/urunler" />
+        </div>
       )}
 
       {/* Kendi tasarımını yap — kılıf şablonları + hazır tasarım modülleri */}

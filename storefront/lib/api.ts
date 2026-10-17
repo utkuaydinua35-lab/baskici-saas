@@ -43,6 +43,8 @@ export interface ProductCard {
   tags: string | null;
   model_count: number;
   total_stock: number | null;
+  /** Tek seçenekli ürün: sayfadan çıkmadan sepete eklenebilir ("Yanında Al") */
+  hizli?: { variant_id: string; model_display: string; variation: string | null; price: string } | null;
 }
 
 export interface ProductVariant {
@@ -101,6 +103,8 @@ export interface ProductDetail {
   rating_avg?: number | null;
   rating_count?: number;
   related?: ProductCard[];
+  /** "Yanında Al" — panelin cross-sell ayarı (ürün + koleksiyon) */
+  yaninda_al?: ProductCard[];
 }
 
 export interface Review {

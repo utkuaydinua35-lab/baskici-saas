@@ -6,6 +6,7 @@ import YanindaAl from "@/components/YanindaAl";
 import Reveal from "@/components/Reveal";
 import VariantPicker from "@/components/VariantPicker";
 import ProductGallery from "@/components/ProductGallery";
+import YapiskanGaleri from "@/components/YapiskanGaleri";
 import TrackProductView from "@/components/TrackProductView";
 import ProductQuestions from "@/components/ProductQuestions";
 import StudioModules from "@/components/StudioModules";
@@ -109,7 +110,9 @@ export default async function ProductPage({ params }: Props) {
       </nav>
       <TrackProductView id={product.slug} name={product.title} price={Number(product.price)} />
       <div className="grid md:grid-cols-2 gap-8">
-        <ProductGallery images={product.images} title={product.title} videoUrl={product.video_url} />
+        <YapiskanGaleri>
+          <ProductGallery images={product.images} title={product.title} videoUrl={product.video_url} />
+        </YapiskanGaleri>
         <div>
           <div className="flex items-start justify-between gap-3">
             <h1 className="text-2xl font-bold">{product.title}</h1>
